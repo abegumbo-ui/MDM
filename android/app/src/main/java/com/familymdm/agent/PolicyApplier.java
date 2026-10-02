@@ -452,14 +452,27 @@ final class PolicyApplier {
         try {
             JSONArray sites = policy.optJSONArray("sites");
             String json = sites == null ? "[]" : sites.toString();
-            if (json.equals(Agent.prefs(c).getString("browserSitesApplied", null))) return;
+            // "Browse freely for a while" (a redeemed one-time code): Browser bypasses the allowlist
+            // until this time, reporting every new site it lands on for approval afterward.
+            long browseUntil = Agent.prefs(c).getLong("browseUntil", 0);
+            String cacheKey = json + "|" + browseUntil;
+            if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
+            b.putLong("browseUntil", browseUntil);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
-            Agent.prefs(c).edit().putString("browserSitesApplied", json).apply();
+            Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
         } catch (Exception e) {
             Log.w(TAG, "browser config push failed: " + e);
         }
+    }
+
+    /** "Browse freely for a while": redeemed on the agent's main screen, applies right away. */
+    static void startBrowseWindow(Context c, int minutes) {
+        long until = System.currentTimeMillis() + minutes * 60_000L;
+        Agent.prefs(c).edit().putLong("browseUntil", until).apply();
+        Agent.addEvent(c, "restriction", "Browser can open any site for " + minutes + " minutes; new sites visited will need your approval");
+        applyStored(c);
     }
 
     /** Stops the agent itself from being uninstalled or force-stopped from Settings. */

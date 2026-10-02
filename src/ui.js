@@ -183,6 +183,7 @@ const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release dev
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
+function browsingFreely(d){return d.info.browseUntil&&d.info.browseUntil>Date.now()}
 function needsUpdate(d){return latest&&d.info.versionCode&&d.info.versionCode<latest.versionCode}
 function pendingCount(d){const want=new Set(d.applied.hide);return d.packages.filter(function(p){return want.has(p.p)!==p.h}).length}
 function chipsFor(d,full){
@@ -194,6 +195,7 @@ function chipsFor(d,full){
  if(wf)c.append(h('span',{class:'chip'},wf.transport==='wifi'?'📶 '+(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?'📱 Mobile':'No connection'));
  if(d.inflight.some(function(x){return x.type==='lock'})||d.pending)c.append(h('span',{class:'chip warn'},'⏳ Command on its way'));
  if(lockedNow(d))c.append(h('span',{class:'chip warn'},'🔒 Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+ if(browsingFreely(d))c.append(h('span',{class:'chip warn'},'🌐 Free browsing until '+new Date(d.info.browseUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
  if(d.info.kiosk)c.append(h('span',{class:'chip ok'},'🏠 Home screen mode'));
  if(d.info.kioskPaused)c.append(h('span',{class:'chip warn'},'Home screen mode paused'));
  if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
@@ -511,13 +513,18 @@ const CODE_INFO={
  enroll:['Enrollment code','Connects a new phone to this dashboard. Used in the adb command or typed into the agent app. Valid 1 hour, one use.'],
  install:['Install-app code','Give this to the person using the phone. In the agent app they tap "Install an app", type the code, and pick an APK file. No "unknown sources" setting needed. One use.'],
  uninstall:['Removal code','Lets the person remove the agent from inside the app. This ends all management of the phone. One use.'],
- browser:['Browser connect code','Connects a standalone Browser app directly to this dashboard — no agent, no device owner, nothing else installed. Until it\'s connected (or set up on its own with a master code), that Browser allows nothing at all. Valid 1 hour, one use.']};
+ browser:['Browser connect code','Connects a standalone Browser app directly to this dashboard — no agent, no device owner, nothing else installed. Until it\'s connected (or set up on its own with a master code), that Browser allows nothing at all. Valid 1 hour, one use.'],
+ freebrowse:['Browse code','Lets Browser (with the agent on that phone) open ANY site for a chosen time, like a timed Play Store window for app installs. Every new site visited during that time is then held in Site requests for your approval, exactly like a newly installed app. One use.']};
 function renderCodes(m){
- for(const type of ['enroll','install','uninstall','browser']){
+ for(const type of ['enroll','install','uninstall','browser','freebrowse']){
   const card=h('div',{class:'card'},h('h2',null,CODE_INFO[type][0]),h('div',{class:'mute'},CODE_INFO[type][1]));
   const out=h('div');
   card.append(h('div',{style:'margin-top:10px'},btn('Generate new code','',async function(){
-   const r=await call('POST','/api/codes',{type:type});out.textContent='';
+   let minutes;
+   if(type==='freebrowse'){
+    const v=await ask('Browse freely for how long?',[{key:'minutes',label:'Duration',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours']],value:'60'}],'Generate');
+    if(!v)return;minutes=parseInt(v.minutes,10)}
+   const r=await call('POST','/api/codes',{type:type,minutes:minutes});out.textContent='';
    out.append(h('div',{class:'code'},r.code),h('div',{class:'mute small'},'Valid for 1 hour. Shown once; generate another any time.'));
    if(type==='enroll'){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'On your computer, with the phone connected and USB debugging on:'),
@@ -527,6 +534,8 @@ function renderCodes(m){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'In the Browser app (no agent needed), tap "Connect to a dashboard" and enter:'),
      h('pre',{class:'cmd'},'Dashboard address: '+r.server+'\nCode: '+r.code),
      h('div',{class:'mute small'},'Get mdm-browser.apk from GitHub → Releases → "Latest agent build", same place as the agent. It shows up under Sites → Standalone browsers once connected.'))}
+   if(type==='freebrowse'){
+    out.append(h('div',{class:'mute',style:'margin-top:8px'},'On the phone, in the agent app\'s Browser card, tap "Browse freely for a while" and type this code. It opens any site for '+r.minutes+' minutes.'))}
   })),out);m.append(card)}
 }
 

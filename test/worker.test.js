@@ -134,6 +134,23 @@ test("one-time install/uninstall codes: typed, single use, need a device token",
   assert.equal((await post("/agent/redeem", { type: "uninstall", code: uninstall }, auth)).status, 200);
 });
 
+test("freebrowse code: carries a chosen duration through to the redeem reply", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+
+  const def = await (await post("/api/codes", { type: "freebrowse" }, { cookie })).json();
+  assert.equal(def.minutes, 60, "defaults to 60 minutes when none is given");
+
+  const { code, minutes } = await (await post("/api/codes", { type: "freebrowse", minutes: 30 }, { cookie })).json();
+  assert.equal(minutes, 30);
+  const reply = await (await post("/agent/redeem", { type: "freebrowse", code }, auth)).json();
+  assert.equal(reply.minutes, 30, "the redeem reply carries the same duration the code was made with");
+  assert.equal((await post("/agent/redeem", { type: "freebrowse", code }, auth)).status, 403, "single use");
+
+  const clamped = await (await post("/api/codes", { type: "freebrowse", minutes: 9999 }, { cookie })).json();
+  assert.equal(clamped.minutes, 240, "an out-of-range duration is clamped, not rejected");
+});
+
 test("icons are stored once and served to the admin only", async () => {
   const cookie = await login();
   const { auth } = await enrolledDevice(cookie);

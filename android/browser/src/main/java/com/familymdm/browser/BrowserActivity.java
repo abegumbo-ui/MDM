@@ -248,6 +248,12 @@ public class BrowserActivity extends Activity {
         if (mode == Mode.OFFLINE) menu.getMenu().add("Manage sites (master code)");
         if (mode == Mode.UNCONFIGURED) menu.getMenu().add("Set up Browser");
         if (mode == Mode.ONLINE || mode == Mode.OFFLINE) menu.getMenu().add("Disconnect this setup");
+        if (mode == Mode.AGENT && browseWindowActive()) {
+            RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
+            Bundle b = rm == null ? null : rm.getApplicationRestrictions();
+            long until = b == null ? 0 : b.getLong("browseUntil", 0);
+            menu.getMenu().add("Free browsing until " + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(until)));
+        }
         menu.setOnMenuItemClickListener(item -> {
             String s = item.getTitle().toString();
             if (s.equals("New tab")) showTab(newTab(HOME_URL));
@@ -363,11 +369,18 @@ public class BrowserActivity extends Activity {
     private void go(String typed) {
         String s = typed.trim();
         if (s.isEmpty()) return;
-        if (!looksLikeUrl(s)) {
-            toast("Type a full web address, like example.com — there's no search here.");
+        if (looksLikeUrl(s)) {
+            load(current(), s.contains("://") ? s : "https://" + s);
             return;
         }
-        load(current(), s.contains("://") ? s : "https://" + s);
+        // Free browsing (a redeemed code) is temporary full access by design, like a timed Play
+        // Store window for app installs — so a search works here too, and the sites visited still
+        // need the administrator's approval afterward, same as a newly installed app would.
+        if (mode() == Mode.AGENT && browseWindowActive()) {
+            load(current(), "https://www.google.com/search?q=" + Uri.encode(s));
+            return;
+        }
+        toast("Type a full web address, like example.com — there's no search here.");
     }
 
     private boolean looksLikeUrl(String s) {
@@ -428,12 +441,43 @@ public class BrowserActivity extends Activity {
         }
         SitePolicy.Site match = SitePolicy.matching(url, currentSites(mode));
         if (match == null) {
+            if (mode == Mode.AGENT && browseWindowActive()) {
+                reportNewHostOnce(url);
+                t.webView.getSettings().setBlockNetworkImage(false);
+                t.webView.getSettings().setLoadsImagesAutomatically(true);
+                return true;
+            }
             showBlocked(t, url, mode);
             return false;
         }
         t.webView.getSettings().setBlockNetworkImage(match.blockImages);
         t.webView.getSettings().setLoadsImagesAutomatically(!match.blockImages);
         return true;
+    }
+
+    /** "Browse freely for a while" (a code redeemed on the agent's main screen): true until it expires. */
+    private boolean browseWindowActive() {
+        try {
+            RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
+            Bundle b = rm == null ? null : rm.getApplicationRestrictions();
+            return b != null && b.getLong("browseUntil", 0) > System.currentTimeMillis();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private final java.util.Set<String> reportedHostsThisSession = new java.util.HashSet<>();
+
+    /** Queues a site visited during a free-browsing window for the administrator's approval, once per host. */
+    private void reportNewHostOnce(String url) {
+        String host = SitePolicy.hostOf(url);
+        if (host == null || !reportedHostsThisSession.add(host)) return;
+        Intent i = new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", "https://" + host + "/");
+        try {
+            sendBroadcast(i, "com.familymdm.agent.permission.BROWSER");
+            toast("Free browsing: \"" + host + "\" will need the administrator's approval afterward.");
+        } catch (Exception ignored) {
+        }
     }
 
     private void showWeb(Tab t) {

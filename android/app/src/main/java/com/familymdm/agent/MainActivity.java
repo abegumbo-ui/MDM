@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
     private LinearLayout switchBox;
     private TextView installHint;
     private TextView removeHint;
+    private TextView browseHint;
     private boolean showEnroll;
     private boolean reshowFrp;
     private LinearLayout enrollBox;
@@ -119,6 +120,9 @@ public class MainActivity extends Activity {
         browse.addView(Ui.titleText(this, "Browser"));
         browse.addView(Ui.body(this, "A separate app. Only opens sites the administrator has allowed.", true));
         Ui.add(browse, Ui.button(this, "Open Browser", Ui.TONAL, v -> openBrowserApp()), 12);
+        browseHint = Ui.body(this, "", true);
+        Ui.add(browse, browseHint, 8);
+        Ui.add(browse, Ui.button(this, "Browse freely for a while (needs code)", Ui.OUTLINED, v -> promptCode("freebrowse")), 8);
 
         LinearLayout admin = Ui.card(this, actionsBox);
         admin.addView(Ui.titleText(this, "Administrator"));
@@ -201,6 +205,10 @@ public class MainActivity extends Activity {
         updateText.setText("This agent is build " + Updater.currentBuild(this) + ".");
         boolean canPick = System.currentTimeMillis() < Agent.prefs(this).getLong("installUntil", 0);
         pickButton.setVisibility(canPick ? View.VISIBLE : View.GONE);
+        long browseUntil = Agent.prefs(this).getLong("browseUntil", 0);
+        browseHint.setText(browseUntil > System.currentTimeMillis()
+                ? "Free browsing until " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(browseUntil)) + ". New sites visited will need your approval afterward."
+                : "Opens any site for a chosen time. Every new site visited is then held for your approval, just like a newly installed app.");
     }
 
     // ---------- offline mode setup ----------
@@ -391,8 +399,10 @@ public class MainActivity extends Activity {
         final EditText input = Ui.field(this, "One-time code or master code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
-                .setTitle(type.equals("install") ? "Install code" : "Removal code")
-                .setMessage("Type the one-time code from the administrator, or the master code.")
+                .setTitle(type.equals("install") ? "Install code" : type.equals("freebrowse") ? "Browse code" : "Removal code")
+                .setMessage(type.equals("freebrowse")
+                        ? "Type the one-time code from the administrator, or the master code (which opens any site for 60 minutes with no code needed)."
+                        : "Type the one-time code from the administrator, or the master code.")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("OK", (d, w) -> redeem(type, input.getText().toString().trim()))
@@ -428,6 +438,7 @@ public class MainActivity extends Activity {
         final String token = Agent.prefs(this).getString("token", null);
         final boolean standalone = Agent.standalone(this);
         if (code.isEmpty() || (!standalone && (server == null || token == null))) return;
+        final int[] minutesHolder = {60}; // default when the master code is used instead of a server code
         new Thread(() -> {
             android.content.SharedPreferences p = Agent.prefs(this);
             long now = System.currentTimeMillis();
@@ -446,7 +457,8 @@ public class MainActivity extends Activity {
                     JSONObject body = new JSONObject();
                     body.put("type", type);
                     body.put("code", code);
-                    Api.post(server + "/agent/redeem", body, token);
+                    JSONObject reply = Api.post(server + "/agent/redeem", body, token);
+                    if (type.equals("freebrowse")) minutesHolder[0] = reply.optInt("minutes", 60);
                     p.edit().putInt("redeemFails", 0).apply();
                 } catch (Exception e) {
                     if (e instanceof Api.HttpException && ((Api.HttpException) e).code == 403) {
@@ -464,6 +476,10 @@ public class MainActivity extends Activity {
                     Agent.prefs(this).edit().putLong("installUntil", System.currentTimeMillis() + PICK_WINDOW_MS).apply();
                     refresh();
                     pickApk();
+                } else if (type.equals("freebrowse")) {
+                    PolicyApplier.startBrowseWindow(this, minutesHolder[0]);
+                    refresh();
+                    toast("Browser can open any site for " + minutesHolder[0] + " minutes.");
                 } else {
                     removeAgent();
                 }
