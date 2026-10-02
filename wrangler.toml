@@ -2,7 +2,7 @@ name = "mdm-dashboard"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
-# Run `npx wrangler kv namespace create STATE` and paste the id here (see SETUP.md).
+# KV namespace holding dashboard settings.
 [[kv_namespaces]]
 binding = "STATE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "163fdd2bd14b4cd1bc8a46ac5f01c5db"
