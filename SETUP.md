@@ -51,15 +51,23 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 - It is off by default. Test it on a spare phone first.
 
 ## Browser allowlist (opt-in)
-**Browser** is a separate app from the agent (package `com.familymdm.browser`) — install it on the phone the same way you installed the agent (sideload `mdm-browser.apk` from the same release the agent's APK comes from). It's a real tabbed browser (address bar, back/forward/reload, multiple tabs, "Add to Home Screen") and works standalone, with no MDM at all: install it on any phone and it just browses, no restrictions. It only enforces an allowlist once *this specific agent* has pushed one to it — on a phone with no agent installed, or an agent that hasn't been set up yet, it behaves like an ordinary browser. It talks to the agent app only over a few narrow, locked-down channels (not shared code or storage), so it can be installed, removed, or reinstalled independently of the agent. **Sites tab** → add a site as either:
+**Browser** is a separate app from the agent (package `com.familymdm.browser`) — a real tabbed browser (address bar, back/forward/reload, multiple tabs, "Add to Home Screen"). Install it the same way you installed the agent (sideload `mdm-browser.apk` from the same release the agent's APK comes from). It has three independent ways to be set up, checked in this order every time a page loads:
+
+1. **With the agent (MDM) on the same phone.** If the agent has pushed a site list — Home screen mode or not, enrolled or offline — Browser uses it automatically, with no setup of its own. This is the strongest option (device-owner backed) and always wins if present.
+2. **Connected directly to this dashboard, with no agent at all.** Codes tab → **Browser connect code** → open Browser on any phone, tap **Connect to a dashboard**, and enter the dashboard address and the code. From then on it shares the exact same allowed-sites list below as agent-managed phones, and shows up under **Sites → Standalone browsers**, where you can disconnect it (it then needs a fresh code — there is no other way back in).
+3. **Set up entirely on its own, no dashboard at all.** Tap **Use it on its own (offline)** and choose a master code. Add sites to this phone's own local list with that same master code (menu → **Manage sites**) — there's no admin, no server, just this one phone.
+
+**Until one of these three is done, Browser allows nothing at all** — no address bar search, no page, nothing. That's deliberate: a fresh install has no owner yet, so the safe default is to open nothing rather than everything.
+
+**Sites tab** (shared by agent-managed phones and standalone-connected browsers alike) → add a site as either:
 - **Whole site**: the domain and its subpages and subdomains (e.g. `nytimes.com` covers `www.nytimes.com/anything` and `m.nytimes.com`).
 - **Exact page**: only that one link, ignoring its query string and a trailing slash.
 
-Anything not on the list shows **This page isn't allowed** with a **Request access** button; the request (with the device it came from) appears at the top of the Sites tab for you to approve as a whole site or an exact page, or dismiss. Per site, you can also set:
+Anything not on the list shows **This page isn't allowed** with a **Request access** button (agent-managed and dashboard-connected Browser alike); the request appears at the top of the Sites tab for you to approve as a whole site or an exact page, or dismiss. Per site, you can also set:
 - **Block images** — nothing loads any pictures on that site.
 - **Allow home-screen shortcut** — lets the person tap **Add to Home Screen** while on that page, so it behaves like an installed app.
 
-**Settings → Make Browser the only browser** replaces Chrome (and any other browser) as the handler for web links, so tapping a link anywhere opens the Browser app instead. You still need to **Block Chrome** itself on the Apps tab so it can't be opened directly; the switch only redirects links, it doesn't hide other browsers. Leave it off while you're still building the allowlist, so you can keep using a normal browser to test. Browser is always reachable (even in Home screen mode) whatever the Apps tab says about it, the same way the agent app always is.
+**Settings → Make Browser the only browser** (agent mode only) replaces Chrome (and any other browser) as the handler for web links, so tapping a link anywhere opens the Browser app instead. You still need to **Block Chrome** itself on the Apps tab so it can't be opened directly; the switch only redirects links, it doesn't hide other browsers. Leave it off while you're still building the allowlist, so you can keep using a normal browser to test. Browser is always reachable (even in Home screen mode) whatever the Apps tab says about it, the same way the agent app always is.
 
 Browser is reachable from the agent's main screen (**Open Browser**, which just launches the separate app if it's installed) and, in Home screen mode, from a **Browser** tile. In **offline mode**, a blocked page offers **Allow with the master code** instead of a request, adding the page directly on the phone — the same master code that works everywhere else in the agent.
 

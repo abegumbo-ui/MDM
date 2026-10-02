@@ -83,6 +83,42 @@ async function enrolledDevice(cookie) {
   return { auth: { authorization: `Bearer ${token}` }, id: token.split(".")[0] };
 }
 
+async function enrolledBrowser(cookie) {
+  const { code } = await (await post("/api/codes", { type: "browser" }, { cookie })).json();
+  const { token } = await (await post("/browser/enroll", { code, info: { model: "Y" } })).json();
+  return { auth: { authorization: `Bearer ${token}` }, id: token.split(".")[0] };
+}
+
+test("standalone Browser: connects directly to the dashboard with its own code, no agent involved", async () => {
+  const cookie = await login();
+  await post("/browser/enroll", { code: "DEADBEEF" }).then((r) => assert.equal(r.status, 403));
+
+  const { code } = await (await post("/api/codes", { type: "browser" }, { cookie })).json();
+  assert.equal((await post("/agent/enroll", { code })).status, 403, "a browser code does not work as an agent enrollment code");
+  const { token } = await (await post("/browser/enroll", { code, info: { model: "Pixel" } })).json();
+  assert.ok(token);
+  assert.equal((await post("/browser/enroll", { code })).status, 403, "one-time: the same code cannot be used twice");
+
+  const auth = { authorization: `Bearer ${token}` };
+  await put(cookie, "/api/config", { sites: { a: { type: "domain", url: "khanacademy.org" }, b: { type: "domain", url: "chromebooks.com" } } });
+  const sync = await (await post("/browser/sync", {}, auth)).json();
+  assert.equal(sync.sites.length, 2, "a standalone browser gets the same global allowlist as agent-managed devices");
+
+  const browsers = await (await req("/api/browsers", { headers: { cookie } })).json();
+  assert.equal(browsers.length, 1);
+  assert.equal(browsers[0].info.model, "Pixel");
+
+  await post("/browser/sync", { siteRequests: [{ url: "https://bad.example/" }] }, auth);
+  let list = await (await req("/api/browsers", { headers: { cookie } })).json();
+  assert.deepEqual(list[0].siteRequests.map((r) => r.url), ["https://bad.example/"]);
+  await req(`/api/browsers/${list[0].id}/site-requests?url=${encodeURIComponent("https://bad.example/")}`, { method: "DELETE", headers: { cookie } });
+  list = await (await req("/api/browsers", { headers: { cookie } })).json();
+  assert.deepEqual(list[0].siteRequests, []);
+
+  await req(`/api/browsers/${list[0].id}`, { method: "DELETE", headers: { cookie } });
+  assert.equal((await post("/browser/sync", {}, auth)).status, 401, "once removed, its old token is dead and it needs a fresh code");
+});
+
 test("one-time install/uninstall codes: typed, single use, need a device token", async () => {
   const cookie = await login();
   const { auth } = await enrolledDevice(cookie);

@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, RESTRICTIONS } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -28,7 +28,7 @@ const imageResponse = (b64) =>
 const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this is a safety cap
 const MASTER_ITERATIONS = 100000;
 const MAX_EVENTS = 60;
-const CODE_TYPES = new Set(["enroll", "install", "uninstall"]);
+const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser"]);
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
 const MAX_ICON_B64 = 30000;
@@ -101,6 +101,41 @@ const publicDevice = (d) => ({
   adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
   siteRequests: d.siteRequests || [],
 });
+
+// Browser devices: a standalone Browser app connected straight to this dashboard, with no agent/MDM
+// at all. They share the same global "sites" allowlist as agent-managed devices, but have no app
+// policy, restrictions, or device-owner features of their own.
+async function listBrowserDevices(env) {
+  const out = [];
+  let cursor;
+  do {
+    const page = await env.STATE.list({ prefix: "browserDevice:", ...(cursor && { cursor }) });
+    for (const k of page.keys) {
+      const d = await getJSON(env, k.name, null);
+      if (d) out.push(d);
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return out;
+}
+
+const publicBrowserDevice = (d) => ({
+  id: d.id,
+  name: d.name,
+  lastSeen: d.lastSeen,
+  info: d.info || {},
+  siteRequests: d.siteRequests || [],
+});
+
+/** Finds the browser device a bearer token belongs to, or null. */
+async function authBrowserDevice(request, env) {
+  const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
+  if (!m) return null;
+  const key = `browserDevice:${m[1]}`;
+  const d = await getJSON(env, key, null);
+  if (!d || !safeEqual(d.tokenHash, await sha256(m[2]))) return null;
+  return { key, d };
+}
 
 // Latest agent build, published by GitHub Actions next to the APK. Cached at the edge for 5 minutes.
 async function latestAgent(env) {
@@ -236,6 +271,28 @@ async function adminApi(request, env, url) {
         applied: buildAgentPolicy(config, (d.packages || []).map((p) => p.p), { known: d.known, overrides: d.overrides }),
       })),
     );
+  }
+  if (path === "/api/browsers" && method === "GET") {
+    return json((await listBrowserDevices(env)).map(publicBrowserDevice));
+  }
+  const bdev = /^\/api\/browsers\/([0-9a-f]+)(?:\/(site-requests))?$/.exec(path);
+  if (bdev) {
+    const key = `browserDevice:${bdev[1]}`;
+    const d = await getJSON(env, key, null);
+    if (!d) return json({ error: "Unknown browser" }, 404);
+    if (method === "DELETE" && !bdev[2]) {
+      // The app keeps no local fallback of its own, so this is the only way to disconnect it
+      // short of uninstalling: without a token it goes right back to "nothing is allowed" and
+      // needs a fresh code.
+      await env.STATE.delete(key);
+      return json({ ok: true });
+    }
+    if (method === "DELETE" && bdev[2] === "site-requests") {
+      const requestUrl = url.searchParams.get("url");
+      d.siteRequests = (d.siteRequests || []).filter((r) => r.url !== requestUrl);
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
   }
   const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command|site-requests))?$/.exec(path);
   if (dev) {
@@ -474,6 +531,63 @@ async function agentApi(request, env, url) {
   return json({ error: "Not found" }, 404);
 }
 
+// ---- standalone Browser API (per-device bearer token, no agent/MDM involved) ----
+async function browserApi(request, env, url) {
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const body = await request.json().catch(() => ({}));
+
+  if (url.pathname === "/browser/enroll") {
+    const code = String(body.code || "").toUpperCase();
+    if (!/^[0-9A-F]{8}$/.test(code) || !(await env.STATE.get(`code:browser:${code}`))) {
+      return json({ error: "Invalid or expired code" }, 403);
+    }
+    await env.STATE.delete(`code:browser:${code}`);
+    const id = randomHex(8);
+    const secret = randomHex(24);
+    const info = body.info || {};
+    await putJSON(env, `browserDevice:${id}`, {
+      id,
+      name: [info.manufacturer, info.model].filter(Boolean).join(" ") || id,
+      tokenHash: await sha256(secret),
+      lastSeen: Date.now(),
+      info,
+      siteRequests: [],
+    });
+    return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
+  }
+
+  if (url.pathname === "/browser/sync") {
+    const auth = await authBrowserDevice(request, env);
+    if (!auth) return json({ error: "Unauthorized" }, 401);
+    const { key, d } = auth;
+    const now = Date.now();
+    let dirty = false;
+    if (now - (d.lastSeen || 0) > LAST_SEEN_WRITE_MS) dirty = true;
+    d.lastSeen = now;
+    if (body.info && typeof body.info === "object") {
+      if (JSON.stringify(body.info) !== JSON.stringify(d.info || {})) dirty = true;
+      d.info = body.info;
+    }
+    if (Array.isArray(body.siteRequests) && body.siteRequests.length) {
+      const existing = d.siteRequests || [];
+      const urls = new Set(existing.map((r) => r.url));
+      const added = body.siteRequests
+        .slice(0, 20)
+        .map((r) => String(r.url || "").slice(0, 500))
+        .filter((u) => u && !urls.has(u) && (urls.add(u), true))
+        .map((url) => ({ url, at: now }));
+      if (added.length) {
+        d.siteRequests = [...existing, ...added].slice(-30);
+        dirty = true;
+      }
+    }
+    if (dirty) await putJSON(env, key, d);
+    const config = await loadConfig(env);
+    return json({ sites: normalizeSites(config.sites), restrictBrowsing: config.restrictBrowsing, pollSeconds: POLL_SECONDS });
+  }
+  return json({ error: "Not found" }, 404);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -484,6 +598,7 @@ export default {
 
     try {
       if (url.pathname.startsWith("/agent/")) return await agentApi(request, env, url);
+      if (url.pathname.startsWith("/browser/")) return await browserApi(request, env, url);
 
       if (url.pathname === "/login" && request.method === "POST") {
         const form = await request.formData();
@@ -502,7 +617,7 @@ export default {
       return html("Not found", 404);
     } catch (e) {
       const msg = e.message || String(e);
-      return url.pathname.startsWith("/api/") || url.pathname.startsWith("/agent/")
+      return url.pathname.startsWith("/api/") || url.pathname.startsWith("/agent/") || url.pathname.startsWith("/browser/")
         ? json({ error: msg }, 500)
         : html(`Error: ${msg}`, 500);
     }
