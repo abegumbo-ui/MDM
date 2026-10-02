@@ -128,6 +128,23 @@ const publicBrowserDevice = (d) => ({
   siteRequests: d.siteRequests || [],
 });
 
+/** namePrefix: null names it from device info (code-based /browser/enroll); a string (e.g. "New
+ * Browser") names it that plus a short id suffix, so several self-registrations stay tellable apart. */
+async function createBrowserDevice(env, info, namePrefix) {
+  const id = randomHex(8);
+  const secret = randomHex(24);
+  info = info || {};
+  await putJSON(env, `browserDevice:${id}`, {
+    id,
+    name: namePrefix ? `${namePrefix} (${id.slice(0, 4)})` : [info.manufacturer, info.model].filter(Boolean).join(" ") || id,
+    tokenHash: await sha256(secret),
+    lastSeen: Date.now(),
+    info,
+    siteRequests: [],
+  });
+  return { id, secret };
+}
+
 /** Finds the browser device a bearer token belongs to, or null. */
 async function authBrowserDevice(request, env) {
   const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
@@ -296,6 +313,13 @@ async function adminApi(request, env, url) {
     if (method === "DELETE" && bdev[2] === "site-requests") {
       const requestUrl = url.searchParams.get("url");
       d.siteRequests = (d.siteRequests || []).filter((r) => r.url !== requestUrl);
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (method === "PUT" && !bdev[2]) {
+      const name = String(body.name || "").trim().slice(0, 60);
+      if (!name) return json({ error: "Name can't be empty" }, 400);
+      d.name = name;
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -550,17 +574,18 @@ async function browserApi(request, env, url) {
       return json({ error: "Invalid or expired code" }, 403);
     }
     await env.STATE.delete(`code:browser:${code}`);
-    const id = randomHex(8);
-    const secret = randomHex(24);
-    const info = body.info || {};
-    await putJSON(env, `browserDevice:${id}`, {
-      id,
-      name: [info.manufacturer, info.model].filter(Boolean).join(" ") || id,
-      tokenHash: await sha256(secret),
-      lastSeen: Date.now(),
-      info,
-      siteRequests: [],
-    });
+    const { id, secret } = await createBrowserDevice(env, body.info, null);
+    return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
+  }
+
+  if (url.pathname === "/browser/register") {
+    // No code: Browser connects itself the moment someone taps "yes" to whitelist mode, with
+    // nothing typed on either end. It shows up on the dashboard immediately as "New Browser"
+    // (plus a short id so more than one is tellable apart) for the admin to rename and manage.
+    // There is deliberately no gate here beyond knowing the dashboard's own address: a rogue
+    // registration can only ever reach what's already on the global Sites allowlist, and it's
+    // always visible (and removable) under Sites -> Standalone browsers.
+    const { id, secret } = await createBrowserDevice(env, body.info, "New Browser");
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
 

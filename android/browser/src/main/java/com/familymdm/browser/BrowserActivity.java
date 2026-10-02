@@ -261,7 +261,7 @@ public class BrowserActivity extends Activity {
             else if (s.equals("Add to Home Screen")) addToHomeScreen();
             else if (s.equals("Allowed sites")) showAllowedSitesDialog();
             else if (s.equals("Manage sites (master code)")) promptMasterThenManageSites();
-            else if (s.equals("Set up Browser")) showSetupDialog(current(), null);
+            else if (s.equals("Set up Browser")) promptWhitelistMode(current(), null);
             else if (s.equals("Disconnect this setup")) disconnectSetup();
             return true;
         });
@@ -575,6 +575,10 @@ public class BrowserActivity extends Activity {
     }
 
     private void showBlocked(final Tab t, final String url, final Mode mode) {
+        if (mode == Mode.ONLINE) {
+            showRequestDialog(t, url);
+            return;
+        }
         t.webView.setVisibility(View.GONE);
         if (t.homeView != null) t.homeView.setVisibility(View.GONE);
         ensureOverlay(t);
@@ -593,18 +597,31 @@ public class BrowserActivity extends Activity {
             }));
             add(t.overlay, button("Allow this page (master code)", v -> promptAgentMasterThenApprove(t, url, "exact")));
             add(t.overlay, button("Allow the whole site (master code)", v -> promptAgentMasterThenApprove(t, url, "domain")));
-        } else if (mode == Mode.ONLINE) {
-            add(t.overlay, button("Request access to this page", v -> {
-                BrowserState.addSiteRequest(this, url);
-                maybeSyncOnline(true);
-                toast("Sent. Ask the administrator to approve it on the dashboard.");
-            }));
         } else if (mode == Mode.OFFLINE) {
             add(t.overlay, button("Allow this page (master code)", v -> promptLocalMasterThenApprove(t, url, "exact")));
             add(t.overlay, button("Allow the whole site (master code)", v -> promptLocalMasterThenApprove(t, url, "domain")));
         }
         add(t.overlay, button("Go to the start page", v -> load(t, HOME_URL)));
         if (t == current()) syncToolbar();
+    }
+
+    /** Whitelist mode (ONLINE): a direct yes/no instead of a page, since there's only one real choice. */
+    private void showRequestDialog(final Tab t, final String url) {
+        t.webView.setVisibility(View.GONE);
+        if (t.homeView != null) t.homeView.setVisibility(View.GONE);
+        String host = SitePolicy.hostOf(url);
+        new AlertDialog.Builder(this)
+                .setTitle("Not on the allowed list")
+                .setMessage((host != null ? "\"" + host + "\"" : "This page") + " isn't allowed yet. Ask the administrator for access?")
+                .setNegativeButton("Not now", (d, w) -> load(t, HOME_URL))
+                .setOnCancelListener(d -> load(t, HOME_URL))
+                .setPositiveButton("Yes, ask", (d, w) -> {
+                    BrowserState.addSiteRequest(this, url);
+                    maybeSyncOnline(true);
+                    toast("Sent. Ask the administrator to approve it on the dashboard.");
+                    load(t, HOME_URL);
+                })
+                .show();
     }
 
     private void ensureOverlay(Tab t) {
@@ -821,8 +838,79 @@ public class BrowserActivity extends Activity {
     }
 
     private void renderUnconfigured(LinearLayout box, Tab t, String pendingUrl) {
-        add(box, button("Connect to a dashboard", v -> showSetupDialog(t, pendingUrl)));
-        add(box, button("Use it on its own (offline)", v -> showOfflineSetupDialog(t, pendingUrl)));
+        add(box, button("Connect (whitelist mode)", v -> promptWhitelistMode(t, pendingUrl)));
+        TextView advanced = body("Advanced setup options");
+        advanced.setTextColor(Color.parseColor("#6750A4"));
+        advanced.setOnClickListener(v -> showAdvancedSetupDialog(t, pendingUrl));
+        add(box, advanced, 16);
+    }
+
+    /** The primary path: no code, nothing typed — this device just connects itself. */
+    private void promptWhitelistMode(final Tab t, final String pendingUrl) {
+        new AlertDialog.Builder(this)
+                .setTitle("Not connected to MDM")
+                .setMessage("Use this in whitelist mode? Every new site you visit will be sent to the administrator for approval; nothing opens until it's approved.")
+                .setNegativeButton("Not now", null)
+                .setPositiveButton("Yes, connect", (d, w) -> autoRegister(t, pendingUrl))
+                .show();
+    }
+
+    /** Self-registers with the dashboard baked in at build time, or asks once for its address. */
+    private void autoRegister(final Tab t, final String pendingUrl) {
+        String defaultServer = getString(R.string.default_server);
+        if (defaultServer != null && !defaultServer.isEmpty()) {
+            registerWithServer(t, defaultServer, pendingUrl);
+            return;
+        }
+        final EditText serverField = field("Dashboard address (https://...)");
+        new AlertDialog.Builder(this)
+                .setTitle("Dashboard address")
+                .setMessage("This copy of Browser doesn't have a dashboard address built in. Enter yours once — no code needed.")
+                .setView(pad(serverField))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Connect", (d, w) -> {
+                    String server = serverField.getText().toString().trim().replaceAll("/+$", "");
+                    if (!server.isEmpty()) registerWithServer(t, server, pendingUrl);
+                })
+                .show();
+    }
+
+    private void registerWithServer(final Tab t, final String server, final String pendingUrl) {
+        new Thread(() -> {
+            String error = null;
+            try {
+                JSONObject info = new JSONObject();
+                info.put("manufacturer", Build.MANUFACTURER);
+                info.put("model", Build.MODEL);
+                JSONObject body = new JSONObject();
+                body.put("info", info);
+                JSONObject reply = Api.post(server + "/browser/register", body, null);
+                BrowserState.setOnline(this, server, reply.getString("token"));
+                maybeSyncOnline(true);
+            } catch (Exception e) {
+                error = e.getMessage();
+            }
+            final String err = error;
+            runOnUiThread(() -> {
+                if (err != null) {
+                    toast("Could not connect: " + err);
+                } else {
+                    toast("Connected in whitelist mode.");
+                    load(t, pendingUrl != null ? pendingUrl : HOME_URL);
+                }
+            });
+        }).start();
+    }
+
+    private void showAdvancedSetupDialog(final Tab t, final String pendingUrl) {
+        new AlertDialog.Builder(this)
+                .setTitle("Advanced setup")
+                .setItems(new String[]{"Connect to a specific dashboard (needs a code)", "Set up fully offline (master code)"}, (d, which) -> {
+                    if (which == 0) showSetupDialog(t, pendingUrl);
+                    else showOfflineSetupDialog(t, pendingUrl);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void showSetupDialog(final Tab t, final String pendingUrl) {
