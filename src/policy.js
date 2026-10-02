@@ -65,8 +65,15 @@ export function normalizeSchedule(s) {
   return { days, from: s.from, to: s.to };
 }
 
+/** Google account IDs (21-digit numbers) allowed to set the phone up again after a reset from recovery mode. */
+export function normalizeFrpAccounts(list) {
+  const ids = (Array.isArray(list) ? list : []).map((x) => String(x).replace(/^people\//, "").trim()).filter((x) => /^\d{15,25}$/.test(x));
+  return [...new Set(ids)].slice(0, 3);
+}
+
 export function normalizeConfig(input) {
   const c = input || {};
+  const frpAccounts = normalizeFrpAccounts(c.frpAccounts);
   const restrictions = { ...DEFAULT_RESTRICTIONS };
   for (const k of Object.keys(RESTRICTIONS)) {
     if (c.restrictions && typeof c.restrictions[k] === "boolean") restrictions[k] = c.restrictions[k];
@@ -85,7 +92,7 @@ export function normalizeConfig(input) {
     // Newly installed apps stay hidden until you approve them.
     approveNew: c.approveNew === true,
     // Android only shows the Wi-Fi name when Location is on; this lets the agent turn it on (no location is collected).
-    reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, homeScreen: c.homeScreen === true, restrictions };
+    reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, homeScreen: c.homeScreen === true, frpAccounts, restrictions };
 }
 
 /** Overrides made on the phone itself ({pkg: "allow"|"block"}), sanitized. */
@@ -135,7 +142,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // With approval mode on, the phone also gets the approved baseline so it can hold a new app
   // right away, even when it has no connection to the dashboard.
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened (blocked apps keep running).
-  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen };
+  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, frpAccounts: cfg.frpAccounts };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }

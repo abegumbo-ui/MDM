@@ -82,3 +82,14 @@ test("home-screen mode: the phone gets the apps that may be opened", () => {
   assert.deepEqual(p.allowed.sort(), ["a.b", "e.f"]);
   assert.equal(buildAgentPolicy({}, ["a.b"]).homeScreen, false);
 });
+
+test("Factory Reset Protection account IDs are validated and sent to the phone", async () => {
+  const { normalizeFrpAccounts } = await import("../src/policy.js");
+  assert.deepEqual(normalizeFrpAccounts(["people/118273645564738291027", "118273645564738291027", "me@gmail.com", "123", " 118273645564738291028 "]),
+    ["118273645564738291027", "118273645564738291028"]);
+  assert.equal(normalizeFrpAccounts("nope").length, 0);
+  assert.equal(normalizeFrpAccounts(Array.from({ length: 9 }, (_, i) => "11827364556473829102" + i)).length, 3, "at most 3");
+  const p = buildAgentPolicy({ frpAccounts: ["118273645564738291027"] }, []);
+  assert.deepEqual(p.frpAccounts, ["118273645564738291027"]);
+  assert.deepEqual(buildAgentPolicy({}, []).frpAccounts, []);
+});

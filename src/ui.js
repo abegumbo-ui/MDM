@@ -211,6 +211,25 @@ function renderDevices(m){
  m.append(btn('Refresh','tonal',load));
 }
 function kv(k,v){return h('div',{class:'kv'},h('span',{class:'mute'},k),h('b',null,v))}
+function resetCard(d){
+ const i=d.info,rs=i.restrictions||[];
+ const rows=[];
+ rows.push(i.bootloader==='locked'?[1,'Bootloader locked','Nobody can flash or erase the phone from a computer.']
+  :i.bootloader==='unlocked'?[0,'Bootloader is UNLOCKED','With an unlocked bootloader the protection can be erased from a computer. Use a phone whose bootloader stays locked.']
+  :[2,'Bootloader state unknown','The phone did not report it.']);
+ rows.push(i.frpSupported===false?[0,'Android is too old for reset protection','Android 11 or newer is needed.']
+  :i.frpAccounts>0?[1,'Reset protection is set','After a reset from recovery mode, setup demands '+i.frpAccounts+' Google account(s) you chose.']
+  :[0,'Reset protection is not set','Add your Google account ID under Settings → Factory Reset Protection.']);
+ rows.push(rs.indexOf('no_factory_reset')>=0?[1,'Reset from Settings is blocked','']:[0,'Reset from Settings is not blocked','Turn on "Block factory reset from Settings".']);
+ rows.push(rs.indexOf('no_safe_boot')>=0?[1,'Safe Mode is blocked','']:[0,'Safe Mode is not blocked','Turn on "Block Safe Mode".']);
+ rows.push(rs.indexOf('no_debugging_features')>=0?[1,'Developer options and USB debugging are blocked','']:[0,'Developer options / USB debugging are not blocked','Turn on "Block Developer options and USB debugging" when you are done setting up.']);
+ if(i.securityPatch){const months=(Date.now()-new Date(i.securityPatch).getTime())/2629800000;
+  rows.push(months<=12?[1,'Security patch '+i.securityPatch,'Recent enough.']:[2,'Security patch '+i.securityPatch+' is old','Old patches have known ways around reset protection. Install system updates.'])}
+ const strong=rows.every(function(r){return r[0]===1});
+ const card=h('div',{class:'card'},h('div',{class:'row'},h('h2',{class:'grow'},'Reset protection'),h('span',{class:'chip '+(strong?'ok':'warn')},strong?'Strong':'Not yet strong')));
+ for(const r of rows)card.append(h('div',{class:'kv'},h('span',null,(r[0]===1?'✅ ':r[0]===0?'❌ ':'⚠️ ')+r[1]),h('span',{class:'mute small',style:'text-align:right;max-width:55%'},r[2])));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No phone protection is unbreakable. This checks the known ways around a reset: resetting from Settings, Safe Mode, USB debugging, an unlocked bootloader, an old system, and simply setting the phone up again.'));
+ return card}
 function renderDeviceDetail(m,d){
  const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
  m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
@@ -236,6 +255,7 @@ function renderDeviceDetail(m,d){
  const nOv=Object.keys(d.overrides||{}).length;
  if(nOv)info.append(kv('Changed on the phone',nOv+' app(s)'));
  ov.append(info);
+ ov.append(resetCard(d));
  const acts=h('div',{class:'card'},h('h2',null,'Activity'));
  if(d.pending)acts.append(h('div',{class:'act'},'⏳ '+d.pending+' command(s) waiting for the phone\'s next check-in'));
  for(const c of d.inflight)acts.append(h('div',{class:'act'},'⏳ '+(NAMES[c.type]||c.type)+' — sent '+ago(c.at)+', waiting for the phone to confirm'));
@@ -443,6 +463,22 @@ function renderSettings(m){
   h('div',{class:'mute'},'Lets the person keep the Play Store: anything they install afterwards stays hidden (it cannot be opened) until you approve it on the Apps tab. Apps already on the phone when you switch this on are treated as approved.')),
   sw(state.config.approveNew,async function(on){state.config.approveNew=on;try{await saveConfig(on?'New apps will wait for your approval.':'New apps are no longer held.')}catch(e){snack(e.message,1)}})));
  m.append(appr);
+ const frp=h('div',{class:'card'},h('h2',null,'Factory Reset Protection'),
+  h('div',{class:'mute'},'If someone resets the phone from recovery mode, setup will demand the Google account(s) you enter here, so the phone is useless to them. No account has to be signed in on the phone. Needs Android 11 or newer. For this to hold, the phone\'s bootloader must be locked (each phone\'s Overview page shows a Reset protection check).'));
+ const ids=h('input',{type:'text',placeholder:'Google account ID (about 21 digits)',value:(state.config.frpAccounts||[]).join(', '),style:'width:100%;margin-top:8px'});
+ frp.append(ids,h('div',{class:'row',style:'margin-top:8px'},
+  btn('Save','',async function(){
+   const list=ids.value.split(/[ ,\n]+/).filter(Boolean);
+   if(list.some(function(x){return !/^(people\/)?[0-9]{15,25}$/.test(x)})){snack('That is not a Google account ID. It is a number of about 21 digits (see the steps below), not an email address.',1);return}
+   state.config.frpAccounts=list;await saveConfig('Saved. Phones apply it within about a minute.');await load()}),
+  btn('Turn off','outline',async function(){state.config.frpAccounts=[];await saveConfig('Reset protection removed.');await load()})));
+ frp.append(h('div',{class:'mute small',style:'margin-top:10px'},'How to get your Google account ID:'),
+  h('ol',{class:'mute small',style:'margin:4px 0 0 18px;padding:0'},
+   h('li',null,'Open ',h('a',{href:'https://developers.google.com/people/api/rest/v1/people/get',target:'_blank',rel:'noopener'},'the Google People API page'),' and click "Try it".'),
+   h('li',null,'Set resourceName to people/me and personFields to metadata, then click Execute and sign in with the Google account you control.'),
+   h('li',null,'In the result, copy the long number (about 21 digits) next to "id" or after "people/". Paste it above.')),
+  h('div',{class:'mute small',style:'margin-top:8px'},'Keep that Google account safe: whoever can sign in to it can set the phone up again after a reset.'));
+ m.append(frp);
  m.append(h('div',{class:'card'},h('h2',null,'Home screen mode'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
   h('div',{class:'mute'},'The agent becomes the phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. Other apps are NOT switched off: they keep running in the background (Maps keeps using Google Play services), they just can\'t be opened. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode, and turning it off here gives the phone back its normal home screen.')),
   sw(state.config.homeScreen,async function(on){

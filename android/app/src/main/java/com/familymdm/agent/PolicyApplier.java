@@ -1,6 +1,7 @@
 package com.familymdm.agent;
 
 import android.app.admin.DevicePolicyManager;
+import android.app.admin.FactoryResetProtectionPolicy;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -118,6 +119,7 @@ final class PolicyApplier {
         if (!dpm.isDeviceOwnerApp(c.getPackageName())) return;
 
         protectSelf(c, dpm, admin);
+        applyFrp(c, dpm, admin, policy.optJSONArray("frpAccounts"));
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
 
         Set<String> never = neverHide(c);
@@ -408,6 +410,34 @@ final class PolicyApplier {
             errorCleared(c, "wifiname");
         } catch (Exception e) {
             errorOnce(c, "wifiname", "Could not enable Wi-Fi name reporting: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Factory Reset Protection for the organisation: after a reset from recovery mode, only these Google
+     * accounts can set the phone up again. No account has to be signed in on the phone itself (Android 11+).
+     */
+    private static void applyFrp(Context c, DevicePolicyManager dpm, ComponentName admin, JSONArray accounts) {
+        if (Build.VERSION.SDK_INT < 30) return;
+        List<String> ids = strings(accounts);
+        String wanted = String.join(",", ids);
+        if (wanted.equals(Agent.prefs(c).getString("frpApplied", ""))) return;
+        try {
+            if (ids.isEmpty()) {
+                dpm.setFactoryResetProtectionPolicy(admin, null);
+                Agent.addEvent(c, "restriction", "Factory Reset Protection removed");
+            } else {
+                FactoryResetProtectionPolicy p = new FactoryResetProtectionPolicy.Builder()
+                        .setFactoryResetProtectionAccounts(ids)
+                        .setFactoryResetProtectionEnabled(true)
+                        .build();
+                dpm.setFactoryResetProtectionPolicy(admin, p);
+                Agent.addEvent(c, "restriction", "Factory Reset Protection set for " + ids.size() + " Google account(s)");
+            }
+            Agent.prefs(c).edit().putString("frpApplied", wanted).apply();
+            errorCleared(c, "frp");
+        } catch (Exception e) {
+            errorOnce(c, "frp", "Could not set Factory Reset Protection: " + e.getMessage());
         }
     }
 
