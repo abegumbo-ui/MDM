@@ -24,94 +24,92 @@ export const dashboardPage = () => `<!doctype html><html lang="en"><head><meta c
 <body><main>
 <div class="row"><h1 class="grow">MDM Dashboard</h1><a href="/logout" class="mute">Sign out</a></div>
 
-<div class="card" id="setup" hidden><h2>1. Connect to Google</h2>
-<p class="mute">One-time: links this dashboard to a managed Google enterprise (no Google Workspace needed).</p>
-<button class="p" id="signup">Start setup</button></div>
-
-<div id="main" hidden>
 <div class="card"><h2>Add a device</h2>
-<p class="mute">Factory-reset phone → on the first welcome screen tap the same spot 6 times → scan this code. Do <b>not</b> sign into any Google account first. Code is valid for 1 hour, one device.</p>
-<button class="p" id="enroll">Generate QR code</button>
-<div id="qr" style="margin-top:12px"></div></div>
-
-<div class="card"><h2>Apps</h2>
-<p class="mute">Choose what the device may use. “Default” = hidden/blocked unless it's a protected system component. Protected items are kept on so the phone stays usable; you can still block them explicitly.</p>
-<div class="row" style="margin-bottom:10px">
-<input id="newpkg" class="grow" placeholder="Package name, e.g. com.google.android.apps.maps">
-<button id="addpkg">Add</button>
-<select id="preset"><option value="">Quick add…</option>
-<option value="com.google.android.apps.maps">Google Maps</option><option value="com.waze">Waze</option>
-<option value="com.google.android.calculator">Calculator</option><option value="com.google.android.deskclock">Clock</option>
-<option value="com.google.android.calendar">Calendar</option><option value="com.google.android.apps.messaging">Messages</option>
-<option value="com.google.android.dialer">Phone</option><option value="com.google.android.contacts">Contacts</option></select></div>
-<label class="row mute"><input type="checkbox" id="blockUnlisted"> Block every app on the device that isn't allowed below</label>
-<div class="wrap"><table id="apps"><thead><tr><th>App</th><th>Access</th></tr></thead><tbody></tbody></table></div>
-<div class="row" style="margin-top:12px"><button class="p" id="save">Save &amp; push to devices</button>
-<span class="mute">Devices pick this up within minutes when online.</span></div></div>
+<p class="mute">1. Factory-reset the phone, skip Google sign-in, and finish setup with <b>no accounts</b>. 2. Turn on USB debugging. 3. Install the agent and make it device owner (commands below). 4. Open the agent and enter the server and code.</p>
+<button class="p" id="newcode">Generate enrollment code</button>
+<pre id="codebox" class="mute" hidden></pre></div>
 
 <div class="card"><h2>Devices</h2><div id="devices" class="mute">Loading…</div>
 <button id="refresh" style="margin-top:8px">Refresh</button></div>
 
-<details class="card"><summary>Advanced policy overrides (JSON)</summary>
-<p class="mute">Raw Android Management API policy fields merged last, e.g. lock a filtering DNS or Wi-Fi settings.</p>
-<textarea id="extra">{}</textarea></details>
+<div class="card"><h2>Apps</h2>
+<p class="mute">Applies to every device. “Default” = hidden unless it's a protected system component. Changes reach the phone within about a minute.</p>
+<div class="row" style="margin-bottom:10px">
+<input id="newpkg" class="grow" placeholder="Package name, e.g. com.google.android.apps.maps">
+<button id="addpkg">Add</button></div>
+<label class="row mute"><input type="checkbox" id="blockUnlisted"> Hide every launcher app that isn\'t allowed below</label>
+<div class="wrap"><table id="apps"><thead><tr><th>App</th><th>Access</th></tr></thead><tbody></tbody></table></div></div>
+
+<div class="card"><h2>Restrictions</h2><div id="restr"></div>
+<div class="row" style="margin-top:12px"><button class="p" id="save">Save</button>
+<span class="mute">Saved settings go to phones on their next check-in.</span></div></div>
 </div>
 <div id="msg"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 const $=s=>document.querySelector(s);let state,devices=[];
 function toast(t,bad){const m=$('#msg');m.textContent=t;m.style.background=bad?'var(--bad)':'';m.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display='none',5000)}
 async function call(method,path,body){const r=await fetch(path,{method,headers:{'content-type':'application/json'},body:body&&JSON.stringify(body)});
  const d=await r.json().catch(()=>({}));if(r.status===401)location.reload();if(!r.ok)throw new Error(d.error||r.statusText);return d}
 const act=(btn,fn)=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await fn()}catch(e){toast(e.message,1)}btn.disabled=false});
+const ago=t=>{if(!t)return 'never';const m=Math.round((Date.now()-t)/60000);return m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' h ago'};
 
 function renderApps(){
  const cfg=state.config.apps,seen=new Map();
- for(const d of devices)for(const a of d.apps)seen.set(a.packageName,a);
- for(const p of Object.keys(cfg))if(!seen.has(p))seen.set(p,{packageName:p,label:cfg[p].label});
- const rows=[...seen.values()].sort((a,b)=>(a.label||a.packageName).localeCompare(b.label||b.packageName));
+ for(const d of devices)for(const a of d.packages){const o=seen.get(a.p)||{p:a.p,l:a.l,s:a.s,prot:a.protected};seen.set(a.p,o)}
+ for(const p of Object.keys(cfg))if(!seen.has(p))seen.set(p,{p,l:cfg[p].label||p});
+ const rows=[...seen.values()].sort((a,b)=>(a.l||a.p).localeCompare(b.l||b.p));
  const tb=$('#apps tbody');tb.innerHTML='';
  for(const a of rows){
   const tr=document.createElement('tr'),td=document.createElement('td'),sel=document.createElement('select');
-  td.textContent=a.label||a.packageName;
-  const sub=document.createElement('div');sub.className='mute';sub.textContent=a.packageName;td.append(sub);
-  if(a.protected){const t=document.createElement('span');t.className='tag';t.textContent='protected';td.firstChild.after(t)}
-  for(const [v,l] of [['','Default'],['allow','Allow'],['force','Force install'],['block','Block']]){const o=new Option(l,v);sel.add(o)}
-  sel.value=cfg[a.packageName]?.mode||'';
-  sel.onchange=()=>{if(sel.value)cfg[a.packageName]={mode:sel.value,label:a.label};else delete cfg[a.packageName]};
+  td.textContent=a.l||a.p;
+  const sub=document.createElement('div');sub.className='mute';sub.textContent=a.p;td.append(sub);
+  for(const t of [a.s&&'system',a.prot&&'protected']){if(t){const g=document.createElement('span');g.className='tag';g.textContent=t;td.firstChild.after(g)}}
+  for(const [v,l] of [['','Default'],['allow','Allow'],['block','Block']])sel.add(new Option(l,v));
+  sel.value=cfg[a.p]?.mode==='block'?'block':cfg[a.p]?'allow':'';
+  sel.onchange=()=>{if(sel.value)cfg[a.p]={mode:sel.value,label:a.l};else delete cfg[a.p]};
   const t2=document.createElement('td');t2.append(sel);tr.append(td,t2);tb.append(tr)}
+}
+function renderRestr(){
+ const el=$('#restr');el.textContent='';
+ for(const [k,v] of Object.entries(state.restrictions)){
+  const l=document.createElement('label');l.className='row';l.style.padding='4px 0';
+  const c=document.createElement('input');c.type='checkbox';c.checked=!!state.config.restrictions[k];c.onchange=()=>state.config.restrictions[k]=c.checked;
+  l.append(c,document.createTextNode(' '+v.label));el.append(l)}
 }
 function renderDevices(){
  const el=$('#devices');el.textContent='';
  if(!devices.length){el.textContent='No devices enrolled yet.';return}
  for(const d of devices){
-  const row=document.createElement('div');row.className='row';row.style.cssText='padding:8px 0;border-top:1px solid var(--line)';
-  const info=document.createElement('div');info.className='grow';
-  info.textContent=[d.manufacturer,d.model].filter(Boolean).join(' ')||d.id;
+  const row=document.createElement('div');row.style.cssText='padding:10px 0;border-top:1px solid var(--line)';
+  const info=document.createElement('div');info.textContent=d.name;
   const sub=document.createElement('div');sub.className='mute';
-  sub.textContent=d.state+' · Android '+(d.androidVersion||'?')+' · last seen '+(d.lastSync?new Date(d.lastSync).toLocaleString():'never')+' · '+(d.policyCompliant===false?'policy pending':'policy OK')+' · '+d.apps.length+' apps';
-  info.append(sub);row.append(info);
-  for(const [a,l] of [['lock','Lock'],['reboot','Reboot'],['wipe','Remove & wipe']]){
-   const b=document.createElement('button');b.textContent=l;if(a==='wipe')b.className='d';
-   act(b,async()=>{if(a==='wipe'&&!confirm('Erase this device and remove it from management?'))return;await call('POST','/api/devices/'+d.id+'/'+a);toast(l+' sent');if(a==='wipe')load()});row.append(b)}
-  el.append(row)}
+  const hidden=d.packages.filter(p=>p.h).length;
+  sub.textContent='Android '+(d.info.android||'?')+' · last seen '+ago(d.lastSeen)+' · '+d.packages.length+' apps ('+hidden+' hidden) · '+d.pending+' queued'+(d.info.deviceOwner===false?' · NOT device owner!':'');
+  info.append(sub);
+  const last=d.results[d.results.length-1];
+  if(last){const r=document.createElement('div');r.className='mute';r.textContent='Last command: '+last.type+' → '+(last.ok?'ok':'failed')+(last.msg?' ('+last.msg+')':'');info.append(r)}
+  const btns=document.createElement('div');btns.className='row';btns.style.marginTop='6px';
+  const mk=(label,type,args,confirmMsg,cls)=>{const b=document.createElement('button');b.textContent=label;if(cls)b.className=cls;
+   act(b,async()=>{if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}
+    await call('POST','/api/devices/'+d.id+'/command',{type,args:a});toast(label+' queued');load()});btns.append(b)};
+  mk('Sync now','sync');mk('Lock','lock');mk('Reboot','reboot');
+  mk('Install APK','install',()=>{const url=prompt('Direct https:// link to an APK file');return url?{url}:null});
+  mk('Uninstall app','uninstall',()=>{const packageName=prompt('Package name to uninstall');return packageName?{packageName}:null});
+  mk('Release device','release',null,'Release this device? It stops being managed and all restrictions are removed.');
+  mk('Wipe','wipe',null,'ERASE this device completely?','d');
+  const rm=document.createElement('button');rm.textContent='Remove record';
+  act(rm,async()=>{if(!confirm('Delete this device from the dashboard? The phone stays managed; use Release first.'))return;await call('DELETE','/api/devices/'+d.id);load()});btns.append(rm);
+  row.append(info,btns);el.append(row)}
 }
-async function loadDevices(){devices=await call('GET','/api/devices');renderDevices();renderApps()}
 async function load(){
- state=await call('GET','/api/state');
- $('#setup').hidden=!!state.enterprise;$('#main').hidden=!state.enterprise;
- if(!state.enterprise)return;
- $('#blockUnlisted').checked=state.config.blockUnlisted;$('#extra').value=JSON.stringify(state.config.extraPolicy,null,2);
- await loadDevices()}
-act($('#signup'),async()=>{const r=await call('POST','/api/enterprise/signup-url');location.href=r.url});
-act($('#enroll'),async()=>{const r=await call('POST','/api/enrollment');const q=$('#qr');q.textContent='';
- const box=document.createElement('div');q.append(box);new QRCode(box,{text:r.qrCode,width:280,height:280,correctLevel:QRCode.CorrectLevel.L});
- const p=document.createElement('p');p.className='mute';p.textContent='Expires '+new Date(r.expires).toLocaleTimeString();q.append(p)});
-act($('#refresh'),loadDevices);
+ state=await call('GET','/api/state');devices=await call('GET','/api/devices');
+ $('#blockUnlisted').checked=state.config.blockUnlisted;renderDevices();renderApps();renderRestr()}
+act($('#newcode'),async()=>{const r=await call('POST','/api/enrollment-code');const b=$('#codebox');b.hidden=false;
+ b.textContent='Enrollment code (valid 1 hour): '+r.code+'\\nServer: '+r.server+
+ '\\n\\nOn your computer, with the phone connected and USB debugging on:\\n  adb install mdm-agent.apk\\n  adb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver\\n  adb shell am start -n com.familymdm.agent/.MainActivity --es server '+r.server+' --es code '+r.code});
+act($('#refresh'),load);
 $('#addpkg').onclick=()=>{const v=$('#newpkg').value.trim();if(!v)return;state.config.apps[v]={mode:'allow'};$('#newpkg').value='';renderApps()};
-$('#preset').onchange=e=>{if(e.target.value){state.config.apps[e.target.value]={mode:'allow'};e.target.value='';renderApps()}};
-act($('#save'),async()=>{let extra;try{extra=JSON.parse($('#extra').value||'{}')}catch{throw new Error('Advanced JSON is invalid')}
- state.config.extraPolicy=extra;state.config.blockUnlisted=$('#blockUnlisted').checked;
- await call('PUT','/api/config',state.config);const r=await call('POST','/api/policy/apply');toast('Saved. '+r.applied+' app rules pushed.');loadDevices()});
+act($('#save'),async()=>{state.config.blockUnlisted=$('#blockUnlisted').checked;await call('PUT','/api/config',state.config);toast('Saved')});
 load().catch(e=>toast(e.message,1));
+setInterval(()=>load().catch(()=>{}),60000);
 </script></body></html>`;
