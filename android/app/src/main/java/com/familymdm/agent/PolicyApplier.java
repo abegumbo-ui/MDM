@@ -40,6 +40,10 @@ final class PolicyApplier {
             "no_modify_accounts", "no_add_user", "no_install_unknown_sources",
             "no_install_apps", "no_debugging_features"));
 
+    // Restrictions that would also stop the agent's own installs, updates and uninstalls.
+    private static final Set<String> INSTALL_RELATED = new HashSet<>(Arrays.asList(
+            "no_install_apps", "no_install_unknown_sources", "no_uninstall_apps", "no_control_apps"));
+
     private static final Map<String, String> LABELS = new LinkedHashMap<>();
 
     private PolicyApplier() {}
@@ -187,23 +191,31 @@ final class PolicyApplier {
         for (String r : strings(policy.optJSONArray("restrictions"))) {
             if (ALLOWED_RESTRICTIONS.contains(r)) wanted.add(r);
         }
+        // While the agent itself is installing or uninstalling something (an update, an uploaded APK, the
+        // Uninstall button), those restrictions are paused for a couple of minutes, then restored.
+        boolean window = System.currentTimeMillis() < Agent.prefs(c).getLong("installWindowUntil", 0);
+        Set<String> tempCleared = Agent.getSet(c, "tempCleared");
+        if (window) {
+            for (String r : INSTALL_RELATED) if (wanted.remove(r)) tempCleared.add(r);
+        }
         Set<String> applied = Agent.getSet(c, "restrictions");
         Set<String> nowOn = new HashSet<>();
         for (String r : wanted) {
             try {
                 dpm.addUserRestriction(admin, r);
                 nowOn.add(r);
-                if (!applied.contains(r)) Agent.addEvent(c, "restriction", "Restriction on: " + r);
+                if (!applied.contains(r) && !tempCleared.remove(r)) Agent.addEvent(c, "restriction", "Restriction on: " + r);
                 errorCleared(c, "r:" + r);
             } catch (Exception e) {
                 errorOnce(c, "r:" + r, "Restriction " + r + " failed: " + e.getMessage());
             }
         }
+        Agent.putSet(c, "tempCleared", tempCleared);
         for (String r : applied) {
             if (!wanted.contains(r)) {
                 try {
                     dpm.clearUserRestriction(admin, r);
-                    Agent.addEvent(c, "restriction", "Restriction off: " + r);
+                    if (!window || !INSTALL_RELATED.contains(r)) Agent.addEvent(c, "restriction", "Restriction off: " + r);
                 } catch (Exception e) {
                     errorOnce(c, "rc:" + r, "Could not clear restriction " + r + ": " + e.getMessage());
                     nowOn.add(r);
