@@ -106,8 +106,11 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <script>
 const TABS=[['devices','Devices'],['apps','Apps'],['sites','Sites'],['codes','Codes'],['settings','Settings']];
 const DAYS=['S','M','T','W','T','F','S'];
-let state=null,devices=[],browsers=[],latest=null,tab='devices',openId=null,search='';
-function route(){const x=(location.hash||'#devices').slice(1);if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7)}else{tab=x||'devices';openId=null}}
+let state=null,devices=[],browsers=[],latest=null,tab='devices',openId=null,openBrowserId=null,search='';
+function route(){const x=(location.hash||'#devices').slice(1);
+ if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null}
+ else if(x.indexOf('browser/')===0){tab='devices';openBrowserId=x.slice(8);openId=null}
+ else{tab=x||'devices';openId=null;openBrowserId=null}}
 route();
 const draft={},open={};
 
@@ -175,6 +178,7 @@ function render(){
  for(const t of TABS){const b=h('button',{class:tab===t[0]?'on':''},t[1]);b.onclick=function(){location.hash=t[0]};tabs.append(b)}
  const m=document.getElementById('main');m.textContent='';
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){renderDeviceDetail(m,d);return}openId=null}
+ if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){renderBrowserDetail(m,b);return}openBrowserId=null}
  ({devices:renderDevices,apps:renderApps,sites:renderSites,codes:renderCodes,settings:renderSettings}[tab]||renderDevices)(m)}
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
@@ -203,13 +207,18 @@ function chipsFor(d,full){
  const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn'},n+' changes pending'));
  return c}
 function renderDevices(m){
- if(!devices.length){m.append(h('div',{class:'card'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Go to Codes → Enrollment code for the steps to add a phone.')));return}
+ if(!devices.length&&!browsers.length){m.append(h('div',{class:'card'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Go to Codes → Enrollment code for the steps to add a phone.')));return}
  for(const d of devices){
   const card=h('div',{class:'card dev'});
   card.onclick=function(){location.hash='device/'+d.id};
-  card.append(h('div',{class:'ico'},'📱'),h('div',{class:'grow'},h('div',{class:'name'},d.name),chipsFor(d,false)),h('div',{class:'mute',style:'font-size:22px'},'›'));
+  card.append(h('div',{class:'ico'},'📱'),h('div',{class:'grow'},h('div',{class:'name'},d.name)),h('div',{class:'mute',style:'font-size:22px'},'›'));
   m.append(card)}
- m.append(h('div',{class:'mute small',style:'margin:4px 4px 12px'},'Tap a phone to see everything and control it.'));
+ for(const b of browsers){
+  const card=h('div',{class:'card dev'});
+  card.onclick=function(){location.hash='browser/'+b.id};
+  card.append(h('div',{class:'ico'},'🌐'),h('div',{class:'grow'},h('div',{class:'name'},'Browser'),h('div',{class:'mute small'},b.name+' · no MDM on this phone')),h('div',{class:'mute',style:'font-size:22px'},'›'));
+  m.append(card)}
+ m.append(h('div',{class:'mute small',style:'margin:4px 4px 12px'},'Tap one to see everything and control it.'));
  m.append(btn('Refresh','tonal',load));
 }
 function kv(k,v){return h('div',{class:'kv'},h('span',{class:'mute'},k),h('b',null,v))}
@@ -446,37 +455,24 @@ function allRequests(){
  for(const b of browsers)for(const r of b.siteRequests||[])out.push({path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name+' (standalone Browser)',url:r.url,at:r.at});
  return out.sort(function(a,b){return b.at-a.at})}
 function hostOfUrl(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.replace(/^www\./,'')}catch(e){return u}}
-function renderSites(m){
- m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
-  h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the Apps tab so it can\'t be opened directly.')),
-  sw(state.config.restrictBrowsing,async function(on){state.config.restrictBrowsing=on;try{await saveConfig(on?'This is now the only browser. Phones apply it within about a minute.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
- const reqs=allRequests();
- if(reqs.length){
-  const rc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Site requests ('+reqs.length+')'),
-   h('div',{class:'mute'},'Pages people tried to open that weren\'t on the allowlist.'));
-  for(const r of reqs){
-   const dismiss=async function(){await call('DELETE',r.path+'?url='+encodeURIComponent(r.url));load()};
-   rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500;word-break:break-all'},r.url),
-    h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),
-    h('div',{class:'row',style:'margin-top:8px'},
-     btn('Allow this page only','',async function(){
-      await addSite({type:'exact',url:r.url,label:hostOfUrl(r.url)});await dismiss()}),
-     btn('Allow whole site ('+hostOfUrl(r.url)+')','',async function(){
-      await addSite({type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}),
-     btn('Dismiss','outline',dismiss)))))}
-  m.append(rc)}
-
- if(browsers.length){
-  const bc=h('div',{class:'card'},h('h2',null,'Standalone browsers ('+browsers.length+')'),
-   h('div',{class:'mute'},'The separate Browser app, connected straight to this dashboard with no agent/MDM on that device. They share the allowed-sites list below.'));
-  for(const b of browsers){
-   bc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},b.name),h('div',{class:'mute small'},'Last check-in '+ago(b.lastSeen))),
-    btn('Rename','outline',async function(){const name=prompt('Name for this browser',b.name);if(!name)return;await call('PUT','/api/browsers/'+b.id,{name:name});load()}),
-    btn('Disconnect','danger',async function(){if(!confirm('Disconnect '+b.name+'? It goes back to needing a new code and allows nothing until then.'))return;await call('DELETE','/api/browsers/'+b.id);load()})))}
-  m.append(bc)}
-
+function renderRequestsCard(m,reqs){
+ if(!reqs.length)return;
+ const rc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Site requests ('+reqs.length+')'),
+  h('div',{class:'mute'},'Pages people tried to open that weren\'t on the allowlist.'));
+ for(const r of reqs){
+  const dismiss=async function(){await call('DELETE',r.path+'?url='+encodeURIComponent(r.url));load()};
+  rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500;word-break:break-all'},r.url),
+   h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),
+   h('div',{class:'row',style:'margin-top:8px'},
+    btn('Allow this page only','',async function(){
+     await addSite({type:'exact',url:r.url,label:hostOfUrl(r.url)});await dismiss()}),
+    btn('Allow whole site ('+hostOfUrl(r.url)+')','',async function(){
+     await addSite({type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}),
+    btn('Dismiss','outline',dismiss)))))}
+ m.append(rc)}
+function renderSitesEditor(m){
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
-  h('div',{class:'mute'},'The agent\'s browser only opens these — everything else shows a "Request access" button. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
+  h('div',{class:'mute'},'Shared by every agent-managed phone and every connected Browser. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
  const type=h('select',null,new Option('Whole site','domain'),new Option('Exact page only','exact'));
  top.append(h('div',{class:'row',style:'margin-top:8px'},url,type,btn('Add','tonal',async function(){
@@ -502,11 +498,44 @@ function renderSites(m){
   row.append(col);list.append(row)}
  m.append(list);
 }
+function renderSites(m){
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
+  h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the Apps tab so it can\'t be opened directly.')),
+  sw(state.config.restrictBrowsing,async function(on){state.config.restrictBrowsing=on;try{await saveConfig(on?'This is now the only browser. Phones apply it within about a minute.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
+ renderRequestsCard(m,allRequests());
+
+ if(browsers.length){
+  const bc=h('div',{class:'card'},h('h2',null,'Standalone browsers ('+browsers.length+')'),
+   h('div',{class:'mute'},'The separate Browser app, connected straight to this dashboard with no agent/MDM on that device. Tap one to see its own requests. They share the allowed-sites list below.'));
+  for(const b of browsers){
+   const row=h('div',{class:'app',style:'cursor:pointer'});
+   row.onclick=function(){location.hash='browser/'+b.id};
+   row.append(h('div',{class:'grow'},h('div',{style:'font-weight:500'},b.name),h('div',{class:'mute small'},'Last check-in '+ago(b.lastSeen))),h('div',{class:'mute',style:'font-size:22px'},'›'));
+   bc.append(row)}
+  m.append(bc)}
+
+ renderSitesEditor(m);
+}
 async function addSite(entry){
  const key=(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  state.config.sites=state.config.sites||{};
  state.config.sites[key]={type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true};
  await saveConfig('Added '+(entry.label||entry.url)+'. Phones pick it up within about a minute.');
+}
+function renderBrowserDetail(m,b){
+ const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
+ m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
+ m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none'},'🌐'),
+  h('div',{class:'grow'},h('h2',{style:'font-size:20px'},b.name),h('div',{class:'mute small'},'Connected directly — no MDM on this phone · last check-in '+ago(b.lastSeen)))));
+
+ const controls=h('div',{class:'card'},h('h2',null,'This browser'));
+ controls.append(h('div',{class:'row',style:'margin-top:8px'},
+  btn('Rename','outline',async function(){const name=prompt('Name for this browser',b.name);if(!name)return;await call('PUT','/api/browsers/'+b.id,{name:name});load()}),
+  btn('Disconnect','danger',async function(){if(!confirm('Disconnect '+b.name+'? It goes back to needing to connect again, and allows nothing until then.'))return;await call('DELETE','/api/browsers/'+b.id);location.hash='devices'})));
+ m.append(controls);
+
+ renderRequestsCard(m,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}));
+ renderSitesEditor(m);
 }
 
 /* ---------- codes ---------- */
