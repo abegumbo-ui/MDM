@@ -51,7 +51,7 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 - It is off by default. Test it on a spare phone first.
 
 ## Browser allowlist (opt-in)
-**Browser** is a separate app from the agent (package `com.familymdm.browser`) — install it on the phone the same way you installed the agent (sideload `mdm-browser.apk` from the same release the agent's APK comes from). It only opens pages you've allowed, and talks to the agent app only over a few narrow, locked-down channels (not shared code or storage), so it can be installed, removed, or reinstalled independently of the agent. **Sites tab** → add a site as either:
+**Browser** is a separate app from the agent (package `com.familymdm.browser`) — install it on the phone the same way you installed the agent (sideload `mdm-browser.apk` from the same release the agent's APK comes from). It's a real tabbed browser (address bar, back/forward/reload, multiple tabs, "Add to Home Screen") and works standalone, with no MDM at all: install it on any phone and it just browses, no restrictions. It only enforces an allowlist once *this specific agent* has pushed one to it — on a phone with no agent installed, or an agent that hasn't been set up yet, it behaves like an ordinary browser. It talks to the agent app only over a few narrow, locked-down channels (not shared code or storage), so it can be installed, removed, or reinstalled independently of the agent. **Sites tab** → add a site as either:
 - **Whole site**: the domain and its subpages and subdomains (e.g. `nytimes.com` covers `www.nytimes.com/anything` and `m.nytimes.com`).
 - **Exact page**: only that one link, ignoring its query string and a trailing slash.
 
