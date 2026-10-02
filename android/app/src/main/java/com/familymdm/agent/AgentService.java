@@ -42,6 +42,10 @@ public class AgentService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(1, notification());
         instance = this;
+        int build = Updater.currentBuild(this);
+        int before = Agent.prefs(this).getInt("knownBuild", 0);
+        if (before != 0 && before != build) Agent.addEvent(this, "update", "Agent updated: build " + before + " to build " + build);
+        Agent.prefs(this).edit().putInt("knownBuild", build).apply();
         if (packageReceiver == null) registerPackageReceiver();
         if (thread == null || !thread.isAlive()) {
             running = true;
@@ -149,6 +153,7 @@ public class AgentService extends Service {
         o.put("masterSet", Master.isSet(this));
         o.put("restrictions", new JSONArray(Agent.getSet(this, "restrictions")));
         o.put("hiddenCount", Agent.getSet(this, "hidden").size());
+        o.put("versionCode", Updater.currentBuild(this));
         JSONObject battery = Telemetry.battery(this);
         if (battery != null) o.put("battery", battery);
         o.put("wifi", Telemetry.wifi(this));
@@ -180,6 +185,8 @@ public class AgentService extends Service {
         body.put("events", events);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
+        String codeReport = AppCode.pendingReport(this);
+        if (codeReport != null) body.put("appCode", codeReport);
         List<String> iconsSent = new ArrayList<>();
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);
@@ -187,6 +194,7 @@ public class AgentService extends Service {
         JSONObject reply = Api.post(server + "/agent/sync", body, token);
         Agent.dropResults(this, results.length());
         Agent.dropEvents(this, events.length());
+        if (codeReport != null) AppCode.reported(this);
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
         Master.store(this, reply.optJSONObject("master"));
         if (!iconsSent.isEmpty()) {
@@ -200,6 +208,7 @@ public class AgentService extends Service {
         if (policy != null) {
             Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
             PolicyApplier.apply(this, policy);
+            Updater.maybeAutoUpdate(this, policy);
         }
 
         JSONArray commands = reply.optJSONArray("commands");
@@ -257,7 +266,20 @@ public class AgentService extends Service {
                     stopSelf();
                     return;
                 case "install":
-                    msg = Installer.installFromUrl(this, args.optString("url"));
+                    if (args.has("apkId")) {
+                        String server = Agent.prefs(this).getString("server", "");
+                        String token = Agent.prefs(this).getString("token", "");
+                        msg = Installer.installFromUrl(this, server + "/agent/apk/" + args.getString("apkId"), token);
+                    } else {
+                        msg = Installer.installFromUrl(this, args.optString("url"));
+                    }
+                    break;
+                case "resetAppCode":
+                    AppCode.clear(this);
+                    msg = "app code reset; the person must choose a new one";
+                    break;
+                case "updateAgent":
+                    msg = Updater.update(this, false);
                     break;
                 case "uninstall":
                     msg = Installer.uninstall(this, args.getString("packageName"));

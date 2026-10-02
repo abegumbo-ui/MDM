@@ -22,11 +22,18 @@ final class Installer {
     private Installer() {}
 
     static String installFromUrl(Context c, String url) throws IOException {
+        return installFromUrl(c, url, null);
+    }
+
+    /** bearer: the device token, when the file is served by the dashboard itself (uploaded APKs). */
+    static String installFromUrl(Context c, String url, String bearer) throws IOException {
         if (url == null || !url.startsWith("https://")) throw new IOException("APK link must start with https://");
         File f = new File(c.getCacheDir(), "download.apk");
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(20000);
         conn.setReadTimeout(60000);
+        if (bearer != null) conn.setRequestProperty("authorization", "Bearer " + bearer);
+        if (conn.getResponseCode() >= 400) throw new IOException("download failed (HTTP " + conn.getResponseCode() + ")");
         try (InputStream in = conn.getInputStream(); OutputStream out = new FileOutputStream(f)) {
             byte[] buf = new byte[16384];
             long total = 0;

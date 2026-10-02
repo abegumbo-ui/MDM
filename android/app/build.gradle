@@ -2,6 +2,9 @@ plugins {
     id 'com.android.application'
 }
 
+// Each GitHub build gets a higher version, so a newer build always counts as an update.
+def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
 android {
     namespace 'com.familymdm.agent'
     compileSdk 34
@@ -11,8 +14,8 @@ android {
         minSdk 26
         // Sideloaded device-owner app; targeting 30 keeps background/foreground-service rules simple.
         targetSdk 30
-        versionCode 1
-        versionName "0.1.0"
+        versionCode buildNumber
+        versionName "0.3." + buildNumber
     }
 
     compileOptions {

@@ -71,6 +71,18 @@ pre.cmd{background:var(--surface-3);border-radius:12px;padding:12px;white-space:
 .m3dlg label{display:block;margin:10px 0 4px;font-size:12px;color:var(--on-surface-variant)}
 .m3dlg input,.m3dlg select{width:100%;font:inherit;color:inherit;background:var(--surface);border:1px solid var(--outline);border-radius:8px;padding:10px 12px}
 .m3dlg .row{justify-content:flex-end;margin-top:20px}
+.dev{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}
+.dev:hover{background:var(--surface-2)}
+.dev .ico{width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.dev .name{font-weight:500;font-size:16px}
+.pagetabs{display:flex;gap:8px;overflow-x:auto;margin:12px 0 8px;padding-bottom:4px}
+.pagetabs button{white-space:nowrap;border:1px solid var(--outline);background:none;color:var(--on-surface);border-radius:8px;padding:6px 14px;font:500 13px Roboto,system-ui,sans-serif;cursor:pointer}
+.pagetabs button.on{background:var(--secondary-container);color:var(--on-secondary-container);border-color:transparent}
+.pager{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;align-items:flex-start;scrollbar-width:none}
+.pager::-webkit-scrollbar{display:none}
+.pager>section{flex:0 0 100%;scroll-snap-align:start;min-width:0}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--outline-variant)}
+.kv:first-child{border-top:0}.kv b{font-weight:500;text-align:right;word-break:break-word}
 .login{max-width:360px;margin:16vh auto 0;padding:0 16px}
 `;
 
@@ -94,7 +106,9 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <script>
 const TABS=[['devices','Devices'],['apps','Apps'],['codes','Codes'],['settings','Settings']];
 const DAYS=['S','M','T','W','T','F','S'];
-let state=null,devices=[],tab=(location.hash||'#devices').slice(1),search='';
+let state=null,devices=[],latest=null,tab='devices',openId=null,search='';
+function route(){const x=(location.hash||'#devices').slice(1);if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7)}else{tab=x||'devices';openId=null}}
+route();
 const draft={},open={};
 
 /* ---------- tiny DOM helpers (text only, never innerHTML) ---------- */
@@ -133,98 +147,156 @@ function ask(title,fields,okLabel,note){
 
 /* ---------- data ---------- */
 async function load(){
- state=await call('GET','/api/state');devices=await call('GET','/api/devices');render()}
+ state=await call('GET','/api/state');devices=await call('GET','/api/devices');render();
+ call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
 async function saveConfig(msg){await call('PUT','/api/config',state.config);snack(msg||'Saved. Phones update within about a minute.')}
 
 /* ---------- shell ---------- */
 function render(){
  const tabs=document.getElementById('tabs');tabs.textContent='';
- for(const t of TABS){const b=h('button',{class:tab===t[0]?'on':''},t[1]);b.onclick=function(){tab=t[0];location.hash=tab;render()};tabs.append(b)}
+ for(const t of TABS){const b=h('button',{class:tab===t[0]?'on':''},t[1]);b.onclick=function(){location.hash=t[0]};tabs.append(b)}
  const m=document.getElementById('main');m.textContent='';
+ if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){renderDeviceDetail(m,d);return}openId=null}
  ({devices:renderDevices,apps:renderApps,codes:renderCodes,settings:renderSettings}[tab]||renderDevices)(m)}
+window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
-const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen PIN',unlock:'Unlock',addWifi:'Add Wi-Fi'};
+const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen PIN',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent'};
+const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒'};
+function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
+function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
+function needsUpdate(d){return latest&&d.info.versionCode&&d.info.versionCode<latest.versionCode}
+function pendingCount(d){const want=new Set(d.applied.hide);return d.packages.filter(function(p){return want.has(p.p)!==p.h}).length}
+function chipsFor(d,full){
+ const c=h('div',{style:'margin-top:6px'});
+ c.append(h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},isOnline(d)?'Online':'Offline'));
+ const bat=d.info.battery;
+ if(bat)c.append(h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},'🔋 '+bat.pct+'%'+(bat.charging?' ⚡':'')));
+ const wf=d.info.wifi;
+ if(wf)c.append(h('span',{class:'chip'},wf.transport==='wifi'?'📶 '+(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?'📱 Mobile':'No connection'));
+ if(lockedNow(d))c.append(h('span',{class:'chip warn'},'🔒 Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+ if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
+ if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'⬆️ Update available'));
+ const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn'},n+' changes pending'));
+ return c}
 function renderDevices(m){
  if(!devices.length){m.append(h('div',{class:'card'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Go to Codes → Enrollment code for the steps to add a phone.')));return}
  for(const d of devices){
-  const online=d.lastSeen&&Date.now()-d.lastSeen<12*60000;
-  const hidden=d.packages.filter(function(p){return p.h}).length;
-  const want=new Set(d.applied.hide);
-  const pending=d.packages.filter(function(p){return want.has(p.p)!==p.h}).length;
-  const card=h('div',{class:'card'});
-  card.append(h('div',{class:'row'},h('div',{class:'grow'},h('h2',null,d.name),
-    h('div',{class:'mute'},'Android '+(d.info.android||'?')+' · last check-in '+ago(d.lastSeen))),
-    h('span',{class:'chip '+(online?'ok':'bad')},online?'Online':'Offline')));
-  const chips=h('div',{style:'margin:10px 0'});
-  chips.append(h('span',{class:'chip'},d.packages.length+' apps'),h('span',{class:'chip'},hidden+' hidden'),
-   h('span',{class:'chip '+(pending?'warn':'ok')},pending?pending+' changes pending':'In sync'));
-  if(d.info.deviceOwner===false)chips.append(h('span',{class:'chip bad'},'Not device owner!'));
-  const bat=d.info.battery;
-  if(bat)chips.append(h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},'🔋 '+bat.pct+'%'+(bat.charging?' charging':'')));
-  const wf=d.info.wifi;
-  if(wf)chips.append(h('span',{class:'chip'},wf.transport==='wifi'?'📶 '+(wf.ssid||'Wi-Fi')+(wf.rssi?' ('+wf.rssi+' dBm)':''):wf.transport==='mobile'?'📱 Mobile data':'No connection'));
-  const lk=d.info.lock;const locked=lk&&lk.until>Date.now();
-  if(locked)chips.append(h('span',{class:'chip warn'},'🔒 Locked until '+new Date(lk.until).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})));
-  if(d.info.screenLock!==undefined)chips.append(h('span',{class:'chip '+(d.info.screenLock?'ok':'warn')},d.info.screenLock?'Screen lock on':'No screen lock'));
-  if(d.info.masterSet===false)chips.append(h('span',{class:'chip warn'},'No master code on phone'));
-  const nOv=Object.keys(d.overrides||{}).length;
-  if(nOv)chips.append(h('span',{class:'chip warn'},nOv+' app change(s) made on the phone'));
-  card.append(chips);
+  const card=h('div',{class:'card dev'});
+  card.onclick=function(){location.hash='device/'+d.id};
+  card.append(h('div',{class:'ico'},'📱'),h('div',{class:'grow'},h('div',{class:'name'},d.name),chipsFor(d,false)),h('div',{class:'mute',style:'font-size:22px'},'›'));
+  m.append(card)}
+ m.append(h('div',{class:'mute small',style:'margin:4px 4px 12px'},'Tap a phone to see everything and control it.'));
+ m.append(btn('Refresh','tonal',load));
+}
+function kv(k,v){return h('div',{class:'kv'},h('span',{class:'mute'},k),h('b',null,v))}
+function renderDeviceDetail(m,d){
+ const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
+ m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
+ m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico dev',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;padding:0'},'📱'),
+  h('div',{class:'grow'},h('h2',{style:'font-size:20px'},d.name),chipsFor(d,true))));
 
-  const acts=h('div');
-  if(d.pending)acts.append(h('div',{class:'act'},'⏳ '+d.pending+' command(s) waiting for the phone\'s next check-in'));
-  for(const c of d.inflight)acts.append(h('div',{class:'act'},'⏳ '+(NAMES[c.type]||c.type)+' — sent '+ago(c.at)+', waiting for the phone to confirm'));
-  for(const r of d.results.slice().reverse().slice(0,6))
-   acts.append(h('div',{class:'act'},(r.ok?'✅ ':'❌ ')+(NAMES[r.type]||r.type)+(r.msg?' — '+r.msg:'')+' · '+ago(r.at)));
-  if(!acts.children.length)acts.append(h('div',{class:'mute'},'No activity yet.'));
-  card.append(h('div',{class:'mute small',style:'margin-top:4px'},'Activity'),acts);
+ const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it at its next check-in (within about a minute).');load()};
+ const cmd=function(box,label,type,args,confirmMsg,cls){box.append(btn(label,cls||'tonal',async function(){
+   if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}await queue(label,type,a)}))};
 
-  const row=h('div',{class:'row',style:'margin-top:12px'});
-  const cmd=function(label,type,args,confirmMsg,cls){row.append(btn(label,cls||'tonal',async function(){
-    if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}
-    await call('POST','/api/devices/'+d.id+'/command',{type:type,args:a});snack(label+' queued. The phone runs it at its next check-in (within about a minute).');load()}))};
-  cmd('Sync now','sync');
-  row.append(btn('Lock…','tonal',async function(){
+ // ----- Overview -----
+ const ov=h('section');const info=h('div',{class:'card'},h('h2',null,'Phone'));
+ info.append(kv('Android',d.info.android||'?'),kv('Agent build',(d.info.versionCode||'?')+(latest?' (latest '+latest.versionCode+')':'')),
+  kv('Last check-in',ago(d.lastSeen)),kv('Battery',d.info.battery?d.info.battery.pct+'%'+(d.info.battery.charging?' (charging)':''):'unknown'),
+  kv('Connection',d.info.wifi?(d.info.wifi.transport==='wifi'?'Wi-Fi '+(d.info.wifi.ssid||'(name hidden)')+(d.info.wifi.rssi?' · '+d.info.wifi.rssi+' dBm':''):d.info.wifi.transport==='mobile'?'Mobile data':'None'):'unknown'),
+  kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On':'Off'),
+  kv('Apps',d.packages.length+' ('+d.packages.filter(function(p){return p.h}).length+' hidden)'),
+  kv('Sync',pendingCount(d)?pendingCount(d)+' changes pending':'In sync'));
+ const codeV=h('b',null,d.appCode?'••••••':'not chosen yet');
+ const showCode=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');showCode.onclick=function(){codeV.textContent=d.appCode};
+ info.append(h('div',{class:'kv'},h('span',{class:'mute'},'Code to open the app'),h('span',null,codeV,d.appCode?showCode:null)));
+ const nOv=Object.keys(d.overrides||{}).length;
+ if(nOv)info.append(kv('Changed on the phone',nOv+' app(s)'));
+ ov.append(info);
+ const acts=h('div',{class:'card'},h('h2',null,'Activity'));
+ if(d.pending)acts.append(h('div',{class:'act'},'⏳ '+d.pending+' command(s) waiting for the phone\'s next check-in'));
+ for(const c of d.inflight)acts.append(h('div',{class:'act'},'⏳ '+(NAMES[c.type]||c.type)+' — sent '+ago(c.at)+', waiting for the phone to confirm'));
+ for(const r of d.results.slice().reverse().slice(0,6))acts.append(h('div',{class:'act'},(r.ok?'✅ ':'❌ ')+(NAMES[r.type]||r.type)+(r.msg?' — '+r.msg:'')+' · '+ago(r.at)));
+ if(acts.children.length===1)acts.append(h('div',{class:'mute'},'No activity yet.'));
+ ov.append(acts);
+
+ // ----- Controls -----
+ const ct=h('section');
+ const lockBox=h('div',{class:'card'},h('h2',null,'Lock'));const lr=h('div',{class:'row',style:'margin-top:8px'});
+ lr.append(btn('Lock…','',async function(){
    const v=await ask('Lock this phone',[
     {key:'minutes',label:'How long',options:[['0','Just lock the screen'],['5','5 minutes'],['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours']]},
     {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
     'For a timed lock the phone shows your message and a countdown, and nothing else can be opened until time is up (or you unlock it). Emergency calls stay available.');
-   if(!v)return;
-   await call('POST','/api/devices/'+d.id+'/command',{type:'lock',args:{minutes:parseInt(v.minutes,10),message:v.message}});
-   snack('Lock queued. The phone runs it at its next check-in (within about a minute).');load()}));
-  if(locked)cmd('Unlock now','unlock',{});
-  cmd('Reboot','reboot');
-  cmd('Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null},null,'tonal');
-  cmd('Remove PIN','clearPin',{},'Remove the screen lock PIN?','tonal');
-  if(nOv)cmd('Clear phone-side changes','clearOverrides',{},'Forget the app changes made on the phone with the master code?','outline');
-  row.append(btn('Add Wi-Fi','tonal',async function(){
-   const v=await ask('Add a Wi-Fi network',[{key:'ssid',label:'Network name',max:32},{key:'password',label:'Password (leave empty for an open network)',type:'text',max:63}],'Add to phone',
-    'Android does not let apps read saved Wi-Fi passwords, so the dashboard remembers the ones you add here.');
-   if(!v||!v.ssid)return;
-   await call('POST','/api/devices/'+d.id+'/command',{type:'addWifi',args:{ssid:v.ssid,password:v.password}});
-   snack('Wi-Fi network queued.');load()}));
-  cmd('Install APK','install',function(){const url=prompt('Direct https:// link to an APK file');return url?{url:url}:null});
-  cmd('Uninstall app','uninstall',function(){const p=prompt('Package name to uninstall');return p?{packageName:p}:null});
-  cmd('Release device','release',{uninstall:false},'Release this device? It stops being managed and every restriction is removed.','outline');
-  cmd('Release & remove app','release',{uninstall:true},'Release the device AND start removing the agent app? The phone will ask to confirm.','outline');
-  cmd('Wipe','wipe',null,'ERASE this device completely?','danger');
-  row.append(btn('Remove record','outline',async function(){if(!confirm('Delete this device from the dashboard? The phone stays managed; use Release first.'))return;await call('DELETE','/api/devices/'+d.id);load()}));
-  card.append(row);
-  const log=h('details',{style:'margin-top:12px'},h('summary',{class:'mute'},'Phone log ('+d.events.length+')'));
-  const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️'};
-  if(!d.events.length)log.append(h('div',{class:'mute small'},'Nothing logged yet.'));
-  for(const e of d.events.slice().reverse())log.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
-  card.append(log);
-  if(d.wifiNetworks.length){
-   const wl=h('details',{style:'margin-top:8px'},h('summary',{class:'mute'},'Wi-Fi networks you added ('+d.wifiNetworks.length+')'));
-   for(const n of d.wifiNetworks){const pw=h('span',{class:'mono'},n.password?'••••••••':'(open)');
-    const show=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');
-    show.onclick=function(){pw.textContent=n.password||'(open)'};
-    wl.append(h('div',{class:'act'},n.ssid+' · ',pw,n.password?show:null))}
-   card.append(wl)}
-  m.append(card)}
- m.append(btn('Refresh','tonal',load));
+   if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
+ if(lockedNow(d))cmd(lr,'Unlock now','unlock',{});
+ cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
+ cmd(lr,'Remove PIN','clearPin',{},'Remove the screen lock PIN?','outline');
+ lockBox.append(lr);ct.append(lockBox);
+
+ const appBox=h('div',{class:'card'},h('h2',null,'Apps'));const ar=h('div',{class:'row',style:'margin-top:8px'});
+ const file=h('input',{type:'file',accept:'.apk,application/vnd.android.package-archive',style:'display:none'});
+ file.onchange=async function(){const f=file.files[0];file.value='';if(!f)return;
+  if(f.size>24*1024*1024){snack('That file is '+Math.round(f.size/1048576)+' MB. The limit is 24 MB. Use a download link for bigger apps.',1);return}
+  snack('Uploading '+f.name+'…');
+  try{const r=await fetch('/api/apk?name='+encodeURIComponent(f.name),{method:'PUT',body:f});const j=await r.json();if(!r.ok)throw new Error(j.error||'Upload failed');
+   await queue('Install '+f.name,'install',{apkId:j.id})}catch(e){snack(e.message,1)}};
+ ar.append(file,btn('Upload APK from this computer…','',async function(){file.click()}));
+ cmd(ar,'Install from link…','install',function(){const url=prompt('Direct https:// link to an APK file');return url?{url:url}:null});
+ cmd(ar,'Uninstall by package…','uninstall',function(){const p=prompt('Package name to uninstall');return p?{packageName:p}:null});
+ appBox.append(ar,h('div',{class:'mute small',style:'margin-top:8px'},'Uploads are kept for a week and limited to 24 MB. For bigger apps use a link, or let the person install from the Play Store with approval mode (Settings).'));
+ ct.append(appBox);
+
+ const devBox=h('div',{class:'card'},h('h2',null,'Phone'));const dr=h('div',{class:'row',style:'margin-top:8px'});
+ cmd(dr,'Sync now','sync');cmd(dr,'Reboot','reboot');
+ if(needsUpdate(d))cmd(dr,'Update agent to build '+latest.versionCode,'updateAgent',{});else cmd(dr,'Update agent','updateAgent',{},null,'outline');
+ cmd(dr,'Reset app code','resetAppCode',{},'The person will have to choose a new code to open the app. Continue?','outline');
+ if(nOv)cmd(dr,'Clear phone-side changes','clearOverrides',{},'Forget the app changes made on the phone with the master code?','outline');
+ devBox.append(dr);
+ const dd=h('div',{class:'row',style:'margin-top:12px'});
+ cmd(dd,'Release device','release',{uninstall:false},'Release this device? It stops being managed and every restriction is removed.','outline');
+ cmd(dd,'Release & remove app','release',{uninstall:true},'Release the device AND start removing the agent app? The phone will ask to confirm.','outline');
+ cmd(dd,'Wipe','wipe',null,'ERASE this device completely?','danger');
+ dd.append(btn('Remove record','outline',async function(){if(!confirm('Delete this device from the dashboard? The phone stays managed; use Release first.'))return;await call('DELETE','/api/devices/'+d.id);location.hash='devices'}));
+ devBox.append(dd);ct.append(devBox);
+
+ // ----- Apps on this phone -----
+ const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Change Allow / Block for all phones on the Apps tab. Phone-installed apps can be uninstalled here.'));
+ const want=new Set(d.applied.hide);
+ for(const a of d.packages){
+  const img=h('img',{src:'/api/icon/'+a.p,alt:'',loading:'lazy',style:'width:36px;height:36px;border-radius:9px;flex:none'});img.onerror=function(){img.replaceWith(h('div',{style:'width:36px;height:36px;border-radius:9px;background:var(--surface-3);flex:none'}))};
+  const row=h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p),
+   h('div',null,h('span',{class:'chip '+(a.h?'warn':'ok')},a.h?'Hidden':'Visible'),a.s?h('span',{class:'chip'},'system'):null,a.protected?h('span',{class:'chip'},'protected'):null,want.has(a.p)!==a.h?h('span',{class:'chip warn'},'changing…'):null)));
+  if(!a.s)row.append(btn('Uninstall','danger',async function(){if(!confirm('Uninstall '+(a.l||a.p)+' from this phone?'))return;await queue('Uninstall '+(a.l||a.p),'uninstall',{packageName:a.p})}));
+  al.append(row)}
+ if(!d.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
+ ap.append(al);
+
+ // ----- Log -----
+ const lg=h('section');const ll=h('div',{class:'card'},h('h2',null,'Phone log'),h('div',{class:'mute'},'What the phone itself did and noticed.'));
+ if(!d.events.length)ll.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing logged yet.'));
+ for(const e of d.events.slice().reverse())ll.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
+ lg.append(ll);
+
+ // ----- Network -----
+ const nw=h('section');const wl=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
+ wl.append(kv('Now',d.info.wifi?(d.info.wifi.transport==='wifi'?(d.info.wifi.ssid||'(name hidden: Location is off)'):d.info.wifi.transport==='mobile'?'Mobile data':'No connection'):'unknown'));
+ for(const n of d.wifiNetworks){const pw=h('span',{class:'mono'},n.password?'••••••••':'(open)');
+  const show=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');show.onclick=function(){pw.textContent=n.password||'(open)'};
+  wl.append(h('div',{class:'kv'},h('span',null,n.ssid),h('span',null,pw,n.password?show:null)))}
+ wl.append(h('div',{class:'mute small',style:'margin-top:8px'},'Android does not let apps read saved Wi-Fi passwords, so networks you add here are remembered for you.'));
+ wl.append(h('div',{style:'margin-top:8px'},btn('Add Wi-Fi network…','',async function(){
+   const v=await ask('Add a Wi-Fi network',[{key:'ssid',label:'Network name',max:32},{key:'password',label:'Password (leave empty for an open network)',max:63}],'Add to phone');
+   if(!v||!v.ssid)return;await queue('Add Wi-Fi','addWifi',{ssid:v.ssid,password:v.password})})));
+ nw.append(wl);
+
+ // ----- pager -----
+ const parts=[['Overview',ov],['Controls',ct],['Apps',ap],['Log',lg],['Network',nw]];
+ const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
+ parts.forEach(function(p,i){const b=h('button',{class:i===0?'on':''},p[0]);b.onclick=function(){pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
+ pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
+ m.append(tabsRow,pager,h('div',{class:'mute small',style:'margin-top:8px;text-align:center'},'Swipe sideways or tap a tab'));
 }
 
 /* ---------- apps ---------- */
@@ -292,7 +364,14 @@ function appRow(a){
  const schedBtn=h('button',{class:'btn tonal'},d.schedule?'Schedule on':'Schedule');
  schedBtn.onclick=function(){open[a.p]=!open[a.p];render()};
  if(d.mode!=='block')ctl.append(schedBtn);
- ctl.append(saveBtn);body.append(ctl);
+ ctl.append(saveBtn);
+ if(!a.s){
+  const holders=devices.filter(function(dv){return dv.packages.some(function(x){return x.p===a.p})});
+  if(holders.length)ctl.append(btn('Uninstall','danger',async function(){
+   if(!confirm('Uninstall '+(a.l||a.p)+' from: '+holders.map(function(x){return x.name}).join(', ')+'?'))return;
+   for(const dv of holders)await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
+   snack('Uninstall queued. The phone does it at its next check-in.');load()}))}
+ body.append(ctl);
 
  if(open[a.p]&&d.mode!=='block'){
   const s=d.schedule||{days:[1,2,3,4,5],from:'08:00',to:'17:00'};
@@ -334,6 +413,9 @@ function renderSettings(m){
   h('div',{class:'mute'},'Lets the person keep the Play Store: anything they install afterwards stays hidden (it cannot be opened) until you approve it on the Apps tab. Apps already on the phone when you switch this on are treated as approved.')),
   sw(state.config.approveNew,async function(on){state.config.approveNew=on;try{await saveConfig(on?'New apps will wait for your approval.':'New apps are no longer held.')}catch(e){snack(e.message,1)}})));
  m.append(appr);
+ m.append(h('div',{class:'card'},h('h2',null,'Agent updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Update the agent automatically'),
+  h('div',{class:'mute'},'Phones check GitHub for a newer build every 6 hours and install it themselves. You can always update one phone yourself from its Controls page, or from the phone\'s admin panel.')),
+  sw(state.config.autoUpdate,async function(on){state.config.autoUpdate=on;try{await saveConfig('Saved.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('h2',null,'Phone info'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Show which Wi-Fi the phone is on'),
   h('div',{class:'mute'},'Android only reveals the network name when its Location setting is on, so this switch turns that on for the phone. The dashboard shows the network name and signal, never where the phone is. Battery level is always shown.')),
   sw(state.config.reportWifi,async function(on){state.config.reportWifi=on;try{await saveConfig('Saved.')}catch(e){snack(e.message,1)}}))));

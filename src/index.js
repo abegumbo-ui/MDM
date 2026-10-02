@@ -6,7 +6,9 @@ const POLL_SECONDS = 60;
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
-const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi"]);
+const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent"]);
+const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
+const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this is a safety cap
 const MASTER_ITERATIONS = 100000;
 const MAX_EVENTS = 60;
@@ -79,12 +81,53 @@ const publicDevice = (d) => ({
   events: (d.events || []).slice(-40),
   overrides: d.overrides || {},
   wifiNetworks: d.wifiNetworks || [],
+  appCode: d.appCode || null,
 });
+
+// Latest agent build, published by GitHub Actions next to the APK. Cached at the edge for 5 minutes.
+async function latestAgent(env) {
+  const repo = env.GITHUB_REPO || DEFAULT_REPO;
+  const base = `https://github.com/${repo}/releases/download/latest`;
+  try {
+    const r = await fetch(`${base}/version.json`, { cf: { cacheTtl: 300, cacheEverything: true } });
+    if (!r.ok) return null;
+    const v = await r.json();
+    if (!Number.isInteger(v.versionCode)) return null;
+    return { versionCode: v.versionCode, apkUrl: `${base}/mdm-agent.apk` };
+  } catch {
+    return null;
+  }
+}
+
+/** Finds the device a bearer token belongs to, or null. */
+async function authDevice(request, env) {
+  const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
+  if (!m) return null;
+  const key = `device:${m[1]}`;
+  const d = await getJSON(env, key, null);
+  if (!d || !safeEqual(d.tokenHash, await sha256(m[2]))) return null;
+  return { key, d };
+}
 
 // ---- admin API (cookie auth) ----
 async function adminApi(request, env, url) {
   const path = url.pathname;
   const method = request.method;
+
+  if (path === "/api/apk" && method === "PUT") {
+    // Raw APK bytes from the dashboard's file picker. Stored for a week, fetched once by the phone.
+    const buf = await request.arrayBuffer();
+    const head = new Uint8Array(buf.slice(0, 2));
+    if (buf.byteLength < 1000 || buf.byteLength > MAX_APK_BYTES) {
+      return json({ error: `APK must be between 1 KB and ${MAX_APK_BYTES / 1048576} MB` }, 400);
+    }
+    if (head[0] !== 0x50 || head[1] !== 0x4b) return json({ error: "That does not look like an APK file" }, 400);
+    const id = randomHex(6);
+    const name = String(url.searchParams.get("name") || "app.apk").replace(/[^\w. -]/g, "").slice(0, 60);
+    await env.STATE.put(`apk:${id}`, buf, { expirationTtl: 7 * 86400, metadata: { name, size: buf.byteLength } });
+    return json({ id, name, size: buf.byteLength });
+  }
+  if (path === "/api/latest-agent" && method === "GET") return json({ latest: await latestAgent(env) });
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
   if (path === "/api/state" && method === "GET") {
@@ -151,8 +194,15 @@ async function adminApi(request, env, url) {
       const args = {};
       const given = body.args || {};
       if (body.type === "install") {
-        if (typeof given.url !== "string" || !given.url.startsWith("https://")) return json({ error: "APK link must start with https://" }, 400);
-        args.url = given.url;
+        if (given.apkId !== undefined) {
+          if (!/^[0-9a-f]{12}$/.test(given.apkId) || !(await env.STATE.get(`apk:${given.apkId}`, "arrayBuffer"))) {
+            return json({ error: "That uploaded APK has expired. Upload it again." }, 400);
+          }
+          args.apkId = given.apkId;
+        } else {
+          if (typeof given.url !== "string" || !given.url.startsWith("https://")) return json({ error: "APK link must start with https://" }, 400);
+          args.url = given.url;
+        }
       }
       if (body.type === "uninstall") {
         if (!PKG_RE.test(given.packageName || "")) return json({ error: "Invalid package name" }, 400);
@@ -195,6 +245,13 @@ async function adminApi(request, env, url) {
 
 // ---- agent API (per-device bearer token) ----
 async function agentApi(request, env, url) {
+  const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);
+  if (apk && request.method === "GET") {
+    if (!(await authDevice(request, env))) return json({ error: "Unauthorized" }, 401);
+    const buf = await env.STATE.get(`apk:${apk[1]}`, "arrayBuffer");
+    if (!buf) return json({ error: "Not found" }, 404);
+    return new Response(buf, { headers: { "content-type": "application/vnd.android.package-archive" } });
+  }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
 
@@ -221,12 +278,12 @@ async function agentApi(request, env, url) {
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
 
-  if (url.pathname === "/agent/sync" || url.pathname === "/agent/redeem") {
-    const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
-    if (!m) return json({ error: "Unauthorized" }, 401);
-    const key = `device:${m[1]}`;
-    const d = await getJSON(env, key, null);
-    if (!d || !safeEqual(d.tokenHash, await sha256(m[2]))) return json({ error: "Unauthorized" }, 401);
+  if (url.pathname === "/agent/sync" || url.pathname === "/agent/redeem" || url.pathname === "/agent/update") {
+    const auth = await authDevice(request, env);
+    if (!auth) return json({ error: "Unauthorized" }, 401);
+    const { key, d } = auth;
+
+    if (url.pathname === "/agent/update") return json({ latest: await latestAgent(env) });
 
     if (url.pathname === "/agent/redeem") {
       // One-time codes unlock features inside the phone app (install an APK, remove the agent).
@@ -285,6 +342,14 @@ async function agentApi(request, env, url) {
       d.overrides = normalizeOverrides(body.overrides);
       d.overridesRev = Number(body.overridesRev);
       dirty = true;
+    }
+    if (typeof body.appCode === "string") {
+      // The code the person chose to open the phone app; the administrator can see it on the dashboard.
+      const code = body.appCode.slice(0, 32) || null;
+      if (code !== (d.appCode || null)) {
+        d.appCode = code;
+        dirty = true;
+      }
     }
     if (Array.isArray(body.events) && body.events.length) {
       d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);

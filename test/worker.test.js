@@ -6,7 +6,7 @@ const kv = new Map();
 const env = {
   ADMIN_PASSWORD: "correct horse",
   STATE: {
-    get: async (k, t) => (kv.has(k) ? (t === "json" ? JSON.parse(kv.get(k)) : kv.get(k)) : null),
+    get: async (k, t) => (kv.has(k) ? (t === "json" ? JSON.parse(kv.get(k)) : kv.get(k)) : null), // arrayBuffer values are stored as-is
     put: async (k, v) => void kv.set(k, v),
     delete: async (k) => void kv.delete(k),
     list: async ({ prefix }) => ({ keys: [...kv.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }),
@@ -235,4 +235,60 @@ test("timed lock arguments are capped and the Wi-Fi password is remembered, not 
   assert.deepEqual(dev.wifiNetworks.map((n) => [n.ssid, n.password]), [["Home", "sup3rsecret"]]);
   assert.ok(!JSON.stringify(dev.results).includes("sup3rsecret"));
   assert.equal(sync.policy.reportWifi, true);
+});
+
+test("uploaded APKs: validated, stored, fetched only with a device token, installable by id", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  const apk = new Uint8Array(2000); apk[0] = 0x50; apk[1] = 0x4b;
+  const upload = (body, name = "x.apk") => req(`/api/apk?name=${name}`, { method: "PUT", headers: { cookie }, body });
+  assert.equal((await upload(new Uint8Array(2000))).status, 400, "must look like a zip/APK");
+  assert.equal((await upload(new Uint8Array(10))).status, 400, "too small");
+  const ok = await upload(apk, "my app!.apk");
+  assert.equal(ok.status, 200);
+  const { id: apkId, name } = await ok.json();
+  assert.equal(name, "my app.apk");
+  assert.equal((await req("/api/apk", { method: "PUT", body: apk })).status, 401, "admin only");
+
+  assert.equal((await post(`/api/devices/${id}/command`, { type: "install", args: { apkId: "aaaaaaaaaaaa" } }, { cookie })).status, 400);
+  assert.equal((await post(`/api/devices/${id}/command`, { type: "install", args: { apkId } }, { cookie })).status, 200);
+  const sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.commands.find((c) => c.type === "install").args.apkId, apkId);
+
+  assert.equal((await req(`/agent/apk/${apkId}`)).status, 401, "needs a device token");
+  const dl = await req(`/agent/apk/${apkId}`, { headers: auth });
+  assert.equal(dl.status, 200);
+  assert.equal((await dl.arrayBuffer()).byteLength, 2000);
+});
+
+test("app code chosen on the phone is visible to the administrator and can be reset", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  await post("/agent/sync", { appCode: "my-secret-4" }, auth);
+  let dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.appCode, "my-secret-4");
+  assert.equal((await post(`/api/devices/${id}/command`, { type: "resetAppCode" }, { cookie })).status, 200);
+  const sync = await (await post("/agent/sync", { appCode: "" }, auth)).json();
+  assert.equal(sync.commands[0].type, "resetAppCode");
+  dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.appCode, null);
+});
+
+test("agent update info comes from the latest GitHub build and needs a device token", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u) => (String(u).endsWith("/version.json") ? new Response(JSON.stringify({ versionCode: 42 })) : new Response("no", { status: 404 }));
+  try {
+    assert.equal((await post("/agent/update", {})).status, 401);
+    const info = await (await post("/agent/update", {}, auth)).json();
+    assert.equal(info.latest.versionCode, 42);
+    assert.match(info.latest.apkUrl, /^https:\/\/github\.com\/.+\/releases\/download\/latest\/mdm-agent\.apk$/);
+    const dash = await (await req("/api/latest-agent", { headers: { cookie } })).json();
+    assert.equal(dash.latest.versionCode, 42);
+    globalThis.fetch = async () => new Response("nope", { status: 404 });
+    assert.equal((await (await req("/api/latest-agent", { headers: { cookie } })).json()).latest, null);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

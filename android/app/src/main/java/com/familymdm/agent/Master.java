@@ -37,6 +37,18 @@ final class Master {
         e.apply();
     }
 
+    /** True if the code is the master code. Doesn't count as a failed try (the caller does its own limiting). */
+    static boolean matches(Context c, String code) {
+        if (!isSet(c)) return false;
+        SharedPreferences p = Agent.prefs(c);
+        try {
+            return MessageDigest.isEqual(derive(code, p.getString("masterSalt", ""), p.getInt("masterIter", 100000)).getBytes(),
+                    p.getString("masterHash", "").getBytes());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** Returns null if the code is right, otherwise a message to show. */
     static String check(Context c, String code) {
         SharedPreferences p = Agent.prefs(c);

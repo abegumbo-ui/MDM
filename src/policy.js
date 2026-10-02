@@ -84,7 +84,7 @@ export function normalizeConfig(input) {
     // Newly installed apps stay hidden until you approve them.
     approveNew: c.approveNew === true,
     // Android only shows the Wi-Fi name when Location is on; this lets the agent turn it on (no location is collected).
-    reportWifi: c.reportWifi !== false, restrictions };
+    reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, restrictions };
 }
 
 /** Overrides made on the phone itself ({pkg: "allow"|"block"}), sanitized. */
@@ -131,7 +131,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   for (const [pkg, a] of Object.entries(apps)) if (a.schedule) schedules[pkg] = a.schedule;
   // With approval mode on, the phone also gets the approved baseline so it can hold a new app
   // right away, even when it has no connection to the dashboard.
-  const out = { hide: [...hide], show, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi };
+  const out = { hide: [...hide], show, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
