@@ -150,6 +150,11 @@ public class LocalSettingsActivity extends Activity {
                     put("blockUnlisted", on);
                     commit();
                 });
+        toggle(sw, "Make Browser the only browser", "Replaces Chrome (and any other browser) as the handler for web links, so links open the separate Browser app, which only opens pages on the allowlist (tap a blocked page's \"Allow\" with the master code). Install the Browser app first, and block Chrome itself on the Apps list so it can't be opened directly.",
+                cfg.optBoolean("restrictBrowsing"), on -> {
+                    put("restrictBrowsing", on);
+                    commit();
+                });
 
         // ----- restrictions -----
         LinearLayout rs = Ui.card(this, root);

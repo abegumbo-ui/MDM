@@ -99,6 +99,7 @@ const publicDevice = (d) => ({
   wifiNetworks: d.wifiNetworks || [],
   appCode: d.appCode || null,
   adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
+  siteRequests: d.siteRequests || [],
 });
 
 // Latest agent build, published by GitHub Actions next to the APK. Cached at the edge for 5 minutes.
@@ -236,13 +237,19 @@ async function adminApi(request, env, url) {
       })),
     );
   }
-  const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command))?$/.exec(path);
+  const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command|site-requests))?$/.exec(path);
   if (dev) {
     const key = `device:${dev[1]}`;
     const d = await getJSON(env, key, null);
     if (!d) return json({ error: "Unknown device" }, 404);
     if (method === "DELETE" && !dev[2]) {
       await env.STATE.delete(key);
+      return json({ ok: true });
+    }
+    if (method === "DELETE" && dev[2] === "site-requests") {
+      const requestUrl = url.searchParams.get("url");
+      d.siteRequests = (d.siteRequests || []).filter((r) => r.url !== requestUrl);
+      await putJSON(env, key, d);
       return json({ ok: true });
     }
     if (method === "POST" && dev[2]) {
@@ -427,6 +434,20 @@ async function agentApi(request, env, url) {
     if (Array.isArray(body.events) && body.events.length) {
       d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
       dirty = true;
+    }
+    if (Array.isArray(body.siteRequests) && body.siteRequests.length) {
+      // Pages the person tried to open that weren't on the allowlist; shown on the dashboard to approve or deny.
+      const existing = d.siteRequests || [];
+      const urls = new Set(existing.map((r) => r.url));
+      const added = body.siteRequests
+        .slice(0, 20)
+        .map((r) => String(r.url || "").slice(0, 500))
+        .filter((u) => u && !urls.has(u) && (urls.add(u), true))
+        .map((url) => ({ url, at: now }));
+      if (added.length) {
+        d.siteRequests = [...existing, ...added].slice(-30);
+        dirty = true;
+      }
     }
     const commands = d.queue || [];
     if (commands.length) {

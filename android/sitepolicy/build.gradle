@@ -1,0 +1,14 @@
+plugins {
+    id 'java-library'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+dependencies {
+    // Every Android module that depends on this one gets org.json for free from the platform
+    // (android.jar) at runtime, so it's compileOnly here to avoid bundling a second copy into the APK.
+    compileOnly 'org.json:json:20240303'
+}

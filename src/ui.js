@@ -104,7 +104,7 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <main id="main">Loading…</main>
 <div id="snack"></div>
 <script>
-const TABS=[['devices','Devices'],['apps','Apps'],['codes','Codes'],['settings','Settings']];
+const TABS=[['devices','Devices'],['apps','Apps'],['sites','Sites'],['codes','Codes'],['settings','Settings']];
 const DAYS=['S','M','T','W','T','F','S'];
 let state=null,devices=[],latest=null,tab='devices',openId=null,search='';
 function route(){const x=(location.hash||'#devices').slice(1);if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7)}else{tab=x||'devices';openId=null}}
@@ -175,7 +175,7 @@ function render(){
  for(const t of TABS){const b=h('button',{class:tab===t[0]?'on':''},t[1]);b.onclick=function(){location.hash=t[0]};tabs.append(b)}
  const m=document.getElementById('main');m.textContent='';
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){renderDeviceDetail(m,d);return}openId=null}
- ({devices:renderDevices,apps:renderApps,codes:renderCodes,settings:renderSettings}[tab]||renderDevices)(m)}
+ ({devices:renderDevices,apps:renderApps,sites:renderSites,codes:renderCodes,settings:renderSettings}[tab]||renderDevices)(m)}
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
@@ -436,6 +436,66 @@ function appRow(a){
   if(!d.schedule)box.append(h('div',{class:'mute small'},'Pick days or times to turn the schedule on, then Save.'));
   body.append(box)}
  row.append(img,body);return row}
+
+/* ---------- sites (browser allowlist) ---------- */
+function allRequests(){
+ const out=[];
+ for(const d of devices)for(const r of d.siteRequests||[])out.push({deviceId:d.id,deviceName:d.name,url:r.url,at:r.at});
+ return out.sort(function(a,b){return b.at-a.at})}
+function hostOfUrl(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.replace(/^www\./,'')}catch(e){return u}}
+function renderSites(m){
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
+  h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the Apps tab so it can\'t be opened directly.')),
+  sw(state.config.restrictBrowsing,async function(on){state.config.restrictBrowsing=on;try{await saveConfig(on?'This is now the only browser. Phones apply it within about a minute.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
+ const reqs=allRequests();
+ if(reqs.length){
+  const rc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Site requests ('+reqs.length+')'),
+   h('div',{class:'mute'},'Pages people tried to open that weren\'t on the allowlist.'));
+  for(const r of reqs){
+   const dismiss=async function(){await call('DELETE','/api/devices/'+r.deviceId+'/site-requests?url='+encodeURIComponent(r.url));load()};
+   rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500;word-break:break-all'},r.url),
+    h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),
+    h('div',{class:'row',style:'margin-top:8px'},
+     btn('Allow this page only','',async function(){
+      await addSite({type:'exact',url:r.url,label:hostOfUrl(r.url)});await dismiss()}),
+     btn('Allow whole site ('+hostOfUrl(r.url)+')','',async function(){
+      await addSite({type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}),
+     btn('Dismiss','outline',dismiss)))))}
+  m.append(rc)}
+
+ const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
+  h('div',{class:'mute'},'The agent\'s browser only opens these — everything else shows a "Request access" button. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
+ const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
+ const type=h('select',null,new Option('Whole site','domain'),new Option('Exact page only','exact'));
+ top.append(h('div',{class:'row',style:'margin-top:8px'},url,type,btn('Add','tonal',async function(){
+  if(!url.value.trim())return;await addSite({type:type.value,url:url.value.trim(),label:hostOfUrl(url.value.trim())});url.value=''})));
+ m.append(top);
+
+ const list=h('div',{class:'card'});
+ const sites=state.config.sites||{};
+ const keys=Object.keys(sites);
+ if(!keys.length)list.append(h('div',{class:'mute'},'No sites allowed yet. Add one above, or approve a request.'));
+ for(const key of keys){
+  const s=sites[key];
+  const row=h('div',{class:'app'});
+  row.append(h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.label||s.url),
+   h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='domain'?'Whole site: ':'Exact page: ')+s.url),
+   h('div',null,h('span',{class:'chip'},s.type==='domain'?'subpages + subdomains':'this page only'),
+    s.blockImages?h('span',{class:'chip warn'},'images blocked'):null,
+    s.installable===false?h('span',{class:'chip'},'no home-screen shortcut'):null)));
+  const col=h('div',{style:'display:flex;flex-direction:column;gap:6px;align-items:flex-end'});
+  col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.blockImages?true:false,onchange:async function(e){s.blockImages=e.target.checked;await saveConfig('Saved.')}}),'Block images'));
+  col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.installable===false?false:true,onchange:async function(e){s.installable=e.target.checked;await saveConfig('Saved.')}}),'Allow home-screen shortcut'));
+  col.append(btn('Remove','danger',async function(){if(!confirm('Remove '+(s.label||s.url)+' from the allowlist?'))return;delete state.config.sites[key];await saveConfig('Removed.')}));
+  row.append(col);list.append(row)}
+ m.append(list);
+}
+async function addSite(entry){
+ const key=(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
+ state.config.sites=state.config.sites||{};
+ state.config.sites[key]={type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true};
+ await saveConfig('Added '+(entry.label||entry.url)+'. Phones pick it up within about a minute.');
+}
 
 /* ---------- codes ---------- */
 const CODE_INFO={

@@ -115,6 +115,11 @@ public class MainActivity extends Activity {
         pickButton = Ui.button(this, "Choose APK file", Ui.TONAL, v -> pickApk());
         Ui.add(install, pickButton, 8);
 
+        LinearLayout browse = Ui.card(this, actionsBox);
+        browse.addView(Ui.titleText(this, "Browser"));
+        browse.addView(Ui.body(this, "A separate app. Only opens sites the administrator has allowed.", true));
+        Ui.add(browse, Ui.button(this, "Open Browser", Ui.TONAL, v -> openBrowserApp()), 12);
+
         LinearLayout admin = Ui.card(this, actionsBox);
         admin.addView(Ui.titleText(this, "Administrator"));
         admin.addView(Ui.body(this, "Master code: everything the dashboard can do, here on the phone, even without internet.", true));
@@ -331,6 +336,15 @@ public class MainActivity extends Activity {
 
     private void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_LONG).show();
+    }
+
+    private void openBrowserApp() {
+        Intent launch = getPackageManager().getLaunchIntentForPackage("com.familymdm.browser");
+        if (launch != null) {
+            startActivity(launch);
+        } else {
+            toast("The Browser app isn't installed on this phone yet.");
+        }
     }
 
     // ---------- enrollment ----------

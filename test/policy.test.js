@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeSchedule } from "../src/policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, siteAllowed } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -62,6 +62,7 @@ test("the file picker is protected so in-app APK install keeps working", () => {
 
 test("agent package is protected; garbage config is sanitized", () => {
   assert.ok(isProtected("com.familymdm.agent"));
+  assert.ok(isProtected("com.familymdm.browser"));
   assert.deepEqual(normalizeConfig({ apps: { a: { mode: "evil" }, b: { mode: "block" } } }).apps, { b: { mode: "block", label: undefined } });
 });
 
@@ -92,4 +93,54 @@ test("Factory Reset Protection account IDs are validated and sent to the phone",
   const p = buildAgentPolicy({ frpAccounts: ["118273645564738291027"] }, []);
   assert.deepEqual(p.frpAccounts, ["118273645564738291027"]);
   assert.deepEqual(buildAgentPolicy({}, []).frpAccounts, []);
+});
+
+test("normalizeSite: validates, normalizes host, fills defaults", () => {
+  assert.equal(normalizeSite(null), null);
+  assert.equal(normalizeSite({ type: "bogus", url: "x.com" }), null);
+  assert.equal(normalizeSite({ type: "domain", url: "" }), null);
+  const d = normalizeSite({ type: "domain", url: "WWW.NYTimes.com" });
+  assert.equal(d.host, "nytimes.com");
+  assert.equal(d.url, "https://WWW.NYTimes.com");
+  assert.equal(d.blockImages, false);
+  assert.equal(d.installable, true);
+  assert.equal(d.label, "nytimes.com");
+  const e = normalizeSite({ type: "exact", url: "https://example.com/a/b/", label: "Page B", blockImages: true });
+  assert.equal(e.label, "Page B");
+  assert.equal(e.blockImages, true);
+});
+
+test("normalizeSites: drops invalid entries, de-duplicates", () => {
+  const sites = normalizeSites({
+    a: { type: "domain", url: "nytimes.com" },
+    b: { type: "domain", url: "www.nytimes.com" }, // same as a once normalized
+    c: { type: "exact", url: "https://example.com/page/" },
+    d: { type: "exact", url: "https://example.com/page" }, // same as c (trailing slash)
+    e: { type: "domain", url: "" }, // invalid, dropped
+  });
+  assert.equal(sites.length, 2);
+});
+
+test("siteAllowed: domain covers subpages and subdomains, not other domains", () => {
+  const sites = normalizeSites({ a: { type: "domain", url: "nytimes.com" } });
+  assert.equal(siteAllowed("https://nytimes.com/section/world", sites), true);
+  assert.equal(siteAllowed("https://www.nytimes.com/", sites), true);
+  assert.equal(siteAllowed("https://m.nytimes.com/x", sites), true);
+  assert.equal(siteAllowed("https://notnytimes.com/", sites), false);
+  assert.equal(siteAllowed("https://evilnytimes.com/", sites), false);
+});
+
+test("siteAllowed: exact only covers that one page, ignoring query/fragment/trailing slash", () => {
+  const sites = normalizeSites({ a: { type: "exact", url: "https://example.com/safe-page" } });
+  assert.equal(siteAllowed("https://example.com/safe-page", sites), true);
+  assert.equal(siteAllowed("https://example.com/safe-page/", sites), true);
+  assert.equal(siteAllowed("https://example.com/safe-page?x=1#y", sites), true);
+  assert.equal(siteAllowed("https://example.com/other-page", sites), false);
+  assert.equal(siteAllowed("https://example.com/", sites), false);
+});
+
+test("sites reach the agent policy", () => {
+  const p = buildAgentPolicy({ sites: { a: { type: "domain", url: "khanacademy.org" } } }, []);
+  assert.equal(p.sites.length, 1);
+  assert.equal(p.sites[0].host, "khanacademy.org");
 });

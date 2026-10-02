@@ -374,3 +374,29 @@ test("home-screen mode: phones learn which custom icons to download and can fetc
   assert.deepEqual(sync.policy.customIcons, {});
   assert.equal((await req("/agent/icon/com.x.app", { headers: auth })).status, 404);
 });
+
+test("blocked-site requests: reported by the phone, deduplicated, shown to the admin, dismissable", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+
+  await post("/agent/sync", { siteRequests: [{ url: "https://bad.example/page" }, { url: "https://bad.example/page" }] }, auth);
+  let dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.siteRequests.length, 1, "duplicates within one report are collapsed");
+
+  await post("/agent/sync", { siteRequests: [{ url: "https://bad.example/page" }, { url: "https://other.example/" }] }, auth);
+  dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.siteRequests.length, 2, "a repeat of an already-known URL is not added again");
+
+  await req(`/api/devices/${id}/site-requests?url=${encodeURIComponent("https://bad.example/page")}`, { method: "DELETE", headers: { cookie } });
+  dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.deepEqual(dev.siteRequests.map((r) => r.url), ["https://other.example/"]);
+});
+
+test("approving a site adds it to the policy sent to every device", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  await put(cookie, "/api/config", { sites: { a: { type: "domain", url: "khanacademy.org" } } });
+  const sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.policy.sites.length, 1);
+  assert.equal(sync.policy.sites[0].host, "khanacademy.org");
+});
