@@ -144,7 +144,10 @@ async function api(request, env, url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!env.ADMIN_PASSWORD) return html("ADMIN_PASSWORD secret is not set. See SETUP.md.", 500);
+    if (!env.ADMIN_PASSWORD) {
+      // Names only, never values: helps diagnose a missing binding.
+      return html(`ADMIN_PASSWORD secret is not set. See SETUP.md.<br>Settings this app can see: ${Object.keys(env).join(", ") || "(none)"}`, 500);
+    }
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
