@@ -21,9 +21,11 @@ same way with `adb install mdm-browser.apk` if you want it; it's optional and ca
    adb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver
    adb shell am start -n com.familymdm.agent/.MainActivity --es server https://YOUR-WORKER.workers.dev --es code CODE
    ```
-4. The phone appears under **Devices**. Pick what to allow under **Apps**, then **Save**. The phone picks changes up within about a minute (longer if the phone is idle in Doze).
+4. The phone appears under **Devices**. Tap it, open its **App rules** tab, pick what to allow, then **Save**. The phone picks changes up within about a minute (longer if the phone is idle in Doze).
 
-## One-time codes (Codes tab)
+The top of the dashboard only ever says **Devices** — tap a phone or a Browser to get everything specific to it (App rules, Sites, Controls, Log, Network for a phone; just its own requests and Sites for a Browser, since it has no apps). **Codes** and **Settings**, which aren't about any one device, are reached from buttons on the Devices list itself.
+
+## One-time codes (Codes, from the Devices list)
 - **Enrollment code**: connects a new phone.
 - **Install-app code**: the person on the phone opens *MDM Agent → Install an app*, types the code, and picks an APK file. The agent installs it silently; "unknown sources" never has to be enabled. New apps still follow your Apps rules (hidden if "Hide apps that aren't allowed" is on and the app isn't set to Allow).
 - **Removal code**: *MDM Agent → Remove agent*. Releases all restrictions and starts the uninstall. You can do the same remotely with **Release device** or **Release & remove app** on the Devices tab.
@@ -33,7 +35,7 @@ same way with `adb install mdm-browser.apk` if you want it; it's optional and ca
 Codes work once and expire after an hour. The phone must be online to check them.
 
 ## Browse freely for a while (opt-in, needs the agent)
-The same idea as a timed Play Store window for app installs, applied to Browser. Codes tab → **Browse code**, pick how long (15 minutes to 4 hours), and give the code to the person. On the phone, *MDM Agent → Browser → "Browse freely for a while"*, type the code (or the master code, which defaults to 60 minutes with no server needed). For that long, Browser opens **any** site, including the address bar's search, bypassing the Sites allowlist entirely — except the hardcoded adult-site block, which no code or master code ever overrides.
+The same idea as a timed Play Store window for app installs, applied to Browser. Codes (button on the Devices list) → **Browse code**, pick how long (15 minutes to 4 hours), and give the code to the person. On the phone, *MDM Agent → Browser → "Browse freely for a while"*, type the code (or the master code, which defaults to 60 minutes with no server needed). For that long, Browser opens **any** site, including the address bar's search, bypassing the Sites allowlist entirely — except the hardcoded adult-site block, which no code or master code ever overrides.
 
 Every new site it lands on during that window is silently queued in **Sites → Site requests**, exactly like a newly installed app waits in Apps for your approval — so you still see and decide on everything that was visited, just after the fact instead of before. When the time is up, Browser goes straight back to only opening sites already on the allowlist (plus whatever you approved from that session). This only works with the agent on the phone; Browser's own direct-to-dashboard and offline setups don't have it.
 
@@ -54,7 +56,7 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 - **Allow the apps people need first** (phone, messages, maps…). Only allowed apps appear.
 - **Settings is not available** unless you Allow it. Add Wi-Fi from the dashboard.
 - **Escape hatches:** switch it off in the dashboard; or on the phone tap **Administrator → Administrator (master code) → Pause home screen mode**; **Release device** also removes it.
-- **Custom icons** (Apps tab → Icon…) show on this home screen.
+- **Custom icons** (App rules tab (inside any device) → Icon…) show on this home screen.
 - It is off by default. Test it on a spare phone first.
 
 ## Browser allowlist (opt-in)
@@ -62,7 +64,7 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 
 1. **With the agent (MDM) on the same phone.** If the agent has pushed a site list — Home screen mode or not, enrolled or offline — Browser uses it automatically, silently, with no setup screen at all. This is the strongest option (device-owner backed) and always wins if present; Browser never even asks about connecting if it finds the agent.
 2. **Connected to this dashboard with no agent, and no code to type anywhere.** The first time Browser is opened with no agent found, it asks: *"Use this in whitelist mode? Every new site you visit will be sent to the administrator for approval."* Tap yes, and it connects itself — no code, no typing a dashboard address (if `DASHBOARD_URL` was set when the APK was built; see below). It shows up immediately on the **Devices tab** as its own "Browser" card (🌐, separate from the phone cards, since it isn't one), named "New Browser (xxxx)" so more than one is tellable apart — tap it for its own requests, rename, and disconnect, same as a phone's detail page but scoped to just sites (no apps, no restrictions — a standalone Browser doesn't have those). Also listed under **Sites → Standalone browsers**. Disconnecting is the only way back out; it then needs to connect again (still with no code).
-3. **Advanced, for everything else.** The same first-run screen has an "Advanced setup options" link: **connect to a specific dashboard with a one-time code** (Codes tab → **Browser connect code**; useful if you run more than one dashboard, or didn't bake one in at build time), or **set up entirely offline** with a local master code — no admin, no server, just this one phone, sites added from the menu (**Manage sites**).
+3. **Advanced, for everything else.** The same first-run screen has an "Advanced setup options" link: **connect to a specific dashboard with a one-time code** (Codes (button on the Devices list) → **Browser connect code**; useful if you run more than one dashboard, or didn't bake one in at build time), or **set up entirely offline** with a local master code — no admin, no server, just this one phone, sites added from the menu (**Manage sites**).
 
 **Until one of these is done, Browser allows nothing at all** — no page, nothing. That's deliberate: a fresh install has no owner yet, so the safe default is to open nothing rather than everything.
 
@@ -72,24 +74,24 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 
 **The address bar only takes a full web address — there is no search box.** Typing something that isn't a URL shows an error instead of running it as a search, on purpose: a search engine's results page can show things from sites that were never explicitly allowed, which defeats the point of an allowlist. The one place search does work — a **Browse freely for a while** window (below) — forces Google's SafeSearch on for every search and every link clicked inside Google, and overwrites a typed `&safe=off` back to on; there's no way to turn it off from inside Browser. This applies the same way if `google.com` is ever added directly as an allowed site.
 
-**A short list of well-known adult sites is always blocked, in every mode, with no override** — not by a master code, not by a dashboard admin typing one into the Sites tab, nowhere. This is a safety net for a mistake, not the real filter: the actual protection is that the allowlist opens nothing unless you explicitly added it. The built-in list is short (a few dozen of the most-visited names) and easy to get around by nature of being a denylist, so don't rely on it alone — it exists only to stop an obviously wrong entry from ever taking effect.
+**A short list of well-known adult sites is always blocked, in every mode, with no override** — not by a master code, not by a dashboard admin typing one into Sites (inside any device), nowhere. This is a safety net for a mistake, not the real filter: the actual protection is that the allowlist opens nothing unless you explicitly added it. The built-in list is short (a few dozen of the most-visited names) and easy to get around by nature of being a denylist, so don't rely on it alone — it exists only to stop an obviously wrong entry from ever taking effect.
 
-**Sites tab** (shared by agent-managed phones and standalone-connected browsers alike) → add a site as either:
+**Sites** (inside any device's own page, or a standalone Browser's — shared by all of them alike) → add a site as either:
 - **Whole site**: the domain and its subpages and subdomains (e.g. `nytimes.com` covers `www.nytimes.com/anything` and `m.nytimes.com`).
 - **Exact page**: only that one link, ignoring its query string and a trailing slash.
 
-Anything not on the list shows **This page isn't allowed** with a **Request access** button (agent-managed and dashboard-connected Browser alike); the request appears at the top of the Sites tab for you to approve as a whole site or an exact page, or dismiss. Per site, you can also set:
+Anything not on the list shows **This page isn't allowed** with a **Request access** button (agent-managed and dashboard-connected Browser alike); the request appears at the top of Sites (inside that device or Browser) for you to approve as a whole site or an exact page, or dismiss. Per site, you can also set:
 - **Block images** — nothing loads any pictures on that site.
 - **Allow home-screen shortcut** — lets the person tap **Add to Home Screen** while on that page, so it behaves like an installed app.
 
-**Settings → Make Browser the only browser** (agent mode only) replaces Chrome (and any other browser) as the handler for web links, so tapping a link anywhere opens the Browser app instead. You still need to **Block Chrome** itself on the Apps tab so it can't be opened directly; the switch only redirects links, it doesn't hide other browsers. Leave it off while you're still building the allowlist, so you can keep using a normal browser to test. Browser is always reachable (even in Home screen mode) whatever the Apps tab says about it, the same way the agent app always is.
+**Settings → Make Browser the only browser** (agent mode only) replaces Chrome (and any other browser) as the handler for web links, so tapping a link anywhere opens the Browser app instead. You still need to **Block Chrome** itself on the App rules tab (inside any device) so it can't be opened directly; the switch only redirects links, it doesn't hide other browsers. Leave it off while you're still building the allowlist, so you can keep using a normal browser to test. Browser is always reachable (even in Home screen mode) whatever the App rules tab says about it, the same way the agent app always is.
 
 Browser is reachable from the agent's main screen (**Open Browser**, which just launches the separate app if it's installed) and, in Home screen mode, from a **Browser** tile. In **offline mode**, a blocked page offers **Allow with the master code** instead of a request, adding the page directly on the phone — the same master code that works everywhere else in the agent.
 
 ## Offline mode: no dashboard at all
 You can run a phone entirely on its own. After the adb `set-device-owner` command, open the agent app: it shows the command (step 1) and then asks **how you want to use the phone**.
 - **Use it on its own (offline)** walks you through: choose a **master code** (6+ characters; write it down, there is no way to reset it), then the **Factory Reset Protection** ID (optional here, you can add it later), then opens **Phone settings**.
-- **Phone settings** (also under *Administrator → Phone settings*, behind the master code) has everything the dashboard's Settings and Apps tabs have: Home screen mode, hold new apps for approval, hide unlisted apps, every restriction switch, Factory Reset Protection, a waiting-for-approval list, and for each app Default / Allow / Block plus a **schedule** (days and a from/to time).
+- **Phone settings** (also under *Administrator → Phone settings*, behind the master code) has everything the dashboard's Settings and App rules have: Home screen mode, hold new apps for approval, hide unlisted apps, every restriction switch, Factory Reset Protection, a waiting-for-approval list, and for each app Default / Allow / Block plus a **schedule** (days and a from/to time).
 - The Administrator panel still has lock (timed, with a message), PIN, Wi-Fi, install an APK, update, release and erase. Install and removal ask for the master code (there are no one-time codes without a dashboard).
 - The agent works everything out on the phone every minute and applies it, so nothing needs a connection. Update checks go straight to GitHub.
 - Not available offline: the dashboard views (phone log, battery and Wi-Fi name), custom app icons and the logo, remote commands, and resetting a forgotten master code.
@@ -124,7 +126,7 @@ Wherever the agent app asks for a code, the **master code** is accepted too: the
 
 ## Logo and custom icons
 - **Settings → Logo on the phones:** upload an image; phones show it on the timed-lock screen and at the top of the agent app.
-- **Apps tab → Icon…** changes how an app looks *in the dashboard* (Reset icon undoes it). Android doesn't allow changing another app's icon on the phone's home screen.
+- **App rules tab (inside any device) → Icon…** changes how an app looks *in the dashboard* (Reset icon undoes it). Android doesn't allow changing another app's icon on the phone's home screen.
 
 ## Updating the agent
 - **From the dashboard:** the phone's page shows "Update available" when GitHub has a newer build. **Controls → Update agent** installs it silently over the old one (same signing key, so the phone stays managed).
@@ -151,7 +153,7 @@ Each device card shows the battery level, whether it is charging, and the networ
 Each device card has a **Phone log**: apps hidden/shown, installs and removals, failed restrictions, commands and their results, and anything done with the master code.
 
 ## Schedules
-On the Apps tab, an app set to Allow can have a **Schedule** (days and a time window, in the phone's local time). Outside the window the app is hidden. The phone enforces it itself, so it works even when offline.
+On the App rules tab (inside any device), an app set to Allow can have a **Schedule** (days and a time window, in the phone's local time). Outside the window the app is hidden. The phone enforces it itself, so it works even when offline.
 
 ## Safety while testing
 - **Block Developer options and USB debugging** is on by default. While it is on, adb stops working. To get back in, send **Release device** from the dashboard, or use recovery mode. Turn the switch off in **Settings** if you want adb access.
