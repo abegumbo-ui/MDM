@@ -377,7 +377,7 @@ public class BrowserActivity extends Activity {
         // Store window for app installs — so a search works here too, and the sites visited still
         // need the administrator's approval afterward, same as a newly installed app would.
         if (mode() == Mode.AGENT && browseWindowActive()) {
-            load(current(), "https://www.google.com/search?q=" + Uri.encode(s));
+            load(current(), withSafeSearch("https://www.google.com/search?q=" + Uri.encode(s)));
             return;
         }
         toast("Type a full web address, like example.com — there's no search here.");
@@ -387,6 +387,33 @@ public class BrowserActivity extends Activity {
         return s.contains(".") && !s.contains(" ");
     }
 
+    private static final java.util.regex.Pattern GOOGLE_HOST = java.util.regex.Pattern.compile("^(www\\.)?google\\.[a-z.]+$");
+
+    /**
+     * Forces Google's SafeSearch on, on every Google page this browser ever loads — not just our
+     * own typed searches, but any link clicked inside Google's own results too, and any Google
+     * page an administrator allowed directly. Overwrites an existing "safe" parameter, so a typed
+     * "&amp;safe=off" address can't turn it back off either. Not a device-wide DNS-level lock, just
+     * this browser's own pipeline — but every navigation goes through this pipeline.
+     */
+    private String withSafeSearch(String url) {
+        try {
+            Uri u = Uri.parse(url);
+            String host = u.getHost();
+            if (host == null || !GOOGLE_HOST.matcher(host.toLowerCase(java.util.Locale.ROOT)).matches()) return url;
+            if ("active".equals(u.getQueryParameter("safe"))) return url;
+            Uri.Builder b = u.buildUpon().clearQuery();
+            for (String name : u.getQueryParameterNames()) {
+                if (name.equals("safe")) continue;
+                for (String v : u.getQueryParameters(name)) b.appendQueryParameter(name, v);
+            }
+            b.appendQueryParameter("safe", "active");
+            return b.build().toString();
+        } catch (Exception e) {
+            return url;
+        }
+    }
+
     private void setupWebView(final Tab t) {
         t.webView.getSettings().setJavaScriptEnabled(true);
         t.webView.getSettings().setDomStorageEnabled(true);
@@ -394,6 +421,13 @@ public class BrowserActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
+                String safe = withSafeSearch(url);
+                if (!safe.equals(url)) {
+                    // A link clicked inside Google itself (not our own address bar): re-run it
+                    // through load() so SafeSearch is forced the same way a typed search is.
+                    load(t, safe);
+                    return true;
+                }
                 return !allowedOrBlock(t, url);
             }
 
@@ -423,6 +457,7 @@ public class BrowserActivity extends Activity {
             renderHome(t);
             return;
         }
+        url = withSafeSearch(url);
         if (!allowedOrBlock(t, url)) return;
         showWeb(t);
         t.webView.loadUrl(url);
