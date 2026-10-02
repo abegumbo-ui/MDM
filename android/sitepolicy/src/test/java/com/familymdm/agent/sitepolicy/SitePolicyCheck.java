@@ -51,6 +51,12 @@ public class SitePolicyCheck {
         mixed.put("not an object"); // a malformed entry should just be skipped, not throw
         check(SitePolicy.parse(mixed).isEmpty(), "unknown type / non-object entries are dropped");
 
+        check(SitePolicy.isBlockedAdult("https://pornhub.com/video"), "a known adult site is blocked");
+        check(SitePolicy.isBlockedAdult("https://www.pornhub.com/"), "...even with a www. prefix");
+        check(SitePolicy.isBlockedAdult("https://sub.pornhub.com/"), "...and any subdomain");
+        check(!SitePolicy.isBlockedAdult("https://notpornhub.com/"), "a look-alike domain is not swept in");
+        check(!SitePolicy.isBlockedAdult("https://nytimes.com/"), "an ordinary site is not blocked");
+
         System.out.println(failures == 0 ? "ALL PASSED" : failures + " FAILED");
         if (failures > 0) System.exit(1);
     }

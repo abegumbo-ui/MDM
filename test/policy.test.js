@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, siteAllowed } from "../src/policy.js";
+import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, siteAllowed } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -108,6 +108,17 @@ test("normalizeSite: validates, normalizes host, fills defaults", () => {
   const e = normalizeSite({ type: "exact", url: "https://example.com/a/b/", label: "Page B", blockImages: true });
   assert.equal(e.label, "Page B");
   assert.equal(e.blockImages, true);
+});
+
+test("a known adult site is never accepted as an allowlist entry, from any source", () => {
+  assert.ok(isBlockedAdultHost("pornhub.com"));
+  assert.ok(isBlockedAdultHost("www.pornhub.com"));
+  assert.ok(isBlockedAdultHost("sub.pornhub.com"));
+  assert.ok(!isBlockedAdultHost("notpornhub.com"));
+  assert.equal(normalizeSite({ type: "domain", url: "pornhub.com" }), null);
+  assert.equal(normalizeSite({ type: "exact", url: "https://pornhub.com/video" }), null);
+  const cfg = normalizeConfig({ sites: { a: { type: "domain", url: "pornhub.com" }, b: { type: "domain", url: "khanacademy.org" } } });
+  assert.deepEqual(Object.keys(cfg.sites), ["b"]);
 });
 
 test("normalizeSites: drops invalid entries, de-duplicates", () => {

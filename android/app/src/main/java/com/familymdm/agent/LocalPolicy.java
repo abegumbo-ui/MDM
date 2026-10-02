@@ -140,7 +140,7 @@ final class LocalPolicy {
                 if (!type.equals("domain") && !type.equals("exact")) continue;
                 if (url.isEmpty()) continue;
                 String host = SitePolicy.hostOf(url);
-                if (host == null) continue;
+                if (host == null || SitePolicy.isBlockedAdult(url)) continue;
                 JSONObject entry = new JSONObject();
                 entry.put("type", type);
                 entry.put("url", url.contains("://") ? url : "https://" + url);

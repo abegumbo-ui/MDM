@@ -102,6 +102,12 @@ public class LocalPolicyCheck {
         JSONObject sitePolicy = LocalPolicy.build(normalized, arr(), null);
         check(sitePolicy.getJSONArray("sites").length() == 1 && sitePolicy.getJSONArray("sites").getJSONObject(0).getString("host").equals("news.example"), "build() flattens sites into the array SitePolicy reads");
 
+        JSONObject withAdult = new JSONObject();
+        JSONObject adultSite = new JSONObject();
+        adultSite.put("domain:pornhub.com", new JSONObject("{\"type\":\"domain\",\"url\":\"pornhub.com\"}"));
+        withAdult.put("sites", adultSite);
+        check(LocalPolicy.normalize(withAdult).getJSONObject("sites").length() == 0, "a known adult site is never accepted into the offline sites list");
+
         System.out.println(failures == 0 ? "ALL PASSED" : failures + " FAILED");
         if (failures > 0) System.exit(1);
     }
