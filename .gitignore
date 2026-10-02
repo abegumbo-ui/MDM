@@ -3,3 +3,8 @@ node_modules/
 .dev.vars
 *.json.key
 service-account*.json
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk

@@ -1,0 +1,38 @@
+name: Build Android agent
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build debug APK
+        run: gradle -p android assembleDebug --no-daemon --stacktrace
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk mdm-agent.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mdm-agent
+          path: mdm-agent.apk
+      - name: Publish to the "latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent (debug-signed)." --prerelease --target "$GITHUB_SHA"
+          gh release upload latest mdm-agent.apk --clobber
