@@ -2,6 +2,8 @@ package com.familymdm.agent;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -11,6 +13,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -44,6 +47,24 @@ final class Ui {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = dp(parent.getContext(), topMarginDp);
         parent.addView(child, lp);
+    }
+
+    /** The administrator's logo, if one has been downloaded; otherwise null. */
+    static ImageView logoView(Context c) {
+        try {
+            java.io.File f = Agent.logoFile(c);
+            if (!f.exists()) return null;
+            Bitmap bmp = BitmapFactory.decodeFile(f.getPath());
+            if (bmp == null) return null;
+            ImageView iv = new ImageView(c);
+            iv.setImageBitmap(bmp);
+            iv.setAdjustViewBounds(true);
+            iv.setMaxHeight(dp(c, 96));
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            return iv;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     static LinearLayout card(Context c, LinearLayout parent) {

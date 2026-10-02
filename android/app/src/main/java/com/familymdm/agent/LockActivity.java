@@ -18,7 +18,7 @@ import android.widget.Toast;
 /**
  * Full-screen timed lock: shows the administrator's message and a countdown. It runs in lock-task
  * mode, so Home, Recents and notifications are unavailable until the time is up or it is unlocked.
- * The dashboard's "Unlock now", or the master code (long-press the title), ends it early.
+ * The dashboard's "Unlock now", or the master code ("Administrator unlock"), ends it early.
  */
 public class LockActivity extends Activity {
     static volatile boolean alive;
@@ -62,6 +62,9 @@ public class LockActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
         root.setBackgroundColor(Ui.color(this, R.color.m3_surface));
 
+        android.widget.ImageView logo = Ui.logoView(this);
+        if (logo != null) Ui.add(root, logo, 0);
+
         TextView icon = new TextView(this);
         icon.setText("🔒");
         icon.setTextSize(56);
@@ -99,6 +102,7 @@ public class LockActivity extends Activity {
                 Toast.makeText(this, "No phone app available.", Toast.LENGTH_LONG).show();
             }
         }), 32);
+        Ui.add(root, Ui.button(this, "Administrator unlock", Ui.OUTLINED, v -> promptMaster()), 8);
         setContentView(root);
     }
 

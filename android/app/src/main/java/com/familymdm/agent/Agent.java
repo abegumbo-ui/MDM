@@ -10,6 +10,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -33,6 +34,10 @@ final class Agent {
 
     static DevicePolicyManager dpm(Context c) {
         return (DevicePolicyManager) c.getSystemService(Context.DEVICE_POLICY_SERVICE);
+    }
+
+    static File logoFile(Context c) {
+        return new File(c.getFilesDir(), "logo.png");
     }
 
     static boolean isOwner(Context c) {

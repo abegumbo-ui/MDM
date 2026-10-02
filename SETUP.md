@@ -35,6 +35,13 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 ## Real lock
 **Lock** only turns the screen off if the phone has no screen lock. Use **Set PIN** on the Devices tab (or in the admin panel) first. If the phone already has a lock, open the admin panel once and tap **Activate PIN control**.
 
+## Master code works everywhere on the phone
+Wherever the agent app asks for a code, the **master code** is accepted too: the code to open the app, the install code, the removal code, the timed-lock screen's **Administrator unlock** button, and the admin panel. It works with no internet. (Android's own screen-lock PIN is separate; Android doesn't let an app make its lock screen accept another code. Set the PIN from the dashboard, and you may choose the same digits as your master code if you like.)
+
+## Logo and custom icons
+- **Settings → Logo on the phones:** upload an image; phones show it on the timed-lock screen and at the top of the agent app.
+- **Apps tab → Icon…** changes how an app looks *in the dashboard* (Reset icon undoes it). Android doesn't allow changing another app's icon on the phone's home screen.
+
 ## The code to open the app
 When the agent app is opened on the phone it asks for a code. The first time, the person **chooses** one (4+ characters); after that they type it every time they open the app. The phone checks it itself (5 wrong tries locks it for 5 minutes), and the code is also sent to the dashboard: open the phone's page, **Overview → Code to open the app → Show**. The master code always opens it too. **Reset app code** (Controls page) makes the person choose a new one.
 
@@ -48,7 +55,7 @@ Updates come from the "Latest agent build" release in this repo (the repo is pub
 **Controls → Upload APK from this computer** sends a file (up to 24 MB, kept for a week) to the phone and installs it silently. For bigger apps use **Install from link** (any direct https:// link, e.g. a GitHub release), or turn on approval mode and let the person install from the Play Store.
 
 ## Phones list
-The **Devices** tab shows one compact card per phone. Tap it for a page you can swipe through: Overview, Controls, Apps (with Uninstall for apps the person installed), Log and Network. Uninstall is also on the **Apps** tab for non-system apps.
+The **Devices** tab shows one compact card per phone. **Unlock now** is always on a phone's Controls page. Tap it for a page you can swipe through: Overview, Controls, Apps (with Uninstall for apps the person installed), Log and Network. Uninstall is also on the **Apps** tab for non-system apps.
 
 ## Timed lock with a message
 **Lock…** on the Devices tab (or *Lock with a message and time* in the phone's admin panel) can lock for 5 minutes up to 8 hours. The phone shows your message and a countdown full-screen, and nothing else can be opened until time is up, you tap **Unlock now**, or someone enters the master code (long-press the title on the lock screen). The message also appears on the normal lock screen. An **Emergency call** button stays on the screen. The lock survives a reboot.

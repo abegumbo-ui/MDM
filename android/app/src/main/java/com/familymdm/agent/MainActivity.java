@@ -30,6 +30,7 @@ public class MainActivity extends Activity {
     private static final long PICK_WINDOW_MS = 5 * 60 * 1000;
 
     private TextView status;
+    private LinearLayout logoHolder;
     private LinearLayout statusCard;
     private LinearLayout lockBox;
     private TextView lockTitle;
@@ -55,6 +56,9 @@ public class MainActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         root.addView(Ui.headline(this, "MDM Agent"));
+        logoHolder = new LinearLayout(this);
+        logoHolder.setOrientation(LinearLayout.VERTICAL);
+        root.addView(logoHolder);
 
         statusCard = Ui.card(this, root);
         status = Ui.body(this, "", false);
@@ -157,6 +161,9 @@ public class MainActivity extends Activity {
             sb.append("Enrolled: no");
         }
         status.setText(sb.toString());
+        logoHolder.removeAllViews();
+        android.widget.ImageView logo = Ui.logoView(this);
+        if (logo != null) Ui.add(logoHolder, logo, 8);
         statusCard.setVisibility(locked ? View.GONE : View.VISIBLE);
         enrollBox.setVisibility(enrolled ? View.GONE : View.VISIBLE);
         lockBox.setVisibility(locked ? View.VISIBLE : View.GONE);
@@ -281,10 +288,11 @@ public class MainActivity extends Activity {
 
     // ---------- code-protected actions ----------
     private void promptCode(final String type) {
-        final EditText input = Ui.field(this, "8-character code");
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        final EditText input = Ui.field(this, "One-time code or master code");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
                 .setTitle(type.equals("install") ? "Install code" : "Removal code")
+                .setMessage("Type the one-time code from the administrator, or the master code.")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("OK", (d, w) -> redeem(type, input.getText().toString().trim()))
@@ -320,15 +328,38 @@ public class MainActivity extends Activity {
         final String token = Agent.prefs(this).getString("token", null);
         if (server == null || token == null || code.isEmpty()) return;
         new Thread(() -> {
+            android.content.SharedPreferences p = Agent.prefs(this);
+            long now = System.currentTimeMillis();
+            long lockedUntil = p.getLong("redeemLockUntil", 0);
             String error = null;
-            try {
-                JSONObject body = new JSONObject();
-                body.put("type", type);
-                body.put("code", code);
-                Api.post(server + "/agent/redeem", body, token);
-            } catch (Exception e) {
-                error = e instanceof Api.HttpException && ((Api.HttpException) e).code == 403
-                        ? "That code is wrong, already used, or expired." : "Could not check the code: " + e.getMessage();
+            if (now < lockedUntil) {
+                error = "Too many wrong tries. Try again in " + ((lockedUntil - now) / 60000 + 1) + " min.";
+            } else if (Master.matches(this, code)) {
+                // The master code works in place of any one-time code, with no internet needed.
+                Agent.addEvent(this, "local", "Master code used instead of a one-time " + type + " code");
+                p.edit().putInt("redeemFails", 0).apply();
+            } else {
+                try {
+                    JSONObject body = new JSONObject();
+                    body.put("type", type);
+                    body.put("code", code);
+                    Api.post(server + "/agent/redeem", body, token);
+                    p.edit().putInt("redeemFails", 0).apply();
+                } catch (Exception e) {
+                    if (e instanceof Api.HttpException && ((Api.HttpException) e).code == 403) {
+                        int fails = p.getInt("redeemFails", 0) + 1;
+                        if (fails >= 5) {
+                            p.edit().putInt("redeemFails", 0).putLong("redeemLockUntil", now + 5 * 60 * 1000).apply();
+                            Agent.addEvent(this, "security", "Code entry locked for 5 minutes after 5 wrong tries");
+                            error = "Too many wrong tries. Locked for 5 minutes.";
+                        } else {
+                            p.edit().putInt("redeemFails", fails).apply();
+                            error = "That code is wrong, already used, or expired.";
+                        }
+                    } else {
+                        error = "Could not check the code: " + e.getMessage();
+                    }
+                }
             }
             final String err = error;
             runOnUiThread(() -> {

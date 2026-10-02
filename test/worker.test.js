@@ -292,3 +292,40 @@ test("agent update info comes from the latest GitHub build and needs a device to
     globalThis.fetch = realFetch;
   }
 });
+
+const PNG = (n = 200) => { const b = new Uint8Array(n); b.set([0x89, 0x50, 0x4e, 0x47]); return b; };
+
+test("custom app icons override the phone's icon and can be reset", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  await post("/agent/sync", { icons: { "com.x.app": Buffer.from(PNG(100)).toString("base64") } }, auth);
+  const put = (body) => req("/api/icon/com.x.app", { method: "PUT", headers: { cookie }, body });
+  assert.equal((await put(new Uint8Array(200))).status, 400, "must be a PNG");
+  assert.equal((await put(PNG(300 * 1024))).status, 400, "too big");
+  assert.equal((await req("/api/icon/com.x.app", { method: "PUT", body: PNG() })).status, 401, "admin only");
+  const custom = PNG(150); custom[10] = 7;
+  assert.equal((await put(custom)).status, 200);
+  const got = Buffer.from(await (await req("/api/icon/com.x.app", { headers: { cookie } })).arrayBuffer());
+  assert.equal(got[10], 7, "custom icon is served");
+  assert.equal((await req("/api/icon/com.x.app", { method: "DELETE", headers: { cookie } })).status, 200);
+  const back = Buffer.from(await (await req("/api/icon/com.x.app", { headers: { cookie } })).arrayBuffer());
+  assert.equal(back.length, 100, "the phone's own icon comes back");
+});
+
+test("logo: admin uploads a PNG, phones see a new revision and can fetch it", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  let sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.logoRev, 0);
+  assert.equal((await req("/api/logo", { method: "PUT", headers: { cookie }, body: new Uint8Array(500) })).status, 400);
+  assert.equal((await req("/api/logo", { method: "PUT", headers: { cookie }, body: PNG(500) })).status, 200);
+  sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.ok(sync.logoRev > 0);
+  assert.equal((await req("/agent/logo")).status, 401, "needs a device token");
+  const dl = await req("/agent/logo", { headers: auth });
+  assert.equal(dl.status, 200);
+  assert.equal((await dl.arrayBuffer()).byteLength, 500);
+  assert.equal((await req("/api/logo", { method: "DELETE", headers: { cookie } })).status, 200);
+  sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.logoRev, 0);
+});
