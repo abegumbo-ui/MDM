@@ -76,10 +76,15 @@ public class AdminActivity extends Activity {
         LinearLayout statusCard = Ui.card(this, root);
         status = Ui.body(this, "", false);
         statusCard.addView(status);
-        action(statusCard, "Sync with dashboard now", Ui.TONAL, v -> {
-            AgentService.requestSync();
-            toast("Checking in...");
-        });
+        if (Agent.standalone(this)) {
+            action(statusCard, "Phone settings (apps, restrictions, schedules, reset protection)", Ui.FILLED,
+                    v -> startActivity(new Intent(this, LocalSettingsActivity.class)));
+        } else {
+            action(statusCard, "Sync with dashboard now", Ui.TONAL, v -> {
+                AgentService.requestSync();
+                toast("Checking in...");
+            });
+        }
 
         LinearLayout lock = Ui.card(this, root);
         lock.addView(Ui.titleText(this, "Lock"));
@@ -97,7 +102,7 @@ public class AdminActivity extends Activity {
         LinearLayout apps = Ui.card(this, root);
         apps.addView(Ui.titleText(this, "Apps"));
         action(apps, "Install an APK file", Ui.FILLED, v -> pickApk());
-        action(apps, "Show / hide apps", Ui.TONAL, v -> showApps());
+        if (!Agent.standalone(this)) action(apps, "Show / hide apps", Ui.TONAL, v -> showApps());
         appsBox = new LinearLayout(this);
         appsBox.setOrientation(LinearLayout.VERTICAL);
         Ui.add(apps, appsBox, 0);

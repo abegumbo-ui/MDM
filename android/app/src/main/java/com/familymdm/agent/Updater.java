@@ -8,6 +8,7 @@ import org.json.JSONObject;
 /** Self-update from the latest GitHub build. Android only accepts it if it is signed with the same key. */
 final class Updater {
     private static final String TAG = "MdmAgent";
+    private static final String REPO = "abegumbo-ui/MDM";
     private static final long AUTO_CHECK_MS = 6L * 60 * 60 * 1000;
 
     private Updater() {}
@@ -24,7 +25,13 @@ final class Updater {
     static JSONObject latest(Context c) throws Exception {
         String server = Agent.prefs(c).getString("server", null);
         String token = Agent.prefs(c).getString("token", null);
-        if (server == null || token == null) throw new Exception("this phone is not enrolled");
+        if (server == null || token == null) {
+            // Offline mode: ask GitHub directly (the builds are public).
+            String base = "https://github.com/" + REPO + "/releases/download/latest";
+            byte[] raw = Api.getBytes(base + "/version.json", null);
+            JSONObject v = new JSONObject(new String(raw, "UTF-8"));
+            return new JSONObject().put("versionCode", v.getInt("versionCode")).put("apkUrl", base + "/mdm-agent.apk");
+        }
         return Api.post(server + "/agent/update", new JSONObject(), token).optJSONObject("latest");
     }
 

@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import org.json.JSONObject;
 
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
@@ -35,6 +36,20 @@ final class Master {
                     .putInt("masterIter", master.optInt("iterations", 100000));
         }
         e.apply();
+    }
+
+    /** Offline mode: choose the master code on the phone itself (same scrambling the dashboard uses). */
+    static void setLocal(Context c, String code) throws Exception {
+        byte[] salt = new byte[16];
+        new SecureRandom().nextBytes(salt);
+        StringBuilder sb = new StringBuilder();
+        for (byte b : salt) sb.append(String.format("%02x", b));
+        JSONObject m = new JSONObject();
+        m.put("salt", sb.toString());
+        m.put("hash", derive(code, sb.toString(), 100000));
+        m.put("iterations", 100000);
+        store(c, m);
+        Agent.addEvent(c, "security", "A master code was set on the phone");
     }
 
     /** True if the code is the master code. Doesn't count as a failed try (the caller does its own limiting). */

@@ -52,12 +52,17 @@ final class Agent {
         return dpm(c).isDeviceOwnerApp(c.getPackageName());
     }
 
+    /** Offline mode: no dashboard; the settings live on this phone and are applied from here. */
+    static boolean standalone(Context c) {
+        return prefs(c).getBoolean("standalone", false);
+    }
+
     static boolean enrolled(Context c) {
         return prefs(c).getString("token", null) != null;
     }
 
     static void startServiceIfEnrolled(Context c) {
-        if (enrolled(c)) {
+        if (enrolled(c) || standalone(c)) {
             c.startForegroundService(new Intent(c, AgentService.class));
         }
     }
