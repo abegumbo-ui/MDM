@@ -65,6 +65,12 @@ pre.cmd{background:var(--surface-3);border-radius:12px;padding:12px;white-space:
 .days button.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
 .sched{background:var(--surface-2);border-radius:12px;padding:10px 12px;margin-top:8px}
 #snack{position:fixed;left:12px;right:12px;bottom:16px;max-width:520px;margin:auto;background:var(--on-surface);color:var(--surface);border-radius:8px;padding:12px 16px;display:none;z-index:9}
+.m3dlg{border:0;border-radius:28px;background:var(--surface-3);color:var(--on-surface);padding:24px;max-width:420px;width:calc(100% - 32px)}
+.m3dlg::backdrop{background:rgba(0,0,0,.45)}
+.m3dlg h2{font-size:22px;font-weight:400;margin-bottom:12px}
+.m3dlg label{display:block;margin:10px 0 4px;font-size:12px;color:var(--on-surface-variant)}
+.m3dlg input,.m3dlg select{width:100%;font:inherit;color:inherit;background:var(--surface);border:1px solid var(--outline);border-radius:8px;padding:10px 12px}
+.m3dlg .row{justify-content:flex-end;margin-top:20px}
 .login{max-width:360px;margin:16vh auto 0;padding:0 16px}
 `;
 
@@ -107,6 +113,24 @@ function btn(label,cls,fn){const b=h('button',{class:'btn '+(cls||'')},label);
 function ago(t){if(!t)return 'never';const m=Math.round((Date.now()-t)/60000);return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'}
 function sw(checked,onchange){const i=h('input',{type:'checkbox'});i.checked=!!checked;i.onchange=function(){onchange(i.checked)};return h('label',{class:'sw'},i,h('i'))}
 
+/* ---------- dialog (resolves to the typed values, or null if cancelled) ---------- */
+function ask(title,fields,okLabel,note){
+ return new Promise(function(resolve){
+  const dlg=h('dialog',{class:'m3dlg'});const inputs={};
+  dlg.append(h('h2',null,title));if(note)dlg.append(h('div',{class:'mute small'},note));
+  for(const f of fields){
+   dlg.append(h('label',null,f.label));let el;
+   if(f.options){el=h('select');for(const o of f.options)el.append(new Option(o[1],o[0]));el.value=String(f.value==null?f.options[0][0]:f.value)}
+   else{el=h('input',{type:f.type||'text',placeholder:f.placeholder||'',maxlength:f.max||null});el.value=f.value||''}
+   inputs[f.key]=el;dlg.append(el)}
+  let done=false;const finish=function(v){if(done)return;done=true;dlg.close();dlg.remove();resolve(v)};
+  const ok=h('button',{class:'btn'},okLabel||'OK');
+  ok.onclick=function(){const v={};for(const k in inputs)v[k]=inputs[k].value;finish(v)};
+  const cancel=h('button',{class:'btn outline'},'Cancel');cancel.onclick=function(){finish(null)};
+  dlg.addEventListener('cancel',function(e){e.preventDefault();finish(null)});
+  dlg.append(h('div',{class:'row'},cancel,ok));document.body.append(dlg);dlg.showModal();
+  const first=dlg.querySelector('input,select');if(first)first.focus()})}
+
 /* ---------- data ---------- */
 async function load(){
  state=await call('GET','/api/state');devices=await call('GET','/api/devices');render()}
@@ -120,7 +144,7 @@ function render(){
  ({devices:renderDevices,apps:renderApps,codes:renderCodes,settings:renderSettings}[tab]||renderDevices)(m)}
 
 /* ---------- devices ---------- */
-const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen PIN'};
+const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen PIN',unlock:'Unlock',addWifi:'Add Wi-Fi'};
 function renderDevices(m){
  if(!devices.length){m.append(h('div',{class:'card'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Go to Codes → Enrollment code for the steps to add a phone.')));return}
  for(const d of devices){
@@ -136,6 +160,12 @@ function renderDevices(m){
   chips.append(h('span',{class:'chip'},d.packages.length+' apps'),h('span',{class:'chip'},hidden+' hidden'),
    h('span',{class:'chip '+(pending?'warn':'ok')},pending?pending+' changes pending':'In sync'));
   if(d.info.deviceOwner===false)chips.append(h('span',{class:'chip bad'},'Not device owner!'));
+  const bat=d.info.battery;
+  if(bat)chips.append(h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},'🔋 '+bat.pct+'%'+(bat.charging?' charging':'')));
+  const wf=d.info.wifi;
+  if(wf)chips.append(h('span',{class:'chip'},wf.transport==='wifi'?'📶 '+(wf.ssid||'Wi-Fi')+(wf.rssi?' ('+wf.rssi+' dBm)':''):wf.transport==='mobile'?'📱 Mobile data':'No connection'));
+  const lk=d.info.lock;const locked=lk&&lk.until>Date.now();
+  if(locked)chips.append(h('span',{class:'chip warn'},'🔒 Locked until '+new Date(lk.until).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})));
   if(d.info.screenLock!==undefined)chips.append(h('span',{class:'chip '+(d.info.screenLock?'ok':'warn')},d.info.screenLock?'Screen lock on':'No screen lock'));
   if(d.info.masterSet===false)chips.append(h('span',{class:'chip warn'},'No master code on phone'));
   const nOv=Object.keys(d.overrides||{}).length;
@@ -154,10 +184,26 @@ function renderDevices(m){
   const cmd=function(label,type,args,confirmMsg,cls){row.append(btn(label,cls||'tonal',async function(){
     if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}
     await call('POST','/api/devices/'+d.id+'/command',{type:type,args:a});snack(label+' queued. The phone runs it at its next check-in (within about a minute).');load()}))};
-  cmd('Sync now','sync');cmd('Lock','lock');cmd('Reboot','reboot');
+  cmd('Sync now','sync');
+  row.append(btn('Lock…','tonal',async function(){
+   const v=await ask('Lock this phone',[
+    {key:'minutes',label:'How long',options:[['0','Just lock the screen'],['5','5 minutes'],['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours']]},
+    {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
+    'For a timed lock the phone shows your message and a countdown, and nothing else can be opened until time is up (or you unlock it). Emergency calls stay available.');
+   if(!v)return;
+   await call('POST','/api/devices/'+d.id+'/command',{type:'lock',args:{minutes:parseInt(v.minutes,10),message:v.message}});
+   snack('Lock queued. The phone runs it at its next check-in (within about a minute).');load()}));
+  if(locked)cmd('Unlock now','unlock',{});
+  cmd('Reboot','reboot');
   cmd('Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null},null,'tonal');
   cmd('Remove PIN','clearPin',{},'Remove the screen lock PIN?','tonal');
   if(nOv)cmd('Clear phone-side changes','clearOverrides',{},'Forget the app changes made on the phone with the master code?','outline');
+  row.append(btn('Add Wi-Fi','tonal',async function(){
+   const v=await ask('Add a Wi-Fi network',[{key:'ssid',label:'Network name',max:32},{key:'password',label:'Password (leave empty for an open network)',type:'text',max:63}],'Add to phone',
+    'Android does not let apps read saved Wi-Fi passwords, so the dashboard remembers the ones you add here.');
+   if(!v||!v.ssid)return;
+   await call('POST','/api/devices/'+d.id+'/command',{type:'addWifi',args:{ssid:v.ssid,password:v.password}});
+   snack('Wi-Fi network queued.');load()}));
   cmd('Install APK','install',function(){const url=prompt('Direct https:// link to an APK file');return url?{url:url}:null});
   cmd('Uninstall app','uninstall',function(){const p=prompt('Package name to uninstall');return p?{packageName:p}:null});
   cmd('Release device','release',{uninstall:false},'Release this device? It stops being managed and every restriction is removed.','outline');
@@ -169,7 +215,15 @@ function renderDevices(m){
   const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️'};
   if(!d.events.length)log.append(h('div',{class:'mute small'},'Nothing logged yet.'));
   for(const e of d.events.slice().reverse())log.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
-  card.append(log);m.append(card)}
+  card.append(log);
+  if(d.wifiNetworks.length){
+   const wl=h('details',{style:'margin-top:8px'},h('summary',{class:'mute'},'Wi-Fi networks you added ('+d.wifiNetworks.length+')'));
+   for(const n of d.wifiNetworks){const pw=h('span',{class:'mono'},n.password?'••••••••':'(open)');
+    const show=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');
+    show.onclick=function(){pw.textContent=n.password||'(open)'};
+    wl.append(h('div',{class:'act'},n.ssid+' · ',pw,n.password?show:null))}
+   card.append(wl)}
+  m.append(card)}
  m.append(btn('Refresh','tonal',load));
 }
 
@@ -280,6 +334,9 @@ function renderSettings(m){
   h('div',{class:'mute'},'Lets the person keep the Play Store: anything they install afterwards stays hidden (it cannot be opened) until you approve it on the Apps tab. Apps already on the phone when you switch this on are treated as approved.')),
   sw(state.config.approveNew,async function(on){state.config.approveNew=on;try{await saveConfig(on?'New apps will wait for your approval.':'New apps are no longer held.')}catch(e){snack(e.message,1)}})));
  m.append(appr);
+ m.append(h('div',{class:'card'},h('h2',null,'Phone info'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Show which Wi-Fi the phone is on'),
+  h('div',{class:'mute'},'Android only reveals the network name when its Location setting is on, so this switch turns that on for the phone. The dashboard shows the network name and signal, never where the phone is. Battery level is always shown.')),
+  sw(state.config.reportWifi,async function(on){state.config.reportWifi=on;try{await saveConfig('Saved.')}catch(e){snack(e.message,1)}}))));
  const mc=h('div',{class:'card'},h('h2',null,'Master code'),
   h('div',{class:'mute'},'Works on the phone with no internet (Agent → Administrator): lock, set PIN, install APKs, show/hide apps, release, erase. The phone only stores a scrambled version. Status: '+(state.masterSet?'set':'not set')+'.'));
  const code=h('input',{type:'password',placeholder:'New master code (6+ characters, letters/numbers/symbols)',style:'width:100%;margin-top:8px'});

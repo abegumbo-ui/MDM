@@ -35,6 +35,12 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 ## Real lock
 **Lock** only turns the screen off if the phone has no screen lock. Use **Set PIN** on the Devices tab (or in the admin panel) first. If the phone already has a lock, open the admin panel once and tap **Activate PIN control**.
 
+## Timed lock with a message
+**Lock…** on the Devices tab (or *Lock with a message and time* in the phone's admin panel) can lock for 5 minutes up to 8 hours. The phone shows your message and a countdown full-screen, and nothing else can be opened until time is up, you tap **Unlock now**, or someone enters the master code (long-press the title on the lock screen). The message also appears on the normal lock screen. An **Emergency call** button stays on the screen. The lock survives a reboot.
+
+## Wi-Fi and battery
+Each device card shows the battery level, whether it is charging, and the network it is on with signal strength. Android only shows the network name when Location is on, so the agent turns that on (switch in **Settings → Phone info**; no location is read or sent). Android never lets apps read saved Wi-Fi passwords, so use **Add Wi-Fi** on the dashboard (or in the admin panel) to push a network to the phone. The dashboard remembers the passwords you add. Battery and signal refresh every ~10 minutes in the dashboard to stay inside the free storage limits.
+
 ## Approving new apps
 **Settings → Hold newly installed apps until I approve them** lets you leave the Play Store available. Whatever is on the phone when you switch it on counts as approved; anything installed afterward is hidden within seconds and listed under **Apps → Waiting for your approval** (Approve or Block).
 

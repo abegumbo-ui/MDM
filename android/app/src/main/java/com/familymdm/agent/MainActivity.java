@@ -3,16 +3,12 @@ package com.familymdm.agent;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -26,8 +22,8 @@ import java.text.DateFormat;
 import java.util.Date;
 
 /**
- * Status and enrollment screen. Two actions are locked behind one-time codes that the admin
- * generates in the dashboard: installing an APK without "unknown sources", and removing this agent.
+ * Status and enrollment screen. Actions are locked behind codes the administrator controls: one-time
+ * codes made in the dashboard (install an APK, remove the agent) or the offline master code.
  */
 public class MainActivity extends Activity {
     private static final int PICK_APK = 1;
@@ -38,46 +34,57 @@ public class MainActivity extends Activity {
     private LinearLayout actionsBox;
     private EditText serverField;
     private EditText codeField;
-    private Button enrollButton;
-    private Button pickButton;
+    private android.widget.Button enrollButton;
+    private android.widget.Button pickButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(16), dp(16), dp(16));
+        int pad = Ui.dp(this, 16);
+        root.setPadding(pad, pad, pad, pad);
 
-        TextView title = new TextView(this);
-        title.setText("MDM Agent");
-        title.setTextSize(24);
-        root.addView(title);
+        root.addView(Ui.headline(this, "MDM Agent"));
 
-        status = new TextView(this);
-        status.setTextSize(15);
-        status.setPadding(0, dp(8), 0, dp(12));
-        root.addView(status);
+        LinearLayout statusCard = Ui.card(this, root);
+        status = Ui.body(this, "", false);
+        statusCard.addView(status);
 
         // ---- enrollment (shown until enrolled) ----
-        enrollBox = card(root);
-        serverField = field(enrollBox, "Dashboard address (https://...)");
-        codeField = field(enrollBox, "Enrollment code");
-        enrollButton = button(enrollBox, "Enroll", v -> enroll());
+        enrollBox = Ui.card(this, root);
+        enrollBox.addView(Ui.titleText(this, "Connect to the dashboard"));
+        serverField = Ui.field(this, "Dashboard address (https://...)");
+        Ui.add(enrollBox, serverField, 12);
+        codeField = Ui.field(this, "Enrollment code");
+        Ui.add(enrollBox, codeField, 8);
+        enrollButton = Ui.button(this, "Enroll", Ui.FILLED, v -> enroll());
+        Ui.add(enrollBox, enrollButton, 12);
 
         // ---- code-protected actions (shown once enrolled) ----
-        actionsBox = card(root);
-        label(actionsBox, "Install an app");
-        hint(actionsBox, "Ask the administrator for a one-time install code. Then pick the APK file from this phone.");
-        button(actionsBox, "Install an app (needs code)", v -> promptCode("install"));
-        pickButton = button(actionsBox, "Choose APK file", v -> pickApk());
-        label(actionsBox, "Remove this agent");
-        hint(actionsBox, "Ask the administrator for a one-time removal code. This stops all management of the phone.");
-        button(actionsBox, "Remove agent (needs code)", v -> promptCode("uninstall"));
-        label(actionsBox, "Administrator");
-        hint(actionsBox, "Master code: all dashboard actions on this phone, even without internet.");
-        button(actionsBox, "Administrator (master code)", v -> promptMaster());
-        button(actionsBox, "Allow background activity", v -> startActivity(new Intent(
-                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()))));
+        actionsBox = new LinearLayout(this);
+        actionsBox.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(root, actionsBox, 0);
+
+        LinearLayout install = Ui.card(this, actionsBox);
+        install.addView(Ui.titleText(this, "Install an app"));
+        install.addView(Ui.body(this, "Ask the administrator for a one-time install code, then pick the APK file from this phone.", true));
+        Ui.add(install, Ui.button(this, "Install an app (needs code)", Ui.FILLED, v -> promptCode("install")), 12);
+        pickButton = Ui.button(this, "Choose APK file", Ui.TONAL, v -> pickApk());
+        Ui.add(install, pickButton, 8);
+
+        LinearLayout admin = Ui.card(this, actionsBox);
+        admin.addView(Ui.titleText(this, "Administrator"));
+        admin.addView(Ui.body(this, "Master code: everything the dashboard can do, here on the phone, even without internet.", true));
+        Ui.add(admin, Ui.button(this, "Administrator (master code)", Ui.TONAL, v -> promptMaster()), 12);
+
+        LinearLayout remove = Ui.card(this, actionsBox);
+        remove.addView(Ui.titleText(this, "Remove this agent"));
+        remove.addView(Ui.body(this, "Ask the administrator for a one-time removal code. This ends all management of the phone.", true));
+        Ui.add(remove, Ui.button(this, "Remove agent (needs code)", Ui.DANGER, v -> promptCode("uninstall")), 12);
+
+        Ui.add(actionsBox, Ui.button(this, "Allow background activity", Ui.OUTLINED, v -> startActivity(new Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())))), 12);
 
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
@@ -95,59 +102,6 @@ public class MainActivity extends Activity {
         super.onResume();
         refresh();
         Agent.startServiceIfEnrolled(this);
-    }
-
-    // ---------- small UI helpers ----------
-    private int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density);
-    }
-
-    private LinearLayout card(LinearLayout parent) {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(12), dp(12), dp(12), dp(12));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(16));
-        bg.setStroke(dp(1), Color.parseColor("#CAC4D0"));
-        box.setBackground(bg);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(12);
-        parent.addView(box, lp);
-        return box;
-    }
-
-    private EditText field(LinearLayout parent, String hint) {
-        EditText e = new EditText(this);
-        e.setHint(hint);
-        e.setSingleLine(true);
-        parent.addView(e);
-        return e;
-    }
-
-    private Button button(LinearLayout parent, String text, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(text);
-        b.setAllCaps(false);
-        b.setOnClickListener(l);
-        parent.addView(b);
-        return b;
-    }
-
-    private void label(LinearLayout parent, String text) {
-        TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextSize(17);
-        t.setPadding(0, dp(10), 0, 0);
-        parent.addView(t);
-    }
-
-    private void hint(LinearLayout parent, String text) {
-        TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextSize(13);
-        t.setTextColor(Color.GRAY);
-        parent.addView(t);
     }
 
     private void refresh() {
@@ -211,17 +165,39 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    // ---------- one-time-code actions ----------
+    // ---------- code-protected actions ----------
     private void promptCode(final String type) {
-        final EditText input = new EditText(this);
-        input.setHint("8-character code");
-        input.setSingleLine(true);
+        final EditText input = Ui.field(this, "8-character code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
         new AlertDialog.Builder(this)
                 .setTitle(type.equals("install") ? "Install code" : "Removal code")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("OK", (d, w) -> redeem(type, input.getText().toString().trim()))
+                .show();
+    }
+
+    private void promptMaster() {
+        final EditText input = Ui.field(this, "Master code");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Master code")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("OK", (d, w) -> {
+                    final String code = input.getText().toString();
+                    new Thread(() -> {
+                        final String err = Master.check(this, code);
+                        runOnUiThread(() -> {
+                            if (err != null) {
+                                toast(err);
+                            } else {
+                                Agent.prefs(this).edit().putLong("adminUntil", System.currentTimeMillis() + 10 * 60 * 1000).apply();
+                                startActivity(new Intent(this, AdminActivity.class));
+                            }
+                        });
+                    }).start();
+                })
                 .show();
     }
 
@@ -253,32 +229,6 @@ public class MainActivity extends Activity {
                 }
             });
         }).start();
-    }
-
-    private void promptMaster() {
-        final EditText input = new EditText(this);
-        input.setHint("Master code");
-        input.setSingleLine(true);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
-                .setTitle("Master code")
-                .setView(input)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("OK", (d, w) -> {
-                    final String code = input.getText().toString();
-                    new Thread(() -> {
-                        final String err = Master.check(this, code);
-                        runOnUiThread(() -> {
-                            if (err != null) {
-                                toast(err);
-                            } else {
-                                Agent.prefs(this).edit().putLong("adminUntil", System.currentTimeMillis() + 10 * 60 * 1000).apply();
-                                startActivity(new Intent(this, AdminActivity.class));
-                            }
-                        });
-                    }).start();
-                })
-                .show();
     }
 
     private void pickApk() {

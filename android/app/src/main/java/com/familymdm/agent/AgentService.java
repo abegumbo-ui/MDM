@@ -124,6 +124,11 @@ public class AgentService extends Service {
                 Log.w(TAG, "stored policy failed: " + e);
             }
             try {
+                Actions.ensureTimedLock(this);
+            } catch (Exception e) {
+                Log.w(TAG, "timed lock check failed: " + e);
+            }
+            try {
                 Thread.sleep(Math.max(15, sleepSeconds) * 1000L);
             } catch (InterruptedException e) {
                 if (!running) return; // otherwise this was a wake-up call: check in now
@@ -144,6 +149,16 @@ public class AgentService extends Service {
         o.put("masterSet", Master.isSet(this));
         o.put("restrictions", new JSONArray(Agent.getSet(this, "restrictions")));
         o.put("hiddenCount", Agent.getSet(this, "hidden").size());
+        JSONObject battery = Telemetry.battery(this);
+        if (battery != null) o.put("battery", battery);
+        o.put("wifi", Telemetry.wifi(this));
+        long lockUntil = Agent.prefs(this).getLong("lockUntil", 0);
+        if (lockUntil > System.currentTimeMillis()) {
+            JSONObject lock = new JSONObject();
+            lock.put("until", lockUntil);
+            lock.put("msg", Agent.prefs(this).getString("lockMsg", ""));
+            o.put("lock", lock);
+        }
         return o;
     }
 
@@ -206,7 +221,13 @@ public class AgentService extends Service {
         try {
             switch (type) {
                 case "lock":
-                    msg = Actions.lock(this);
+                    msg = Actions.lock(this, args.optInt("minutes", 0), args.optString("message", ""));
+                    break;
+                case "unlock":
+                    msg = Actions.unlock(this);
+                    break;
+                case "addWifi":
+                    msg = Actions.addWifi(this, args.optString("ssid"), args.optString("password"));
                     break;
                 case "setPin":
                     msg = Actions.setPin(this, args.optString("pin"));

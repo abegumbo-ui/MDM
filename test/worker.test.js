@@ -216,3 +216,23 @@ test("PIN commands validate the PIN and never echo it back in the device record"
   assert.ok(!JSON.stringify(dev).includes("4821"), "PIN is gone once delivered");
   assert.equal((await cmd("clearPin", {})).status, 200);
 });
+
+test("timed lock arguments are capped and the Wi-Fi password is remembered, not logged", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  const cmd = (type, args) => post(`/api/devices/${id}/command`, { type, args }, { cookie });
+  assert.equal((await cmd("lock", { minutes: 99999, message: "x".repeat(500) })).status, 200);
+  assert.equal((await cmd("unlock", {})).status, 200);
+  assert.equal((await cmd("addWifi", { ssid: "", password: "longenough" })).status, 400);
+  assert.equal((await cmd("addWifi", { ssid: "Home", password: "short" })).status, 400);
+  assert.equal((await cmd("addWifi", { ssid: "Home", password: "sup3rsecret" })).status, 200);
+  const sync = await (await post("/agent/sync", {}, auth)).json();
+  const lock = sync.commands.find((c) => c.type === "lock");
+  assert.equal(lock.args.minutes, 480);
+  assert.equal(lock.args.message.length, 140);
+  assert.equal(sync.commands.find((c) => c.type === "addWifi").args.password, "sup3rsecret");
+  const dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.deepEqual(dev.wifiNetworks.map((n) => [n.ssid, n.password]), [["Home", "sup3rsecret"]]);
+  assert.ok(!JSON.stringify(dev.results).includes("sup3rsecret"));
+  assert.equal(sync.policy.reportWifi, true);
+});

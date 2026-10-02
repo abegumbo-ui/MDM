@@ -4,14 +4,10 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.KeyguardManager;
 import android.content.Intent;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -44,7 +40,8 @@ public class AdminActivity extends Activity {
         }
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(16), dp(16), dp(16));
+        int pad = Ui.dp(this, 16);
+        root.setPadding(pad, pad, pad, pad);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
@@ -60,74 +57,74 @@ public class AdminActivity extends Activity {
         return true;
     }
 
-    private int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density);
-    }
-
     private void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_LONG).show();
     }
 
-    private TextView text(String t, int size, boolean gray) {
-        TextView v = new TextView(this);
-        v.setText(t);
-        v.setTextSize(size);
-        if (gray) v.setTextColor(Color.GRAY);
-        v.setPadding(0, dp(6), 0, 0);
-        return v;
-    }
-
-    private Button button(String label, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setOnClickListener(v -> {
+    /** Button that refuses to act once the 10-minute admin session has run out. */
+    private android.widget.Button action(LinearLayout box, String label, int style, final View.OnClickListener l) {
+        android.widget.Button b = Ui.button(this, label, style, v -> {
             if (unlocked()) l.onClick(v);
         });
+        Ui.add(box, b, 8);
         return b;
     }
 
     private void build() {
         root.removeAllViews();
-        root.addView(text("Administrator", 24, false));
-        status = text("", 14, true);
-        root.addView(status);
-        root.addView(button("Sync with dashboard now", v -> {
+        root.addView(Ui.headline(this, "Administrator"));
+        LinearLayout statusCard = Ui.card(this, root);
+        status = Ui.body(this, "", false);
+        statusCard.addView(status);
+        action(statusCard, "Sync with dashboard now", Ui.TONAL, v -> {
             AgentService.requestSync();
             toast("Checking in...");
-        }));
+        });
 
-        root.addView(text("Screen lock", 18, false));
-        root.addView(button("Lock now", v -> run(() -> Actions.lock(this))));
-        root.addView(button("Set screen lock PIN", v -> askPin()));
-        root.addView(button("Remove screen lock", v -> run(() -> Actions.clearPin(this))));
+        LinearLayout lock = Ui.card(this, root);
+        lock.addView(Ui.titleText(this, "Lock"));
+        action(lock, "Lock now", Ui.FILLED, v -> run(() -> Actions.lock(this, 0, "")));
+        action(lock, "Lock with a message and time…", Ui.TONAL, v -> askLock());
+        if (Agent.prefs(this).getLong("lockUntil", 0) > System.currentTimeMillis()) {
+            action(lock, "Unlock now", Ui.OUTLINED, v -> run(() -> Actions.unlock(this)));
+        }
+        action(lock, "Set screen lock PIN", Ui.TONAL, v -> askPin());
+        action(lock, "Remove screen lock", Ui.OUTLINED, v -> run(() -> Actions.clearPin(this)));
         if (Actions.hasScreenLock(this) && !Actions.pinControlActive(this)) {
-            root.addView(button("Activate PIN control (confirm current lock once)", v -> activatePinControl()));
+            action(lock, "Activate PIN control (confirm current lock once)", Ui.OUTLINED, v -> activatePinControl());
         }
 
-        root.addView(text("Apps", 18, false));
-        root.addView(button("Install an APK file", v -> pickApk()));
+        LinearLayout apps = Ui.card(this, root);
+        apps.addView(Ui.titleText(this, "Apps"));
+        action(apps, "Install an APK file", Ui.FILLED, v -> pickApk());
+        action(apps, "Show / hide apps", Ui.TONAL, v -> showApps());
         appsBox = new LinearLayout(this);
         appsBox.setOrientation(LinearLayout.VERTICAL);
-        root.addView(appsBox);
-        root.addView(button("Show / hide apps", v -> showApps()));
+        Ui.add(apps, appsBox, 0);
 
-        root.addView(text("Device", 18, false));
-        root.addView(button("Reboot", v -> confirm("Reboot the phone?", () -> run(() -> {
+        LinearLayout net = Ui.card(this, root);
+        net.addView(Ui.titleText(this, "Wi-Fi"));
+        action(net, "Add a Wi-Fi network…", Ui.TONAL, v -> askWifi());
+
+        LinearLayout device = Ui.card(this, root);
+        device.addView(Ui.titleText(this, "Device"));
+        action(device, "Reboot", Ui.TONAL, v -> confirm("Reboot the phone?", () -> run(() -> {
             Agent.dpm(this).reboot(Agent.admin(this));
             return "rebooting";
-        }))));
-        root.addView(button("Stop managing (release)", v -> confirm(
-                "Release this phone? All restrictions are removed.", () -> release(false))));
-        root.addView(button("Stop managing and remove this app", v -> confirm(
-                "Release this phone and uninstall the agent?", () -> release(true))));
-        root.addView(button("Erase everything (factory reset)", v -> promptWipe()));
+        })));
+        action(device, "Stop managing (release)", Ui.OUTLINED, v -> confirm(
+                "Release this phone? All restrictions are removed.", () -> release(false)));
+        action(device, "Stop managing and remove this app", Ui.OUTLINED, v -> confirm(
+                "Release this phone and uninstall the agent?", () -> release(true)));
+        action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
         refreshStatus();
     }
 
     private void refreshStatus() {
+        long until = Agent.prefs(this).getLong("lockUntil", 0);
         status.setText("Screen lock: " + (Actions.hasScreenLock(this) ? "set" : "NOT set")
                 + "\nPIN control: " + (Actions.pinControlActive(this) ? "ready" : "not active")
+                + (until > System.currentTimeMillis() ? "\nTimed lock active" : "")
                 + "\nChanges made here are sent to the dashboard when the phone is online.");
     }
 
@@ -159,13 +156,61 @@ public class AdminActivity extends Activity {
                 .show();
     }
 
+    private LinearLayout form(EditText... fields) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Ui.dp(this, 20);
+        box.setPadding(pad, Ui.dp(this, 8), pad, 0);
+        for (EditText f : fields) Ui.add(box, f, 8);
+        return box;
+    }
+
+    private void askLock() {
+        final EditText message = Ui.field(this, "Message shown on the phone (optional)");
+        final EditText minutes = Ui.field(this, "Minutes (0 = just lock the screen)");
+        minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
+        new AlertDialog.Builder(this)
+                .setTitle("Lock with a message")
+                .setView(form(message, minutes))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Lock", (d, w) -> {
+                    int m = 0;
+                    try {
+                        m = Math.min(480, Integer.parseInt(minutes.getText().toString().trim()));
+                    } catch (NumberFormatException ignored) {
+                    }
+                    final int mins = m;
+                    final String msg = message.getText().toString();
+                    if (unlocked()) run(() -> Actions.lock(this, mins, msg));
+                })
+                .show();
+    }
+
+    private void askWifi() {
+        final EditText ssid = Ui.field(this, "Network name");
+        final EditText pass = Ui.field(this, "Password (empty for an open network)");
+        new AlertDialog.Builder(this)
+                .setTitle("Add a Wi-Fi network")
+                .setView(form(ssid, pass))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Add", (d, w) -> {
+                    final String s = ssid.getText().toString().trim();
+                    final String p = pass.getText().toString();
+                    if (s.isEmpty()) {
+                        toast("Enter the network name.");
+                    } else if (unlocked()) {
+                        run(() -> Actions.addWifi(this, s, p));
+                    }
+                })
+                .show();
+    }
+
     private void askPin() {
-        final EditText input = new EditText(this);
-        input.setHint("New PIN (4 to 16 digits)");
+        final EditText input = Ui.field(this, "New PIN (4 to 16 digits)");
         input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
                 .setTitle("Set screen lock PIN")
-                .setView(input)
+                .setView(form(input))
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Set", (d, w) -> {
                     final String pin = input.getText().toString().trim();
@@ -185,13 +230,11 @@ public class AdminActivity extends Activity {
     }
 
     private void promptWipe() {
-        final EditText input = new EditText(this);
-        input.setHint("Type ERASE to confirm");
-        input.setSingleLine(true);
+        final EditText input = Ui.field(this, "Type ERASE to confirm");
         new AlertDialog.Builder(this)
                 .setTitle("Erase everything?")
                 .setMessage("This factory-resets the phone and cannot be undone.")
-                .setView(input)
+                .setView(form(input))
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Erase", (d, w) -> {
                     if (unlocked() && input.getText().toString().trim().equals("ERASE")) {
@@ -228,30 +271,32 @@ public class AdminActivity extends Activity {
             for (int i = 0; i < pk.length(); i++) {
                 final JSONObject a = pk.getJSONObject(i);
                 final String pkg = a.getString("p");
-                LinearLayout row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.VERTICAL);
-                row.setPadding(dp(10), dp(8), dp(10), dp(8));
-                GradientDrawable bg = new GradientDrawable();
-                bg.setCornerRadius(dp(12));
-                bg.setStroke(dp(1), Color.parseColor("#CAC4D0"));
-                row.setBackground(bg);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                lp.topMargin = dp(6);
-                appsBox.addView(row, lp);
+                LinearLayout row = Ui.card(this, appsBox);
                 String state = a.optBoolean("h") ? "hidden" : "visible";
                 if (overrides.has(pkg)) state += ", set here: " + overrides.optString(pkg);
-                row.addView(text(a.optString("l", pkg), 16, false));
-                row.addView(text(pkg + " · " + state, 12, true));
+                row.addView(Ui.titleText(this, a.optString("l", pkg)));
+                row.addView(Ui.body(this, pkg + " · " + state, true));
                 LinearLayout buttons = new LinearLayout(this);
                 buttons.setOrientation(LinearLayout.HORIZONTAL);
-                buttons.addView(button("Allow", v -> setApp(pkg, "allow")));
-                buttons.addView(button("Block", v -> setApp(pkg, "block")));
-                row.addView(buttons);
+                android.widget.Button allow = Ui.button(this, "Allow", Ui.TONAL, v -> {
+                    if (unlocked()) setApp(pkg, "allow");
+                });
+                android.widget.Button block = Ui.button(this, "Block", Ui.DANGER, v -> {
+                    if (unlocked()) setApp(pkg, "block");
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroupWrap(), 1f);
+                lp.rightMargin = Ui.dp(this, 8);
+                buttons.addView(allow, lp);
+                buttons.addView(block, new LinearLayout.LayoutParams(0, ViewGroupWrap(), 1f));
+                Ui.add(row, buttons, 8);
             }
         } catch (Exception e) {
             toast("Could not list apps: " + e.getMessage());
         }
+    }
+
+    private static int ViewGroupWrap() {
+        return android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
     }
 
     private void setApp(String pkg, String mode) {

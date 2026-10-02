@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.location.LocationManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
@@ -113,6 +114,7 @@ final class PolicyApplier {
         if (!dpm.isDeviceOwnerApp(c.getPackageName())) return;
 
         protectSelf(c, dpm, admin);
+        if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
@@ -355,6 +357,32 @@ final class PolicyApplier {
             }
         }
         return out;
+    }
+
+    /**
+     * Android shows the Wi-Fi network name only to apps holding the location permission while Location is on.
+     * This grants the permission to the agent and turns the setting on. No location is read or reported.
+     */
+    private static void enableWifiName(Context c, DevicePolicyManager dpm, ComponentName admin) {
+        try {
+            String pkg = c.getPackageName();
+            for (String perm : new String[]{"android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION"}) {
+                if (dpm.getPermissionGrantState(admin, pkg, perm) != DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) {
+                    dpm.setPermissionGrantState(admin, pkg, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED);
+                    Agent.addEvent(c, "restriction", "Allowed the agent to read the Wi-Fi name");
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                LocationManager lm = (LocationManager) c.getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null && !lm.isLocationEnabled()) {
+                    dpm.setLocationEnabled(admin, true);
+                    Agent.addEvent(c, "restriction", "Turned on Android's Location setting so the Wi-Fi name can be shown");
+                }
+            }
+            errorCleared(c, "wifiname");
+        } catch (Exception e) {
+            errorOnce(c, "wifiname", "Could not enable Wi-Fi name reporting: " + e.getMessage());
+        }
     }
 
     /** Stops the agent itself from being uninstalled or force-stopped from Settings. */

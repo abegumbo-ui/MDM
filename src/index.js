@@ -6,7 +6,8 @@ const POLL_SECONDS = 60;
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
-const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides"]);
+const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi"]);
+const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this is a safety cap
 const MASTER_ITERATIONS = 100000;
 const MAX_EVENTS = 60;
 const CODE_TYPES = new Set(["enroll", "install", "uninstall"]);
@@ -77,6 +78,7 @@ const publicDevice = (d) => ({
   results: (d.results || []).slice(-15),
   events: (d.events || []).slice(-40),
   overrides: d.overrides || {},
+  wifiNetworks: d.wifiNetworks || [],
 });
 
 // ---- admin API (cookie auth) ----
@@ -157,6 +159,21 @@ async function adminApi(request, env, url) {
         args.packageName = given.packageName;
       }
       if (body.type === "release") args.uninstall = given.uninstall === true;
+      if (body.type === "lock") {
+        const minutes = Number.isInteger(given.minutes) ? Math.min(Math.max(given.minutes, 0), MAX_LOCK_MINUTES) : 0;
+        args.minutes = minutes;
+        args.message = String(given.message || "").slice(0, 140);
+      }
+      if (body.type === "addWifi") {
+        const ssid = String(given.ssid || "");
+        const pass = String(given.password || "");
+        if (ssid.length < 1 || ssid.length > 32) return json({ error: "Network name must be 1 to 32 characters" }, 400);
+        if (pass && (pass.length < 8 || pass.length > 63)) return json({ error: "Wi-Fi password must be 8 to 63 characters (or empty for an open network)" }, 400);
+        args.ssid = ssid;
+        args.password = pass;
+        // The dashboard remembers networks you add, so you can look the password up later.
+        d.wifiNetworks = [...(d.wifiNetworks || []).filter((n) => n.ssid !== ssid), { ssid, password: pass, at: Date.now() }].slice(-20);
+      }
       if (body.type === "setPin") {
         if (!/^\d{4,16}$/.test(given.pin || "")) return json({ error: "PIN must be 4 to 16 digits" }, 400);
         args.pin = given.pin; // delivered once, then dropped from the queue; never written to the activity log
@@ -240,10 +257,11 @@ async function agentApi(request, env, url) {
       }
     }
     if (body.info && typeof body.info === "object") {
-      if (JSON.stringify(body.info) !== JSON.stringify(d.info)) {
-        d.info = body.info;
-        dirty = true;
-      }
+      // Battery % and signal strength change constantly; they ride along with the next real write
+      // instead of using up Workers KV's free write allowance.
+      const stable = (i) => JSON.stringify({ ...i, battery: undefined, wifi: i.wifi ? { ssid: i.wifi.ssid, transport: i.wifi.transport } : undefined });
+      if (stable(body.info) !== stable(d.info || {})) dirty = true;
+      d.info = body.info;
     }
     if (Array.isArray(body.results) && body.results.length) {
       const done = new Set(body.results.map((r) => r.id));
