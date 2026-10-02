@@ -1,0 +1,15 @@
+{
+  "name": "mdm-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tiny self-hosted MDM dashboard on the Android Management API, running on Cloudflare Workers (free tier).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
