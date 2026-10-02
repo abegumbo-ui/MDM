@@ -190,7 +190,7 @@ public class BrowserActivity extends Activity {
 
         addressBar = new EditText(this);
         addressBar.setSingleLine(true);
-        addressBar.setHint("Search or type a web address");
+        addressBar.setHint("Type a full web address, e.g. example.com");
         addressBar.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         addressBar.setImeOptions(EditorInfo.IME_ACTION_GO);
         addressBar.setBackgroundColor(Color.WHITE);
@@ -359,12 +359,15 @@ public class BrowserActivity extends Activity {
 
     // ---------- navigation ----------
 
+    /** Only a full address is accepted here — no search box behind it, so there's nothing to search for. */
     private void go(String typed) {
         String s = typed.trim();
         if (s.isEmpty()) return;
-        String url = looksLikeUrl(s) ? (s.contains("://") ? s : "https://" + s)
-                : "https://www.google.com/search?q=" + Uri.encode(s);
-        load(current(), url);
+        if (!looksLikeUrl(s)) {
+            toast("Type a full web address, like example.com — there's no search here.");
+            return;
+        }
+        load(current(), s.contains("://") ? s : "https://" + s);
     }
 
     private boolean looksLikeUrl(String s) {
@@ -414,6 +417,10 @@ public class BrowserActivity extends Activity {
 
     /** True if `url` may load; otherwise shows the right screen for the current mode and returns false. */
     private boolean allowedOrBlock(Tab t, String url) {
+        if (SitePolicy.isBlockedAdult(url)) {
+            showAdultBlocked(t);
+            return false;
+        }
         Mode mode = mode();
         if (mode == Mode.UNCONFIGURED) {
             showSetupRequired(t, url);
@@ -507,6 +514,21 @@ public class BrowserActivity extends Activity {
     }
 
     // ---------- blocked pages: what to offer depends on the mode ----------
+
+    /** A known adult site: always blocked, in every mode, with no master code or request option. */
+    private void showAdultBlocked(final Tab t) {
+        t.webView.setVisibility(View.GONE);
+        if (t.homeView != null) t.homeView.setVisibility(View.GONE);
+        ensureOverlay(t);
+        t.overlay.setVisibility(View.VISIBLE);
+        t.overlay.removeAllViews();
+        t.overlay.addView(title("Not available"));
+        TextView sub = body("This kind of site isn't available in this browser.");
+        sub.setPadding(0, dp(8), 0, dp(16));
+        t.overlay.addView(sub);
+        add(t.overlay, button("Go to the start page", v -> load(t, HOME_URL)));
+        if (t == current()) syncToolbar();
+    }
 
     private void showBlocked(final Tab t, final String url, final Mode mode) {
         t.webView.setVisibility(View.GONE);
@@ -677,6 +699,10 @@ public class BrowserActivity extends Activity {
         String host = SitePolicy.hostOf(url);
         if (host == null) {
             toast("That doesn't look like a web address.");
+            return;
+        }
+        if (SitePolicy.isBlockedAdult(url)) {
+            toast("That site can't be allowed.");
             return;
         }
         try {

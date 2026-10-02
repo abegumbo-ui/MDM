@@ -57,7 +57,11 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 2. **Connected directly to this dashboard, with no agent at all.** Codes tab → **Browser connect code** → open Browser on any phone, tap **Connect to a dashboard**, and enter the dashboard address and the code. From then on it shares the exact same allowed-sites list below as agent-managed phones, and shows up under **Sites → Standalone browsers**, where you can disconnect it (it then needs a fresh code — there is no other way back in).
 3. **Set up entirely on its own, no dashboard at all.** Tap **Use it on its own (offline)** and choose a master code. Add sites to this phone's own local list with that same master code (menu → **Manage sites**) — there's no admin, no server, just this one phone.
 
-**Until one of these three is done, Browser allows nothing at all** — no address bar search, no page, nothing. That's deliberate: a fresh install has no owner yet, so the safe default is to open nothing rather than everything.
+**Until one of these three is done, Browser allows nothing at all** — no page, nothing. That's deliberate: a fresh install has no owner yet, so the safe default is to open nothing rather than everything.
+
+**The address bar only takes a full web address — there is no search box.** Typing something that isn't a URL shows an error instead of running it as a search, on purpose: a search engine's results page can show things from sites that were never explicitly allowed, which defeats the point of an allowlist.
+
+**A short list of well-known adult sites is always blocked, in every mode, with no override** — not by a master code, not by a dashboard admin typing one into the Sites tab, nowhere. This is a safety net for a mistake, not the real filter: the actual protection is that the allowlist opens nothing unless you explicitly added it. The built-in list is short (a few dozen of the most-visited names) and easy to get around by nature of being a denylist, so don't rely on it alone — it exists only to stop an obviously wrong entry from ever taking effect.
 
 **Sites tab** (shared by agent-managed phones and standalone-connected browsers alike) → add a site as either:
 - **Whole site**: the domain and its subpages and subdomains (e.g. `nytimes.com` covers `www.nytimes.com/anything` and `m.nytimes.com`).

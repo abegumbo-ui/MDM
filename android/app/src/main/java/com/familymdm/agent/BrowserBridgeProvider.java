@@ -30,6 +30,7 @@ public class BrowserBridgeProvider extends ContentProvider {
         if (url == null || url.isEmpty() || (!"domain".equals(type) && !"exact".equals(type))) {
             return errorBundle("Bad request");
         }
+        if (SitePolicy.isBlockedAdult(url)) return errorBundle("That site can't be allowed.");
         String err = Master.check(getContext(), code == null ? "" : code);
         if (err != null) return errorBundle(err);
         try {

@@ -6,8 +6,11 @@ import org.json.JSONObject;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Browser allowlist matching, shared by the agent app and the separate Browser app. Pure Java (no
@@ -93,5 +96,28 @@ public final class SitePolicy {
             if (s.type.equals("exact") && path != null && path.equals(pathKeyOf(s.url))) return s;
         }
         return null;
+    }
+
+    /**
+     * A short, hardcoded list of some of the best-known adult sites, blocked no matter what the
+     * allowlist says and with no override (not even the master code). This is a safety net for a
+     * mistake, not the actual filter: the real protection is that the allowlist opens nothing unless
+     * it was explicitly approved. This list is intentionally small (a few dozen of the most-visited
+     * names) and easy to get around — any adult site not on it loads fine if it were ever allowlisted.
+     */
+    private static final Set<String> BLOCKED_ADULT_DOMAINS = new HashSet<>(Arrays.asList(
+            "pornhub.com", "xvideos.com", "xnxx.com", "xhamster.com", "redtube.com", "youporn.com",
+            "tube8.com", "spankbang.com", "beeg.com", "txxx.com", "porn.com", "pornone.com",
+            "chaturbate.com", "livejasmin.com", "onlyfans.com", "brazzers.com", "motherless.com",
+            "rule34.xxx", "e-hentai.org", "hentaihaven.xxx", "nhentai.net", "fapello.com",
+            "thumbzilla.com", "eporner.com", "sex.com", "porntrex.com", "porndig.com", "4chan.org"));
+
+    public static boolean isBlockedAdult(String url) {
+        String host = hostOf(url);
+        if (host == null) return false;
+        for (String d : BLOCKED_ADULT_DOMAINS) {
+            if (host.equals(d) || host.endsWith("." + d)) return true;
+        }
+        return false;
     }
 }

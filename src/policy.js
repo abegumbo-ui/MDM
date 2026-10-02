@@ -78,6 +78,22 @@ function pathKeyOf(u) {
   }
 }
 
+// A short, hardcoded list of some of the best-known adult sites. No allowlist entry for one of
+// these (or a subdomain of one) is ever accepted, from any source — the dashboard, the agent's
+// offline mode, or a master-code approval. This is a safety net for a mistake, not the actual
+// filter: the real protection is that the allowlist opens nothing unless it was explicitly
+// approved. Keep this in step with SitePolicy.java's BLOCKED_ADULT_DOMAINS.
+const BLOCKED_ADULT_DOMAINS = new Set([
+  "pornhub.com", "xvideos.com", "xnxx.com", "xhamster.com", "redtube.com", "youporn.com",
+  "tube8.com", "spankbang.com", "beeg.com", "txxx.com", "porn.com", "pornone.com",
+  "chaturbate.com", "livejasmin.com", "onlyfans.com", "brazzers.com", "motherless.com",
+  "rule34.xxx", "e-hentai.org", "hentaihaven.xxx", "nhentai.net", "fapello.com",
+  "thumbzilla.com", "eporner.com", "sex.com", "porntrex.com", "porndig.com", "4chan.org",
+]);
+export function isBlockedAdultHost(host) {
+  return !!host && [...BLOCKED_ADULT_DOMAINS].some((d) => host === d || host.endsWith("." + d));
+}
+
 /** One allowlist entry: a whole domain (with subpages/subdomains) or one exact page. */
 export function normalizeSite(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -85,7 +101,7 @@ export function normalizeSite(raw) {
   const url = String(raw.url || "").trim();
   if (!type || !url) return null;
   const host = hostOf(url);
-  if (!host) return null;
+  if (!host || isBlockedAdultHost(host)) return null;
   return {
     type,
     url: url.includes("://") ? url : "https://" + url,
