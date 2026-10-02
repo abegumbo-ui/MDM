@@ -157,6 +157,19 @@ public class AgentService extends Service {
         o.put("restrictions", new JSONArray(Agent.getSet(this, "restrictions")));
         o.put("hiddenCount", Agent.getSet(this, "hidden").size());
         o.put("versionCode", Updater.currentBuild(this));
+        o.put("securityPatch", Build.VERSION.SECURITY_PATCH);
+        o.put("bootloader", Telemetry.bootloader(this));
+        o.put("frpSupported", Build.VERSION.SDK_INT >= 30);
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                android.app.admin.FactoryResetProtectionPolicy frp =
+                        Agent.dpm(this).getFactoryResetProtectionPolicy(Agent.admin(this));
+                o.put("frpAccounts", frp == null ? 0 : frp.getFactoryResetProtectionAccounts().size());
+                o.put("frpEnabled", frp != null && frp.isFactoryResetProtectionEnabled());
+            } catch (Exception e) {
+                o.put("frpAccounts", 0);
+            }
+        }
         o.put("kiosk", Kiosk.active(this));
         o.put("kioskPaused", Kiosk.paused(this));
         JSONObject battery = Telemetry.battery(this);

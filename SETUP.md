@@ -51,12 +51,15 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 ## When the phone is offline
 The phone keeps enforcing everything it last received with no internet: restrictions, allowed apps and the home screen, schedules, the timed lock, and the master-code admin panel. Only new commands from the dashboard wait for a connection.
 
-## If someone factory-resets from recovery mode
-Android can't block that in software. After a recovery-mode reset the agent and the device-owner status are gone, and the phone has to be set up again with the adb steps. The real protection is **Factory Reset Protection (FRP)**: after a reset from recovery, setup demands the Google account that was on the phone.
-1. In the dashboard Settings, switch off **Block adding accounts** for a minute.
-2. Sign in on the phone (Settings → Accounts) with a Google account you control. Use a dedicated Gmail: that account's data syncs onto the phone.
-3. Switch **Block adding accounts** back on.
-Caveats: FRP is only as strong as the bootloader. With an **unlocked bootloader** the flag can be erased from a computer, so re-lock it when you finish testing (re-locking wipes the phone). Test FRP on a spare phone before relying on it.
+## Making a factory reset useless (Factory Reset Protection)
+Android can't block a reset from recovery mode in software, so the agent and device-owner status can be wiped. What it *can* do is make the wiped phone useless: after a reset from recovery mode, setup demands one of the Google accounts you choose, and anyone else is stuck. **No account has to be signed in on the phone.** It needs Android 11 or newer.
+1. Get your Google account ID (a number of about 21 digits, not your email): open the [Google People API page](https://developers.google.com/people/api/rest/v1/people/get), click **Try it**, set `resourceName` to `people/me` and `personFields` to `metadata`, click **Execute** and sign in. Copy the number next to `id`.
+2. Dashboard **Settings → Factory Reset Protection**: paste it and **Save**. Phones apply it within about a minute (the phone's log says "Factory Reset Protection set").
+3. Open the phone's page: the **Reset protection** card is your checklist. It says **Strong** only when all of these hold: bootloader locked, protection set, reset from Settings blocked, Safe Mode blocked, Developer options and USB debugging blocked, and a recent security patch.
+
+For it to hold, use a phone whose **bootloader stays locked** (for example a Moto G; do not unlock it). With an unlocked bootloader the protection can be erased from a computer. With it locked there is no fastboot erase or flash for you either, so your way out is **Release device** in the dashboard (or the master-code panel). Keep the phone's system updates current: old patches have known bypasses. No protection is unbreakable. This closes the known doors, so **test it on a spare phone before relying on it**: reset it from recovery mode and confirm setup demands your Google account.
+
+Keep that Google account safe: whoever can sign in to it can set the phone up again after a reset.
 
 ## The agent is exempt from the install restrictions
 Because the agent is the device owner, its own installs, updates and uninstalls work even when **Block ALL app installs**, **Block installing from unknown sources** or **Block uninstalling apps** are on. For those moments (two minutes at most, or until the result arrives) the agent pauses those restrictions, then puts them back. This covers **Update agent**, **Upload APK**, **Install from link**, the in-app install, and the **Uninstall** button.
