@@ -39,7 +39,7 @@ test("wrong password fails, forged cookie fails, right password works", async ()
 
 test("enroll, sync, apply policy, queue a command", async () => {
   const cookie = await login();
-  const { code } = await (await post("/api/enrollment-code", {}, { cookie })).json();
+  const { code } = await (await post("/api/codes", { type: "enroll" }, { cookie })).json();
 
   assert.equal((await post("/agent/enroll", { code: "ZZZZZZZZ" })).status, 403);
   const enrolled = await (await post("/agent/enroll", { code, info: { model: "S22 Flip", manufacturer: "CAT" } })).json();
@@ -75,4 +75,63 @@ test("enroll, sync, apply policy, queue a command", async () => {
   assert.equal(sync.commands[0].type, "lock");
   sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.commands.length, 0, "commands are delivered once");
+});
+
+async function enrolledDevice(cookie) {
+  const { code } = await (await post("/api/codes", { type: "enroll" }, { cookie })).json();
+  const { token } = await (await post("/agent/enroll", { code, info: { model: "X" } })).json();
+  return { auth: { authorization: `Bearer ${token}` }, id: token.split(".")[0] };
+}
+
+test("one-time install/uninstall codes: typed, single use, need a device token", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  assert.equal((await post("/api/codes", { type: "bogus" }, { cookie })).status, 400);
+
+  const install = (await (await post("/api/codes", { type: "install" }, { cookie })).json()).code;
+  const uninstall = (await (await post("/api/codes", { type: "uninstall" }, { cookie })).json()).code;
+
+  assert.equal((await post("/agent/redeem", { type: "install", code: install })).status, 401, "needs a device token");
+  assert.equal((await post("/agent/redeem", { type: "uninstall", code: install }, auth)).status, 403, "codes are typed");
+  assert.equal((await post("/agent/redeem", { type: "install", code: install }, auth)).status, 200);
+  assert.equal((await post("/agent/redeem", { type: "install", code: install }, auth)).status, 403, "single use");
+  assert.equal((await post("/agent/redeem", { type: "uninstall", code: uninstall }, auth)).status, 200);
+});
+
+test("icons are stored once and served to the admin only", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  const png = Buffer.from("fakepng").toString("base64");
+  await post("/agent/sync", { icons: { "com.example.app": png, "../evil": png, "com.bad": "not base64!!" } }, auth);
+  const ok = await req("/api/icon/com.example.app", { headers: { cookie } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get("content-type"), "image/png");
+  assert.equal(Buffer.from(await ok.arrayBuffer()).toString(), "fakepng");
+  assert.equal((await req("/api/icon/com.bad", { headers: { cookie } })).status, 404);
+  assert.equal((await req("/api/icon/com.example.app")).status, 401);
+});
+
+test("commands are tracked as in-flight until the phone reports a result", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  await post(`/api/devices/${id}/command`, { type: "lock" }, { cookie });
+  const sync = await (await post("/agent/sync", {}, auth)).json();
+  const cmdId = sync.commands[0].id;
+  let dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.inflight.length, 1);
+  await post("/agent/sync", { results: [{ id: cmdId, type: "lock", ok: true, msg: "locked" }] }, auth);
+  dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.inflight.length, 0);
+  assert.equal(dev.results.at(-1).msg, "locked");
+});
+
+test("command arguments are validated", async () => {
+  const cookie = await login();
+  const { id } = await enrolledDevice(cookie);
+  const cmd = (type, args) => post(`/api/devices/${id}/command`, { type, args }, { cookie });
+  assert.equal((await cmd("install", { url: "http://insecure/app.apk" })).status, 400);
+  assert.equal((await cmd("install", { url: "https://ok.example/app.apk" })).status, 200);
+  assert.equal((await cmd("uninstall", { packageName: "bad name; rm" })).status, 400);
+  assert.equal((await cmd("uninstall", { packageName: "com.example.app" })).status, 200);
+  assert.equal((await cmd("release", { uninstall: true })).status, 200);
 });

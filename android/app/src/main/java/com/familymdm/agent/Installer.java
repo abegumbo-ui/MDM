@@ -61,6 +61,35 @@ final class Installer {
         return "install started";
     }
 
+    /** Installs an APK read from a stream (for example one picked with the system file picker). */
+    static String installFromStream(Context c, InputStream in) throws IOException {
+        PackageInstaller pi = c.getPackageManager().getPackageInstaller();
+        PackageInstaller.SessionParams params =
+                new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        int id = pi.createSession(params);
+        PackageInstaller.Session session = pi.openSession(id);
+        try {
+            try (OutputStream out = session.openWrite("apk", 0, -1)) {
+                byte[] buf = new byte[16384];
+                long total = 0;
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    total += n;
+                    if (total > MAX_BYTES) throw new IOException("APK too large");
+                    out.write(buf, 0, n);
+                }
+                session.fsync(out);
+            }
+            session.commit(resultIntent(c, id));
+        } catch (IOException | RuntimeException e) {
+            session.abandon();
+            throw e;
+        } finally {
+            session.close();
+        }
+        return "install started";
+    }
+
     static String uninstall(Context c, String packageName) {
         PackageInstaller pi = c.getPackageManager().getPackageInstaller();
         pi.uninstall(packageName, resultIntent(c, packageName.hashCode()));

@@ -7,6 +7,11 @@ const POLL_SECONDS = 60;
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
 const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync"]);
+const CODE_TYPES = new Set(["enroll", "install", "uninstall"]);
+const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
+const B64_RE = /^[A-Za-z0-9+/=]+$/;
+const MAX_ICON_B64 = 30000;
+const MAX_ICONS_PER_SYNC = 12;
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
@@ -66,7 +71,8 @@ const publicDevice = (d) => ({
   info: d.info || {},
   packages: d.packages || [],
   pending: (d.queue || []).length,
-  results: (d.results || []).slice(-10),
+  inflight: d.inflight || [],
+  results: (d.results || []).slice(-15),
 });
 
 // ---- admin API (cookie auth) ----
@@ -82,10 +88,18 @@ async function adminApi(request, env, url) {
     await putJSON(env, "config", normalizeConfig(body));
     return json({ ok: true });
   }
-  if (path === "/api/enrollment-code" && method === "POST") {
+  if (path === "/api/codes" && method === "POST") {
+    if (!CODE_TYPES.has(body.type)) return json({ error: "Unknown code type" }, 400);
     const code = randomHex(4).toUpperCase();
-    await putJSON(env, `code:${code}`, { created: Date.now() }, { expirationTtl: 3600 });
-    return json({ code, server: url.origin });
+    await putJSON(env, `code:${body.type}:${code}`, { created: Date.now() }, { expirationTtl: 3600 });
+    return json({ code, type: body.type, server: url.origin, expiresInSeconds: 3600 });
+  }
+  const iconMatch = /^\/api\/icon\/([A-Za-z0-9_.]+)$/.exec(path);
+  if (iconMatch && method === "GET") {
+    const b64 = await env.STATE.get(`icon:${iconMatch[1]}`);
+    if (!b64) return new Response(null, { status: 404 });
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "private, max-age=86400" } });
   }
   if (path === "/api/devices" && method === "GET") {
     const devices = await listDevices(env);
@@ -109,7 +123,18 @@ async function adminApi(request, env, url) {
     }
     if (method === "POST" && dev[2]) {
       if (!COMMANDS.has(body.type)) return json({ error: "Unknown command" }, 400);
-      d.queue = [...(d.queue || []), { id: randomHex(6), type: body.type, args: body.args || {} }];
+      const args = {};
+      const given = body.args || {};
+      if (body.type === "install") {
+        if (typeof given.url !== "string" || !given.url.startsWith("https://")) return json({ error: "APK link must start with https://" }, 400);
+        args.url = given.url;
+      }
+      if (body.type === "uninstall") {
+        if (!PKG_RE.test(given.packageName || "")) return json({ error: "Invalid package name" }, 400);
+        args.packageName = given.packageName;
+      }
+      if (body.type === "release") args.uninstall = given.uninstall === true;
+      d.queue = [...(d.queue || []), { id: randomHex(6), type: body.type, args }];
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -124,10 +149,10 @@ async function agentApi(request, env, url) {
 
   if (url.pathname === "/agent/enroll") {
     const code = String(body.code || "").toUpperCase();
-    if (!/^[0-9A-F]{8}$/.test(code) || !(await env.STATE.get(`code:${code}`))) {
+    if (!/^[0-9A-F]{8}$/.test(code) || !(await env.STATE.get(`code:enroll:${code}`))) {
       return json({ error: "Invalid or expired enrollment code" }, 403);
     }
-    await env.STATE.delete(`code:${code}`);
+    await env.STATE.delete(`code:enroll:${code}`);
     const id = randomHex(8);
     const secret = randomHex(24);
     const info = body.info || {};
@@ -139,17 +164,31 @@ async function agentApi(request, env, url) {
       info,
       packages: [],
       queue: [],
+      inflight: [],
       results: [],
     });
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
 
-  if (url.pathname === "/agent/sync") {
+  if (url.pathname === "/agent/sync" || url.pathname === "/agent/redeem") {
     const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
     if (!m) return json({ error: "Unauthorized" }, 401);
     const key = `device:${m[1]}`;
     const d = await getJSON(env, key, null);
     if (!d || !safeEqual(d.tokenHash, await sha256(m[2]))) return json({ error: "Unauthorized" }, 401);
+
+    if (url.pathname === "/agent/redeem") {
+      // One-time codes unlock features inside the phone app (install an APK, remove the agent).
+      const type = body.type;
+      const code = String(body.code || "").toUpperCase();
+      if (!["install", "uninstall"].includes(type) || !/^[0-9A-F]{8}$/.test(code) || !(await env.STATE.get(`code:${type}:${code}`))) {
+        return json({ error: "Invalid or expired code" }, 403);
+      }
+      await env.STATE.delete(`code:${type}:${code}`);
+      d.results = [...(d.results || []), { id: randomHex(6), type: `code:${type}`, ok: true, msg: "one-time code used on the phone", at: Date.now() }].slice(-30);
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
 
     let dirty = false;
     const now = Date.now();
@@ -173,13 +212,24 @@ async function agentApi(request, env, url) {
       }
     }
     if (Array.isArray(body.results) && body.results.length) {
+      const done = new Set(body.results.map((r) => r.id));
+      d.inflight = (d.inflight || []).filter((c) => !done.has(c.id));
       d.results = [...(d.results || []), ...body.results.slice(0, 20).map((r) => ({ ...r, at: now }))].slice(-30);
       dirty = true;
     }
     const commands = d.queue || [];
     if (commands.length) {
       d.queue = [];
+      d.inflight = [...(d.inflight || []), ...commands.map((c) => ({ id: c.id, type: c.type, at: now }))].slice(-10);
       dirty = true;
+    }
+    if (body.icons && typeof body.icons === "object") {
+      // App icons are shared by every device; store each package's icon once.
+      for (const [pkg, b64] of Object.entries(body.icons).slice(0, MAX_ICONS_PER_SYNC)) {
+        if (PKG_RE.test(pkg) && typeof b64 === "string" && b64.length <= MAX_ICON_B64 && B64_RE.test(b64) && !(await env.STATE.get(`icon:${pkg}`))) {
+          await env.STATE.put(`icon:${pkg}`, b64);
+        }
+      }
     }
     if (dirty) await putJSON(env, key, d);
 

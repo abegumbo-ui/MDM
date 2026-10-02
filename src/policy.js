@@ -18,6 +18,8 @@ export const PROTECTED_EXACT = new Set([
   "com.google.android.gsf",
   "com.google.android.webview",
   "com.android.webview",
+  "com.android.documentsui",
+  "com.google.android.documentsui",
   "com.familymdm.agent",
 ]);
 const PROTECTED_PATTERNS = [
@@ -45,11 +47,22 @@ export const RESTRICTIONS = {
   addUserDisabled: { key: "no_add_user", label: "Block adding users", on: true },
   installUnknownSourcesDisabled: { key: "no_install_unknown_sources", label: "Block installing from unknown sources", on: true },
   installAppsDisabled: { key: "no_install_apps", label: "Block ALL app installs (including Play Store)", on: false },
-  // Off by default while testing: keeps USB debugging usable as a way back in.
-  debuggingDisabled: { key: "no_debugging_features", label: "Block USB debugging", on: false },
+  // Also hides Developer options. USB debugging (adb) stops working while this is on;
+  // use "Release device" in the dashboard (or recovery mode) to get back in.
+  debuggingDisabled: { key: "no_debugging_features", label: "Block Developer options and USB debugging", on: true },
 };
 
 export const DEFAULT_RESTRICTIONS = Object.fromEntries(Object.entries(RESTRICTIONS).map(([k, v]) => [k, v.on]));
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** A schedule is {days:[0-6, Sunday=0], from:"HH:MM", to:"HH:MM"}, or null if invalid. */
+export function normalizeSchedule(s) {
+  if (!s || typeof s !== "object" || !Array.isArray(s.days)) return null;
+  const days = [...new Set(s.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
+  if (!days.length || !HHMM.test(s.from) || !HHMM.test(s.to) || s.from === s.to) return null;
+  return { days, from: s.from, to: s.to };
+}
 
 export function normalizeConfig(input) {
   const c = input || {};
@@ -59,7 +72,12 @@ export function normalizeConfig(input) {
   }
   const apps = {};
   for (const [pkg, a] of Object.entries(c.apps && typeof c.apps === "object" ? c.apps : {})) {
-    if (a && ["allow", "force", "block"].includes(a.mode)) apps[pkg] = { mode: a.mode, label: a.label };
+    if (a && ["allow", "force", "block"].includes(a.mode)) {
+      const entry = { mode: a.mode, label: a.label };
+      const schedule = normalizeSchedule(a.schedule);
+      if (schedule && a.mode !== "block") entry.schedule = schedule;
+      apps[pkg] = entry;
+    }
   }
   return { apps, // Off by default so a fresh device keeps working until you have chosen what to allow.
     blockUnlisted: c.blockUnlisted === true, restrictions };
@@ -82,5 +100,8 @@ export function buildAgentPolicy(config, reportedPackages = []) {
   const restrictions = Object.entries(RESTRICTIONS)
     .filter(([k]) => cfg.restrictions[k])
     .map(([, v]) => v.key);
-  return { hide: [...hide], show, restrictions };
+  // The phone checks these against its own clock, so apps open and close on time even offline.
+  const schedules = {};
+  for (const [pkg, a] of Object.entries(cfg.apps)) if (a.schedule) schedules[pkg] = a.schedule;
+  return { hide: [...hide], show, restrictions, schedules };
 }

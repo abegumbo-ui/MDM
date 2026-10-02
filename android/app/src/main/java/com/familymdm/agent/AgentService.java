@@ -4,9 +4,12 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.app.PendingIntent;
 import android.app.admin.DevicePolicyManager;
+import android.app.KeyguardManager;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
@@ -14,6 +17,10 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /** Foreground service: checks in with the dashboard, applies policy, runs commands. */
 public class AgentService extends Service {
@@ -71,6 +78,11 @@ public class AgentService extends Service {
                 Log.w(TAG, "sync failed: " + e);
             }
             try {
+                PolicyApplier.applyStored(this);
+            } catch (Exception e) {
+                Log.w(TAG, "stored policy failed: " + e);
+            }
+            try {
                 Thread.sleep(Math.max(15, sleepSeconds) * 1000L);
             } catch (InterruptedException e) {
                 return;
@@ -100,14 +112,27 @@ public class AgentService extends Service {
         JSONArray results = Agent.peekResults(this);
         JSONObject body = new JSONObject();
         body.put("info", info());
-        body.put("packages", PolicyApplier.collectPackages(this));
+        JSONArray packages = PolicyApplier.collectPackages(this);
+        body.put("packages", packages);
         body.put("results", results);
+        List<String> iconsSent = new ArrayList<>();
+        JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
+        if (icons.length() > 0) body.put("icons", icons);
 
         JSONObject reply = Api.post(server + "/agent/sync", body, token);
         Agent.dropResults(this, results.length());
+        if (!iconsSent.isEmpty()) {
+            Set<String> sent = Agent.getSet(this, "icons_sent");
+            sent.addAll(iconsSent);
+            Agent.putSet(this, "icons_sent", sent);
+        }
+        Agent.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
 
         JSONObject policy = reply.optJSONObject("policy");
-        if (policy != null) PolicyApplier.apply(this, policy);
+        if (policy != null) {
+            Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+            PolicyApplier.apply(this, policy);
+        }
 
         JSONArray commands = reply.optJSONArray("commands");
         if (commands != null) {
@@ -128,7 +153,11 @@ public class AgentService extends Service {
         try {
             switch (type) {
                 case "lock":
+                    boolean secure = getSystemService(KeyguardManager.class).isDeviceSecure();
                     dpm.lockNow();
+                    msg = secure
+                            ? "screen locked"
+                            : "screen turned off, but this phone has no screen lock (PIN/pattern) set, so nothing asks for a code to wake it";
                     break;
                 case "reboot":
                     Agent.addResult(this, id, type, true, "rebooting");
@@ -141,9 +170,13 @@ public class AgentService extends Service {
                     dpm.wipeData(0);
                     return;
                 case "release":
-                    Agent.addResult(this, id, type, true, "released; the app can now be uninstalled");
+                    boolean remove = args.optBoolean("uninstall", false);
+                    Agent.addResult(this, id, type, true, remove
+                            ? "released; tap the notification on the phone to finish removing the agent"
+                            : "released; the agent is no longer device owner and can be uninstalled");
                     flushResults();
                     PolicyApplier.release(this);
+                    if (remove) notifyRemove();
                     running = false;
                     stopSelf();
                     return;
@@ -164,6 +197,25 @@ public class AgentService extends Service {
             msg = e.toString();
         }
         Agent.addResult(this, id, type, ok, msg);
+    }
+
+    /** After release the phone must confirm the uninstall itself; offer it as a tap-to-finish notification. */
+    private void notifyRemove() {
+        Intent del = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + getPackageName()))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent pi = PendingIntent.getActivity(this, 2, del, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification n = new Notification.Builder(this, "agent")
+                .setContentTitle("Finish removing MDM Agent")
+                .setContentText("Tap to uninstall it")
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .build();
+        getSystemService(NotificationManager.class).notify(2, n);
+        try {
+            startActivity(del);
+        } catch (Exception ignored) {
+        }
     }
 
     /** Best-effort immediate report, used before actions that interrupt the app (reboot, wipe, release). */
