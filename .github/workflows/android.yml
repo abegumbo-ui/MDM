@@ -22,6 +22,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+      - name: Check the offline policy rules
+        run: |
+          curl -sSL -o json.jar https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
+          mkdir -p out
+          javac -cp json.jar -d out android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java
+          java -cp json.jar:out com.familymdm.agent.LocalPolicyCheck
       - name: Build debug APK
         run: gradle -p android assembleDebug --no-daemon --stacktrace
       - name: Name the APK and describe this build

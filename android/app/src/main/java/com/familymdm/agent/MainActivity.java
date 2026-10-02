@@ -33,6 +33,13 @@ public class MainActivity extends Activity {
     private LinearLayout logoHolder;
     private LinearLayout statusCard;
     private TextView updateText;
+    private LinearLayout ownerBox;
+    private LinearLayout modeBox;
+    private LinearLayout switchBox;
+    private TextView installHint;
+    private TextView removeHint;
+    private boolean showEnroll;
+    private boolean reshowFrp;
     private LinearLayout enrollBox;
     private LinearLayout actionsBox;
     private EditText serverField;
@@ -57,7 +64,28 @@ public class MainActivity extends Activity {
         status = Ui.body(this, "", false);
         statusCard.addView(status);
 
-        // ---- enrollment (shown until enrolled) ----
+        // ---- step 1: device owner (shown until the adb command has been run) ----
+        ownerBox = Ui.card(this, root);
+        ownerBox.addView(Ui.titleText(this, "Step 1: make this app the device owner"));
+        ownerBox.addView(Ui.body(this, "Connect the phone to a computer with USB debugging on and no accounts on the phone, then run this on the computer:", true));
+        TextView adbCommand = Ui.body(this, "adb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver", false);
+        adbCommand.setTextIsSelectable(true);
+        adbCommand.setTypeface(android.graphics.Typeface.MONOSPACE);
+        adbCommand.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
+        Ui.add(ownerBox, adbCommand, 8);
+        ownerBox.addView(Ui.body(this, "It should print \"Success\". This screen updates by itself.", true));
+
+        // ---- step 2: online or offline ----
+        modeBox = Ui.card(this, root);
+        modeBox.addView(Ui.titleText(this, "How do you want to use this phone?"));
+        modeBox.addView(Ui.body(this, "Online: control it from a dashboard website. Offline: set everything up on this phone only, with no server.", true));
+        Ui.add(modeBox, Ui.button(this, "Connect to a dashboard (online)", Ui.FILLED, v -> {
+            showEnroll = true;
+            refresh();
+        }), 12);
+        Ui.add(modeBox, Ui.button(this, "Use it on its own (offline)", Ui.TONAL, v -> startStandaloneSetup()), 8);
+
+        // ---- enrollment ----
         enrollBox = Ui.card(this, root);
         enrollBox.addView(Ui.titleText(this, "Connect to the dashboard"));
         serverField = Ui.field(this, "Dashboard address (https://...)");
@@ -81,7 +109,8 @@ public class MainActivity extends Activity {
 
         LinearLayout install = Ui.card(this, actionsBox);
         install.addView(Ui.titleText(this, "Install an app"));
-        install.addView(Ui.body(this, "Ask the administrator for a one-time install code, then pick the APK file from this phone.", true));
+        installHint = Ui.body(this, "", true);
+        install.addView(installHint);
         Ui.add(install, Ui.button(this, "Install an app (needs code)", Ui.FILLED, v -> promptCode("install")), 12);
         pickButton = Ui.button(this, "Choose APK file", Ui.TONAL, v -> pickApk());
         Ui.add(install, pickButton, 8);
@@ -93,8 +122,17 @@ public class MainActivity extends Activity {
 
         LinearLayout remove = Ui.card(this, actionsBox);
         remove.addView(Ui.titleText(this, "Remove this agent"));
-        remove.addView(Ui.body(this, "Ask the administrator for a one-time removal code. This ends all management of the phone.", true));
+        removeHint = Ui.body(this, "", true);
+        remove.addView(removeHint);
         Ui.add(remove, Ui.button(this, "Remove agent (needs code)", Ui.DANGER, v -> promptCode("uninstall")), 12);
+
+        switchBox = Ui.card(this, actionsBox);
+        switchBox.addView(Ui.titleText(this, "Dashboard"));
+        switchBox.addView(Ui.body(this, "Want to control this phone from a dashboard website instead?", true));
+        Ui.add(switchBox, Ui.button(this, "Connect to a dashboard", Ui.OUTLINED, v -> {
+            showEnroll = true;
+            refresh();
+        }), 12);
 
         Ui.add(actionsBox, Ui.button(this, "Allow background activity", Ui.OUTLINED, v -> startActivity(new Intent(
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())))), 12);
@@ -115,31 +153,155 @@ public class MainActivity extends Activity {
         super.onResume();
         refresh();
         Agent.startServiceIfEnrolled(this);
+        if (reshowFrp) {
+            reshowFrp = false;
+            askFrp();
+        }
     }
 
     private void refresh() {
         boolean owner = Agent.isOwner(this);
         boolean enrolled = Agent.enrolled(this);
+        boolean standalone = Agent.standalone(this);
+        boolean active = enrolled || standalone;
         StringBuilder sb = new StringBuilder();
-        sb.append(owner ? "Device owner: yes\n" : "Device owner: NO. Run the adb set-device-owner command first.\n");
+        sb.append(owner ? "Device owner: yes\n" : "Device owner: NO (do step 1 below)\n");
         if (enrolled) {
             long last = Agent.prefs(this).getLong("lastSync", 0);
-            sb.append("Enrolled: yes\nServer: ").append(Agent.prefs(this).getString("server", ""));
+            sb.append("Mode: online (dashboard)\nServer: ").append(Agent.prefs(this).getString("server", ""));
             sb.append("\nLast check-in: ").append(last == 0 ? "not yet"
                     : DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(last)));
-            sb.append("\nAgent build: ").append(Updater.currentBuild(this));
+        } else if (standalone) {
+            sb.append("Mode: offline (this phone only)");
         } else {
-            sb.append("Enrolled: no");
+            sb.append("Mode: not set up yet");
         }
+        sb.append("\nAgent build: ").append(Updater.currentBuild(this));
         status.setText(sb.toString());
         logoHolder.removeAllViews();
         android.widget.ImageView logo = Ui.logoView(this);
         if (logo != null) Ui.add(logoHolder, logo, 8);
-        enrollBox.setVisibility(enrolled ? View.GONE : View.VISIBLE);
-        actionsBox.setVisibility(enrolled ? View.VISIBLE : View.GONE);
+
+        ownerBox.setVisibility(owner ? View.GONE : View.VISIBLE);
+        modeBox.setVisibility(!active && owner && !showEnroll ? View.VISIBLE : View.GONE);
+        enrollBox.setVisibility(!enrolled && showEnroll ? View.VISIBLE : View.GONE);
+        actionsBox.setVisibility(active ? View.VISIBLE : View.GONE);
+        switchBox.setVisibility(standalone && !showEnroll ? View.VISIBLE : View.GONE);
+        installHint.setText(standalone
+                ? "Enter the master code, then pick the APK file from this phone."
+                : "Ask the administrator for a one-time install code (or use the master code), then pick the APK file from this phone.");
+        removeHint.setText(standalone
+                ? "Enter the master code. This ends all management of the phone."
+                : "Ask the administrator for a one-time removal code (or use the master code). This ends all management of the phone.");
         updateText.setText("This agent is build " + Updater.currentBuild(this) + ".");
         boolean canPick = System.currentTimeMillis() < Agent.prefs(this).getLong("installUntil", 0);
         pickButton.setVisibility(canPick ? View.VISIBLE : View.GONE);
+    }
+
+    // ---------- offline mode setup ----------
+    private void startStandaloneSetup() {
+        if (!Agent.isOwner(this)) {
+            toast("First make this app the device owner (step 1).");
+            return;
+        }
+        final EditText one = Ui.field(this, "Master code (6 or more characters)");
+        final EditText two = Ui.field(this, "Repeat it");
+        one.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        two.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
+        Ui.add(box, one, 8);
+        Ui.add(box, two, 8);
+        new AlertDialog.Builder(this)
+                .setTitle("Choose a master code")
+                .setMessage("This code opens every setting and every code prompt on this phone, even with no internet. "
+                        + "There is no dashboard to reset it, so write it down. If you lose it while reset protection is on, wiping the phone will not get you out either.")
+                .setView(box)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    final String a = one.getText().toString();
+                    if (a.length() < 6 || !a.equals(two.getText().toString())) {
+                        toast("Use at least 6 characters, typed the same twice.");
+                        return;
+                    }
+                    new Thread(() -> {
+                        String error = null;
+                        try {
+                            Master.setLocal(this, a);
+                            LocalConfig.save(this, LocalConfig.load(this));
+                            Agent.prefs(this).edit().putBoolean("standalone", true).apply();
+                            Agent.startServiceIfEnrolled(this);
+                        } catch (Exception e) {
+                            error = e.getMessage();
+                        }
+                        final String err = error;
+                        runOnUiThread(() -> {
+                            refresh();
+                            if (err != null) toast("Could not set up: " + err);
+                            else askFrp();
+                        });
+                    }).start();
+                })
+                .show();
+    }
+
+    /** Step 3 of offline setup: the Google account that may set the phone up again after a reset. */
+    private void askFrp() {
+        final EditText id = Ui.field(this, "Google account ID (about 21 digits)");
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
+        Ui.add(box, id, 8);
+        new AlertDialog.Builder(this)
+                .setTitle("Factory Reset Protection")
+                .setMessage("After a factory reset from recovery mode, setup will demand this Google account, so the phone is useless to anyone else. "
+                        + "No account has to be signed in on the phone (Android 11 or newer; keep the bootloader locked).\n\n"
+                        + "To get the ID: open the Google People API page, tap \"Try it\", set resourceName to people/me and personFields to metadata, "
+                        + "tap Execute, sign in with the account YOU control, and copy the long number next to \"id\".\n\n"
+                        + "You can also do this later in Phone settings.")
+                .setView(box)
+                .setNegativeButton("Skip for now", (d, w) -> openLocalSettings())
+                .setNeutralButton("Open People API page", (d, w) -> {
+                    reshowFrp = true;
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://developers.google.com/people/api/rest/v1/people/get")));
+                    } catch (Exception e) {
+                        reshowFrp = false;
+                        toast("No browser available. Open developers.google.com/people/api/rest/v1/people/get on another device.");
+                        askFrp();
+                    }
+                })
+                .setPositiveButton("Save", (d, w) -> {
+                    String text = id.getText().toString().trim();
+                    org.json.JSONArray entered = new org.json.JSONArray();
+                    for (String part : text.split("[ ,\\n]+")) if (!part.isEmpty()) entered.put(part);
+                    java.util.List<String> clean = LocalPolicy.normalizeAccounts(entered);
+                    if (entered.length() > 0 && clean.size() != entered.length()) {
+                        toast("That is not a Google account ID. It is a number of about 21 digits, not an email address.");
+                        askFrp();
+                        return;
+                    }
+                    try {
+                        JSONObject cfg = LocalConfig.load(this);
+                        cfg.put("frpAccounts", new org.json.JSONArray(clean));
+                        LocalConfig.save(this, cfg);
+                    } catch (Exception ignored) {
+                    }
+                    new Thread(() -> {
+                        try {
+                            LocalConfig.refresh(this);
+                        } catch (Exception ignored) {
+                        }
+                    }).start();
+                    openLocalSettings();
+                })
+                .show();
+    }
+
+    private void openLocalSettings() {
+        Agent.prefs(this).edit().putLong("adminUntil", System.currentTimeMillis() + 10 * 60 * 1000).apply();
+        startActivity(new Intent(this, LocalSettingsActivity.class));
     }
 
     private void checkUpdate(final boolean install) {
@@ -194,7 +356,9 @@ public class MainActivity extends Activity {
                 Agent.prefs(this).edit()
                         .putString("server", server)
                         .putString("token", reply.getString("token"))
+                        .putBoolean("standalone", false)
                         .apply();
+                showEnroll = false;
                 Agent.startServiceIfEnrolled(this);
             } catch (Exception e) {
                 error = e.getMessage();
@@ -248,7 +412,8 @@ public class MainActivity extends Activity {
     private void redeem(final String type, final String code) {
         final String server = Agent.prefs(this).getString("server", null);
         final String token = Agent.prefs(this).getString("token", null);
-        if (server == null || token == null || code.isEmpty()) return;
+        final boolean standalone = Agent.standalone(this);
+        if (code.isEmpty() || (!standalone && (server == null || token == null))) return;
         new Thread(() -> {
             android.content.SharedPreferences p = Agent.prefs(this);
             long now = System.currentTimeMillis();
@@ -260,6 +425,8 @@ public class MainActivity extends Activity {
                 // The master code works in place of any one-time code, with no internet needed.
                 Agent.addEvent(this, "local", "Master code used instead of a one-time " + type + " code");
                 p.edit().putInt("redeemFails", 0).apply();
+            } else if (standalone) {
+                error = failedTry(p, now, "Wrong master code.");
             } else {
                 try {
                     JSONObject body = new JSONObject();
@@ -269,15 +436,7 @@ public class MainActivity extends Activity {
                     p.edit().putInt("redeemFails", 0).apply();
                 } catch (Exception e) {
                     if (e instanceof Api.HttpException && ((Api.HttpException) e).code == 403) {
-                        int fails = p.getInt("redeemFails", 0) + 1;
-                        if (fails >= 5) {
-                            p.edit().putInt("redeemFails", 0).putLong("redeemLockUntil", now + 5 * 60 * 1000).apply();
-                            Agent.addEvent(this, "security", "Code entry locked for 5 minutes after 5 wrong tries");
-                            error = "Too many wrong tries. Locked for 5 minutes.";
-                        } else {
-                            p.edit().putInt("redeemFails", fails).apply();
-                            error = "That code is wrong, already used, or expired.";
-                        }
+                        error = failedTry(p, now, "That code is wrong, already used, or expired.");
                     } else {
                         error = "Could not check the code: " + e.getMessage();
                     }
@@ -296,6 +455,18 @@ public class MainActivity extends Activity {
                 }
             });
         }).start();
+    }
+
+    /** Counts a wrong code; five wrong tries lock code entry for five minutes. */
+    private String failedTry(android.content.SharedPreferences p, long now, String message) {
+        int fails = p.getInt("redeemFails", 0) + 1;
+        if (fails >= 5) {
+            p.edit().putInt("redeemFails", 0).putLong("redeemLockUntil", now + 5 * 60 * 1000).apply();
+            Agent.addEvent(this, "security", "Code entry locked for 5 minutes after 5 wrong tries");
+            return "Too many wrong tries. Locked for 5 minutes.";
+        }
+        p.edit().putInt("redeemFails", fails).apply();
+        return message;
     }
 
     private void pickApk() {

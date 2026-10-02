@@ -48,6 +48,17 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 - **Custom icons** (Apps tab → Icon…) show on this home screen.
 - It is off by default. Test it on a spare phone first.
 
+## Offline mode: no dashboard at all
+You can run a phone entirely on its own. After the adb `set-device-owner` command, open the agent app: it shows the command (step 1) and then asks **how you want to use the phone**.
+- **Use it on its own (offline)** walks you through: choose a **master code** (6+ characters; write it down, there is no way to reset it), then the **Factory Reset Protection** ID (optional here, you can add it later), then opens **Phone settings**.
+- **Phone settings** (also under *Administrator → Phone settings*, behind the master code) has everything the dashboard's Settings and Apps tabs have: Home screen mode, hold new apps for approval, hide unlisted apps, every restriction switch, Factory Reset Protection, a waiting-for-approval list, and for each app Default / Allow / Block plus a **schedule** (days and a from/to time).
+- The Administrator panel still has lock (timed, with a message), PIN, Wi-Fi, install an APK, update, release and erase. Install and removal ask for the master code (there are no one-time codes without a dashboard).
+- The agent works everything out on the phone every minute and applies it, so nothing needs a connection. Update checks go straight to GitHub.
+- Not available offline: the dashboard views (phone log, battery and Wi-Fi name), custom app icons and the logo, remote commands, and resetting a forgotten master code.
+- You can connect to a dashboard later from the main screen (**Connect to a dashboard**). The dashboard's settings then take over.
+- **Careful:** with Factory Reset Protection on and a forgotten master code, wiping the phone from recovery won't help you either. Keep the code and the Google account safe.
+- Debugging protection is **off** in offline mode until you switch on *Block Developer options and USB debugging* in Phone settings. Do that last: adb stops working after.
+
 ## When the phone is offline
 The phone keeps enforcing everything it last received with no internet: restrictions, allowed apps and the home screen, schedules, the timed lock, and the master-code admin panel. Only new commands from the dashboard wait for a connection.
 

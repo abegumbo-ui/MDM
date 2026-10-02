@@ -112,7 +112,7 @@ public class AgentService extends Service {
         while (running) {
             long sleepSeconds = 60;
             try {
-                sleepSeconds = syncOnce();
+                sleepSeconds = Agent.standalone(this) ? standaloneOnce() : syncOnce();
                 if (ranCommands) sleepSeconds = 3; // report what a command did right away
             } catch (Api.HttpException e) {
                 Log.w(TAG, "sync failed: " + e.getMessage());
@@ -183,6 +183,13 @@ public class AgentService extends Service {
             o.put("lock", lock);
         }
         return o;
+    }
+
+    /** Offline mode: no server. Work out the policy from the phone's own settings and apply it. */
+    private long standaloneOnce() throws Exception {
+        LocalConfig.refresh(this);
+        Agent.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
+        return 60;
     }
 
     /** One check-in. Returns how many seconds to wait before the next one. */
