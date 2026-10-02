@@ -125,6 +125,9 @@ final class PolicyApplier {
 
         Set<String> hideSet = new LinkedHashSet<>(strings(policy.optJSONArray("hide")));
         Set<String> showSet = new LinkedHashSet<>(strings(policy.optJSONArray("show")));
+        // Home-screen mode: only these apps may be opened (blocked apps are not switched off, just unreachable).
+        boolean kiosk = policy.optBoolean("homeScreen", false) && !Kiosk.paused(c);
+        Set<String> allowedSet = new LinkedHashSet<>(strings(policy.optJSONArray("allowed")));
 
         // Changes made on the phone with the master code win over the dashboard.
         JSONObject overrides = Agent.getOverrides(c);
@@ -134,9 +137,11 @@ final class PolicyApplier {
             if ("block".equals(overrides.optString(pkg))) {
                 hideSet.add(pkg);
                 showSet.remove(pkg);
+                allowedSet.remove(pkg);
             } else if ("allow".equals(overrides.optString(pkg))) {
                 hideSet.remove(pkg);
                 showSet.add(pkg);
+                allowedSet.add(pkg);
             }
         }
 
@@ -149,8 +154,15 @@ final class PolicyApplier {
                 if (!"block".equals(overrides.optString(pkg)) && !withinSchedule(schedules.optJSONObject(pkg))) {
                     hideSet.add(pkg);
                     showSet.remove(pkg);
+                    allowedSet.remove(pkg);
                 }
             }
+        }
+
+        if (kiosk) {
+            // Nothing is switched off in home-screen mode: bring back anything hidden earlier.
+            showSet.addAll(hiddenByUs);
+            hideSet.clear();
         }
 
         for (String pkg : hideSet) {
@@ -186,6 +198,7 @@ final class PolicyApplier {
             }
         }
         Agent.putSet(c, "hidden", hiddenByUs);
+        Kiosk.apply(c, policy, allowedSet);
 
         Set<String> wanted = new HashSet<>();
         for (String r : strings(policy.optJSONArray("restrictions"))) {
@@ -281,6 +294,7 @@ final class PolicyApplier {
             if (stored == null) return false;
             JSONObject policy = new JSONObject(stored);
             if (!policy.optBoolean("approveNew")) return false;
+            if (policy.optBoolean("homeScreen", false) && !Kiosk.paused(c)) return false; // new apps are simply not allowed on the home screen
             if (strings(policy.optJSONArray("known")).contains(pkg)) return false;
             if (strings(policy.optJSONArray("show")).contains(pkg)) return false;
             if ("allow".equals(Agent.getOverrides(c).optString(pkg))) return false;
@@ -416,6 +430,7 @@ final class PolicyApplier {
         DevicePolicyManager dpm = Agent.dpm(c);
         ComponentName admin = Agent.admin(c);
         if (dpm.isDeviceOwnerApp(c.getPackageName())) {
+            Kiosk.clear(c);
             for (String pkg : Agent.getSet(c, "hidden")) {
                 try {
                     dpm.setApplicationHidden(admin, pkg, false);

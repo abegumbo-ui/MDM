@@ -36,6 +36,14 @@ final class Agent {
         return (DevicePolicyManager) c.getSystemService(Context.DEVICE_POLICY_SERVICE);
     }
 
+    /** A custom icon downloaded from the dashboard for the home screen. */
+    static File iconFile(Context c, String pkg) {
+        File dir = new File(c.getFilesDir(), "icons");
+        //noinspection ResultOfMethodCallIgnored
+        dir.mkdirs();
+        return new File(dir, pkg + ".png");
+    }
+
     static File logoFile(Context c) {
         return new File(c.getFilesDir(), "logo.png");
     }

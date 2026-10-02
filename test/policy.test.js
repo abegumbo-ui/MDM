@@ -71,3 +71,14 @@ test("approval mode sends the approved baseline to the phone", () => {
   assert.deepEqual(p.pending, ["c.d"]);
   assert.equal(buildAgentPolicy({}, ["a.b"], { known: ["a.b"] }).known, undefined);
 });
+
+test("home-screen mode: the phone gets the apps that may be opened", () => {
+  const p = buildAgentPolicy(
+    { homeScreen: true, apps: { "a.b": { mode: "allow" }, "c.d": { mode: "block" } } },
+    ["a.b", "c.d", "e.f"],
+    { overrides: { "e.f": "allow" } },
+  );
+  assert.equal(p.homeScreen, true);
+  assert.deepEqual(p.allowed.sort(), ["a.b", "e.f"]);
+  assert.equal(buildAgentPolicy({}, ["a.b"]).homeScreen, false);
+});

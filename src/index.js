@@ -116,6 +116,14 @@ async function latestAgent(env) {
   }
 }
 
+// {package: revision} of the custom icons, so phones in home-screen mode know which to download.
+async function setIconRev(env, pkg, rev) {
+  const index = (await env.STATE.get("iconIndex", "json")) || {};
+  if (rev === null) delete index[pkg];
+  else index[pkg] = rev;
+  await env.STATE.put("iconIndex", JSON.stringify(index));
+}
+
 /** Finds the device a bearer token belongs to, or null. */
 async function authDevice(request, env) {
   const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
@@ -151,11 +159,13 @@ async function adminApi(request, env, url) {
   if (iconPut && (method === "PUT" || method === "DELETE")) {
     if (method === "DELETE") {
       await env.STATE.delete(`iconc:${iconPut[1]}`);
+      await setIconRev(env, iconPut[1], null);
       return json({ ok: true });
     }
     const buf = await request.arrayBuffer();
     if (buf.byteLength < 50 || buf.byteLength > MAX_IMAGE_BYTES || !isPng(buf)) return json({ error: "Use a PNG image under 200 KB" }, 400);
     await env.STATE.put(`iconc:${iconPut[1]}`, toBase64(buf));
+    await setIconRev(env, iconPut[1], Date.now());
     return json({ ok: true });
   }
   if (path === "/api/logo") {
@@ -300,6 +310,12 @@ async function agentApi(request, env, url) {
     if (!buf) return json({ error: "Not found" }, 404);
     return new Response(buf, { headers: { "content-type": "application/vnd.android.package-archive" } });
   }
+  const agentIcon = /^\/agent\/icon\/([A-Za-z0-9_.]{1,200})$/.exec(url.pathname);
+  if (agentIcon && request.method === "GET") {
+    if (!(await authDevice(request, env))) return json({ error: "Unauthorized" }, 401);
+    const b64 = await env.STATE.get(`iconc:${agentIcon[1]}`);
+    return b64 ? imageResponse(b64) : new Response(null, { status: 404 });
+  }
   if (url.pathname === "/agent/logo" && request.method === "GET") {
     if (!(await authDevice(request, env))) return json({ error: "Unauthorized" }, 401);
     const b64 = await env.STATE.get("logo");
@@ -429,6 +445,7 @@ async function agentApi(request, env, url) {
     if (dirty) await putJSON(env, key, d);
 
     const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
+    if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
     const master = await getJSON(env, "master", null);
     const logoRev = Number(await env.STATE.get("logoRev")) || 0;
     return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, master, logoRev });

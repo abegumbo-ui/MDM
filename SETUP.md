@@ -40,6 +40,24 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 ## Real lock
 **Lock** only turns the screen off if the phone has no screen lock. Use **Set PIN** on the Devices tab (or in the admin panel) first. If the phone already has a lock, open the admin panel once and tap **Activate PIN control**.
 
+## Home screen mode (opt-in)
+**Settings → Home screen mode.** The agent becomes the phone's home screen. It shows only the apps you set to **Allow**, with your logo and custom icons. Apps you didn't allow are **not switched off**: they keep working in the background (Maps keeps using Google Play services) but cannot be opened, because Android's lock-task mode is limited to the allowed apps. Calls and texts keep working; the phone, messages, file picker, permission prompts and Google dialogs are always permitted.
+- **Allow the apps people need first** (phone, messages, maps…). Only allowed apps appear.
+- **Settings is not available** unless you Allow it. Add Wi-Fi from the dashboard.
+- **Escape hatches:** switch it off in the dashboard; or on the phone tap **Administrator → Administrator (master code) → Pause home screen mode**; **Release device** also removes it.
+- **Custom icons** (Apps tab → Icon…) show on this home screen.
+- It is off by default. Test it on a spare phone first.
+
+## When the phone is offline
+The phone keeps enforcing everything it last received with no internet: restrictions, allowed apps and the home screen, schedules, the timed lock, and the master-code admin panel. Only new commands from the dashboard wait for a connection.
+
+## If someone factory-resets from recovery mode
+Android can't block that in software. After a recovery-mode reset the agent and the device-owner status are gone, and the phone has to be set up again with the adb steps. The real protection is **Factory Reset Protection (FRP)**: after a reset from recovery, setup demands the Google account that was on the phone.
+1. In the dashboard Settings, switch off **Block adding accounts** for a minute.
+2. Sign in on the phone (Settings → Accounts) with a Google account you control. Use a dedicated Gmail: that account's data syncs onto the phone.
+3. Switch **Block adding accounts** back on.
+Caveats: FRP is only as strong as the bootloader. With an **unlocked bootloader** the flag can be erased from a computer, so re-lock it when you finish testing (re-locking wipes the phone). Test FRP on a spare phone before relying on it.
+
 ## The agent is exempt from the install restrictions
 Because the agent is the device owner, its own installs, updates and uninstalls work even when **Block ALL app installs**, **Block installing from unknown sources** or **Block uninstalling apps** are on. For those moments (two minutes at most, or until the result arrives) the agent pauses those restrictions, then puts them back. This covers **Update agent**, **Upload APK**, **Install from link**, the in-app install, and the **Uninstall** button.
 
