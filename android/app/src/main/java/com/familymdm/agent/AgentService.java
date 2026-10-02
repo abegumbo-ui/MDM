@@ -208,6 +208,8 @@ public class AgentService extends Service {
         body.put("results", results);
         JSONArray events = Agent.peekEvents(this);
         body.put("events", events);
+        JSONArray siteRequests = Agent.peekSiteRequests(this);
+        body.put("siteRequests", siteRequests);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
         List<String> iconsSent = new ArrayList<>();
@@ -217,6 +219,7 @@ public class AgentService extends Service {
         JSONObject reply = Api.post(server + "/agent/sync", body, token);
         Agent.dropResults(this, results.length());
         Agent.dropEvents(this, events.length());
+        Agent.dropSiteRequests(this, siteRequests.length());
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
         Master.store(this, reply.optJSONObject("master"));
         if (!iconsSent.isEmpty()) {

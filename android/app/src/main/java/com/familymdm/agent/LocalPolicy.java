@@ -1,5 +1,7 @@
 package com.familymdm.agent;
 
+import com.familymdm.agent.sitepolicy.SitePolicy;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -40,7 +42,7 @@ final class LocalPolicy {
             "com.android.server.telecom", "com.android.packageinstaller", "com.google.android.packageinstaller",
             "com.google.android.permissioncontroller", "com.android.permissioncontroller", "com.google.android.gms",
             "com.google.android.gsf", "com.google.android.webview", "com.android.webview",
-            "com.android.documentsui", "com.google.android.documentsui", "com.familymdm.agent"));
+            "com.android.documentsui", "com.google.android.documentsui", "com.familymdm.agent", "com.familymdm.browser"));
 
     private static final Pattern[] PROTECTED_PATTERNS = {
             Pattern.compile("^com\\.android\\.providers\\."),
@@ -122,6 +124,34 @@ final class LocalPolicy {
         out.put("blockUnlisted", c.optBoolean("blockUnlisted", false));
         out.put("approveNew", c.optBoolean("approveNew", false));
         out.put("homeScreen", c.optBoolean("homeScreen", false));
+        out.put("restrictBrowsing", c.optBoolean("restrictBrowsing", false));
+        // Kept keyed by entry (like apps), the same shape the dashboard uses, so a phone connected to
+        // a dashboard later reads/writes the same structure. build() flattens this into a plain list.
+        JSONObject sitesIn = c.optJSONObject("sites");
+        JSONObject sitesOut = new JSONObject();
+        if (sitesIn != null) {
+            Iterator<String> sit = sitesIn.keys();
+            while (sit.hasNext()) {
+                String key = sit.next();
+                JSONObject raw = sitesIn.optJSONObject(key);
+                if (raw == null) continue;
+                String type = raw.optString("type", "");
+                String url = raw.optString("url", "").trim();
+                if (!type.equals("domain") && !type.equals("exact")) continue;
+                if (url.isEmpty()) continue;
+                String host = SitePolicy.hostOf(url);
+                if (host == null) continue;
+                JSONObject entry = new JSONObject();
+                entry.put("type", type);
+                entry.put("url", url.contains("://") ? url : "https://" + url);
+                entry.put("host", host);
+                entry.put("label", raw.optString("label", host));
+                entry.put("blockImages", raw.optBoolean("blockImages", false));
+                entry.put("installable", raw.optBoolean("installable", true));
+                sitesOut.put(key, entry);
+            }
+        }
+        out.put("sites", sitesOut);
         out.put("frpAccounts", new JSONArray(normalizeAccounts(c.optJSONArray("frpAccounts"))));
 
         JSONObject restrictions = new JSONObject();
@@ -201,6 +231,14 @@ final class LocalPolicy {
         out.put("reportWifi", false); // needs Location turned on; leave that switch to the dashboard mode
         out.put("autoUpdate", false);
         out.put("homeScreen", cfg.getBoolean("homeScreen"));
+        out.put("restrictBrowsing", cfg.getBoolean("restrictBrowsing"));
+        JSONObject sitesObj = cfg.optJSONObject("sites");
+        JSONArray sitesArr = new JSONArray();
+        if (sitesObj != null) {
+            Iterator<String> sk = sitesObj.keys();
+            while (sk.hasNext()) sitesArr.put(sitesObj.getJSONObject(sk.next()));
+        }
+        out.put("sites", sitesArr);
         out.put("frpAccounts", cfg.getJSONArray("frpAccounts"));
         if (approveNew && known != null) out.put("known", new JSONArray(known));
         return out;

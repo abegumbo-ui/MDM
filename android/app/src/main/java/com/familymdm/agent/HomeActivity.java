@@ -136,11 +136,18 @@ public class HomeActivity extends Activity {
         // Honour schedules that closed since the last policy pass.
         List<String[]> shown = new ArrayList<>();
         org.json.JSONObject schedules = null;
+        boolean showBrowser = false;
         try {
             String stored = Agent.prefs(this).getString("policy", null);
-            if (stored != null) schedules = new org.json.JSONObject(stored).optJSONObject("schedules");
+            if (stored != null) {
+                org.json.JSONObject policy = new org.json.JSONObject(stored);
+                schedules = policy.optJSONObject("schedules");
+                org.json.JSONArray sites = policy.optJSONArray("sites");
+                showBrowser = policy.optBoolean("restrictBrowsing", false) || (sites != null && sites.length() > 0);
+            }
         } catch (Exception ignored) {
         }
+        if (showBrowser) grid.addView(browserTile((getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3));
         for (String[] a : apps) {
             if (schedules == null || PolicyApplier.withinSchedule(schedules.optJSONObject(a[1]))) shown.add(a);
         }
@@ -184,6 +191,33 @@ public class HomeActivity extends Activity {
             } catch (Exception e) {
                 Toast.makeText(this, "That app can't be opened right now.", Toast.LENGTH_SHORT).show();
             }
+        });
+        return t;
+    }
+
+    /** A tile for the separate Browser app, since home-screen mode only lists apps the admin explicitly allowed. */
+    private LinearLayout browserTile(int width) {
+        LinearLayout t = new LinearLayout(this);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        t.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10));
+        GridLayout.LayoutParams glp = new GridLayout.LayoutParams();
+        glp.width = width;
+        t.setLayoutParams(glp);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(android.R.drawable.ic_menu_compass);
+        t.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
+
+        TextView name = Ui.body(this, "Browser", false);
+        name.setTextSize(12);
+        name.setGravity(Gravity.CENTER);
+        t.addView(name);
+
+        t.setOnClickListener(v -> {
+            Intent launch = getPackageManager().getLaunchIntentForPackage("com.familymdm.browser");
+            if (launch != null) startActivity(launch);
+            else Toast.makeText(this, "The Browser app isn't installed on this phone yet.", Toast.LENGTH_SHORT).show();
         });
         return t;
     }

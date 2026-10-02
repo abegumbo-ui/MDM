@@ -145,6 +145,42 @@ final class Agent {
         }
     }
 
+    // ---------- browser: pages requested that weren't on the allowlist, reported on the next sync ----------
+
+    static synchronized void addSiteRequest(Context c, String url) {
+        try {
+            JSONArray arr = new JSONArray(prefs(c).getString("siteRequests", "[]"));
+            for (int i = 0; i < arr.length(); i++) {
+                if (url.equals(arr.getJSONObject(i).optString("url"))) return; // already queued
+            }
+            JSONObject r = new JSONObject();
+            r.put("url", url);
+            arr.put(r);
+            JSONArray keep = new JSONArray();
+            for (int i = Math.max(0, arr.length() - 30); i < arr.length(); i++) keep.put(arr.get(i));
+            prefs(c).edit().putString("siteRequests", keep.toString()).apply();
+        } catch (JSONException ignored) {
+        }
+    }
+
+    static synchronized JSONArray peekSiteRequests(Context c) {
+        try {
+            return new JSONArray(prefs(c).getString("siteRequests", "[]"));
+        } catch (JSONException e) {
+            return new JSONArray();
+        }
+    }
+
+    static synchronized void dropSiteRequests(Context c, int count) {
+        try {
+            JSONArray arr = new JSONArray(prefs(c).getString("siteRequests", "[]"));
+            JSONArray rest = new JSONArray();
+            for (int i = count; i < arr.length(); i++) rest.put(arr.get(i));
+            prefs(c).edit().putString("siteRequests", rest.toString()).apply();
+        } catch (JSONException ignored) {
+        }
+    }
+
     // ---------- overrides made on the phone with the master code ----------
 
     static synchronized JSONObject getOverrides(Context c) {

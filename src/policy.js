@@ -21,6 +21,7 @@ export const PROTECTED_EXACT = new Set([
   "com.android.documentsui",
   "com.google.android.documentsui",
   "com.familymdm.agent",
+  "com.familymdm.browser",
 ]);
 const PROTECTED_PATTERNS = [
   /^com\.android\.providers\./,
@@ -57,6 +58,69 @@ export const DEFAULT_RESTRICTIONS = Object.fromEntries(Object.entries(RESTRICTIO
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+// ---- browser allowlist ----
+
+function hostOf(u) {
+  try {
+    return new URL(u.includes("://") ? u : "https://" + u).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+function pathKeyOf(u) {
+  try {
+    const url = new URL(u.includes("://") ? u : "https://" + u);
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return url.hostname.toLowerCase().replace(/^www\./, "") + path;
+  } catch {
+    return null;
+  }
+}
+
+/** One allowlist entry: a whole domain (with subpages/subdomains) or one exact page. */
+export function normalizeSite(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const type = raw.type === "exact" ? "exact" : raw.type === "domain" ? "domain" : null;
+  const url = String(raw.url || "").trim();
+  if (!type || !url) return null;
+  const host = hostOf(url);
+  if (!host) return null;
+  return {
+    type,
+    url: url.includes("://") ? url : "https://" + url,
+    host,
+    label: String(raw.label || host).slice(0, 80),
+    blockImages: raw.blockImages === true,
+    installable: raw.installable !== false,
+  };
+}
+
+/** {key: site} -> sorted array of valid, de-duplicated entries, for sending to the phone. */
+export function normalizeSites(raw) {
+  const out = [];
+  const seen = new Set();
+  for (const v of Object.values(raw && typeof raw === "object" ? raw : {})) {
+    const s = normalizeSite(v);
+    if (!s) continue;
+    const key = s.type + ":" + (s.type === "domain" ? s.host : pathKeyOf(s.url));
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
+/** True if `url` is covered by one of the allowed sites (domain+subdomains, or the exact page). */
+export function siteAllowed(url, sites) {
+  const host = hostOf(url);
+  const path = pathKeyOf(url);
+  if (!host) return false;
+  return sites.some(
+    (s) => (s.type === "domain" && (host === s.host || host.endsWith("." + s.host))) || (s.type === "exact" && path === pathKeyOf(s.url)),
+  );
+}
+
 /** A schedule is {days:[0-6, Sunday=0], from:"HH:MM", to:"HH:MM"}, or null if invalid. */
 export function normalizeSchedule(s) {
   if (!s || typeof s !== "object" || !Array.isArray(s.days)) return null;
@@ -87,12 +151,22 @@ export function normalizeConfig(input) {
       apps[pkg] = entry;
     }
   }
+  // Kept keyed (like apps), so the dashboard can edit and label entries; normalizeSites()
+  // flattens this into what's actually sent to the phone.
+  const sites = {};
+  for (const [key, raw] of Object.entries(c.sites && typeof c.sites === "object" ? c.sites : {})) {
+    const s = normalizeSite(raw);
+    if (s) sites[key] = s;
+  }
   return { apps, // Off by default so a fresh device keeps working until you have chosen what to allow.
     blockUnlisted: c.blockUnlisted === true,
     // Newly installed apps stay hidden until you approve them.
     approveNew: c.approveNew === true,
     // Android only shows the Wi-Fi name when Location is on; this lets the agent turn it on (no location is collected).
-    reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, homeScreen: c.homeScreen === true, frpAccounts, restrictions };
+    reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, homeScreen: c.homeScreen === true,
+    // Makes the agent's own browser the phone's only handler for web links (so Chrome etc. stop opening them).
+    restrictBrowsing: c.restrictBrowsing === true, frpAccounts,
+    sites, restrictions };
 }
 
 /** Overrides made on the phone itself ({pkg: "allow"|"block"}), sanitized. */
@@ -142,7 +216,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // With approval mode on, the phone also gets the approved baseline so it can hold a new app
   // right away, even when it has no connection to the dashboard.
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened (blocked apps keep running).
-  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, frpAccounts: cfg.frpAccounts };
+  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }

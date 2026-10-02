@@ -29,7 +29,7 @@ final class Kiosk {
             "android", "com.android.systemui",
             "com.android.documentsui", "com.google.android.documentsui",
             "com.google.android.permissioncontroller", "com.android.permissioncontroller",
-            "com.google.android.gms"
+            "com.google.android.gms", "com.familymdm.browser"
     };
 
     private Kiosk() {}
@@ -85,13 +85,6 @@ final class Kiosk {
                         | DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
                         | DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS);
             }
-            if (!Agent.prefs(c).getBoolean("kioskPreferred", false)) {
-                IntentFilter home = new IntentFilter(Intent.ACTION_MAIN);
-                home.addCategory(Intent.CATEGORY_HOME);
-                home.addCategory(Intent.CATEGORY_DEFAULT);
-                dpm.addPersistentPreferredActivity(admin, home, new ComponentName(c, HomeActivity.class));
-                Agent.prefs(c).edit().putBoolean("kioskPreferred", true).apply();
-            }
             if (first) {
                 Agent.addEvent(c, "restriction", "Home screen mode is on: only allowed apps can be opened");
                 startHome(c);
@@ -106,25 +99,60 @@ final class Kiosk {
         }
     }
 
-    /** Back to the normal home screen and normal app access. */
+    /** Back to the normal home screen and normal app access (the browser default, if any, is untouched). */
     static void clear(Context c) {
-        boolean was = Agent.prefs(c).getBoolean("kioskOn", false) || Agent.prefs(c).getBoolean("kioskPreferred", false);
+        boolean was = Agent.prefs(c).getBoolean("kioskOn", false);
         if (!was) return;
         DevicePolicyManager dpm = Agent.dpm(c);
         ComponentName admin = Agent.admin(c);
-        try {
-            dpm.clearPackagePersistentPreferredActivities(admin, c.getPackageName());
-        } catch (Exception e) {
-            Log.w(TAG, "clear preferred home failed: " + e);
-        }
         try {
             if (!Actions.timedLockActive(c)) dpm.setLockTaskPackages(admin, new String[0]);
             if (Build.VERSION.SDK_INT >= 28) dpm.setLockTaskFeatures(admin, 0);
         } catch (Exception e) {
             Log.w(TAG, "clear lock task failed: " + e);
         }
-        Agent.prefs(c).edit().putBoolean("kioskOn", false).putBoolean("kioskPreferred", false).remove("kioskAllowed").apply();
+        Agent.prefs(c).edit().putBoolean("kioskOn", false).remove("kioskAllowed").apply();
         Agent.addEvent(c, "restriction", "Home screen mode is off");
+    }
+
+    /**
+     * The only place that touches Android's persistent-preferred-activity list, since setting one
+     * requires clearing ALL of them for the package first — so home and browser defaults must be
+     * kept in sync together, not registered/cleared independently.
+     */
+    static void syncPreferredActivities(Context c, boolean wantHome, boolean wantBrowser) {
+        boolean hadHome = Agent.prefs(c).getBoolean("prefHome", false);
+        boolean hadBrowser = Agent.prefs(c).getBoolean("prefBrowser", false);
+        if (hadHome == wantHome && hadBrowser == wantBrowser) return;
+        DevicePolicyManager dpm = Agent.dpm(c);
+        ComponentName admin = Agent.admin(c);
+        try {
+            if ((hadHome && !wantHome) || (hadBrowser && !wantBrowser)) {
+                dpm.clearPackagePersistentPreferredActivities(admin, c.getPackageName());
+                hadHome = false;
+                hadBrowser = false;
+            }
+            if (wantHome && !hadHome) {
+                IntentFilter home = new IntentFilter(Intent.ACTION_MAIN);
+                home.addCategory(Intent.CATEGORY_HOME);
+                home.addCategory(Intent.CATEGORY_DEFAULT);
+                dpm.addPersistentPreferredActivity(admin, home, new ComponentName(c, HomeActivity.class));
+            }
+            if (wantBrowser && !hadBrowser) {
+                IntentFilter browse = new IntentFilter(Intent.ACTION_VIEW);
+                browse.addCategory(Intent.CATEGORY_DEFAULT);
+                browse.addCategory(Intent.CATEGORY_BROWSABLE);
+                browse.addDataScheme("http");
+                browse.addDataScheme("https");
+                dpm.addPersistentPreferredActivity(admin, browse,
+                        new ComponentName("com.familymdm.browser", "com.familymdm.browser.BrowserActivity"));
+                Agent.addEvent(c, "restriction", "The Browser app is now the only browser for web links");
+            }
+            if (hadBrowser && !wantBrowser) Agent.addEvent(c, "restriction", "Other browsers can be used again");
+            Agent.prefs(c).edit().putBoolean("prefHome", wantHome).putBoolean("prefBrowser", wantBrowser).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "preferred activity sync failed: " + e);
+        }
     }
 
     static void startHome(Context c) {

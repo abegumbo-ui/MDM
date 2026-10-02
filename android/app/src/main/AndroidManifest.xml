@@ -14,6 +14,11 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
+    <!-- Lets the separate Browser app (signed with this same key) talk to this agent. -->
+    <permission
+        android:name="com.familymdm.agent.permission.BROWSER"
+        android:protectionLevel="signature" />
+
     <application
         android:allowBackup="false"
         android:label="MDM Agent"
@@ -80,6 +85,23 @@
         <receiver
             android:name=".InstallReceiver"
             android:exported="false" />
+
+        <!-- The separate Browser app reports a blocked page here. -->
+        <receiver
+            android:name=".SiteRequestReceiver"
+            android:exported="true"
+            android:permission="com.familymdm.agent.permission.BROWSER">
+            <intent-filter>
+                <action android:name="com.familymdm.agent.action.SITE_REQUEST" />
+            </intent-filter>
+        </receiver>
+
+        <!-- The separate Browser app's offline master-code "allow this page" calls come through here. -->
+        <provider
+            android:name=".BrowserBridgeProvider"
+            android:authorities="com.familymdm.agent.provider"
+            android:exported="true"
+            android:permission="com.familymdm.agent.permission.BROWSER" />
 
         <service
             android:name=".AgentService"

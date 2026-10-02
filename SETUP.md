@@ -8,7 +8,9 @@ Already deployed from this repo with Cloudflare's Git integration. You need:
 
 ## 2. Get the agent app
 Every push that touches `android/` is built by GitHub Actions. Download `mdm-agent.apk` from the
-repo's **Releases → Latest agent build** (or from the Actions run's artifacts).
+repo's **Releases → Latest agent build** (or from the Actions run's artifacts). The same release also
+has `mdm-browser.apk` — the separate **Browser** app (see "Browser allowlist" below) — install it the
+same way with `adb install mdm-browser.apk` if you want it; it's optional and can be added any time.
 
 ## 3. Put the agent on a phone (needs a computer with `adb`)
 1. Factory-reset the phone. Skip Google sign-in so it has **no accounts** (device owner can only be set on a phone without accounts).
@@ -47,6 +49,19 @@ If you forget it, set a new one in the dashboard; the phone picks it up at its n
 - **Escape hatches:** switch it off in the dashboard; or on the phone tap **Administrator → Administrator (master code) → Pause home screen mode**; **Release device** also removes it.
 - **Custom icons** (Apps tab → Icon…) show on this home screen.
 - It is off by default. Test it on a spare phone first.
+
+## Browser allowlist (opt-in)
+**Browser** is a separate app from the agent (package `com.familymdm.browser`) — install it on the phone the same way you installed the agent (sideload `mdm-browser.apk` from the same release the agent's APK comes from). It only opens pages you've allowed, and talks to the agent app only over a few narrow, locked-down channels (not shared code or storage), so it can be installed, removed, or reinstalled independently of the agent. **Sites tab** → add a site as either:
+- **Whole site**: the domain and its subpages and subdomains (e.g. `nytimes.com` covers `www.nytimes.com/anything` and `m.nytimes.com`).
+- **Exact page**: only that one link, ignoring its query string and a trailing slash.
+
+Anything not on the list shows **This page isn't allowed** with a **Request access** button; the request (with the device it came from) appears at the top of the Sites tab for you to approve as a whole site or an exact page, or dismiss. Per site, you can also set:
+- **Block images** — nothing loads any pictures on that site.
+- **Allow home-screen shortcut** — lets the person tap **Add to Home Screen** while on that page, so it behaves like an installed app.
+
+**Settings → Make Browser the only browser** replaces Chrome (and any other browser) as the handler for web links, so tapping a link anywhere opens the Browser app instead. You still need to **Block Chrome** itself on the Apps tab so it can't be opened directly; the switch only redirects links, it doesn't hide other browsers. Leave it off while you're still building the allowlist, so you can keep using a normal browser to test. Browser is always reachable (even in Home screen mode) whatever the Apps tab says about it, the same way the agent app always is.
+
+Browser is reachable from the agent's main screen (**Open Browser**, which just launches the separate app if it's installed) and, in Home screen mode, from a **Browser** tile. In **offline mode**, a blocked page offers **Allow with the master code** instead of a request, adding the page directly on the phone — the same master code that works everywhere else in the agent.
 
 ## Offline mode: no dashboard at all
 You can run a phone entirely on its own. After the adb `set-device-owner` command, open the agent app: it shows the command (step 1) and then asks **how you want to use the phone**.

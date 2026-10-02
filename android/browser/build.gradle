@@ -2,20 +2,19 @@ plugins {
     id 'com.android.application'
 }
 
-// Each GitHub build gets a higher version, so a newer build always counts as an update.
+// Same numbering scheme as the agent app, so "newer build" always means "install over the old one".
 def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
 
 android {
-    namespace 'com.familymdm.agent'
+    namespace 'com.familymdm.browser'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.familymdm.agent"
+        applicationId "com.familymdm.browser"
         minSdk 26
-        // Sideloaded device-owner app; targeting 30 keeps background/foreground-service rules simple.
         targetSdk 30
         versionCode buildNumber
-        versionName "0.3." + buildNumber
+        versionName "0.1." + buildNumber
     }
 
     compileOptions {
@@ -23,11 +22,12 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    // A fixed signing key (committed on purpose) so every build installs as an update over the last one.
-    // This key is only for sideloading onto your own phones; don't reuse it for anything public.
+    // The SAME key the agent app is signed with (not a copy of the file — this points at
+    // ../app/debug.keystore). Both apps must share a signer for the signature-level permission
+    // that lets them talk to each other to be granted automatically, with no prompt.
     signingConfigs {
         debug {
-            storeFile file('debug.keystore')
+            storeFile file('../app/debug.keystore')
             storePassword 'android'
             keyAlias 'androiddebugkey'
             keyPassword 'android'

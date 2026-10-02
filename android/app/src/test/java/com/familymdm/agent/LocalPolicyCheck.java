@@ -87,7 +87,20 @@ public class LocalPolicyCheck {
         // garbage in the settings is ignored
         JSONObject g = LocalPolicy.normalize(new JSONObject("{\"apps\":{\"a b\":{\"mode\":\"allow\"},\"ok.app\":{\"mode\":\"evil\"},\"fine.app\":{\"mode\":\"force\"}}}"));
         check(g.getJSONObject("apps").length() == 1 && g.getJSONObject("apps").has("fine.app"), "bad package names and modes are dropped");
-        check(LocalPolicy.isProtected("com.familymdm.agent") && LocalPolicy.isProtected("com.android.documentsui") && !LocalPolicy.isProtected("com.android.chrome"), "protected list matches the dashboard's");
+        check(LocalPolicy.isProtected("com.familymdm.agent") && LocalPolicy.isProtected("com.familymdm.browser") && LocalPolicy.isProtected("com.android.documentsui") && !LocalPolicy.isProtected("com.android.chrome"), "protected list matches the dashboard's");
+
+        // sites: kept keyed through normalize() (like apps), flattened to an array by build()
+        JSONObject withSite = new JSONObject();
+        JSONObject oneSite = new JSONObject();
+        oneSite.put("exact:https://news.example/a", new JSONObject("{\"type\":\"exact\",\"url\":\"https://news.example/a\"}"));
+        oneSite.put("bad", new JSONObject("{\"type\":\"nope\",\"url\":\"https://x\"}"));
+        withSite.put("sites", oneSite);
+        JSONObject normalized = LocalPolicy.normalize(withSite);
+        check(normalized.getJSONObject("sites").length() == 1 && normalized.getJSONObject("sites").has("exact:https://news.example/a"), "sites are kept keyed, invalid entries dropped");
+        JSONObject normalizedAgain = LocalPolicy.normalize(normalized);
+        check(normalizedAgain.getJSONObject("sites").length() == 1, "a saved site survives being normalized a second time");
+        JSONObject sitePolicy = LocalPolicy.build(normalized, arr(), null);
+        check(sitePolicy.getJSONArray("sites").length() == 1 && sitePolicy.getJSONArray("sites").getJSONObject(0).getString("host").equals("news.example"), "build() flattens sites into the array SitePolicy reads");
 
         System.out.println(failures == 0 ? "ALL PASSED" : failures + " FAILED");
         if (failures > 0) System.exit(1);

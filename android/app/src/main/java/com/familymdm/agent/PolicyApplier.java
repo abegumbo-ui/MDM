@@ -12,6 +12,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
 
@@ -201,6 +202,8 @@ final class PolicyApplier {
         }
         Agent.putSet(c, "hidden", hiddenByUs);
         Kiosk.apply(c, policy, allowedSet);
+        Kiosk.syncPreferredActivities(c, Kiosk.active(c), policy.optBoolean("restrictBrowsing", false));
+        pushBrowserConfig(c, dpm, admin, policy);
 
         Set<String> wanted = new HashSet<>();
         for (String r : strings(policy.optJSONArray("restrictions"))) {
@@ -441,6 +444,24 @@ final class PolicyApplier {
         }
     }
 
+    /**
+     * Pushes the site allowlist to the separate Browser app through Android's managed-configuration
+     * channel. Works whether or not that app is installed yet; it reads these when it starts.
+     */
+    private static void pushBrowserConfig(Context c, DevicePolicyManager dpm, ComponentName admin, JSONObject policy) {
+        try {
+            JSONArray sites = policy.optJSONArray("sites");
+            String json = sites == null ? "[]" : sites.toString();
+            if (json.equals(Agent.prefs(c).getString("browserSitesApplied", null))) return;
+            Bundle b = new Bundle();
+            b.putString("sites", json);
+            dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
+            Agent.prefs(c).edit().putString("browserSitesApplied", json).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "browser config push failed: " + e);
+        }
+    }
+
     /** Stops the agent itself from being uninstalled or force-stopped from Settings. */
     private static void protectSelf(Context c, DevicePolicyManager dpm, ComponentName admin) {
         try {
@@ -461,6 +482,7 @@ final class PolicyApplier {
         ComponentName admin = Agent.admin(c);
         if (dpm.isDeviceOwnerApp(c.getPackageName())) {
             Kiosk.clear(c);
+            Kiosk.syncPreferredActivities(c, false, false);
             for (String pkg : Agent.getSet(c, "hidden")) {
                 try {
                     dpm.setApplicationHidden(admin, pkg, false);
