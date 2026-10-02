@@ -257,6 +257,37 @@ final class PolicyApplier {
         }
     }
 
+    /**
+     * Approval mode: a launchable app that appeared after the approved baseline is hidden immediately,
+     * using the last policy the dashboard sent (so it works offline too). Returns true if it was held.
+     */
+    static boolean holdIfNew(Context c, String pkg) {
+        try {
+            String stored = Agent.prefs(c).getString("policy", null);
+            if (stored == null) return false;
+            JSONObject policy = new JSONObject(stored);
+            if (!policy.optBoolean("approveNew")) return false;
+            if (strings(policy.optJSONArray("known")).contains(pkg)) return false;
+            if (strings(policy.optJSONArray("show")).contains(pkg)) return false;
+            if ("allow".equals(Agent.getOverrides(c).optString(pkg))) return false;
+            if (neverHide(c).contains(pkg)) return false;
+            if (c.getPackageManager().getLaunchIntentForPackage(pkg) == null) return false;
+            DevicePolicyManager dpm = Agent.dpm(c);
+            ComponentName admin = Agent.admin(c);
+            if (!dpm.isDeviceOwnerApp(c.getPackageName())) return false;
+            Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+            if (!dpm.setApplicationHidden(admin, pkg, true)) return false;
+            Set<String> hidden = Agent.getSet(c, "hidden");
+            hidden.add(pkg);
+            Agent.putSet(c, "hidden", hidden);
+            Agent.addEvent(c, "hide", "Held for your approval: " + nameOf(pkg));
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "holdIfNew failed: " + e);
+            return false;
+        }
+    }
+
     /** Re-applies the last policy the server sent (keeps schedules working while offline). */
     static void applyStored(Context c) {
         String stored = Agent.prefs(c).getString("policy", null);

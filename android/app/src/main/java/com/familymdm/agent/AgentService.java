@@ -82,6 +82,7 @@ public class AgentService extends Service {
                 if (touched != null && System.currentTimeMillis() - touched < 20000) return; // our own hide/show
                 boolean added = Intent.ACTION_PACKAGE_ADDED.equals(intent.getAction());
                 Agent.addEvent(context, "app", (added ? "App installed: " : "App removed: ") + pkg);
+                if (added) PolicyApplier.holdIfNew(context, pkg);
                 if (thread != null) thread.interrupt();
             }
         };
