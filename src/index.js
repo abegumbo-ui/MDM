@@ -31,7 +31,7 @@ async function isAuthed(request, env) {
 async function sessionCookie(env) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
   const sig = await hmac(env.ADMIN_PASSWORD, `sess:${exp}`);
-  return `sess=${exp}.${sig}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_SECONDS}`;
+  return `sess=${exp}.${sig}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_SECONDS}`;
 }
 
 // ---- state in KV ----

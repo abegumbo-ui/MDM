@@ -2,6 +2,9 @@ name = "mdm"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
+# Keep variables and secrets set in the Cloudflare dashboard across Git deploys.
+keep_vars = true
+
 # KV namespace holding dashboard settings.
 [[kv_namespaces]]
 binding = "STATE"
