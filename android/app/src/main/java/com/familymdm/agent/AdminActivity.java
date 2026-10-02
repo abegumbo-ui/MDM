@@ -102,6 +102,34 @@ public class AdminActivity extends Activity {
         appsBox.setOrientation(LinearLayout.VERTICAL);
         Ui.add(apps, appsBox, 0);
 
+        LinearLayout home = Ui.card(this, root);
+        home.addView(Ui.titleText(this, "Home screen mode"));
+        home.addView(Ui.body(this, Kiosk.paused(this) ? "Paused: the phone is working normally."
+                : Kiosk.active(this) ? "On: only allowed apps can be opened." : "Off.", true));
+        if (Kiosk.paused(this)) {
+            action(home, "Resume home screen mode", Ui.FILLED, v -> {
+                Agent.prefs(this).edit().putBoolean("kioskPaused", false).apply();
+                Agent.addEvent(this, "local", "Master code on phone: resumed home screen mode");
+                new Thread(() -> {
+                    PolicyApplier.applyStored(this);
+                    AgentService.requestSync();
+                    runOnUiThread(this::build);
+                }).start();
+            });
+        } else if (Kiosk.active(this)) {
+            action(home, "Pause home screen mode", Ui.OUTLINED, v -> {
+                Agent.prefs(this).edit().putBoolean("kioskPaused", true).apply();
+                Agent.addEvent(this, "local", "Master code on phone: paused home screen mode");
+                Kiosk.clear(this);
+                try {
+                    stopLockTask();
+                } catch (Exception ignored) {
+                }
+                build();
+                toast("Paused. The phone works normally until you resume it.");
+            });
+        }
+
         LinearLayout net = Ui.card(this, root);
         net.addView(Ui.titleText(this, "Wi-Fi"));
         action(net, "Add a Wi-Fi network…", Ui.TONAL, v -> askWifi());

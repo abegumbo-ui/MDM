@@ -194,6 +194,8 @@ function chipsFor(d,full){
  if(wf)c.append(h('span',{class:'chip'},wf.transport==='wifi'?'📶 '+(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?'📱 Mobile':'No connection'));
  if(d.inflight.some(function(x){return x.type==='lock'})||d.pending)c.append(h('span',{class:'chip warn'},'⏳ Command on its way'));
  if(lockedNow(d))c.append(h('span',{class:'chip warn'},'🔒 Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+ if(d.info.kiosk)c.append(h('span',{class:'chip ok'},'🏠 Home screen mode'));
+ if(d.info.kioskPaused)c.append(h('span',{class:'chip warn'},'Home screen mode paused'));
  if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
  if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'⬆️ Update available'));
  const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn'},n+' changes pending'));
@@ -342,7 +344,7 @@ function renderApps(m){
   m.append(pc)}
  const top=h('div',{class:'card'});
  top.append(h('div',{class:'setting'},h('div',{class:'grow'},h('h2',null,'Hide apps that aren\'t allowed'),
-  h('div',{class:'mute'},'Block switches an app off completely, as if it were uninstalled for the person. Apps that depend on it stop working too, which is why core parts are protected. When this is on, every launcher app that isn\'t set to Allow is hidden. Protected system parts are never hidden. Allow the apps you need (phone, messages, maps…) first.')),
+  h('div',{class:'mute'},'Block switches an app off completely, as if it were uninstalled for the person (in Home screen mode, Block just means the app can\'t be opened and keeps running in the background). Icon… changes how an app looks on this dashboard, and on the phone\'s home screen when Home screen mode is on. Apps that depend on it stop working too, which is why core parts are protected. When this is on, every launcher app that isn\'t set to Allow is hidden. Protected system parts are never hidden. Allow the apps you need (phone, messages, maps…) first.')),
   sw(state.config.blockUnlisted,async function(on){
    if(on&&!confirm('Hide every app that is not set to Allow? Make sure phone, messages and maps are allowed first.')){render();return}
    state.config.blockUnlisted=on;try{await saveConfig(on?'Hiding unlisted apps.':'Unlisted apps stay visible.')}catch(e){snack(e.message,1)}render()})));
@@ -441,6 +443,11 @@ function renderSettings(m){
   h('div',{class:'mute'},'Lets the person keep the Play Store: anything they install afterwards stays hidden (it cannot be opened) until you approve it on the Apps tab. Apps already on the phone when you switch this on are treated as approved.')),
   sw(state.config.approveNew,async function(on){state.config.approveNew=on;try{await saveConfig(on?'New apps will wait for your approval.':'New apps are no longer held.')}catch(e){snack(e.message,1)}})));
  m.append(appr);
+ m.append(h('div',{class:'card'},h('h2',null,'Home screen mode'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
+  h('div',{class:'mute'},'The agent becomes the phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. Other apps are NOT switched off: they keep running in the background (Maps keeps using Google Play services), they just can\'t be opened. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode, and turning it off here gives the phone back its normal home screen.')),
+  sw(state.config.homeScreen,async function(on){
+   if(on&&!confirm('Turn on Home screen mode? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the Apps tab, because only those will appear.')){render();return}
+   state.config.homeScreen=on;try{await saveConfig(on?'Home screen mode on. Phones switch within about a minute.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()}))));
  const logoCard=h('div',{class:'card'},h('h2',null,'Logo on the phones'),
   h('div',{class:'mute'},'Shown on the timed-lock screen and at the top of the agent app. A square or wide PNG/JPG works; it is shrunk automatically.'));
  const prev=h('img',{src:'/api/logo?v='+(iconVer.__logo||0),alt:'',style:'max-height:80px;max-width:100%;margin-top:10px;border-radius:8px;display:block'});prev.onerror=function(){prev.replaceWith(h('div',{class:'mute small',style:'margin-top:10px'},'No logo set.'))};

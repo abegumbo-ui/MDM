@@ -52,14 +52,9 @@ final class Actions {
     static void startTimedLock(Context c) {
         DevicePolicyManager dpm = Agent.dpm(c);
         ComponentName admin = Agent.admin(c);
-        List<String> allowed = new ArrayList<>();
-        allowed.add(c.getPackageName());
-        try {
-            String dialer = ((TelecomManager) c.getSystemService(Context.TELECOM_SERVICE)).getDefaultDialerPackage();
-            if (dialer != null) allowed.add(dialer); // so the emergency-call button can open the dialer
-        } catch (Exception ignored) {
-        }
-        dpm.setLockTaskPackages(admin, allowed.toArray(new String[0]));
+        // Home-screen mode already allows the agent and the phone app; otherwise allow just those two.
+        String[] allowed = Kiosk.lockTaskPackages(c);
+        dpm.setLockTaskPackages(admin, allowed);
         if (Build.VERSION.SDK_INT >= 28) dpm.setLockTaskFeatures(admin, 0);
         Intent i = new Intent(c, LockActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         ActivityOptions opts = ActivityOptions.makeBasic();
@@ -78,12 +73,16 @@ final class Actions {
         }
     }
 
+    static boolean timedLockActive(Context c) {
+        return Agent.prefs(c).getLong("lockUntil", 0) > System.currentTimeMillis();
+    }
+
     static void endTimedLock(Context c) {
         boolean wasLocked = Agent.prefs(c).getLong("lockUntil", 0) != 0;
         Agent.prefs(c).edit().remove("lockUntil").remove("lockMsg").apply();
         try {
             Agent.dpm(c).setDeviceOwnerLockScreenInfo(Agent.admin(c), null);
-            Agent.dpm(c).setLockTaskPackages(Agent.admin(c), new String[0]);
+            Agent.dpm(c).setLockTaskPackages(Agent.admin(c), Kiosk.active(c) ? Kiosk.lockTaskPackages(c) : new String[0]);
         } catch (Exception ignored) {
         }
         if (wasLocked) Agent.addEvent(c, "lock", "Timed lock ended");

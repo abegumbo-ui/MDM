@@ -52,6 +52,7 @@ public class AgentService extends Service {
             running = true;
             thread = new Thread(this::loop, "mdm-agent");
             thread.start();
+            Kiosk.ensureHome(this); // after a reboot or restart, bring the home screen back
         }
         return START_STICKY;
     }
@@ -156,6 +157,8 @@ public class AgentService extends Service {
         o.put("restrictions", new JSONArray(Agent.getSet(this, "restrictions")));
         o.put("hiddenCount", Agent.getSet(this, "hidden").size());
         o.put("versionCode", Updater.currentBuild(this));
+        o.put("kiosk", Kiosk.active(this));
+        o.put("kioskPaused", Kiosk.paused(this));
         JSONObject battery = Telemetry.battery(this);
         if (battery != null) o.put("battery", battery);
         o.put("wifi", Telemetry.wifi(this));
@@ -207,6 +210,7 @@ public class AgentService extends Service {
         if (policy != null) {
             Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
             PolicyApplier.apply(this, policy);
+            syncCustomIcons(server, token, policy.optJSONObject("customIcons"));
             Updater.maybeAutoUpdate(this, policy);
         }
 
@@ -218,6 +222,42 @@ public class AgentService extends Service {
             for (int i = 0; i < commands.length(); i++) runCommand(commands.getJSONObject(i));
         }
         return reply.optLong("pollSeconds", 60);
+    }
+
+    /** Custom app icons for the home screen: download new or changed ones, drop removed ones. */
+    private void syncCustomIcons(String server, String token, JSONObject icons) {
+        if (icons == null) return;
+        try {
+            int downloaded = 0;
+            java.util.Iterator<String> keys = icons.keys();
+            java.util.Set<String> wanted = new java.util.HashSet<>();
+            while (keys.hasNext()) {
+                String pkg = keys.next();
+                wanted.add(pkg);
+                long rev = icons.optLong(pkg, 0);
+                if (rev == Agent.prefs(this).getLong("iconRev:" + pkg, 0) || downloaded >= 20) continue;
+                byte[] png = Api.getBytes(server + "/agent/icon/" + pkg, token);
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(Agent.iconFile(this, pkg))) {
+                    out.write(png);
+                }
+                Agent.prefs(this).edit().putLong("iconRev:" + pkg, rev).apply();
+                downloaded++;
+            }
+            java.io.File[] files = new java.io.File(getFilesDir(), "icons").listFiles();
+            if (files != null) {
+                for (java.io.File f : files) {
+                    String name = f.getName();
+                    String pkg = name.endsWith(".png") ? name.substring(0, name.length() - 4) : name;
+                    if (!wanted.contains(pkg)) {
+                        //noinspection ResultOfMethodCallIgnored
+                        f.delete();
+                        Agent.prefs(this).edit().remove("iconRev:" + pkg).apply();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "icon sync failed: " + e);
+        }
     }
 
     /** Downloads (or removes) the administrator's logo when its version changed. */

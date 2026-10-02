@@ -352,3 +352,25 @@ test("a PIN the administrator sets can be shown on the dashboard once the phone 
   await post("/agent/sync", { results: [{ id: s3.commands[0].id, type: "setPin", ok: false, msg: "rejected" }] }, auth);
   assert.equal((await dev()).adminPin, null, "a rejected PIN is not shown");
 });
+
+test("home-screen mode: phones learn which custom icons to download and can fetch them", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  const custom = PNG(120); custom[9] = 5;
+  await req("/api/icon/com.x.app", { method: "PUT", headers: { cookie }, body: custom });
+
+  let sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.policy.customIcons, undefined, "only sent when home-screen mode is on");
+  await put(cookie, "/api/config", { homeScreen: true });
+  sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.policy.homeScreen, true);
+  assert.ok(sync.policy.customIcons["com.x.app"] > 0);
+
+  assert.equal((await req("/agent/icon/com.x.app")).status, 401);
+  const dl = Buffer.from(await (await req("/agent/icon/com.x.app", { headers: auth })).arrayBuffer());
+  assert.equal(dl[9], 5);
+  await req("/api/icon/com.x.app", { method: "DELETE", headers: { cookie } });
+  sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.deepEqual(sync.policy.customIcons, {});
+  assert.equal((await req("/agent/icon/com.x.app", { headers: auth })).status, 404);
+});

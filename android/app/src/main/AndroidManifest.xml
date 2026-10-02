@@ -34,6 +34,19 @@
             android:exported="false" />
 
         <activity
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".LockActivity"
             android:exported="false"
             android:excludeFromRecents="true"
