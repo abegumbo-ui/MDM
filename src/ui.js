@@ -127,6 +127,24 @@ function btn(label,cls,fn){const b=h('button',{class:'btn '+(cls||'')},label);
 function ago(t){if(!t)return 'never';const m=Math.round((Date.now()-t)/60000);return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'}
 function sw(checked,onchange){const i=h('input',{type:'checkbox'});i.checked=!!checked;i.onchange=function(){onchange(i.checked)};return h('label',{class:'sw'},i,h('i'))}
 
+/* ---------- pick an image and shrink it to a small PNG (so uploads stay tiny) ---------- */
+const iconVer={};
+function pickImage(maxSide,square){
+ return new Promise(function(resolve){
+  const inp=h('input',{type:'file',accept:'image/*',style:'display:none'});document.body.append(inp);
+  inp.onchange=async function(){
+   const f=inp.files[0];inp.remove();if(!f){resolve(null);return}
+   try{
+    const bmp=await createImageBitmap(f);
+    let w=bmp.width,hh=bmp.height;const k=Math.min(1,maxSide/Math.max(w,hh));
+    const c=document.createElement('canvas');
+    if(square){c.width=maxSide;c.height=maxSide;const g=c.getContext('2d');const sc=Math.min(maxSide/w,maxSide/hh);const dw=w*sc,dh=hh*sc;g.drawImage(bmp,(maxSide-dw)/2,(maxSide-dh)/2,dw,dh)}
+    else{c.width=Math.max(1,Math.round(w*k));c.height=Math.max(1,Math.round(hh*k));c.getContext('2d').drawImage(bmp,0,0,c.width,c.height)}
+    c.toBlob(function(b){resolve(b)},'image/png')
+   }catch(e){snack('Could not read that image.',1);resolve(null)}};
+  inp.click()})}
+async function putImage(path,blob){const r=await fetch(path,{method:'PUT',body:blob});const j=await r.json().catch(function(){return{}});if(!r.ok)throw new Error(j.error||'Upload failed')}
+
 /* ---------- dialog (resolves to the typed values, or null if cancelled) ---------- */
 function ask(title,fields,okLabel,note){
  return new Promise(function(resolve){
@@ -174,6 +192,7 @@ function chipsFor(d,full){
  if(bat)c.append(h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},'🔋 '+bat.pct+'%'+(bat.charging?' ⚡':'')));
  const wf=d.info.wifi;
  if(wf)c.append(h('span',{class:'chip'},wf.transport==='wifi'?'📶 '+(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?'📱 Mobile':'No connection'));
+ if(d.inflight.some(function(x){return x.type==='lock'})||d.pending)c.append(h('span',{class:'chip warn'},'⏳ Command on its way'));
  if(lockedNow(d))c.append(h('span',{class:'chip warn'},'🔒 Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
  if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
  if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'⬆️ Update available'));
@@ -230,7 +249,7 @@ function renderDeviceDetail(m,d){
     {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
     'For a timed lock the phone shows your message and a countdown, and nothing else can be opened until time is up (or you unlock it). Emergency calls stay available.');
    if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
- if(lockedNow(d))cmd(lr,'Unlock now','unlock',{});
+ cmd(lr,'Unlock now','unlock',{},null,lockedNow(d)?'':'outline');
  cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
  cmd(lr,'Remove PIN','clearPin',{},'Remove the screen lock PIN?','outline');
  lockBox.append(lr);ct.append(lockBox);
@@ -265,7 +284,7 @@ function renderDeviceDetail(m,d){
  const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Change Allow / Block for all phones on the Apps tab. Phone-installed apps can be uninstalled here.'));
  const want=new Set(d.applied.hide);
  for(const a of d.packages){
-  const img=h('img',{src:'/api/icon/'+a.p,alt:'',loading:'lazy',style:'width:36px;height:36px;border-radius:9px;flex:none'});img.onerror=function(){img.replaceWith(h('div',{style:'width:36px;height:36px;border-radius:9px;background:var(--surface-3);flex:none'}))};
+  const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy',style:'width:36px;height:36px;border-radius:9px;flex:none'});img.onerror=function(){img.replaceWith(h('div',{style:'width:36px;height:36px;border-radius:9px;background:var(--surface-3);flex:none'}))};
   const row=h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p),
    h('div',null,h('span',{class:'chip '+(a.h?'warn':'ok')},a.h?'Hidden':'Visible'),a.s?h('span',{class:'chip'},'system'):null,a.protected?h('span',{class:'chip'},'protected'):null,want.has(a.p)!==a.h?h('span',{class:'chip warn'},'changing…'):null)));
   if(!a.s)row.append(btn('Uninstall','danger',async function(){if(!confirm('Uninstall '+(a.l||a.p)+' from this phone?'))return;await queue('Uninstall '+(a.l||a.p),'uninstall',{packageName:a.p})}));
@@ -341,7 +360,7 @@ function appRow(a){
  const saved=cur(a.p);const d=draft[a.p]||(draft[a.p]={mode:saved.mode,schedule:saved.schedule});
  const dirty=function(){return JSON.stringify(d)!==JSON.stringify({mode:saved.mode,schedule:saved.schedule})};
  const row=h('div',{class:'app'});
- const img=h('img',{src:'/api/icon/'+a.p,alt:'',loading:'lazy'});img.onerror=function(){img.replaceWith(h('div',{class:'ph'}))};
+ const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy'});img.onerror=function(){img.replaceWith(h('div',{class:'ph'}))};
  const body=h('div',{class:'grow'});
  const tags=h('div');
  if(a.s)tags.append(h('span',{class:'chip'},'system'));
@@ -371,6 +390,12 @@ function appRow(a){
    if(!confirm('Uninstall '+(a.l||a.p)+' from: '+holders.map(function(x){return x.name}).join(', ')+'?'))return;
    for(const dv of holders)await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
    snack('Uninstall queued. The phone does it at its next check-in.');load()}))}
+
+ ctl.append(btn('Icon…','outline',async function(){
+  const blob=await pickImage(96,true);if(!blob)return;
+  await putImage('/api/icon/'+a.p,blob);iconVer[a.p]=Date.now();snack('Icon changed on the dashboard.');render()}));
+ ctl.append(btn('Reset icon','outline',async function(){
+  await call('DELETE','/api/icon/'+a.p);iconVer[a.p]=Date.now();snack('Icon reset.');render()}));
  body.append(ctl);
 
  if(open[a.p]&&d.mode!=='block'){
@@ -413,6 +438,13 @@ function renderSettings(m){
   h('div',{class:'mute'},'Lets the person keep the Play Store: anything they install afterwards stays hidden (it cannot be opened) until you approve it on the Apps tab. Apps already on the phone when you switch this on are treated as approved.')),
   sw(state.config.approveNew,async function(on){state.config.approveNew=on;try{await saveConfig(on?'New apps will wait for your approval.':'New apps are no longer held.')}catch(e){snack(e.message,1)}})));
  m.append(appr);
+ const logoCard=h('div',{class:'card'},h('h2',null,'Logo on the phones'),
+  h('div',{class:'mute'},'Shown on the timed-lock screen and at the top of the agent app. A square or wide PNG/JPG works; it is shrunk automatically.'));
+ const prev=h('img',{src:'/api/logo?v='+(iconVer.__logo||0),alt:'',style:'max-height:80px;max-width:100%;margin-top:10px;border-radius:8px;display:block'});prev.onerror=function(){prev.replaceWith(h('div',{class:'mute small',style:'margin-top:10px'},'No logo set.'))};
+ logoCard.append(prev,h('div',{class:'row',style:'margin-top:10px'},
+  btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up within about a minute.');render()}),
+  btn('Remove logo','outline',async function(){await call('DELETE','/api/logo');iconVer.__logo=Date.now();snack('Logo removed.');render()})));
+ m.append(logoCard);
  m.append(h('div',{class:'card'},h('h2',null,'Agent updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Update the agent automatically'),
   h('div',{class:'mute'},'Phones check GitHub for a newer build every 6 hours and install it themselves. You can always update one phone yourself from its Controls page, or from the phone\'s admin panel.')),
   sw(state.config.autoUpdate,async function(on){state.config.autoUpdate=on;try{await saveConfig('Saved.')}catch(e){snack(e.message,1)}}))));

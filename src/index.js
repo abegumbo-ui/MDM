@@ -9,6 +9,22 @@ const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
 const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
+const MAX_IMAGE_BYTES = 200 * 1024;
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47];
+
+const isPng = (buf) => {
+  const b = new Uint8Array(buf.slice(0, 4));
+  return PNG_MAGIC.every((x, i) => b[i] === x);
+};
+const toBase64 = (buf) => {
+  let bin = "";
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
+const fromBase64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+const imageResponse = (b64) =>
+  new Response(fromBase64(b64), { headers: { "content-type": "image/png", "cache-control": "private, max-age=86400" } });
 const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this is a safety cap
 const MASTER_ITERATIONS = 100000;
 const MAX_EVENTS = 60;
@@ -128,6 +144,37 @@ async function adminApi(request, env, url) {
     return json({ id, name, size: buf.byteLength });
   }
   if (path === "/api/latest-agent" && method === "GET") return json({ latest: await latestAgent(env) });
+
+  // Custom app icons (shown on the dashboard) and the logo (shown on the phones).
+  const iconPut = /^\/api\/icon\/([A-Za-z0-9_.]{1,200})$/.exec(path);
+  if (iconPut && (method === "PUT" || method === "DELETE")) {
+    if (method === "DELETE") {
+      await env.STATE.delete(`iconc:${iconPut[1]}`);
+      return json({ ok: true });
+    }
+    const buf = await request.arrayBuffer();
+    if (buf.byteLength < 50 || buf.byteLength > MAX_IMAGE_BYTES || !isPng(buf)) return json({ error: "Use a PNG image under 200 KB" }, 400);
+    await env.STATE.put(`iconc:${iconPut[1]}`, toBase64(buf));
+    return json({ ok: true });
+  }
+  if (path === "/api/logo") {
+    if (method === "GET") {
+      const b64 = await env.STATE.get("logo");
+      return b64 ? imageResponse(b64) : new Response(null, { status: 404 });
+    }
+    if (method === "DELETE") {
+      await env.STATE.delete("logo");
+      await env.STATE.delete("logoRev");
+      return json({ ok: true });
+    }
+    if (method === "PUT") {
+      const buf = await request.arrayBuffer();
+      if (buf.byteLength < 50 || buf.byteLength > MAX_IMAGE_BYTES || !isPng(buf)) return json({ error: "Use a PNG image under 200 KB" }, 400);
+      await env.STATE.put("logo", toBase64(buf));
+      await env.STATE.put("logoRev", String(Date.now()));
+      return json({ ok: true });
+    }
+  }
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
   if (path === "/api/state" && method === "GET") {
@@ -164,10 +211,8 @@ async function adminApi(request, env, url) {
   }
   const iconMatch = /^\/api\/icon\/([A-Za-z0-9_.]+)$/.exec(path);
   if (iconMatch && method === "GET") {
-    const b64 = await env.STATE.get(`icon:${iconMatch[1]}`);
-    if (!b64) return new Response(null, { status: 404 });
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-    return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "private, max-age=86400" } });
+    const b64 = (await env.STATE.get(`iconc:${iconMatch[1]}`)) || (await env.STATE.get(`icon:${iconMatch[1]}`));
+    return b64 ? imageResponse(b64) : new Response(null, { status: 404 });
   }
   if (path === "/api/devices" && method === "GET") {
     const devices = await listDevices(env);
@@ -251,6 +296,11 @@ async function agentApi(request, env, url) {
     const buf = await env.STATE.get(`apk:${apk[1]}`, "arrayBuffer");
     if (!buf) return json({ error: "Not found" }, 404);
     return new Response(buf, { headers: { "content-type": "application/vnd.android.package-archive" } });
+  }
+  if (url.pathname === "/agent/logo" && request.method === "GET") {
+    if (!(await authDevice(request, env))) return json({ error: "Unauthorized" }, 401);
+    const b64 = await env.STATE.get("logo");
+    return b64 ? imageResponse(b64) : new Response(null, { status: 404 });
   }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
@@ -373,7 +423,8 @@ async function agentApi(request, env, url) {
 
     const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
     const master = await getJSON(env, "master", null);
-    return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, master });
+    const logoRev = Number(await env.STATE.get("logoRev")) || 0;
+    return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, master, logoRev });
   }
   return json({ error: "Not found" }, 404);
 }

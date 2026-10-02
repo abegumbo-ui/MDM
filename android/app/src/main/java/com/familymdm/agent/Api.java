@@ -47,6 +47,32 @@ final class Api {
         }
     }
 
+    /** GET a small file (for example the logo) from the dashboard. */
+    static byte[] getBytes(String url, String bearer) throws IOException {
+        if (!url.startsWith("https://")) throw new IOException("server must be an https:// address");
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            c.setRequestMethod("GET");
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(30000);
+            if (bearer != null) c.setRequestProperty("authorization", "Bearer " + bearer);
+            int code = c.getResponseCode();
+            if (code >= 400) throw new HttpException(code, "");
+            try (InputStream in = c.getInputStream()) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    if (out.size() > 2 * 1024 * 1024) throw new IOException("file too large");
+                }
+                return out.toByteArray();
+            }
+        } finally {
+            c.disconnect();
+        }
+    }
+
     private static String read(InputStream is) throws IOException {
         if (is == null) return "";
         try (InputStream in = is) {

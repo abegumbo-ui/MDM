@@ -29,6 +29,7 @@ public class AgentService extends Service {
     private static final String TAG = "MdmAgent";
     private static volatile AgentService instance;
     private volatile boolean running;
+    private volatile boolean ranCommands;
     private Thread thread;
     private BroadcastReceiver packageReceiver;
 
@@ -111,6 +112,7 @@ public class AgentService extends Service {
             long sleepSeconds = 60;
             try {
                 sleepSeconds = syncOnce();
+                if (ranCommands) sleepSeconds = 3; // report what a command did right away
             } catch (Api.HttpException e) {
                 Log.w(TAG, "sync failed: " + e.getMessage());
                 if (e.code == 401) {
@@ -133,7 +135,7 @@ public class AgentService extends Service {
                 Log.w(TAG, "timed lock check failed: " + e);
             }
             try {
-                Thread.sleep(Math.max(15, sleepSeconds) * 1000L);
+                Thread.sleep(Math.max(3, sleepSeconds) * 1000L);
             } catch (InterruptedException e) {
                 if (!running) return; // otherwise this was a wake-up call: check in now
             }
@@ -211,11 +213,33 @@ public class AgentService extends Service {
             Updater.maybeAutoUpdate(this, policy);
         }
 
+        syncLogo(server, token, reply.optLong("logoRev", 0));
+
         JSONArray commands = reply.optJSONArray("commands");
+        ranCommands = commands != null && commands.length() > 0;
         if (commands != null) {
             for (int i = 0; i < commands.length(); i++) runCommand(commands.getJSONObject(i));
         }
         return reply.optLong("pollSeconds", 60);
+    }
+
+    /** Downloads (or removes) the administrator's logo when its version changed. */
+    private void syncLogo(String server, String token, long rev) {
+        if (rev == Agent.prefs(this).getLong("logoRev", 0)) return;
+        try {
+            if (rev == 0) {
+                //noinspection ResultOfMethodCallIgnored
+                Agent.logoFile(this).delete();
+            } else {
+                byte[] png = Api.getBytes(server + "/agent/logo", token);
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(Agent.logoFile(this))) {
+                    out.write(png);
+                }
+            }
+            Agent.prefs(this).edit().putLong("logoRev", rev).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "logo sync failed: " + e);
+        }
     }
 
     private void runCommand(JSONObject cmd) {
