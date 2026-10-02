@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, RESTRICTIONS } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, RESTRICTIONS } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -6,7 +6,12 @@ const POLL_SECONDS = 60;
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
-const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync"]);
+const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent"]);
+const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
+const DEFAULT_REPO = "abegumbo-ui/MDM";
+const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this is a safety cap
+const MASTER_ITERATIONS = 100000;
+const MAX_EVENTS = 60;
 const CODE_TYPES = new Set(["enroll", "install", "uninstall"]);
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
@@ -73,19 +78,82 @@ const publicDevice = (d) => ({
   pending: (d.queue || []).length,
   inflight: d.inflight || [],
   results: (d.results || []).slice(-15),
+  events: (d.events || []).slice(-40),
+  overrides: d.overrides || {},
+  wifiNetworks: d.wifiNetworks || [],
+  appCode: d.appCode || null,
 });
+
+// Latest agent build, published by GitHub Actions next to the APK. Cached at the edge for 5 minutes.
+async function latestAgent(env) {
+  const repo = env.GITHUB_REPO || DEFAULT_REPO;
+  const base = `https://github.com/${repo}/releases/download/latest`;
+  try {
+    const r = await fetch(`${base}/version.json`, { cf: { cacheTtl: 300, cacheEverything: true } });
+    if (!r.ok) return null;
+    const v = await r.json();
+    if (!Number.isInteger(v.versionCode)) return null;
+    return { versionCode: v.versionCode, apkUrl: `${base}/mdm-agent.apk` };
+  } catch {
+    return null;
+  }
+}
+
+/** Finds the device a bearer token belongs to, or null. */
+async function authDevice(request, env) {
+  const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
+  if (!m) return null;
+  const key = `device:${m[1]}`;
+  const d = await getJSON(env, key, null);
+  if (!d || !safeEqual(d.tokenHash, await sha256(m[2]))) return null;
+  return { key, d };
+}
 
 // ---- admin API (cookie auth) ----
 async function adminApi(request, env, url) {
   const path = url.pathname;
   const method = request.method;
+
+  if (path === "/api/apk" && method === "PUT") {
+    // Raw APK bytes from the dashboard's file picker. Stored for a week, fetched once by the phone.
+    const buf = await request.arrayBuffer();
+    const head = new Uint8Array(buf.slice(0, 2));
+    if (buf.byteLength < 1000 || buf.byteLength > MAX_APK_BYTES) {
+      return json({ error: `APK must be between 1 KB and ${MAX_APK_BYTES / 1048576} MB` }, 400);
+    }
+    if (head[0] !== 0x50 || head[1] !== 0x4b) return json({ error: "That does not look like an APK file" }, 400);
+    const id = randomHex(6);
+    const name = String(url.searchParams.get("name") || "app.apk").replace(/[^\w. -]/g, "").slice(0, 60);
+    await env.STATE.put(`apk:${id}`, buf, { expirationTtl: 7 * 86400, metadata: { name, size: buf.byteLength } });
+    return json({ id, name, size: buf.byteLength });
+  }
+  if (path === "/api/latest-agent" && method === "GET") return json({ latest: await latestAgent(env) });
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
   if (path === "/api/state" && method === "GET") {
-    return json({ config: await loadConfig(env), restrictions: RESTRICTIONS, origin: url.origin });
+    return json({ config: await loadConfig(env), restrictions: RESTRICTIONS, origin: url.origin, masterSet: !!(await env.STATE.get("master")), masterIterations: MASTER_ITERATIONS });
   }
   if (path === "/api/config" && method === "PUT") {
-    await putJSON(env, "config", normalizeConfig(body));
+    const before = await loadConfig(env);
+    const next = normalizeConfig(body);
+    await putJSON(env, "config", next);
+    if (next.approveNew && !before.approveNew) {
+      // Turning approval mode on: everything installed right now counts as already approved.
+      for (const d of await listDevices(env)) {
+        d.known = (d.packages || []).map((p) => p.p);
+        await putJSON(env, `device:${d.id}`, d);
+      }
+    }
+    return json({ ok: true });
+  }
+  if (path === "/api/master" && method === "PUT") {
+    // The browser derives the hash (PBKDF2), so the code itself never reaches the server.
+    if (!/^[0-9a-f]{32}$/.test(body.salt || "") || !/^[0-9a-f]{64}$/.test(body.hash || "")) return json({ error: "Invalid master code data" }, 400);
+    await putJSON(env, "master", { salt: body.salt, hash: body.hash, iterations: MASTER_ITERATIONS });
+    return json({ ok: true });
+  }
+  if (path === "/api/master" && method === "DELETE") {
+    await env.STATE.delete("master");
     return json({ ok: true });
   }
   if (path === "/api/codes" && method === "POST") {
@@ -108,7 +176,7 @@ async function adminApi(request, env, url) {
       devices.map((d) => ({
         ...publicDevice(d),
         packages: (d.packages || []).map((p) => ({ ...p, protected: isProtected(p.p) })),
-        applied: buildAgentPolicy(config, (d.packages || []).map((p) => p.p)),
+        applied: buildAgentPolicy(config, (d.packages || []).map((p) => p.p), { known: d.known, overrides: d.overrides }),
       })),
     );
   }
@@ -126,14 +194,47 @@ async function adminApi(request, env, url) {
       const args = {};
       const given = body.args || {};
       if (body.type === "install") {
-        if (typeof given.url !== "string" || !given.url.startsWith("https://")) return json({ error: "APK link must start with https://" }, 400);
-        args.url = given.url;
+        if (given.apkId !== undefined) {
+          if (!/^[0-9a-f]{12}$/.test(given.apkId) || !(await env.STATE.get(`apk:${given.apkId}`, "arrayBuffer"))) {
+            return json({ error: "That uploaded APK has expired. Upload it again." }, 400);
+          }
+          args.apkId = given.apkId;
+        } else {
+          if (typeof given.url !== "string" || !given.url.startsWith("https://")) return json({ error: "APK link must start with https://" }, 400);
+          args.url = given.url;
+        }
       }
       if (body.type === "uninstall") {
         if (!PKG_RE.test(given.packageName || "")) return json({ error: "Invalid package name" }, 400);
         args.packageName = given.packageName;
       }
       if (body.type === "release") args.uninstall = given.uninstall === true;
+      if (body.type === "lock") {
+        const minutes = Number.isInteger(given.minutes) ? Math.min(Math.max(given.minutes, 0), MAX_LOCK_MINUTES) : 0;
+        args.minutes = minutes;
+        args.message = String(given.message || "").slice(0, 140);
+      }
+      if (body.type === "addWifi") {
+        const ssid = String(given.ssid || "");
+        const pass = String(given.password || "");
+        if (ssid.length < 1 || ssid.length > 32) return json({ error: "Network name must be 1 to 32 characters" }, 400);
+        if (pass && (pass.length < 8 || pass.length > 63)) return json({ error: "Wi-Fi password must be 8 to 63 characters (or empty for an open network)" }, 400);
+        args.ssid = ssid;
+        args.password = pass;
+        // The dashboard remembers networks you add, so you can look the password up later.
+        d.wifiNetworks = [...(d.wifiNetworks || []).filter((n) => n.ssid !== ssid), { ssid, password: pass, at: Date.now() }].slice(-20);
+      }
+      if (body.type === "setPin") {
+        if (!/^\d{4,16}$/.test(given.pin || "")) return json({ error: "PIN must be 4 to 16 digits" }, 400);
+        args.pin = given.pin; // delivered once, then dropped from the queue; never written to the activity log
+      }
+      if (body.type === "clearOverrides") {
+        // Handled here: the next sync hands the phone the cleared list.
+        d.overrides = {};
+        d.overridesRev = Date.now();
+        await putJSON(env, key, d);
+        return json({ ok: true });
+      }
       d.queue = [...(d.queue || []), { id: randomHex(6), type: body.type, args }];
       await putJSON(env, key, d);
       return json({ ok: true });
@@ -144,6 +245,13 @@ async function adminApi(request, env, url) {
 
 // ---- agent API (per-device bearer token) ----
 async function agentApi(request, env, url) {
+  const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);
+  if (apk && request.method === "GET") {
+    if (!(await authDevice(request, env))) return json({ error: "Unauthorized" }, 401);
+    const buf = await env.STATE.get(`apk:${apk[1]}`, "arrayBuffer");
+    if (!buf) return json({ error: "Not found" }, 404);
+    return new Response(buf, { headers: { "content-type": "application/vnd.android.package-archive" } });
+  }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
 
@@ -170,12 +278,12 @@ async function agentApi(request, env, url) {
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
 
-  if (url.pathname === "/agent/sync" || url.pathname === "/agent/redeem") {
-    const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
-    if (!m) return json({ error: "Unauthorized" }, 401);
-    const key = `device:${m[1]}`;
-    const d = await getJSON(env, key, null);
-    if (!d || !safeEqual(d.tokenHash, await sha256(m[2]))) return json({ error: "Unauthorized" }, 401);
+  if (url.pathname === "/agent/sync" || url.pathname === "/agent/redeem" || url.pathname === "/agent/update") {
+    const auth = await authDevice(request, env);
+    if (!auth) return json({ error: "Unauthorized" }, 401);
+    const { key, d } = auth;
+
+    if (url.pathname === "/agent/update") return json({ latest: await latestAgent(env) });
 
     if (url.pathname === "/agent/redeem") {
       // One-time codes unlock features inside the phone app (install an APK, remove the agent).
@@ -206,15 +314,45 @@ async function agentApi(request, env, url) {
       }
     }
     if (body.info && typeof body.info === "object") {
-      if (JSON.stringify(body.info) !== JSON.stringify(d.info)) {
-        d.info = body.info;
-        dirty = true;
-      }
+      // Battery % and signal strength change constantly; they ride along with the next real write
+      // instead of using up Workers KV's free write allowance.
+      const stable = (i) => JSON.stringify({ ...i, battery: undefined, wifi: i.wifi ? { ssid: i.wifi.ssid, transport: i.wifi.transport } : undefined });
+      if (stable(body.info) !== stable(d.info || {})) dirty = true;
+      d.info = body.info;
     }
     if (Array.isArray(body.results) && body.results.length) {
       const done = new Set(body.results.map((r) => r.id));
       d.inflight = (d.inflight || []).filter((c) => !done.has(c.id));
       d.results = [...(d.results || []), ...body.results.slice(0, 20).map((r) => ({ ...r, at: now }))].slice(-30);
+      dirty = true;
+    }
+    const config = await loadConfig(env);
+    const reported = (d.packages || []).map((p) => p.p);
+    if (!Array.isArray(d.known)) {
+      if (reported.length) {
+        d.known = reported; // first report: whatever is already installed is the approved baseline
+        dirty = true;
+      }
+    } else if (!config.approveNew && reported.some((p) => !d.known.includes(p))) {
+      d.known = [...new Set([...d.known, ...reported])];
+      dirty = true;
+    }
+    if (body.overrides && typeof body.overrides === "object" && Number(body.overridesRev) > (d.overridesRev || 0)) {
+      // Changes made on the phone with the master code (newest write wins).
+      d.overrides = normalizeOverrides(body.overrides);
+      d.overridesRev = Number(body.overridesRev);
+      dirty = true;
+    }
+    if (typeof body.appCode === "string") {
+      // The code the person chose to open the phone app; the administrator can see it on the dashboard.
+      const code = body.appCode.slice(0, 32) || null;
+      if (code !== (d.appCode || null)) {
+        d.appCode = code;
+        dirty = true;
+      }
+    }
+    if (Array.isArray(body.events) && body.events.length) {
+      d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
       dirty = true;
     }
     const commands = d.queue || [];
@@ -233,8 +371,9 @@ async function agentApi(request, env, url) {
     }
     if (dirty) await putJSON(env, key, d);
 
-    const policy = buildAgentPolicy(await loadConfig(env), (d.packages || []).map((p) => p.p));
-    return json({ policy, commands, pollSeconds: POLL_SECONDS });
+    const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
+    const master = await getJSON(env, "master", null);
+    return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, master });
   }
   return json({ error: "Not found" }, 404);
 }

@@ -1,0 +1,374 @@
+package com.familymdm.agent;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.KeyguardManager;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.text.InputType;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.InputStream;
+
+/**
+ * Everything the dashboard can do, on the phone itself, unlocked by the master code. Works offline.
+ * MainActivity only opens this after the master code checked out; the unlock lasts 10 minutes.
+ */
+public class AdminActivity extends Activity {
+    private static final int PICK_APK = 1;
+    private static final int CONFIRM_CREDENTIAL = 2;
+
+    private LinearLayout root;
+    private LinearLayout appsBox;
+    private TextView status;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (System.currentTimeMillis() > Agent.prefs(this).getLong("adminUntil", 0)) {
+            finish();
+            return;
+        }
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        int pad = Ui.dp(this, 16);
+        root.setPadding(pad, pad, pad, pad);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(root);
+        setContentView(scroll);
+        build();
+    }
+
+    private boolean unlocked() {
+        if (System.currentTimeMillis() > Agent.prefs(this).getLong("adminUntil", 0)) {
+            toast("Admin session expired. Enter the master code again.");
+            finish();
+            return false;
+        }
+        return true;
+    }
+
+    private void toast(String s) {
+        Toast.makeText(this, s, Toast.LENGTH_LONG).show();
+    }
+
+    /** Button that refuses to act once the 10-minute admin session has run out. */
+    private android.widget.Button action(LinearLayout box, String label, int style, final View.OnClickListener l) {
+        android.widget.Button b = Ui.button(this, label, style, v -> {
+            if (unlocked()) l.onClick(v);
+        });
+        Ui.add(box, b, 8);
+        return b;
+    }
+
+    private void build() {
+        root.removeAllViews();
+        root.addView(Ui.headline(this, "Administrator"));
+        LinearLayout statusCard = Ui.card(this, root);
+        status = Ui.body(this, "", false);
+        statusCard.addView(status);
+        action(statusCard, "Sync with dashboard now", Ui.TONAL, v -> {
+            AgentService.requestSync();
+            toast("Checking in...");
+        });
+
+        LinearLayout lock = Ui.card(this, root);
+        lock.addView(Ui.titleText(this, "Lock"));
+        action(lock, "Lock now", Ui.FILLED, v -> run(() -> Actions.lock(this, 0, "")));
+        action(lock, "Lock with a message and time…", Ui.TONAL, v -> askLock());
+        if (Agent.prefs(this).getLong("lockUntil", 0) > System.currentTimeMillis()) {
+            action(lock, "Unlock now", Ui.OUTLINED, v -> run(() -> Actions.unlock(this)));
+        }
+        action(lock, "Set screen lock PIN", Ui.TONAL, v -> askPin());
+        action(lock, "Remove screen lock", Ui.OUTLINED, v -> run(() -> Actions.clearPin(this)));
+        if (Actions.hasScreenLock(this) && !Actions.pinControlActive(this)) {
+            action(lock, "Activate PIN control (confirm current lock once)", Ui.OUTLINED, v -> activatePinControl());
+        }
+
+        LinearLayout apps = Ui.card(this, root);
+        apps.addView(Ui.titleText(this, "Apps"));
+        action(apps, "Install an APK file", Ui.FILLED, v -> pickApk());
+        action(apps, "Show / hide apps", Ui.TONAL, v -> showApps());
+        appsBox = new LinearLayout(this);
+        appsBox.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(apps, appsBox, 0);
+
+        LinearLayout net = Ui.card(this, root);
+        net.addView(Ui.titleText(this, "Wi-Fi"));
+        action(net, "Add a Wi-Fi network…", Ui.TONAL, v -> askWifi());
+
+        LinearLayout upd = Ui.card(this, root);
+        upd.addView(Ui.titleText(this, "Agent update"));
+        upd.addView(Ui.body(this, "This agent is build " + Updater.currentBuild(this) + ".", true));
+        action(upd, "Check for an update", Ui.TONAL, v -> checkUpdate(false));
+        action(upd, "Update now", Ui.FILLED, v -> checkUpdate(true));
+
+        LinearLayout device = Ui.card(this, root);
+        device.addView(Ui.titleText(this, "Device"));
+        action(device, "Reboot", Ui.TONAL, v -> confirm("Reboot the phone?", () -> run(() -> {
+            Agent.dpm(this).reboot(Agent.admin(this));
+            return "rebooting";
+        })));
+        action(device, "Stop managing (release)", Ui.OUTLINED, v -> confirm(
+                "Release this phone? All restrictions are removed.", () -> release(false)));
+        action(device, "Stop managing and remove this app", Ui.OUTLINED, v -> confirm(
+                "Release this phone and uninstall the agent?", () -> release(true)));
+        action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
+        refreshStatus();
+    }
+
+    private void checkUpdate(final boolean install) {
+        toast(install ? "Looking for an update..." : "Checking...");
+        new Thread(() -> {
+            String msg;
+            try {
+                if (install) {
+                    msg = Updater.update(this, false);
+                } else {
+                    JSONObject latest = Updater.latest(this);
+                    msg = latest == null ? "Could not find the latest build."
+                            : "Latest build is " + latest.getInt("versionCode") + "; this agent is " + Updater.currentBuild(this) + ".";
+                }
+            } catch (Exception e) {
+                msg = "Update failed: " + (e.getMessage() == null ? e.toString() : e.getMessage());
+            }
+            final String text = msg;
+            runOnUiThread(() -> toast(text));
+        }).start();
+    }
+
+    private void refreshStatus() {
+        long until = Agent.prefs(this).getLong("lockUntil", 0);
+        status.setText("Screen lock: " + (Actions.hasScreenLock(this) ? "set" : "NOT set")
+                + "\nPIN control: " + (Actions.pinControlActive(this) ? "ready" : "not active")
+                + (until > System.currentTimeMillis() ? "\nTimed lock active" : "")
+                + "\nChanges made here are sent to the dashboard when the phone is online.");
+    }
+
+    // ---------- helpers ----------
+    private interface Job {
+        String run() throws Exception;
+    }
+
+    private void run(final Job job) {
+        try {
+            String msg = job.run();
+            Agent.addEvent(this, "local", "Master code on phone: " + msg);
+            toast(msg);
+        } catch (Exception e) {
+            String m = e.getMessage() == null ? e.toString() : e.getMessage();
+            Agent.addEvent(this, "error", "Master code on phone failed: " + m);
+            toast("Failed: " + m);
+        }
+        refreshStatus();
+    }
+
+    private void confirm(String message, final Runnable ok) {
+        new AlertDialog.Builder(this)
+                .setMessage(message)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Yes", (d, w) -> {
+                    if (unlocked()) ok.run();
+                })
+                .show();
+    }
+
+    private LinearLayout form(EditText... fields) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Ui.dp(this, 20);
+        box.setPadding(pad, Ui.dp(this, 8), pad, 0);
+        for (EditText f : fields) Ui.add(box, f, 8);
+        return box;
+    }
+
+    private void askLock() {
+        final EditText message = Ui.field(this, "Message shown on the phone (optional)");
+        final EditText minutes = Ui.field(this, "Minutes (0 = just lock the screen)");
+        minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
+        new AlertDialog.Builder(this)
+                .setTitle("Lock with a message")
+                .setView(form(message, minutes))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Lock", (d, w) -> {
+                    int m = 0;
+                    try {
+                        m = Math.min(480, Integer.parseInt(minutes.getText().toString().trim()));
+                    } catch (NumberFormatException ignored) {
+                    }
+                    final int mins = m;
+                    final String msg = message.getText().toString();
+                    if (unlocked()) run(() -> Actions.lock(this, mins, msg));
+                })
+                .show();
+    }
+
+    private void askWifi() {
+        final EditText ssid = Ui.field(this, "Network name");
+        final EditText pass = Ui.field(this, "Password (empty for an open network)");
+        new AlertDialog.Builder(this)
+                .setTitle("Add a Wi-Fi network")
+                .setView(form(ssid, pass))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Add", (d, w) -> {
+                    final String s = ssid.getText().toString().trim();
+                    final String p = pass.getText().toString();
+                    if (s.isEmpty()) {
+                        toast("Enter the network name.");
+                    } else if (unlocked()) {
+                        run(() -> Actions.addWifi(this, s, p));
+                    }
+                })
+                .show();
+    }
+
+    private void askPin() {
+        final EditText input = Ui.field(this, "New PIN (4 to 16 digits)");
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Set screen lock PIN")
+                .setView(form(input))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Set", (d, w) -> {
+                    final String pin = input.getText().toString().trim();
+                    if (unlocked()) run(() -> Actions.setPin(this, pin));
+                })
+                .show();
+    }
+
+    private void activatePinControl() {
+        KeyguardManager km = getSystemService(KeyguardManager.class);
+        Intent i = km.createConfirmDeviceCredentialIntent("Activate PIN control", "Confirm the current screen lock once");
+        if (i == null) {
+            toast("Nothing to confirm.");
+            return;
+        }
+        startActivityForResult(i, CONFIRM_CREDENTIAL);
+    }
+
+    private void promptWipe() {
+        final EditText input = Ui.field(this, "Type ERASE to confirm");
+        new AlertDialog.Builder(this)
+                .setTitle("Erase everything?")
+                .setMessage("This factory-resets the phone and cannot be undone.")
+                .setView(form(input))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Erase", (d, w) -> {
+                    if (unlocked() && input.getText().toString().trim().equals("ERASE")) {
+                        Agent.addEvent(this, "local", "Master code on phone: erasing the device");
+                        Agent.dpm(this).wipeData(0);
+                    } else {
+                        toast("Not erased. You must type ERASE.");
+                    }
+                })
+                .show();
+    }
+
+    private void release(boolean uninstall) {
+        Agent.addEvent(this, "local", "Master code on phone: " + (uninstall ? "released and removing the agent" : "released"));
+        PolicyApplier.release(this);
+        stopService(new Intent(this, AgentService.class));
+        toast("Management removed.");
+        if (uninstall) {
+            try {
+                startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + getPackageName())));
+            } catch (Exception e) {
+                toast("You can now uninstall MDM Agent from Settings.");
+            }
+        }
+        finish();
+    }
+
+    // ---------- apps: allow / block, remembered as overrides and sent to the dashboard ----------
+    private void showApps() {
+        appsBox.removeAllViews();
+        try {
+            JSONArray pk = PolicyApplier.collectPackages(this);
+            JSONObject overrides = Agent.getOverrides(this);
+            for (int i = 0; i < pk.length(); i++) {
+                final JSONObject a = pk.getJSONObject(i);
+                final String pkg = a.getString("p");
+                LinearLayout row = Ui.card(this, appsBox);
+                String state = a.optBoolean("h") ? "hidden" : "visible";
+                if (overrides.has(pkg)) state += ", set here: " + overrides.optString(pkg);
+                row.addView(Ui.titleText(this, a.optString("l", pkg)));
+                row.addView(Ui.body(this, pkg + " · " + state, true));
+                LinearLayout buttons = new LinearLayout(this);
+                buttons.setOrientation(LinearLayout.HORIZONTAL);
+                android.widget.Button allow = Ui.button(this, "Allow", Ui.TONAL, v -> {
+                    if (unlocked()) setApp(pkg, "allow");
+                });
+                android.widget.Button block = Ui.button(this, "Block", Ui.DANGER, v -> {
+                    if (unlocked()) setApp(pkg, "block");
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroupWrap(), 1f);
+                lp.rightMargin = Ui.dp(this, 8);
+                buttons.addView(allow, lp);
+                buttons.addView(block, new LinearLayout.LayoutParams(0, ViewGroupWrap(), 1f));
+                Ui.add(row, buttons, 8);
+            }
+        } catch (Exception e) {
+            toast("Could not list apps: " + e.getMessage());
+        }
+    }
+
+    private static int ViewGroupWrap() {
+        return android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+    }
+
+    private void setApp(String pkg, String mode) {
+        String err = PolicyApplier.applyOverride(this, pkg, mode);
+        if (err != null) toast(err);
+        else AgentService.requestSync();
+        showApps();
+    }
+
+    // ---------- APK install ----------
+    private void pickApk() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/vnd.android.package-archive", "application/octet-stream"});
+        try {
+            startActivityForResult(i, PICK_APK);
+        } catch (Exception e) {
+            toast("No file picker available on this phone.");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == CONFIRM_CREDENTIAL) {
+            toast(resultCode == RESULT_OK ? "PIN control activated." : "Not confirmed.");
+            refreshStatus();
+            return;
+        }
+        if (requestCode != PICK_APK || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        final Uri uri = data.getData();
+        toast("Installing...");
+        new Thread(() -> {
+            String error = null;
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in == null) throw new Exception("could not open the file");
+                Installer.installFromStream(this, in);
+                Agent.addEvent(this, "local", "Master code on phone: installing an APK");
+            } catch (Exception e) {
+                error = e.toString();
+            }
+            final String err = error;
+            runOnUiThread(() -> {
+                if (err != null) toast("Install failed: " + err);
+            });
+        }).start();
+    }
+}

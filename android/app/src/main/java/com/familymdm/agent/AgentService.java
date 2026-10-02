@@ -6,9 +6,11 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.app.PendingIntent;
 import android.app.admin.DevicePolicyManager;
-import android.app.KeyguardManager;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
@@ -25,12 +27,26 @@ import java.util.Set;
 /** Foreground service: checks in with the dashboard, applies policy, runs commands. */
 public class AgentService extends Service {
     private static final String TAG = "MdmAgent";
+    private static volatile AgentService instance;
     private volatile boolean running;
     private Thread thread;
+    private BroadcastReceiver packageReceiver;
+
+    /** Ask the running service to check in right now (used by the on-phone admin panel). */
+    static void requestSync() {
+        AgentService s = instance;
+        if (s != null && s.thread != null) s.thread.interrupt();
+    }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(1, notification());
+        instance = this;
+        int build = Updater.currentBuild(this);
+        int before = Agent.prefs(this).getInt("knownBuild", 0);
+        if (before != 0 && before != build) Agent.addEvent(this, "update", "Agent updated: build " + before + " to build " + build);
+        Agent.prefs(this).edit().putInt("knownBuild", build).apply();
+        if (packageReceiver == null) registerPackageReceiver();
         if (thread == null || !thread.isAlive()) {
             running = true;
             thread = new Thread(this::loop, "mdm-agent");
@@ -42,6 +58,14 @@ public class AgentService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        if (instance == this) instance = null;
+        if (packageReceiver != null) {
+            try {
+                unregisterReceiver(packageReceiver);
+            } catch (Exception ignored) {
+            }
+            packageReceiver = null;
+        }
         if (thread != null) thread.interrupt();
         super.onDestroy();
     }
@@ -49,6 +73,27 @@ public class AgentService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    /** Reacts within seconds when an app is installed or removed, so new apps can be held for approval quickly. */
+    private void registerPackageReceiver() {
+        packageReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent.getData() == null || intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return;
+                String pkg = intent.getData().getSchemeSpecificPart();
+                Long touched = Agent.TOUCHED.get(pkg);
+                if (touched != null && System.currentTimeMillis() - touched < 20000) return; // our own hide/show
+                boolean added = Intent.ACTION_PACKAGE_ADDED.equals(intent.getAction());
+                Agent.addEvent(context, "app", (added ? "App installed: " : "App removed: ") + pkg);
+                if (added) PolicyApplier.holdIfNew(context, pkg);
+                if (thread != null) thread.interrupt();
+            }
+        };
+        IntentFilter f = new IntentFilter(Intent.ACTION_PACKAGE_ADDED);
+        f.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        f.addDataScheme("package");
+        registerReceiver(packageReceiver, f);
     }
 
     private Notification notification() {
@@ -83,9 +128,14 @@ public class AgentService extends Service {
                 Log.w(TAG, "stored policy failed: " + e);
             }
             try {
+                Actions.ensureTimedLock(this);
+            } catch (Exception e) {
+                Log.w(TAG, "timed lock check failed: " + e);
+            }
+            try {
                 Thread.sleep(Math.max(15, sleepSeconds) * 1000L);
             } catch (InterruptedException e) {
-                return;
+                if (!running) return; // otherwise this was a wake-up call: check in now
             }
         }
     }
@@ -98,6 +148,22 @@ public class AgentService extends Service {
         o.put("sdk", Build.VERSION.SDK_INT);
         o.put("agent", "0.1.0");
         o.put("deviceOwner", Agent.isOwner(this));
+        o.put("screenLock", Actions.hasScreenLock(this));
+        o.put("pinControl", Actions.pinControlActive(this));
+        o.put("masterSet", Master.isSet(this));
+        o.put("restrictions", new JSONArray(Agent.getSet(this, "restrictions")));
+        o.put("hiddenCount", Agent.getSet(this, "hidden").size());
+        o.put("versionCode", Updater.currentBuild(this));
+        JSONObject battery = Telemetry.battery(this);
+        if (battery != null) o.put("battery", battery);
+        o.put("wifi", Telemetry.wifi(this));
+        long lockUntil = Agent.prefs(this).getLong("lockUntil", 0);
+        if (lockUntil > System.currentTimeMillis()) {
+            JSONObject lock = new JSONObject();
+            lock.put("until", lockUntil);
+            lock.put("msg", Agent.prefs(this).getString("lockMsg", ""));
+            o.put("lock", lock);
+        }
         return o;
     }
 
@@ -115,12 +181,22 @@ public class AgentService extends Service {
         JSONArray packages = PolicyApplier.collectPackages(this);
         body.put("packages", packages);
         body.put("results", results);
+        JSONArray events = Agent.peekEvents(this);
+        body.put("events", events);
+        body.put("overrides", Agent.getOverrides(this));
+        body.put("overridesRev", Agent.overridesRev(this));
+        String codeReport = AppCode.pendingReport(this);
+        if (codeReport != null) body.put("appCode", codeReport);
         List<String> iconsSent = new ArrayList<>();
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);
 
         JSONObject reply = Api.post(server + "/agent/sync", body, token);
         Agent.dropResults(this, results.length());
+        Agent.dropEvents(this, events.length());
+        if (codeReport != null) AppCode.reported(this);
+        Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
+        Master.store(this, reply.optJSONObject("master"));
         if (!iconsSent.isEmpty()) {
             Set<String> sent = Agent.getSet(this, "icons_sent");
             sent.addAll(iconsSent);
@@ -132,6 +208,7 @@ public class AgentService extends Service {
         if (policy != null) {
             Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
             PolicyApplier.apply(this, policy);
+            Updater.maybeAutoUpdate(this, policy);
         }
 
         JSONArray commands = reply.optJSONArray("commands");
@@ -153,11 +230,19 @@ public class AgentService extends Service {
         try {
             switch (type) {
                 case "lock":
-                    boolean secure = getSystemService(KeyguardManager.class).isDeviceSecure();
-                    dpm.lockNow();
-                    msg = secure
-                            ? "screen locked"
-                            : "screen turned off, but this phone has no screen lock (PIN/pattern) set, so nothing asks for a code to wake it";
+                    msg = Actions.lock(this, args.optInt("minutes", 0), args.optString("message", ""));
+                    break;
+                case "unlock":
+                    msg = Actions.unlock(this);
+                    break;
+                case "addWifi":
+                    msg = Actions.addWifi(this, args.optString("ssid"), args.optString("password"));
+                    break;
+                case "setPin":
+                    msg = Actions.setPin(this, args.optString("pin"));
+                    break;
+                case "clearPin":
+                    msg = Actions.clearPin(this);
                     break;
                 case "reboot":
                     Agent.addResult(this, id, type, true, "rebooting");
@@ -181,7 +266,20 @@ public class AgentService extends Service {
                     stopSelf();
                     return;
                 case "install":
-                    msg = Installer.installFromUrl(this, args.optString("url"));
+                    if (args.has("apkId")) {
+                        String server = Agent.prefs(this).getString("server", "");
+                        String token = Agent.prefs(this).getString("token", "");
+                        msg = Installer.installFromUrl(this, server + "/agent/apk/" + args.getString("apkId"), token);
+                    } else {
+                        msg = Installer.installFromUrl(this, args.optString("url"));
+                    }
+                    break;
+                case "resetAppCode":
+                    AppCode.clear(this);
+                    msg = "app code reset; the person must choose a new one";
+                    break;
+                case "updateAgent":
+                    msg = Updater.update(this, false);
                     break;
                 case "uninstall":
                     msg = Installer.uninstall(this, args.getString("packageName"));
@@ -194,9 +292,10 @@ public class AgentService extends Service {
             }
         } catch (Exception e) {
             ok = false;
-            msg = e.toString();
+            msg = e.getMessage() == null ? e.toString() : e.getMessage();
         }
         Agent.addResult(this, id, type, ok, msg);
+        Agent.addEvent(this, ok ? "command" : "error", type + (ok ? ": " : " failed: ") + msg);
     }
 
     /** After release the phone must confirm the uninstall itself; offer it as a tap-to-finish notification. */

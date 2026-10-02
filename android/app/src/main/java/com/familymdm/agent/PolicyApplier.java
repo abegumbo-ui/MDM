@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.location.LocationManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
@@ -113,19 +114,35 @@ final class PolicyApplier {
         if (!dpm.isDeviceOwnerApp(c.getPackageName())) return;
 
         protectSelf(c, dpm, admin);
+        if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
 
-        // Apps with a schedule are hidden outside their allowed window (checked against the phone's own clock).
         Set<String> hideSet = new LinkedHashSet<>(strings(policy.optJSONArray("hide")));
         Set<String> showSet = new LinkedHashSet<>(strings(policy.optJSONArray("show")));
+
+        // Changes made on the phone with the master code win over the dashboard.
+        JSONObject overrides = Agent.getOverrides(c);
+        Iterator<String> oit = overrides.keys();
+        while (oit.hasNext()) {
+            String pkg = oit.next();
+            if ("block".equals(overrides.optString(pkg))) {
+                hideSet.add(pkg);
+                showSet.remove(pkg);
+            } else if ("allow".equals(overrides.optString(pkg))) {
+                hideSet.remove(pkg);
+                showSet.add(pkg);
+            }
+        }
+
+        // Apps with a schedule are hidden outside their allowed window (checked against the phone's own clock).
         JSONObject schedules = policy.optJSONObject("schedules");
         if (schedules != null) {
             Iterator<String> keys = schedules.keys();
             while (keys.hasNext()) {
                 String pkg = keys.next();
-                if (!withinSchedule(schedules.optJSONObject(pkg))) {
+                if (!"block".equals(overrides.optString(pkg)) && !withinSchedule(schedules.optJSONObject(pkg))) {
                     hideSet.add(pkg);
                     showSet.remove(pkg);
                 }
@@ -135,21 +152,33 @@ final class PolicyApplier {
         for (String pkg : hideSet) {
             if (never.contains(pkg)) continue;
             try {
-                if (!dpm.isApplicationHidden(admin, pkg) && dpm.setApplicationHidden(admin, pkg, true)) {
-                    hiddenByUs.add(pkg);
-                } else if (dpm.isApplicationHidden(admin, pkg)) {
+                boolean wasHidden = dpm.isApplicationHidden(admin, pkg);
+                if (!wasHidden) {
+                    Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+                    if (dpm.setApplicationHidden(admin, pkg, true)) {
+                        hiddenByUs.add(pkg);
+                        Agent.addEvent(c, "hide", "Hidden: " + nameOf(pkg));
+                        errorCleared(c, "hide:" + pkg);
+                    } else {
+                        errorOnce(c, "hide:" + pkg, "Could not hide " + nameOf(pkg) + " (the phone refused)");
+                    }
+                } else {
                     hiddenByUs.add(pkg);
                 }
             } catch (Exception e) {
-                Log.w(TAG, "hide failed for " + pkg + ": " + e);
+                errorOnce(c, "hide:" + pkg, "Could not hide " + nameOf(pkg) + ": " + e.getMessage());
             }
         }
         for (String pkg : showSet) {
             try {
-                if (dpm.isApplicationHidden(admin, pkg)) dpm.setApplicationHidden(admin, pkg, false);
+                if (dpm.isApplicationHidden(admin, pkg)) {
+                    Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+                    dpm.setApplicationHidden(admin, pkg, false);
+                    Agent.addEvent(c, "show", "Shown again: " + nameOf(pkg));
+                }
                 hiddenByUs.remove(pkg);
             } catch (Exception e) {
-                Log.w(TAG, "show failed for " + pkg + ": " + e);
+                errorOnce(c, "show:" + pkg, "Could not show " + nameOf(pkg) + ": " + e.getMessage());
             }
         }
         Agent.putSet(c, "hidden", hiddenByUs);
@@ -159,23 +188,106 @@ final class PolicyApplier {
             if (ALLOWED_RESTRICTIONS.contains(r)) wanted.add(r);
         }
         Set<String> applied = Agent.getSet(c, "restrictions");
+        Set<String> nowOn = new HashSet<>();
         for (String r : wanted) {
             try {
                 dpm.addUserRestriction(admin, r);
+                nowOn.add(r);
+                if (!applied.contains(r)) Agent.addEvent(c, "restriction", "Restriction on: " + r);
+                errorCleared(c, "r:" + r);
             } catch (Exception e) {
-                Log.w(TAG, "restriction failed " + r + ": " + e);
+                errorOnce(c, "r:" + r, "Restriction " + r + " failed: " + e.getMessage());
             }
         }
         for (String r : applied) {
             if (!wanted.contains(r)) {
                 try {
                     dpm.clearUserRestriction(admin, r);
+                    Agent.addEvent(c, "restriction", "Restriction off: " + r);
                 } catch (Exception e) {
-                    Log.w(TAG, "clear restriction failed " + r + ": " + e);
+                    errorOnce(c, "rc:" + r, "Could not clear restriction " + r + ": " + e.getMessage());
+                    nowOn.add(r);
                 }
             }
         }
+        wanted = nowOn;
         Agent.putSet(c, "restrictions", wanted);
+    }
+
+    private static String nameOf(String pkg) {
+        String l = LABELS.get(pkg);
+        return l == null ? pkg : l;
+    }
+
+    /** Logs a failure once, so a problem that repeats every minute doesn't flood the phone log. */
+    private static void errorOnce(Context c, String key, String msg) {
+        Set<String> logged = Agent.getSet(c, "errors");
+        if (logged.add(key)) {
+            Agent.putSet(c, "errors", logged);
+            Agent.addEvent(c, "error", msg);
+        }
+    }
+
+    private static void errorCleared(Context c, String key) {
+        Set<String> logged = Agent.getSet(c, "errors");
+        if (logged.remove(key)) Agent.putSet(c, "errors", logged);
+    }
+
+    /** Immediate local change from the admin panel; the override list is what syncs to the dashboard. */
+    static String applyOverride(Context c, String pkg, String mode) {
+        DevicePolicyManager dpm = Agent.dpm(c);
+        ComponentName admin = Agent.admin(c);
+        if ("block".equals(mode) && neverHide(c).contains(pkg)) {
+            return "That is a protected system part and cannot be hidden.";
+        }
+        try {
+            Set<String> hidden = Agent.getSet(c, "hidden");
+            Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+            if ("block".equals(mode)) {
+                dpm.setApplicationHidden(admin, pkg, true);
+                hidden.add(pkg);
+            } else {
+                dpm.setApplicationHidden(admin, pkg, false);
+                hidden.remove(pkg);
+            }
+            Agent.putSet(c, "hidden", hidden);
+            Agent.setOverride(c, pkg, mode);
+            Agent.addEvent(c, "local", "Master code on phone: " + ("block".equals(mode) ? "blocked " : "allowed ") + nameOf(pkg));
+            return null;
+        } catch (Exception e) {
+            return e.getMessage();
+        }
+    }
+
+    /**
+     * Approval mode: a launchable app that appeared after the approved baseline is hidden immediately,
+     * using the last policy the dashboard sent (so it works offline too). Returns true if it was held.
+     */
+    static boolean holdIfNew(Context c, String pkg) {
+        try {
+            String stored = Agent.prefs(c).getString("policy", null);
+            if (stored == null) return false;
+            JSONObject policy = new JSONObject(stored);
+            if (!policy.optBoolean("approveNew")) return false;
+            if (strings(policy.optJSONArray("known")).contains(pkg)) return false;
+            if (strings(policy.optJSONArray("show")).contains(pkg)) return false;
+            if ("allow".equals(Agent.getOverrides(c).optString(pkg))) return false;
+            if (neverHide(c).contains(pkg)) return false;
+            if (c.getPackageManager().getLaunchIntentForPackage(pkg) == null) return false;
+            DevicePolicyManager dpm = Agent.dpm(c);
+            ComponentName admin = Agent.admin(c);
+            if (!dpm.isDeviceOwnerApp(c.getPackageName())) return false;
+            Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+            if (!dpm.setApplicationHidden(admin, pkg, true)) return false;
+            Set<String> hidden = Agent.getSet(c, "hidden");
+            hidden.add(pkg);
+            Agent.putSet(c, "hidden", hidden);
+            Agent.addEvent(c, "hide", "Held for your approval: " + nameOf(pkg));
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "holdIfNew failed: " + e);
+            return false;
+        }
     }
 
     /** Re-applies the last policy the server sent (keeps schedules working while offline). */
@@ -245,6 +357,32 @@ final class PolicyApplier {
             }
         }
         return out;
+    }
+
+    /**
+     * Android shows the Wi-Fi network name only to apps holding the location permission while Location is on.
+     * This grants the permission to the agent and turns the setting on. No location is read or reported.
+     */
+    private static void enableWifiName(Context c, DevicePolicyManager dpm, ComponentName admin) {
+        try {
+            String pkg = c.getPackageName();
+            for (String perm : new String[]{"android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION"}) {
+                if (dpm.getPermissionGrantState(admin, pkg, perm) != DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) {
+                    dpm.setPermissionGrantState(admin, pkg, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED);
+                    Agent.addEvent(c, "restriction", "Allowed the agent to read the Wi-Fi name");
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                LocationManager lm = (LocationManager) c.getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null && !lm.isLocationEnabled()) {
+                    dpm.setLocationEnabled(admin, true);
+                    Agent.addEvent(c, "restriction", "Turned on Android's Location setting so the Wi-Fi name can be shown");
+                }
+            }
+            errorCleared(c, "wifiname");
+        } catch (Exception e) {
+            errorOnce(c, "wifiname", "Could not enable Wi-Fi name reporting: " + e.getMessage());
+        }
     }
 
     /** Stops the agent itself from being uninstalled or force-stopped from Settings. */

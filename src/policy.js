@@ -80,21 +80,47 @@ export function normalizeConfig(input) {
     }
   }
   return { apps, // Off by default so a fresh device keeps working until you have chosen what to allow.
-    blockUnlisted: c.blockUnlisted === true, restrictions };
+    blockUnlisted: c.blockUnlisted === true,
+    // Newly installed apps stay hidden until you approve them.
+    approveNew: c.approveNew === true,
+    // Android only shows the Wi-Fi name when Location is on; this lets the agent turn it on (no location is collected).
+    reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, restrictions };
 }
 
-/** Instructions for one device, given the packages it reported. */
-export function buildAgentPolicy(config, reportedPackages = []) {
+/** Overrides made on the phone itself ({pkg: "allow"|"block"}), sanitized. */
+export function normalizeOverrides(o) {
+  const out = {};
+  for (const [pkg, mode] of Object.entries(o && typeof o === "object" ? o : {})) {
+    if (/^[A-Za-z0-9_.]{1,200}$/.test(pkg) && (mode === "allow" || mode === "block")) out[pkg] = mode;
+  }
+  return out;
+}
+
+/**
+ * Instructions for one device, given the packages it reported.
+ * opts.known: packages that existed before approval mode (null = unknown, nothing is held)
+ * opts.overrides: changes made on the phone with the master code; they win over the dashboard
+ */
+export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   const cfg = normalizeConfig(config);
+  const apps = { ...cfg.apps };
+  for (const [pkg, mode] of Object.entries(normalizeOverrides(opts.overrides))) {
+    apps[pkg] = { mode, ...(mode === "allow" && cfg.apps[pkg]?.schedule ? { schedule: cfg.apps[pkg].schedule } : {}) };
+  }
+  const known = opts.known ? new Set(opts.known) : null;
   const hide = new Set();
   const show = [];
+  const pending = [];
   // Explicit blocks apply even to packages the device didn't report.
-  for (const [pkg, a] of Object.entries(cfg.apps)) if (a.mode === "block") hide.add(pkg);
+  for (const [pkg, a] of Object.entries(apps)) if (a.mode === "block") hide.add(pkg);
   for (const pkg of reportedPackages) {
-    const mode = cfg.apps[pkg]?.mode;
+    const mode = apps[pkg]?.mode;
     if (mode === "block") hide.add(pkg);
     else if (mode === "allow" || mode === "force") show.push(pkg);
-    else if (cfg.blockUnlisted && !isProtected(pkg)) hide.add(pkg);
+    else if (cfg.approveNew && known && !known.has(pkg) && !isProtected(pkg)) {
+      hide.add(pkg);
+      pending.push(pkg);
+    } else if (cfg.blockUnlisted && !isProtected(pkg)) hide.add(pkg);
     else show.push(pkg);
   }
   const restrictions = Object.entries(RESTRICTIONS)
@@ -102,6 +128,10 @@ export function buildAgentPolicy(config, reportedPackages = []) {
     .map(([, v]) => v.key);
   // The phone checks these against its own clock, so apps open and close on time even offline.
   const schedules = {};
-  for (const [pkg, a] of Object.entries(cfg.apps)) if (a.schedule) schedules[pkg] = a.schedule;
-  return { hide: [...hide], show, restrictions, schedules };
+  for (const [pkg, a] of Object.entries(apps)) if (a.schedule) schedules[pkg] = a.schedule;
+  // With approval mode on, the phone also gets the approved baseline so it can hold a new app
+  // right away, even when it has no connection to the dashboard.
+  const out = { hide: [...hide], show, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate };
+  if (cfg.approveNew && known) out.known = [...known];
+  return out;
 }

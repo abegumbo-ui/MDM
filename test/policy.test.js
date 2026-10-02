@@ -64,3 +64,10 @@ test("agent package is protected; garbage config is sanitized", () => {
   assert.ok(isProtected("com.familymdm.agent"));
   assert.deepEqual(normalizeConfig({ apps: { a: { mode: "evil" }, b: { mode: "block" } } }).apps, { b: { mode: "block", label: undefined } });
 });
+
+test("approval mode sends the approved baseline to the phone", () => {
+  const p = buildAgentPolicy({ approveNew: true }, ["a.b", "c.d"], { known: ["a.b"] });
+  assert.deepEqual(p.known, ["a.b"]);
+  assert.deepEqual(p.pending, ["c.d"]);
+  assert.equal(buildAgentPolicy({}, ["a.b"], { known: ["a.b"] }).known, undefined);
+});

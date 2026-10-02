@@ -28,6 +28,40 @@ repo's **Releases → Latest agent build** (or from the Actions run's artifacts)
 
 Codes work once and expire after an hour. The phone must be online to check them.
 
+## Master code (works with no internet)
+Set it in the dashboard under **Settings → Master code**. On the phone, open **MDM Agent → Administrator (master code)**. The panel can: lock, set or remove the screen PIN, reboot, install an APK, allow or block apps, release the phone, remove the agent, or erase it. The phone stores only a salted PBKDF2 hash, checks the code itself, and locks out for 15 minutes after 5 wrong tries. App changes made there sync to the dashboard (shown as "N app change(s) made on the phone"; clear them with **Clear phone-side changes**).
+If you forget it, set a new one in the dashboard; the phone picks it up at its next check-in.
+
+## Real lock
+**Lock** only turns the screen off if the phone has no screen lock. Use **Set PIN** on the Devices tab (or in the admin panel) first. If the phone already has a lock, open the admin panel once and tap **Activate PIN control**.
+
+## The code to open the app
+When the agent app is opened on the phone it asks for a code. The first time, the person **chooses** one (4+ characters); after that they type it every time they open the app. The phone checks it itself (5 wrong tries locks it for 5 minutes), and the code is also sent to the dashboard: open the phone's page, **Overview → Code to open the app → Show**. The master code always opens it too. **Reset app code** (Controls page) makes the person choose a new one.
+
+## Updating the agent
+- **From the dashboard:** the phone's page shows "Update available" when GitHub has a newer build. **Controls → Update agent** installs it silently over the old one (same signing key, so the phone stays managed).
+- **From the phone:** open the admin panel (master code) → **Agent update**.
+- **Automatically:** **Settings → Agent updates**. Phones check every 6 hours.
+Updates come from the "Latest agent build" release in this repo (the repo is public, so no token is needed).
+
+## Installing apps from the dashboard
+**Controls → Upload APK from this computer** sends a file (up to 24 MB, kept for a week) to the phone and installs it silently. For bigger apps use **Install from link** (any direct https:// link, e.g. a GitHub release), or turn on approval mode and let the person install from the Play Store.
+
+## Phones list
+The **Devices** tab shows one compact card per phone. Tap it for a page you can swipe through: Overview, Controls, Apps (with Uninstall for apps the person installed), Log and Network. Uninstall is also on the **Apps** tab for non-system apps.
+
+## Timed lock with a message
+**Lock…** on the Devices tab (or *Lock with a message and time* in the phone's admin panel) can lock for 5 minutes up to 8 hours. The phone shows your message and a countdown full-screen, and nothing else can be opened until time is up, you tap **Unlock now**, or someone enters the master code (long-press the title on the lock screen). The message also appears on the normal lock screen. An **Emergency call** button stays on the screen. The lock survives a reboot.
+
+## Wi-Fi and battery
+Each device card shows the battery level, whether it is charging, and the network it is on with signal strength. Android only shows the network name when Location is on, so the agent turns that on (switch in **Settings → Phone info**; no location is read or sent). Android never lets apps read saved Wi-Fi passwords, so use **Add Wi-Fi** on the dashboard (or in the admin panel) to push a network to the phone. The dashboard remembers the passwords you add. Battery and signal refresh every ~10 minutes in the dashboard to stay inside the free storage limits.
+
+## Approving new apps
+**Settings → Hold newly installed apps until I approve them** lets you leave the Play Store available. Whatever is on the phone when you switch it on counts as approved; anything installed afterward is hidden within seconds and listed under **Apps → Waiting for your approval** (Approve or Block).
+
+## Phone log
+Each device card has a **Phone log**: apps hidden/shown, installs and removals, failed restrictions, commands and their results, and anything done with the master code.
+
 ## Schedules
 On the Apps tab, an app set to Allow can have a **Schedule** (days and a time window, in the phone's local time). Outside the window the app is hidden. The phone enforces it itself, so it works even when offline.
 
