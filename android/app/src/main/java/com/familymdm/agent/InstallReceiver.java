@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInstaller;
+import android.widget.Toast;
 
 /** Receives the final status of an install/uninstall and queues it for the next report. */
 public class InstallReceiver extends BroadcastReceiver {
@@ -24,7 +25,8 @@ public class InstallReceiver extends BroadcastReceiver {
             return;
         }
         boolean ok = status == PackageInstaller.STATUS_SUCCESS;
-        Agent.addResult(context, "pkg-" + System.currentTimeMillis(), "install-result", ok,
-                (pkg == null ? "" : pkg + ": ") + (message == null ? "status " + status : message));
+        String text = (pkg == null ? "" : pkg + ": ") + (ok ? "done" : (message == null ? "failed (status " + status + ")" : message));
+        Agent.addResult(context, "pkg-" + System.currentTimeMillis(), "install-result", ok, text);
+        Toast.makeText(context, ok ? "App installed" : "Install failed: " + text, Toast.LENGTH_LONG).show();
     }
 }
