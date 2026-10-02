@@ -1,0 +1,8 @@
+name = "mdm"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# KV namespace holding dashboard settings.
+[[kv_namespaces]]
+binding = "STATE"
+id = "163fdd2bd14b4cd1bc8a46ac5f01c5db"
