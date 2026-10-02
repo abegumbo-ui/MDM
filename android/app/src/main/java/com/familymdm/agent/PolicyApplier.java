@@ -117,15 +117,30 @@ final class PolicyApplier {
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
 
-        // Apps with a schedule are hidden outside their allowed window (checked against the phone's own clock).
         Set<String> hideSet = new LinkedHashSet<>(strings(policy.optJSONArray("hide")));
         Set<String> showSet = new LinkedHashSet<>(strings(policy.optJSONArray("show")));
+
+        // Changes made on the phone with the master code win over the dashboard.
+        JSONObject overrides = Agent.getOverrides(c);
+        Iterator<String> oit = overrides.keys();
+        while (oit.hasNext()) {
+            String pkg = oit.next();
+            if ("block".equals(overrides.optString(pkg))) {
+                hideSet.add(pkg);
+                showSet.remove(pkg);
+            } else if ("allow".equals(overrides.optString(pkg))) {
+                hideSet.remove(pkg);
+                showSet.add(pkg);
+            }
+        }
+
+        // Apps with a schedule are hidden outside their allowed window (checked against the phone's own clock).
         JSONObject schedules = policy.optJSONObject("schedules");
         if (schedules != null) {
             Iterator<String> keys = schedules.keys();
             while (keys.hasNext()) {
                 String pkg = keys.next();
-                if (!withinSchedule(schedules.optJSONObject(pkg))) {
+                if (!"block".equals(overrides.optString(pkg)) && !withinSchedule(schedules.optJSONObject(pkg))) {
                     hideSet.add(pkg);
                     showSet.remove(pkg);
                 }
@@ -135,21 +150,33 @@ final class PolicyApplier {
         for (String pkg : hideSet) {
             if (never.contains(pkg)) continue;
             try {
-                if (!dpm.isApplicationHidden(admin, pkg) && dpm.setApplicationHidden(admin, pkg, true)) {
-                    hiddenByUs.add(pkg);
-                } else if (dpm.isApplicationHidden(admin, pkg)) {
+                boolean wasHidden = dpm.isApplicationHidden(admin, pkg);
+                if (!wasHidden) {
+                    Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+                    if (dpm.setApplicationHidden(admin, pkg, true)) {
+                        hiddenByUs.add(pkg);
+                        Agent.addEvent(c, "hide", "Hidden: " + nameOf(pkg));
+                        errorCleared(c, "hide:" + pkg);
+                    } else {
+                        errorOnce(c, "hide:" + pkg, "Could not hide " + nameOf(pkg) + " (the phone refused)");
+                    }
+                } else {
                     hiddenByUs.add(pkg);
                 }
             } catch (Exception e) {
-                Log.w(TAG, "hide failed for " + pkg + ": " + e);
+                errorOnce(c, "hide:" + pkg, "Could not hide " + nameOf(pkg) + ": " + e.getMessage());
             }
         }
         for (String pkg : showSet) {
             try {
-                if (dpm.isApplicationHidden(admin, pkg)) dpm.setApplicationHidden(admin, pkg, false);
+                if (dpm.isApplicationHidden(admin, pkg)) {
+                    Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+                    dpm.setApplicationHidden(admin, pkg, false);
+                    Agent.addEvent(c, "show", "Shown again: " + nameOf(pkg));
+                }
                 hiddenByUs.remove(pkg);
             } catch (Exception e) {
-                Log.w(TAG, "show failed for " + pkg + ": " + e);
+                errorOnce(c, "show:" + pkg, "Could not show " + nameOf(pkg) + ": " + e.getMessage());
             }
         }
         Agent.putSet(c, "hidden", hiddenByUs);
@@ -159,23 +186,75 @@ final class PolicyApplier {
             if (ALLOWED_RESTRICTIONS.contains(r)) wanted.add(r);
         }
         Set<String> applied = Agent.getSet(c, "restrictions");
+        Set<String> nowOn = new HashSet<>();
         for (String r : wanted) {
             try {
                 dpm.addUserRestriction(admin, r);
+                nowOn.add(r);
+                if (!applied.contains(r)) Agent.addEvent(c, "restriction", "Restriction on: " + r);
+                errorCleared(c, "r:" + r);
             } catch (Exception e) {
-                Log.w(TAG, "restriction failed " + r + ": " + e);
+                errorOnce(c, "r:" + r, "Restriction " + r + " failed: " + e.getMessage());
             }
         }
         for (String r : applied) {
             if (!wanted.contains(r)) {
                 try {
                     dpm.clearUserRestriction(admin, r);
+                    Agent.addEvent(c, "restriction", "Restriction off: " + r);
                 } catch (Exception e) {
-                    Log.w(TAG, "clear restriction failed " + r + ": " + e);
+                    errorOnce(c, "rc:" + r, "Could not clear restriction " + r + ": " + e.getMessage());
+                    nowOn.add(r);
                 }
             }
         }
+        wanted = nowOn;
         Agent.putSet(c, "restrictions", wanted);
+    }
+
+    private static String nameOf(String pkg) {
+        String l = LABELS.get(pkg);
+        return l == null ? pkg : l;
+    }
+
+    /** Logs a failure once, so a problem that repeats every minute doesn't flood the phone log. */
+    private static void errorOnce(Context c, String key, String msg) {
+        Set<String> logged = Agent.getSet(c, "errors");
+        if (logged.add(key)) {
+            Agent.putSet(c, "errors", logged);
+            Agent.addEvent(c, "error", msg);
+        }
+    }
+
+    private static void errorCleared(Context c, String key) {
+        Set<String> logged = Agent.getSet(c, "errors");
+        if (logged.remove(key)) Agent.putSet(c, "errors", logged);
+    }
+
+    /** Immediate local change from the admin panel; the override list is what syncs to the dashboard. */
+    static String applyOverride(Context c, String pkg, String mode) {
+        DevicePolicyManager dpm = Agent.dpm(c);
+        ComponentName admin = Agent.admin(c);
+        if ("block".equals(mode) && neverHide(c).contains(pkg)) {
+            return "That is a protected system part and cannot be hidden.";
+        }
+        try {
+            Set<String> hidden = Agent.getSet(c, "hidden");
+            Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+            if ("block".equals(mode)) {
+                dpm.setApplicationHidden(admin, pkg, true);
+                hidden.add(pkg);
+            } else {
+                dpm.setApplicationHidden(admin, pkg, false);
+                hidden.remove(pkg);
+            }
+            Agent.putSet(c, "hidden", hidden);
+            Agent.setOverride(c, pkg, mode);
+            Agent.addEvent(c, "local", "Master code on phone: " + ("block".equals(mode) ? "blocked " : "allowed ") + nameOf(pkg));
+            return null;
+        } catch (Exception e) {
+            return e.getMessage();
+        }
     }
 
     /** Re-applies the last policy the server sent (keeps schedules working while offline). */

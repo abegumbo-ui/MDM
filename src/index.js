@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, RESTRICTIONS } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, RESTRICTIONS } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -6,7 +6,9 @@ const POLL_SECONDS = 60;
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
-const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync"]);
+const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides"]);
+const MASTER_ITERATIONS = 100000;
+const MAX_EVENTS = 60;
 const CODE_TYPES = new Set(["enroll", "install", "uninstall"]);
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
@@ -73,6 +75,8 @@ const publicDevice = (d) => ({
   pending: (d.queue || []).length,
   inflight: d.inflight || [],
   results: (d.results || []).slice(-15),
+  events: (d.events || []).slice(-40),
+  overrides: d.overrides || {},
 });
 
 // ---- admin API (cookie auth) ----
@@ -82,10 +86,29 @@ async function adminApi(request, env, url) {
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
   if (path === "/api/state" && method === "GET") {
-    return json({ config: await loadConfig(env), restrictions: RESTRICTIONS, origin: url.origin });
+    return json({ config: await loadConfig(env), restrictions: RESTRICTIONS, origin: url.origin, masterSet: !!(await env.STATE.get("master")), masterIterations: MASTER_ITERATIONS });
   }
   if (path === "/api/config" && method === "PUT") {
-    await putJSON(env, "config", normalizeConfig(body));
+    const before = await loadConfig(env);
+    const next = normalizeConfig(body);
+    await putJSON(env, "config", next);
+    if (next.approveNew && !before.approveNew) {
+      // Turning approval mode on: everything installed right now counts as already approved.
+      for (const d of await listDevices(env)) {
+        d.known = (d.packages || []).map((p) => p.p);
+        await putJSON(env, `device:${d.id}`, d);
+      }
+    }
+    return json({ ok: true });
+  }
+  if (path === "/api/master" && method === "PUT") {
+    // The browser derives the hash (PBKDF2), so the code itself never reaches the server.
+    if (!/^[0-9a-f]{32}$/.test(body.salt || "") || !/^[0-9a-f]{64}$/.test(body.hash || "")) return json({ error: "Invalid master code data" }, 400);
+    await putJSON(env, "master", { salt: body.salt, hash: body.hash, iterations: MASTER_ITERATIONS });
+    return json({ ok: true });
+  }
+  if (path === "/api/master" && method === "DELETE") {
+    await env.STATE.delete("master");
     return json({ ok: true });
   }
   if (path === "/api/codes" && method === "POST") {
@@ -108,7 +131,7 @@ async function adminApi(request, env, url) {
       devices.map((d) => ({
         ...publicDevice(d),
         packages: (d.packages || []).map((p) => ({ ...p, protected: isProtected(p.p) })),
-        applied: buildAgentPolicy(config, (d.packages || []).map((p) => p.p)),
+        applied: buildAgentPolicy(config, (d.packages || []).map((p) => p.p), { known: d.known, overrides: d.overrides }),
       })),
     );
   }
@@ -134,6 +157,17 @@ async function adminApi(request, env, url) {
         args.packageName = given.packageName;
       }
       if (body.type === "release") args.uninstall = given.uninstall === true;
+      if (body.type === "setPin") {
+        if (!/^\d{4,16}$/.test(given.pin || "")) return json({ error: "PIN must be 4 to 16 digits" }, 400);
+        args.pin = given.pin; // delivered once, then dropped from the queue; never written to the activity log
+      }
+      if (body.type === "clearOverrides") {
+        // Handled here: the next sync hands the phone the cleared list.
+        d.overrides = {};
+        d.overridesRev = Date.now();
+        await putJSON(env, key, d);
+        return json({ ok: true });
+      }
       d.queue = [...(d.queue || []), { id: randomHex(6), type: body.type, args }];
       await putJSON(env, key, d);
       return json({ ok: true });
@@ -217,6 +251,27 @@ async function agentApi(request, env, url) {
       d.results = [...(d.results || []), ...body.results.slice(0, 20).map((r) => ({ ...r, at: now }))].slice(-30);
       dirty = true;
     }
+    const config = await loadConfig(env);
+    const reported = (d.packages || []).map((p) => p.p);
+    if (!Array.isArray(d.known)) {
+      if (reported.length) {
+        d.known = reported; // first report: whatever is already installed is the approved baseline
+        dirty = true;
+      }
+    } else if (!config.approveNew && reported.some((p) => !d.known.includes(p))) {
+      d.known = [...new Set([...d.known, ...reported])];
+      dirty = true;
+    }
+    if (body.overrides && typeof body.overrides === "object" && Number(body.overridesRev) > (d.overridesRev || 0)) {
+      // Changes made on the phone with the master code (newest write wins).
+      d.overrides = normalizeOverrides(body.overrides);
+      d.overridesRev = Number(body.overridesRev);
+      dirty = true;
+    }
+    if (Array.isArray(body.events) && body.events.length) {
+      d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
+      dirty = true;
+    }
     const commands = d.queue || [];
     if (commands.length) {
       d.queue = [];
@@ -233,8 +288,9 @@ async function agentApi(request, env, url) {
     }
     if (dirty) await putJSON(env, key, d);
 
-    const policy = buildAgentPolicy(await loadConfig(env), (d.packages || []).map((p) => p.p));
-    return json({ policy, commands, pollSeconds: POLL_SECONDS });
+    const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
+    const master = await getJSON(env, "master", null);
+    return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, master });
   }
   return json({ error: "Not found" }, 404);
 }

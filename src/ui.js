@@ -120,7 +120,7 @@ function render(){
  ({devices:renderDevices,apps:renderApps,codes:renderCodes,settings:renderSettings}[tab]||renderDevices)(m)}
 
 /* ---------- devices ---------- */
-const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used'};
+const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen PIN'};
 function renderDevices(m){
  if(!devices.length){m.append(h('div',{class:'card'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Go to Codes → Enrollment code for the steps to add a phone.')));return}
  for(const d of devices){
@@ -136,6 +136,10 @@ function renderDevices(m){
   chips.append(h('span',{class:'chip'},d.packages.length+' apps'),h('span',{class:'chip'},hidden+' hidden'),
    h('span',{class:'chip '+(pending?'warn':'ok')},pending?pending+' changes pending':'In sync'));
   if(d.info.deviceOwner===false)chips.append(h('span',{class:'chip bad'},'Not device owner!'));
+  if(d.info.screenLock!==undefined)chips.append(h('span',{class:'chip '+(d.info.screenLock?'ok':'warn')},d.info.screenLock?'Screen lock on':'No screen lock'));
+  if(d.info.masterSet===false)chips.append(h('span',{class:'chip warn'},'No master code on phone'));
+  const nOv=Object.keys(d.overrides||{}).length;
+  if(nOv)chips.append(h('span',{class:'chip warn'},nOv+' app change(s) made on the phone'));
   card.append(chips);
 
   const acts=h('div');
@@ -151,13 +155,21 @@ function renderDevices(m){
     if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}
     await call('POST','/api/devices/'+d.id+'/command',{type:type,args:a});snack(label+' queued. The phone runs it at its next check-in (within about a minute).');load()}))};
   cmd('Sync now','sync');cmd('Lock','lock');cmd('Reboot','reboot');
+  cmd('Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null},null,'tonal');
+  cmd('Remove PIN','clearPin',{},'Remove the screen lock PIN?','tonal');
+  if(nOv)cmd('Clear phone-side changes','clearOverrides',{},'Forget the app changes made on the phone with the master code?','outline');
   cmd('Install APK','install',function(){const url=prompt('Direct https:// link to an APK file');return url?{url:url}:null});
   cmd('Uninstall app','uninstall',function(){const p=prompt('Package name to uninstall');return p?{packageName:p}:null});
   cmd('Release device','release',{uninstall:false},'Release this device? It stops being managed and every restriction is removed.','outline');
   cmd('Release & remove app','release',{uninstall:true},'Release the device AND start removing the agent app? The phone will ask to confirm.','outline');
   cmd('Wipe','wipe',null,'ERASE this device completely?','danger');
   row.append(btn('Remove record','outline',async function(){if(!confirm('Delete this device from the dashboard? The phone stays managed; use Release first.'))return;await call('DELETE','/api/devices/'+d.id);load()}));
-  card.append(row);m.append(card)}
+  card.append(row);
+  const log=h('details',{style:'margin-top:12px'},h('summary',{class:'mute'},'Phone log ('+d.events.length+')'));
+  const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️'};
+  if(!d.events.length)log.append(h('div',{class:'mute small'},'Nothing logged yet.'));
+  for(const e of d.events.slice().reverse())log.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
+  card.append(log);m.append(card)}
  m.append(btn('Refresh','tonal',load));
 }
 
@@ -170,6 +182,17 @@ function allApps(){
  return [...seen.values()].sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)})}
 function cur(pkg){const c=state.config.apps[pkg];return c?{mode:c.mode,schedule:c.schedule||null}:{mode:'',schedule:null}}
 function renderApps(m){
+ const pend=new Map();
+ for(const d of devices)for(const p of d.applied.pending||[]){const a=d.packages.find(function(x){return x.p===p});pend.set(p,(a&&a.l)||p)}
+ if(pend.size){
+  const pc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Waiting for your approval ('+pend.size+')'),h('div',{class:'mute'},'New apps stay hidden on the phone until you approve them.'));
+  for(const [pkg,label] of pend){
+   const img=h('img',{src:'/api/icon/'+pkg,alt:'',style:'width:40px;height:40px;border-radius:10px'});img.onerror=function(){img.replaceWith(h('div',{class:'ph',style:'width:40px;height:40px;border-radius:10px;background:var(--surface-3)'}))};
+   pc.append(h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},label),h('div',{class:'mute small mono'},pkg),
+    h('div',{class:'row',style:'margin-top:8px'},
+     btn('Approve','',async function(){state.config.apps[pkg]={mode:'allow',label:label};await saveConfig('Approved '+label+'. It appears on the phone within about a minute.');render()}),
+     btn('Block','danger',async function(){state.config.apps[pkg]={mode:'block',label:label};await saveConfig('Blocked '+label+'.');render()})))))}
+  m.append(pc)}
  const top=h('div',{class:'card'});
  top.append(h('div',{class:'setting'},h('div',{class:'grow'},h('h2',null,'Hide apps that aren\'t allowed'),
   h('div',{class:'mute'},'When on, every launcher app that isn\'t set to Allow is hidden. Protected system parts are never hidden. Allow the apps you need (phone, messages, maps…) first.')),
@@ -252,6 +275,24 @@ function renderCodes(m){
 
 /* ---------- settings ---------- */
 function renderSettings(m){
+ const appr=h('div',{class:'card'},h('h2',null,'New apps'));
+ appr.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Hold newly installed apps until I approve them'),
+  h('div',{class:'mute'},'Lets the person keep the Play Store: anything they install afterwards stays hidden (it cannot be opened) until you approve it on the Apps tab. Apps already on the phone when you switch this on are treated as approved.')),
+  sw(state.config.approveNew,async function(on){state.config.approveNew=on;try{await saveConfig(on?'New apps will wait for your approval.':'New apps are no longer held.')}catch(e){snack(e.message,1)}})));
+ m.append(appr);
+ const mc=h('div',{class:'card'},h('h2',null,'Master code'),
+  h('div',{class:'mute'},'Works on the phone with no internet (Agent → Administrator): lock, set PIN, install APKs, show/hide apps, release, erase. The phone only stores a scrambled version. Status: '+(state.masterSet?'set':'not set')+'.'));
+ const code=h('input',{type:'password',placeholder:'New master code (6+ characters, letters/numbers/symbols)',style:'width:100%;margin-top:8px'});
+ mc.append(code,h('div',{class:'row',style:'margin-top:8px'},
+  btn(state.masterSet?'Change master code':'Set master code','',async function(){
+   const v=code.value;if(!/^[\x20-\x7e]{6,64}$/.test(v)){snack('Use 6 to 64 normal keyboard characters.',1);return}
+   const salt=crypto.getRandomValues(new Uint8Array(16));
+   const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(v),'PBKDF2',false,['deriveBits']);
+   const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:salt,iterations:state.masterIterations},key,256));
+   const hex=function(a){return [...a].map(function(b){return b.toString(16).padStart(2,'0')}).join('')};
+   await call('PUT','/api/master',{salt:hex(salt),hash:hex(bits)});code.value='';state.masterSet=true;snack('Master code saved. Phones receive it at their next check-in.');render()}),
+  state.masterSet?btn('Remove','outline',async function(){if(!confirm('Remove the master code? The on-phone admin panel stops working.'))return;await call('DELETE','/api/master');state.masterSet=false;snack('Master code removed.');render()}):null));
+ m.append(mc);
  const card=h('div',{class:'card'},h('h2',null,'Restrictions'),h('div',{class:'mute'},'Each switch saves immediately. Phones pick changes up within about a minute.'));
  for(const k in state.restrictions){
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},state.restrictions[k].label),

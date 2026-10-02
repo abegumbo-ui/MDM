@@ -24,6 +24,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".AdminActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".AdminReceiver"
             android:exported="true"

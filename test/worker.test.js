@@ -135,3 +135,84 @@ test("command arguments are validated", async () => {
   assert.equal((await cmd("uninstall", { packageName: "com.example.app" })).status, 200);
   assert.equal((await cmd("release", { uninstall: true })).status, 200);
 });
+
+const put = (cookie, path, body, method = "PUT") =>
+  req(path, { method, headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+
+test("approval mode holds apps installed after it was switched on until approved", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  const pk = (p) => ({ p, l: p, s: false, h: false });
+  await post("/agent/sync", { packages: [pk("com.old.app")] }, auth); // baseline
+  await put(cookie, "/api/config", { approveNew: true });
+
+  let sync = await (await post("/agent/sync", { packages: [pk("com.old.app"), pk("com.new.app")] }, auth)).json();
+  assert.deepEqual(sync.policy.hide, ["com.new.app"]);
+  assert.deepEqual(sync.policy.pending, ["com.new.app"]);
+  assert.ok(sync.policy.show.includes("com.old.app"));
+
+  // Approve from the dashboard (config says allow)
+  await put(cookie, "/api/config", { approveNew: true, apps: { "com.new.app": { mode: "allow" } } });
+  sync = await (await post("/agent/sync", { packages: [pk("com.old.app"), pk("com.new.app")] }, auth)).json();
+  assert.deepEqual(sync.policy.hide, []);
+  assert.deepEqual(sync.policy.pending, []);
+  const dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.applied.pending.length, 0);
+});
+
+test("overrides made on the phone win by revision and can be cleared from the dashboard", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  const pk = (p) => ({ p, l: p, s: false, h: false });
+  await put(cookie, "/api/config", { blockUnlisted: true });
+  let sync = await (await post("/agent/sync", { packages: [pk("a.b")], overrides: { "a.b": "allow" }, overridesRev: 100 }, auth)).json();
+  assert.deepEqual(sync.policy.hide, [], "phone-side allow beats hide-unlisted");
+  assert.equal(sync.overridesRev, 100);
+  // stale revision is ignored
+  sync = await (await post("/agent/sync", { packages: [pk("a.b")], overrides: { "a.b": "block" }, overridesRev: 50 }, auth)).json();
+  assert.deepEqual(sync.policy.hide, []);
+  // dashboard clears it
+  assert.equal((await post(`/api/devices/${id}/command`, { type: "clearOverrides" }, { cookie })).status, 200);
+  sync = await (await post("/agent/sync", { packages: [pk("a.b")] }, auth)).json();
+  assert.deepEqual(sync.policy.hide, ["a.b"]);
+  assert.deepEqual(sync.overrides, {});
+  assert.ok(sync.overridesRev > 100);
+});
+
+test("phone log events are stored and shown", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  await post("/agent/sync", { events: [{ k: "hide", m: "Hid Chrome", at: 1 }, { k: "error", m: "x".repeat(500) }] }, auth);
+  const dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.events.length, 2);
+  assert.equal(dev.events[0].m, "Hid Chrome");
+  assert.equal(dev.events[1].m.length, 200);
+});
+
+test("master code: only a hash is accepted; it reaches the phone in sync", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  assert.equal((await put(cookie, "/api/master", { salt: "nothex", hash: "x" })).status, 400);
+  const salt = "ab".repeat(16), hash = "cd".repeat(32);
+  assert.equal((await put(cookie, "/api/master", { salt, hash })).status, 200);
+  assert.equal((await (await req("/api/state", { headers: { cookie } })).json()).masterSet, true);
+  let sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.deepEqual(sync.master, { salt, hash, iterations: 100000 });
+  assert.equal((await put(cookie, "/api/master", undefined, "DELETE")).status, 200);
+  sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.master, null);
+});
+
+test("PIN commands validate the PIN and never echo it back in the device record", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  const cmd = (type, args) => post(`/api/devices/${id}/command`, { type, args }, { cookie });
+  assert.equal((await cmd("setPin", { pin: "12" })).status, 400);
+  assert.equal((await cmd("setPin", { pin: "abcd" })).status, 400);
+  assert.equal((await cmd("setPin", { pin: "4821" })).status, 200);
+  const sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.commands[0].args.pin, "4821");
+  const dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.ok(!JSON.stringify(dev).includes("4821"), "PIN is gone once delivered");
+  assert.equal((await cmd("clearPin", {})).status, 200);
+});

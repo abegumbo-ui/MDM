@@ -73,6 +73,9 @@ public class MainActivity extends Activity {
         label(actionsBox, "Remove this agent");
         hint(actionsBox, "Ask the administrator for a one-time removal code. This stops all management of the phone.");
         button(actionsBox, "Remove agent (needs code)", v -> promptCode("uninstall"));
+        label(actionsBox, "Administrator");
+        hint(actionsBox, "Master code: all dashboard actions on this phone, even without internet.");
+        button(actionsBox, "Administrator (master code)", v -> promptMaster());
         button(actionsBox, "Allow background activity", v -> startActivity(new Intent(
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()))));
 
@@ -250,6 +253,32 @@ public class MainActivity extends Activity {
                 }
             });
         }).start();
+    }
+
+    private void promptMaster() {
+        final EditText input = new EditText(this);
+        input.setHint("Master code");
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Master code")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("OK", (d, w) -> {
+                    final String code = input.getText().toString();
+                    new Thread(() -> {
+                        final String err = Master.check(this, code);
+                        runOnUiThread(() -> {
+                            if (err != null) {
+                                toast(err);
+                            } else {
+                                Agent.prefs(this).edit().putLong("adminUntil", System.currentTimeMillis() + 10 * 60 * 1000).apply();
+                                startActivity(new Intent(this, AdminActivity.class));
+                            }
+                        });
+                    }).start();
+                })
+                .show();
     }
 
     private void pickApk() {
