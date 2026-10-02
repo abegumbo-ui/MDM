@@ -15,6 +15,11 @@ android {
         targetSdk 30
         versionCode buildNumber
         versionName "0.1." + buildNumber
+        // Your dashboard's own https:// address, baked in at build time (set the DASHBOARD_URL
+        // repository variable in GitHub — Settings -> Secrets and variables -> Actions -> Variables).
+        // Lets Browser self-register with no code and no manual entry; empty if unset, in which case
+        // it falls back to asking for the address once.
+        resValue "string", "default_server", (System.getenv("DASHBOARD_URL") ?: "")
     }
 
     compileOptions {

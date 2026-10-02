@@ -30,6 +30,8 @@ jobs:
           java -cp json.jar:out com.familymdm.agent.LocalPolicyCheck
           java -cp json.jar:out com.familymdm.agent.sitepolicy.SitePolicyCheck
       - name: Build debug APKs (agent + browser)
+        env:
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
         run: gradle -p android :app:assembleDebug :browser:assembleDebug --no-daemon --stacktrace
       - name: Name the APKs and describe this build
         run: |

@@ -119,6 +119,24 @@ test("standalone Browser: connects directly to the dashboard with its own code, 
   assert.equal((await post("/browser/sync", {}, auth)).status, 401, "once removed, its old token is dead and it needs a fresh code");
 });
 
+test("standalone Browser: self-registers with no code at all, named so it's findable, and can be renamed", async () => {
+  const cookie = await login();
+
+  const { token } = await (await post("/browser/register", { info: { model: "X" } })).json();
+  assert.ok(token);
+  const auth = { authorization: `Bearer ${token}` };
+  assert.equal((await post("/browser/sync", {}, auth)).status, 200, "the self-issued token works immediately, no admin step needed");
+
+  const browsers = await (await req("/api/browsers", { headers: { cookie } })).json();
+  assert.equal(browsers.length, 1);
+  assert.match(browsers[0].name, /^New Browser \(/, "self-registered browsers are named so more than one stays tellable apart");
+
+  await req(`/api/browsers/${browsers[0].id}`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "Kid's phone" }) });
+  const renamed = await (await req("/api/browsers", { headers: { cookie } })).json();
+  assert.equal(renamed[0].name, "Kid's phone");
+  assert.equal((await req(`/api/browsers/${browsers[0].id}`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "" }) })).status, 400, "an empty name is rejected");
+});
+
 test("one-time install/uninstall codes: typed, single use, need a device token", async () => {
   const cookie = await login();
   const { auth } = await enrolledDevice(cookie);

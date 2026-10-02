@@ -471,6 +471,7 @@ function renderSites(m){
    h('div',{class:'mute'},'The separate Browser app, connected straight to this dashboard with no agent/MDM on that device. They share the allowed-sites list below.'));
   for(const b of browsers){
    bc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},b.name),h('div',{class:'mute small'},'Last check-in '+ago(b.lastSeen))),
+    btn('Rename','outline',async function(){const name=prompt('Name for this browser',b.name);if(!name)return;await call('PUT','/api/browsers/'+b.id,{name:name});load()}),
     btn('Disconnect','danger',async function(){if(!confirm('Disconnect '+b.name+'? It goes back to needing a new code and allows nothing until then.'))return;await call('DELETE','/api/browsers/'+b.id);load()})))}
   m.append(bc)}
 
@@ -602,5 +603,8 @@ function renderSettings(m){
 }
 
 load().catch(function(e){snack(e.message,1);document.getElementById('main').textContent='Could not load: '+e.message});
-setInterval(function(){if(document.hidden)return;call('GET','/api/devices').then(function(d){devices=d;if(tab==='devices')render()}).catch(function(){})},60000);
+setInterval(function(){if(document.hidden)return;
+ call('GET','/api/devices').then(function(d){devices=d;if(tab==='devices')render()}).catch(function(){});
+ call('GET','/api/browsers').then(function(b){browsers=b;if(tab==='sites')render()}).catch(function(){});
+},60000);
 </script></body></html>`;
