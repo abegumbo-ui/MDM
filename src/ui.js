@@ -106,7 +106,7 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <script>
 const TABS=[['devices','Devices'],['apps','Apps'],['sites','Sites'],['codes','Codes'],['settings','Settings']];
 const DAYS=['S','M','T','W','T','F','S'];
-let state=null,devices=[],latest=null,tab='devices',openId=null,search='';
+let state=null,devices=[],browsers=[],latest=null,tab='devices',openId=null,search='';
 function route(){const x=(location.hash||'#devices').slice(1);if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7)}else{tab=x||'devices';openId=null}}
 route();
 const draft={},open={};
@@ -165,7 +165,7 @@ function ask(title,fields,okLabel,note){
 
 /* ---------- data ---------- */
 async function load(){
- state=await call('GET','/api/state');devices=await call('GET','/api/devices');render();
+ state=await call('GET','/api/state');devices=await call('GET','/api/devices');browsers=await call('GET','/api/browsers');render();
  call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
 async function saveConfig(msg){await call('PUT','/api/config',state.config);snack(msg||'Saved. Phones update within about a minute.')}
 
@@ -440,7 +440,8 @@ function appRow(a){
 /* ---------- sites (browser allowlist) ---------- */
 function allRequests(){
  const out=[];
- for(const d of devices)for(const r of d.siteRequests||[])out.push({deviceId:d.id,deviceName:d.name,url:r.url,at:r.at});
+ for(const d of devices)for(const r of d.siteRequests||[])out.push({path:'/api/devices/'+d.id+'/site-requests',deviceName:d.name,url:r.url,at:r.at});
+ for(const b of browsers)for(const r of b.siteRequests||[])out.push({path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name+' (standalone Browser)',url:r.url,at:r.at});
  return out.sort(function(a,b){return b.at-a.at})}
 function hostOfUrl(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.replace(/^www\./,'')}catch(e){return u}}
 function renderSites(m){
@@ -452,7 +453,7 @@ function renderSites(m){
   const rc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Site requests ('+reqs.length+')'),
    h('div',{class:'mute'},'Pages people tried to open that weren\'t on the allowlist.'));
   for(const r of reqs){
-   const dismiss=async function(){await call('DELETE','/api/devices/'+r.deviceId+'/site-requests?url='+encodeURIComponent(r.url));load()};
+   const dismiss=async function(){await call('DELETE',r.path+'?url='+encodeURIComponent(r.url));load()};
    rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500;word-break:break-all'},r.url),
     h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),
     h('div',{class:'row',style:'margin-top:8px'},
@@ -462,6 +463,14 @@ function renderSites(m){
       await addSite({type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}),
      btn('Dismiss','outline',dismiss)))))}
   m.append(rc)}
+
+ if(browsers.length){
+  const bc=h('div',{class:'card'},h('h2',null,'Standalone browsers ('+browsers.length+')'),
+   h('div',{class:'mute'},'The separate Browser app, connected straight to this dashboard with no agent/MDM on that device. They share the allowed-sites list below.'));
+  for(const b of browsers){
+   bc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},b.name),h('div',{class:'mute small'},'Last check-in '+ago(b.lastSeen))),
+    btn('Disconnect','danger',async function(){if(!confirm('Disconnect '+b.name+'? It goes back to needing a new code and allows nothing until then.'))return;await call('DELETE','/api/browsers/'+b.id);load()})))}
+  m.append(bc)}
 
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'The agent\'s browser only opens these — everything else shows a "Request access" button. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
@@ -501,9 +510,10 @@ async function addSite(entry){
 const CODE_INFO={
  enroll:['Enrollment code','Connects a new phone to this dashboard. Used in the adb command or typed into the agent app. Valid 1 hour, one use.'],
  install:['Install-app code','Give this to the person using the phone. In the agent app they tap "Install an app", type the code, and pick an APK file. No "unknown sources" setting needed. One use.'],
- uninstall:['Removal code','Lets the person remove the agent from inside the app. This ends all management of the phone. One use.']};
+ uninstall:['Removal code','Lets the person remove the agent from inside the app. This ends all management of the phone. One use.'],
+ browser:['Browser connect code','Connects a standalone Browser app directly to this dashboard — no agent, no device owner, nothing else installed. Until it\'s connected (or set up on its own with a master code), that Browser allows nothing at all. Valid 1 hour, one use.']};
 function renderCodes(m){
- for(const type of ['enroll','install','uninstall']){
+ for(const type of ['enroll','install','uninstall','browser']){
   const card=h('div',{class:'card'},h('h2',null,CODE_INFO[type][0]),h('div',{class:'mute'},CODE_INFO[type][1]));
   const out=h('div');
   card.append(h('div',{style:'margin-top:10px'},btn('Generate new code','',async function(){
@@ -513,6 +523,10 @@ function renderCodes(m){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'On your computer, with the phone connected and USB debugging on:'),
      h('pre',{class:'cmd'},'adb install mdm-agent.apk\nadb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver\nadb shell am start -n com.familymdm.agent/.MainActivity --es server '+r.server+' --es code '+r.code),
      h('div',{class:'mute small'},'Get mdm-agent.apk from GitHub → Releases → "Latest agent build". The phone needs no Google account when you run the second command.'))}
+   if(type==='browser'){
+    out.append(h('div',{class:'mute',style:'margin-top:8px'},'In the Browser app (no agent needed), tap "Connect to a dashboard" and enter:'),
+     h('pre',{class:'cmd'},'Dashboard address: '+r.server+'\nCode: '+r.code),
+     h('div',{class:'mute small'},'Get mdm-browser.apk from GitHub → Releases → "Latest agent build", same place as the agent. It shows up under Sites → Standalone browsers once connected.'))}
   })),out);m.append(card)}
 }
 

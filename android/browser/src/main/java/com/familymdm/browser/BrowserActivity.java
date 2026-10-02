@@ -15,6 +15,7 @@ import android.graphics.Color;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.net.http.SslError;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -38,25 +39,37 @@ import android.widget.Toast;
 import com.familymdm.agent.sitepolicy.SitePolicy;
 
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A regular tabbed browser. On its own (no MDM installed, or the agent hasn't pushed a site list
- * yet) it opens anything, like any browser. Once the separate agent app pushes a site list through
- * Android's managed-configuration channel, it only opens pages on that list, and a blocked page
- * offers to ask the administrator or use the master code — see isManaged()/currentSites() below for
- * where that switch happens.
+ * A regular tabbed browser with four modes, decided fresh each time a page is checked (mode()):
+ *
+ *  - AGENT: the separate agent app (device owner) has pushed a site list through Android's
+ *    managed-configuration channel. Takes priority over everything else, since it's backed by
+ *    device-owner control.
+ *  - ONLINE: no agent, but this exact Browser install was connected directly to a dashboard with
+ *    its own one-time code (see BrowserState/Api). Sites come from the dashboard's global allowlist,
+ *    cached locally and refreshed opportunistically.
+ *  - OFFLINE: no agent, no dashboard connection; set up on its own with a local master code. Sites
+ *    live only in this app's storage, added with that master code.
+ *  - UNCONFIGURED: none of the above yet. Deny-by-default: nothing opens until one of the other three
+ *    modes is set up. This is the fresh-install state.
  */
 public class BrowserActivity extends Activity {
     private static final String AGENT_PACKAGE = "com.familymdm.agent";
     private static final String PROVIDER_URI = "content://com.familymdm.agent.provider";
     private static final String SITE_REQUEST_ACTION = "com.familymdm.agent.action.SITE_REQUEST";
     private static final String HOME_URL = "about:home";
+    private static final long ONLINE_SYNC_MIN_INTERVAL_MS = 45_000;
+
+    private enum Mode { AGENT, ONLINE, OFFLINE, UNCONFIGURED }
 
     private final List<Tab> tabs = new ArrayList<>();
     private int currentIndex = -1;
+    private volatile boolean syncing;
 
     private LinearLayout tabStrip;
     private FrameLayout contentHost;
@@ -71,11 +84,11 @@ public class BrowserActivity extends Activity {
         }
     };
 
-    /** One browser tab: its own WebView, plus a blocked-page overlay built lazily when it's needed. */
+    /** One browser tab: its own WebView, plus a blocked/overlay screen built lazily when it's needed. */
     private static final class Tab {
         final FrameLayout root;
         final WebView webView;
-        LinearLayout blockedBox;
+        LinearLayout overlay;
         View homeView;
         String url = HOME_URL;
         String title = "New tab";
@@ -110,16 +123,14 @@ public class BrowserActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         String url = startUrl(intent);
-        if (url != null) {
-            int i = newTab(url);
-            showTab(i);
-        }
+        if (url != null) showTab(newTab(url));
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         registerReceiver(restrictionsChanged, new IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED));
+        if (mode() == Mode.ONLINE) maybeSyncOnline(false);
     }
 
     @Override
@@ -196,7 +207,7 @@ public class BrowserActivity extends Activity {
         barLp.rightMargin = dp(4);
         bar.addView(addressBar, barLp);
 
-        bar.addView(iconButton("+", v -> { int i = newTab(HOME_URL); showTab(i); }));
+        bar.addView(iconButton("+", v -> showTab(newTab(HOME_URL))));
         bar.addView(iconButton("⋮", this::showMenu));
         return bar;
     }
@@ -228,25 +239,40 @@ public class BrowserActivity extends Activity {
 
     private void showMenu(View anchor) {
         Tab t = current();
+        Mode mode = mode();
         PopupMenu menu = new PopupMenu(this, anchor);
         menu.getMenu().add("New tab");
         if (tabs.size() > 1) menu.getMenu().add("Close this tab");
         if (t != null && canAddToHomeScreen(t)) menu.getMenu().add("Add to Home Screen");
-        if (isManaged()) menu.getMenu().add("Allowed sites");
+        if (mode != Mode.UNCONFIGURED) menu.getMenu().add("Allowed sites");
+        if (mode == Mode.OFFLINE) menu.getMenu().add("Manage sites (master code)");
+        if (mode == Mode.UNCONFIGURED) menu.getMenu().add("Set up Browser");
+        if (mode == Mode.ONLINE || mode == Mode.OFFLINE) menu.getMenu().add("Disconnect this setup");
         menu.setOnMenuItemClickListener(item -> {
             String s = item.getTitle().toString();
-            if (s.equals("New tab")) {
-                showTab(newTab(HOME_URL));
-            } else if (s.equals("Close this tab")) {
-                closeTab(currentIndex);
-            } else if (s.equals("Add to Home Screen")) {
-                addToHomeScreen();
-            } else if (s.equals("Allowed sites")) {
-                showAllowedSitesDialog();
-            }
+            if (s.equals("New tab")) showTab(newTab(HOME_URL));
+            else if (s.equals("Close this tab")) closeTab(currentIndex);
+            else if (s.equals("Add to Home Screen")) addToHomeScreen();
+            else if (s.equals("Allowed sites")) showAllowedSitesDialog();
+            else if (s.equals("Manage sites (master code)")) promptMasterThenManageSites();
+            else if (s.equals("Set up Browser")) showSetupDialog(current(), null);
+            else if (s.equals("Disconnect this setup")) disconnectSetup();
             return true;
         });
         menu.show();
+    }
+
+    private void disconnectSetup() {
+        new AlertDialog.Builder(this)
+                .setTitle("Disconnect this setup?")
+                .setMessage("Browser goes back to allowing nothing until it's connected to a dashboard again or set up on its own.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Disconnect", (d, w) -> {
+                    BrowserState.prefs(this).edit().clear().apply();
+                    if (current() != null) renderHome(current());
+                    toast("Disconnected.");
+                })
+                .show();
     }
 
     // ---------- tabs ----------
@@ -386,12 +412,16 @@ public class BrowserActivity extends Activity {
         t.webView.loadUrl(url);
     }
 
-    /** True if `url` may load; otherwise shows the blocked screen in this tab and returns false. */
+    /** True if `url` may load; otherwise shows the right screen for the current mode and returns false. */
     private boolean allowedOrBlock(Tab t, String url) {
-        if (!isManaged()) return true;
-        SitePolicy.Site match = SitePolicy.matching(url, currentSites());
+        Mode mode = mode();
+        if (mode == Mode.UNCONFIGURED) {
+            showSetupRequired(t, url);
+            return false;
+        }
+        SitePolicy.Site match = SitePolicy.matching(url, currentSites(mode));
         if (match == null) {
-            showBlocked(t, url);
+            showBlocked(t, url, mode);
             return false;
         }
         t.webView.getSettings().setBlockNetworkImage(match.blockImages);
@@ -402,17 +432,21 @@ public class BrowserActivity extends Activity {
     private void showWeb(Tab t) {
         t.webView.setVisibility(View.VISIBLE);
         if (t.homeView != null) t.homeView.setVisibility(View.GONE);
-        if (t.blockedBox != null) t.blockedBox.setVisibility(View.GONE);
+        if (t.overlay != null) t.overlay.setVisibility(View.GONE);
         if (t == current()) syncToolbar();
     }
 
-    // ---------- managed mode: the allowlist pushed by the separate agent app, if any ----------
+    // ---------- which mode is active, and where its site list comes from ----------
 
-    /**
-     * True once the agent has pushed a site list at least once (even an empty one). Until then
-     * (no MDM installed, or installed but not yet configured) this is a plain, unrestricted browser.
-     */
-    private boolean isManaged() {
+    private Mode mode() {
+        if (isAgentManaged()) return Mode.AGENT;
+        if (BrowserState.isOnline(this)) return Mode.ONLINE;
+        if (BrowserState.isStandalone(this)) return Mode.OFFLINE;
+        return Mode.UNCONFIGURED;
+    }
+
+    /** True once the agent has pushed a site list at least once (even an empty one). */
+    private boolean isAgentManaged() {
         try {
             RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
             Bundle b = rm == null ? null : rm.getApplicationRestrictions();
@@ -422,47 +456,102 @@ public class BrowserActivity extends Activity {
         }
     }
 
-    private List<SitePolicy.Site> currentSites() {
+    private List<SitePolicy.Site> currentSites(Mode mode) {
         try {
-            RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
-            Bundle b = rm == null ? null : rm.getApplicationRestrictions();
-            String json = b == null ? null : b.getString("sites");
-            if (json == null) return new ArrayList<>();
-            return SitePolicy.parse(new JSONArray(json));
+            switch (mode) {
+                case AGENT:
+                    RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
+                    Bundle b = rm == null ? null : rm.getApplicationRestrictions();
+                    String json = b == null ? null : b.getString("sites");
+                    return json == null ? new ArrayList<>() : SitePolicy.parse(new JSONArray(json));
+                case ONLINE:
+                    maybeSyncOnline(false);
+                    return SitePolicy.parse(BrowserState.cachedSites(this));
+                case OFFLINE:
+                    return SitePolicy.parse(BrowserState.localSites(this));
+                default:
+                    return new ArrayList<>();
+            }
         } catch (Exception e) {
             return new ArrayList<>();
         }
     }
 
-    private void showBlocked(final Tab t, final String url) {
+    /** Talks to the dashboard directly (no agent). Cheap opportunistic refresh, not a background service. */
+    private void maybeSyncOnline(boolean force) {
+        if (syncing) return;
+        if (!force && System.currentTimeMillis() - BrowserState.lastOnlineSync(this) < ONLINE_SYNC_MIN_INTERVAL_MS) return;
+        final String server = BrowserState.server(this);
+        final String token = BrowserState.token(this);
+        if (server == null || token == null) return;
+        syncing = true;
+        new Thread(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                JSONObject info = new JSONObject();
+                info.put("manufacturer", Build.MANUFACTURER);
+                info.put("model", Build.MODEL);
+                body.put("info", info);
+                JSONArray requests = BrowserState.peekSiteRequests(this);
+                body.put("siteRequests", requests);
+                JSONObject reply = Api.post(server + "/browser/sync", body, token);
+                BrowserState.dropSiteRequests(this, requests.length());
+                JSONArray sites = reply.optJSONArray("sites");
+                BrowserState.setCachedSites(this, sites != null ? sites : new JSONArray());
+            } catch (Exception ignored) {
+                // offline, or the dashboard is unreachable: keep using the last cached list
+            } finally {
+                syncing = false;
+            }
+        }).start();
+    }
+
+    // ---------- blocked pages: what to offer depends on the mode ----------
+
+    private void showBlocked(final Tab t, final String url, final Mode mode) {
         t.webView.setVisibility(View.GONE);
         if (t.homeView != null) t.homeView.setVisibility(View.GONE);
-        if (t.blockedBox == null) {
-            t.blockedBox = new LinearLayout(this);
-            t.blockedBox.setOrientation(LinearLayout.VERTICAL);
-            int pad = dp(20);
-            t.blockedBox.setPadding(pad, pad, pad, pad);
-            t.root.addView(t.blockedBox, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        }
-        t.blockedBox.setVisibility(View.VISIBLE);
-        t.blockedBox.removeAllViews();
-        t.blockedBox.addView(title("This page isn't allowed"));
+        ensureOverlay(t);
+        t.overlay.setVisibility(View.VISIBLE);
+        t.overlay.removeAllViews();
+        t.overlay.addView(title("This page isn't allowed"));
         TextView urlText = body(url);
         urlText.setPadding(0, dp(8), 0, dp(16));
-        t.blockedBox.addView(urlText);
+        t.overlay.addView(urlText);
 
-        add(t.blockedBox, button("Request access to this page", v -> {
-            Intent i = new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", url);
-            sendBroadcast(i, "com.familymdm.agent.permission.BROWSER");
-            toast("Sent. Ask the administrator to approve it.");
-        }));
-        add(t.blockedBox, button("Allow this page (master code)", v -> promptMasterThenApprove(t, url, "exact")));
-        add(t.blockedBox, button("Allow the whole site (master code)", v -> promptMasterThenApprove(t, url, "domain")));
-        add(t.blockedBox, button("Go to the start page", v -> load(t, HOME_URL)));
+        if (mode == Mode.AGENT) {
+            add(t.overlay, button("Request access to this page", v -> {
+                Intent i = new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", url);
+                sendBroadcast(i, "com.familymdm.agent.permission.BROWSER");
+                toast("Sent. Ask the administrator to approve it.");
+            }));
+            add(t.overlay, button("Allow this page (master code)", v -> promptAgentMasterThenApprove(t, url, "exact")));
+            add(t.overlay, button("Allow the whole site (master code)", v -> promptAgentMasterThenApprove(t, url, "domain")));
+        } else if (mode == Mode.ONLINE) {
+            add(t.overlay, button("Request access to this page", v -> {
+                BrowserState.addSiteRequest(this, url);
+                maybeSyncOnline(true);
+                toast("Sent. Ask the administrator to approve it on the dashboard.");
+            }));
+        } else if (mode == Mode.OFFLINE) {
+            add(t.overlay, button("Allow this page (master code)", v -> promptLocalMasterThenApprove(t, url, "exact")));
+            add(t.overlay, button("Allow the whole site (master code)", v -> promptLocalMasterThenApprove(t, url, "domain")));
+        }
+        add(t.overlay, button("Go to the start page", v -> load(t, HOME_URL)));
         if (t == current()) syncToolbar();
     }
 
-    private void promptMasterThenApprove(final Tab t, final String url, final String type) {
+    private void ensureOverlay(Tab t) {
+        if (t.overlay == null) {
+            t.overlay = new LinearLayout(this);
+            t.overlay.setOrientation(LinearLayout.VERTICAL);
+            int pad = dp(20);
+            t.overlay.setPadding(pad, pad, pad, pad);
+            t.root.addView(t.overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        }
+    }
+
+    private void promptAgentMasterThenApprove(final Tab t, final String url, final String type) {
         final EditText input = field("Master code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
@@ -494,8 +583,112 @@ public class BrowserActivity extends Activity {
                 .show();
     }
 
+    private void promptLocalMasterThenApprove(final Tab t, final String url, final String type) {
+        final EditText input = field("Master code");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Master code")
+                .setView(pad(input))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Allow", (d, w) -> {
+                    final String code = input.getText().toString();
+                    new Thread(() -> {
+                        String err = BrowserMaster.check(this, code);
+                        if (err == null) {
+                            String host = SitePolicy.hostOf(url);
+                            if (host == null) {
+                                err = "That doesn't look like a web address.";
+                            } else {
+                                try {
+                                    String site = type.equals("domain") ? host : url;
+                                    BrowserState.addLocalSite(this, type, site, host);
+                                } catch (Exception e) {
+                                    err = "Could not save it: " + e.getMessage();
+                                }
+                            }
+                        }
+                        final String error = err;
+                        runOnUiThread(() -> {
+                            if (error != null) toast(error);
+                            else load(t, url);
+                        });
+                    }).start();
+                })
+                .show();
+    }
+
+    private void promptMasterThenManageSites() {
+        final EditText input = field("Master code");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Master code")
+                .setView(pad(input))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("OK", (d, w) -> {
+                    String err = BrowserMaster.check(this, input.getText().toString());
+                    if (err != null) toast(err);
+                    else showManageSitesDialog();
+                })
+                .show();
+    }
+
+    private void showManageSitesDialog() {
+        JSONArray sites = BrowserState.localSites(this);
+        List<String> labels = new ArrayList<>();
+        for (int i = 0; i < sites.length(); i++) {
+            JSONObject s = sites.optJSONObject(i);
+            if (s != null) labels.add(("domain".equals(s.optString("type")) ? "Whole site: " : "Exact page: ") + s.optString("url"));
+        }
+        labels.add("＋ Add a site…");
+        new AlertDialog.Builder(this)
+                .setTitle("Local sites")
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
+                    if (which == labels.size() - 1) promptAddLocalSite();
+                    else {
+                        new AlertDialog.Builder(this)
+                                .setMessage("Remove this site from the local allowlist?")
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Remove", (d2, w2) -> {
+                                    BrowserState.removeLocalSite(this, which);
+                                    toast("Removed.");
+                                })
+                                .show();
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void promptAddLocalSite() {
+        final EditText input = field("Site or link, e.g. khanacademy.org");
+        new AlertDialog.Builder(this)
+                .setTitle("Add a site")
+                .setView(pad(input))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Add whole site", (d, w) -> addLocalSiteFromText(input.getText().toString(), "domain"))
+                .setNeutralButton("Add exact page", (d, w) -> addLocalSiteFromText(input.getText().toString(), "exact"))
+                .show();
+    }
+
+    private void addLocalSiteFromText(String typed, String type) {
+        String url = typed.trim();
+        if (url.isEmpty()) return;
+        if (!url.contains("://")) url = "https://" + url;
+        String host = SitePolicy.hostOf(url);
+        if (host == null) {
+            toast("That doesn't look like a web address.");
+            return;
+        }
+        try {
+            BrowserState.addLocalSite(this, type, type.equals("domain") ? host : url, host);
+            toast("Added.");
+        } catch (Exception e) {
+            toast("Could not save it: " + e.getMessage());
+        }
+    }
+
     private void showAllowedSitesDialog() {
-        List<SitePolicy.Site> sites = currentSites();
+        List<SitePolicy.Site> sites = currentSites(mode());
         String[] labels = new String[sites.size()];
         for (int i = 0; i < sites.size(); i++) labels[i] = sites.get(i).label;
         if (labels.length == 0) {
@@ -509,13 +702,13 @@ public class BrowserActivity extends Activity {
                 .show();
     }
 
-    // ---------- the new-tab / home page ----------
+    // ---------- the new-tab / home page, including first-run setup ----------
 
     private void renderHome(Tab t) {
         t.url = HOME_URL;
         t.title = "New tab";
         t.webView.setVisibility(View.GONE);
-        if (t.blockedBox != null) t.blockedBox.setVisibility(View.GONE);
+        if (t.overlay != null) t.overlay.setVisibility(View.GONE);
         if (t.homeView == null) {
             LinearLayout box = new LinearLayout(this);
             box.setOrientation(LinearLayout.VERTICAL);
@@ -528,27 +721,131 @@ public class BrowserActivity extends Activity {
         LinearLayout box = (LinearLayout) t.homeView;
         box.removeAllViews();
         box.addView(title("Browser"));
-        if (isManaged()) {
-            List<SitePolicy.Site> sites = currentSites();
+        Mode mode = mode();
+        if (mode == Mode.UNCONFIGURED) {
+            renderUnconfigured(box, t, null);
+        } else {
+            List<SitePolicy.Site> sites = currentSites(mode);
             TextView sub = body(sites.isEmpty() ? "No sites are allowed yet." : "Allowed sites:");
             sub.setPadding(0, dp(12), 0, dp(12));
             box.addView(sub);
             for (final SitePolicy.Site s : sites) add(box, button(s.label, v -> load(current(), s.url)), 8);
-        } else {
-            TextView sub = body("Type an address above, or search.");
-            sub.setPadding(0, dp(12), 0, dp(12));
-            box.addView(sub);
         }
         box.setVisibility(View.VISIBLE);
         if (t == current()) syncToolbar();
+    }
+
+    /** Deny-by-default: nothing opens until this screen's two options set a mode up. */
+    private void showSetupRequired(final Tab t, final String pendingUrl) {
+        t.webView.setVisibility(View.GONE);
+        if (t.homeView != null) t.homeView.setVisibility(View.GONE);
+        ensureOverlay(t);
+        t.overlay.setVisibility(View.VISIBLE);
+        t.overlay.removeAllViews();
+        t.overlay.addView(title("Browser isn't set up yet"));
+        TextView sub = body("Nothing opens until you connect this Browser to a dashboard, or set it up on its own.");
+        sub.setPadding(0, dp(8), 0, dp(16));
+        t.overlay.addView(sub);
+        renderUnconfigured(t.overlay, t, pendingUrl);
+        if (t == current()) syncToolbar();
+    }
+
+    private void renderUnconfigured(LinearLayout box, Tab t, String pendingUrl) {
+        add(box, button("Connect to a dashboard", v -> showSetupDialog(t, pendingUrl)));
+        add(box, button("Use it on its own (offline)", v -> showOfflineSetupDialog(t, pendingUrl)));
+    }
+
+    private void showSetupDialog(final Tab t, final String pendingUrl) {
+        final EditText serverField = field("Dashboard address (https://...)");
+        final EditText codeField = field("Connect code");
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+        box.addView(serverField);
+        add(box, codeField);
+        new AlertDialog.Builder(this)
+                .setTitle("Connect to a dashboard")
+                .setView(box)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Connect", (d, w) -> {
+                    final String server = serverField.getText().toString().trim().replaceAll("/+$", "");
+                    final String code = codeField.getText().toString().trim();
+                    if (server.isEmpty() || code.isEmpty()) return;
+                    new Thread(() -> {
+                        String error = null;
+                        try {
+                            JSONObject info = new JSONObject();
+                            info.put("manufacturer", Build.MANUFACTURER);
+                            info.put("model", Build.MODEL);
+                            JSONObject body = new JSONObject();
+                            body.put("code", code);
+                            body.put("info", info);
+                            JSONObject reply = Api.post(server + "/browser/enroll", body, null);
+                            BrowserState.setOnline(this, server, reply.getString("token"));
+                            maybeSyncOnline(true);
+                        } catch (Exception e) {
+                            error = e.getMessage();
+                        }
+                        final String err = error;
+                        runOnUiThread(() -> {
+                            if (err != null) {
+                                toast("Could not connect: " + err);
+                            } else {
+                                toast("Connected.");
+                                load(t, pendingUrl != null ? pendingUrl : HOME_URL);
+                            }
+                        });
+                    }).start();
+                })
+                .show();
+    }
+
+    private void showOfflineSetupDialog(final Tab t, final String pendingUrl) {
+        final EditText one = field("Master code (6 or more characters)");
+        final EditText two = field("Repeat it");
+        one.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        two.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+        box.addView(one);
+        add(box, two);
+        new AlertDialog.Builder(this)
+                .setTitle("Set up on its own")
+                .setMessage("This code is the only way to add or remove sites. Nothing is allowed until you add sites with it.")
+                .setView(box)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    final String a = one.getText().toString();
+                    if (a.length() < 6 || !a.equals(two.getText().toString())) {
+                        toast("Use at least 6 characters, typed the same twice.");
+                        return;
+                    }
+                    new Thread(() -> {
+                        String error = null;
+                        try {
+                            BrowserMaster.set(this, a);
+                            BrowserState.setStandalone(this);
+                        } catch (Exception e) {
+                            error = e.getMessage();
+                        }
+                        final String err = error;
+                        runOnUiThread(() -> {
+                            if (err != null) toast("Could not set up: " + err);
+                            else load(t, pendingUrl != null ? pendingUrl : HOME_URL);
+                        });
+                    }).start();
+                })
+                .show();
     }
 
     // ---------- "Add to Home Screen" ----------
 
     private boolean canAddToHomeScreen(Tab t) {
         if (HOME_URL.equals(t.url) || t.webView.getUrl() == null) return false;
-        if (!isManaged()) return true;
-        SitePolicy.Site match = SitePolicy.matching(t.webView.getUrl(), currentSites());
+        Mode mode = mode();
+        if (mode == Mode.UNCONFIGURED) return false;
+        SitePolicy.Site match = SitePolicy.matching(t.webView.getUrl(), currentSites(mode));
         return match != null && match.installable;
     }
 
