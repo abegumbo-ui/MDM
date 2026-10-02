@@ -32,14 +32,7 @@ public class MainActivity extends Activity {
     private TextView status;
     private LinearLayout logoHolder;
     private LinearLayout statusCard;
-    private LinearLayout lockBox;
-    private TextView lockTitle;
-    private TextView lockHint;
-    private EditText lockField;
-    private EditText lockField2;
-    private android.widget.Button lockButton;
-    private boolean unlocked;
-    private boolean leavingForPicker;
+    private TextView updateText;
     private LinearLayout enrollBox;
     private LinearLayout actionsBox;
     private EditText serverField;
@@ -74,30 +67,17 @@ public class MainActivity extends Activity {
         enrollButton = Ui.button(this, "Enroll", Ui.FILLED, v -> enroll());
         Ui.add(enrollBox, enrollButton, 12);
 
-        // ---- the person's own code, asked every time the app is opened ----
-        lockBox = Ui.card(this, root);
-        lockTitle = Ui.titleText(this, "");
-        lockBox.addView(lockTitle);
-        lockHint = Ui.body(this, "", true);
-        lockBox.addView(lockHint);
-        lockField = Ui.field(this, "Code");
-        lockField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        Ui.add(lockBox, lockField, 12);
-        lockField2 = Ui.field(this, "Repeat the code");
-        lockField2.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        Ui.add(lockBox, lockField2, 8);
-        lockButton = Ui.button(this, "Open", Ui.FILLED, v -> submitLock());
-        Ui.add(lockBox, lockButton, 12);
-
         // ---- code-protected actions (shown once enrolled) ----
         actionsBox = new LinearLayout(this);
         actionsBox.setOrientation(LinearLayout.VERTICAL);
         Ui.add(root, actionsBox, 0);
 
-        LinearLayout mine = Ui.card(this, actionsBox);
-        mine.addView(Ui.titleText(this, "Your code"));
-        mine.addView(Ui.body(this, "The code you type to open this app. The administrator can see it.", true));
-        Ui.add(mine, Ui.button(this, "Change my code", Ui.TONAL, v -> changeMyCode()), 12);
+        LinearLayout upd = Ui.card(this, actionsBox);
+        upd.addView(Ui.titleText(this, "Update"));
+        updateText = Ui.body(this, "", true);
+        upd.addView(updateText);
+        Ui.add(upd, Ui.button(this, "Check for an update", Ui.TONAL, v -> checkUpdate(false)), 12);
+        Ui.add(upd, Ui.button(this, "Update now", Ui.FILLED, v -> checkUpdate(true)), 8);
 
         LinearLayout install = Ui.card(this, actionsBox);
         install.addView(Ui.titleText(this, "Install an app"));
@@ -133,22 +113,13 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        leavingForPicker = false;
         refresh();
         Agent.startServiceIfEnrolled(this);
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        // Leaving the app locks it again (except while the file picker is open).
-        if (!leavingForPicker) unlocked = false;
     }
 
     private void refresh() {
         boolean owner = Agent.isOwner(this);
         boolean enrolled = Agent.enrolled(this);
-        boolean locked = enrolled && !unlocked;
         StringBuilder sb = new StringBuilder();
         sb.append(owner ? "Device owner: yes\n" : "Device owner: NO. Run the adb set-device-owner command first.\n");
         if (enrolled) {
@@ -164,85 +135,36 @@ public class MainActivity extends Activity {
         logoHolder.removeAllViews();
         android.widget.ImageView logo = Ui.logoView(this);
         if (logo != null) Ui.add(logoHolder, logo, 8);
-        statusCard.setVisibility(locked ? View.GONE : View.VISIBLE);
         enrollBox.setVisibility(enrolled ? View.GONE : View.VISIBLE);
-        lockBox.setVisibility(locked ? View.VISIBLE : View.GONE);
-        actionsBox.setVisibility(enrolled && !locked ? View.VISIBLE : View.GONE);
-        if (locked) {
-            boolean set = AppCode.isSet(this);
-            lockTitle.setText(set ? "Enter your code" : "Choose a code");
-            lockHint.setText(set
-                    ? "Forgot it? Ask the administrator."
-                    : "You will type this code every time you open this app. The administrator can see it. Use at least 4 characters.");
-            lockField2.setVisibility(set ? View.GONE : View.VISIBLE);
-            lockButton.setText(set ? "Open" : "Save code");
-        }
+        actionsBox.setVisibility(enrolled ? View.VISIBLE : View.GONE);
+        updateText.setText("This agent is build " + Updater.currentBuild(this) + ".");
         boolean canPick = System.currentTimeMillis() < Agent.prefs(this).getLong("installUntil", 0);
         pickButton.setVisibility(canPick ? View.VISIBLE : View.GONE);
     }
 
-    private void submitLock() {
-        String a = lockField.getText().toString();
-        if (!AppCode.isSet(this)) {
-            String b = lockField2.getText().toString();
-            if (a.length() < 4) {
-                toast("Use at least 4 characters.");
-            } else if (!a.equals(b)) {
-                toast("The two codes don't match.");
-            } else {
-                try {
-                    AppCode.set(this, a);
-                    unlocked = true;
-                    lockField.setText("");
-                    lockField2.setText("");
-                    AgentService.requestSync();
-                    refresh();
-                } catch (Exception e) {
-                    toast("Could not save the code: " + e.getMessage());
+    private void checkUpdate(final boolean install) {
+        toast(install ? "Looking for an update..." : "Checking...");
+        new Thread(() -> {
+            String msg;
+            try {
+                if (install) {
+                    msg = Updater.update(this, false);
+                } else {
+                    JSONObject latest = Updater.latest(this);
+                    msg = latest == null ? "Could not find the latest build."
+                            : latest.getInt("versionCode") > Updater.currentBuild(this)
+                            ? "Build " + latest.getInt("versionCode") + " is available. This agent is build " + Updater.currentBuild(this) + "."
+                            : "Up to date (build " + Updater.currentBuild(this) + ").";
                 }
+            } catch (Exception e) {
+                msg = "Update failed: " + (e.getMessage() == null ? e.toString() : e.getMessage());
             }
-            return;
-        }
-        String err = AppCode.check(this, a);
-        if (err != null && err.equals("Wrong code.") && Master.matches(this, a)) err = null; // the master code always works
-        if (err == null) {
-            unlocked = true;
-            lockField.setText("");
-            refresh();
-        } else {
-            toast(err);
-        }
-    }
-
-    private void changeMyCode() {
-        final EditText one = Ui.field(this, "New code (at least 4 characters)");
-        final EditText two = Ui.field(this, "Repeat the new code");
-        one.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        two.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
-        Ui.add(box, one, 8);
-        Ui.add(box, two, 8);
-        new AlertDialog.Builder(this)
-                .setTitle("Change my code")
-                .setView(box)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Save", (d, w) -> {
-                    String a = one.getText().toString();
-                    if (a.length() < 4 || !a.equals(two.getText().toString())) {
-                        toast("Use at least 4 characters, typed the same twice.");
-                        return;
-                    }
-                    try {
-                        AppCode.set(this, a);
-                        AgentService.requestSync();
-                        toast("Code changed.");
-                    } catch (Exception e) {
-                        toast("Could not save the code: " + e.getMessage());
-                    }
-                })
-                .show();
+            final String text = msg;
+            runOnUiThread(() -> {
+                toast(text);
+                updateText.setText(text);
+            });
+        }).start();
     }
 
     private void toast(String s) {
@@ -382,7 +304,6 @@ public class MainActivity extends Activity {
         i.setType("*/*");
         i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/vnd.android.package-archive", "application/octet-stream"});
         try {
-            leavingForPicker = true;
             startActivityForResult(i, PICK_APK);
         } catch (Exception e) {
             toast("No file picker available on this phone.");

@@ -45,18 +45,15 @@ Block switches an app off completely, as if it were uninstalled for the person. 
 On the **Apps** tab, an app the person installed has a red **Uninstall** button and a green "can be uninstalled" tag. System apps say "cannot be uninstalled, use Block to switch it off". Uninstall also works on an app you had blocked (the agent switches it back on first, then removes it).
 
 ## Master code works everywhere on the phone
-Wherever the agent app asks for a code, the **master code** is accepted too: the code to open the app, the install code, the removal code, the timed-lock screen's **Administrator unlock** button, and the admin panel. It works with no internet. (Android's own screen-lock PIN is separate; Android doesn't let an app make its lock screen accept another code. Set the PIN from the dashboard, and you may choose the same digits as your master code if you like.)
+Wherever the agent app asks for a code, the **master code** is accepted too: the install code, the removal code, the timed-lock screen's **Administrator unlock** button, and the admin panel. It works with no internet. (Android's own screen-lock PIN is separate; Android doesn't let an app make its lock screen accept another code. Set the PIN from the dashboard, and you may choose the same digits as your master code if you like.)
 
 ## Logo and custom icons
 - **Settings → Logo on the phones:** upload an image; phones show it on the timed-lock screen and at the top of the agent app.
 - **Apps tab → Icon…** changes how an app looks *in the dashboard* (Reset icon undoes it). Android doesn't allow changing another app's icon on the phone's home screen.
 
-## The code to open the app
-When the agent app is opened on the phone it asks for a code. The first time, the person **chooses** one (4+ characters); after that they type it every time they open the app. The phone checks it itself (5 wrong tries locks it for 5 minutes), and the code is also sent to the dashboard: open the phone's page, **Overview → Code to open the app → Show**. The master code always opens it too. **Reset app code** (Controls page) makes the person choose a new one.
-
 ## Updating the agent
 - **From the dashboard:** the phone's page shows "Update available" when GitHub has a newer build. **Controls → Update agent** installs it silently over the old one (same signing key, so the phone stays managed).
-- **From the phone:** open the admin panel (master code) → **Agent update**.
+- **From the phone:** open the agent app. **Update** is on the main screen: **Check for an update** / **Update now**. No code needed.
 - **Automatically:** **Settings → Agent updates**. Phones check every 6 hours.
 Updates come from the "Latest agent build" release in this repo (the repo is public, so no token is needed).
 

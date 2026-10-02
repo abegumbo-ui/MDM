@@ -227,9 +227,6 @@ function renderDeviceDetail(m,d){
   kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On':'Off'),
   kv('Apps',d.packages.length+' ('+d.packages.filter(function(p){return p.h}).length+' hidden)'),
   kv('Sync',pendingCount(d)?pendingCount(d)+' changes pending':'In sync'));
- const codeV=h('b',null,d.appCode?'••••••':'not chosen yet');
- const showCode=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');showCode.onclick=function(){codeV.textContent=d.appCode};
- info.append(h('div',{class:'kv'},h('span',{class:'mute'},'Code to open the app'),h('span',null,codeV,d.appCode?showCode:null)));
  const nOv=Object.keys(d.overrides||{}).length;
  if(nOv)info.append(kv('Changed on the phone',nOv+' app(s)'));
  ov.append(info);
@@ -270,7 +267,6 @@ function renderDeviceDetail(m,d){
  const devBox=h('div',{class:'card'},h('h2',null,'Phone'));const dr=h('div',{class:'row',style:'margin-top:8px'});
  cmd(dr,'Sync now','sync');cmd(dr,'Reboot','reboot');
  if(needsUpdate(d))cmd(dr,'Update agent to build '+latest.versionCode,'updateAgent',{});else cmd(dr,'Update agent','updateAgent',{},null,'outline');
- cmd(dr,'Reset app code','resetAppCode',{},'The person will have to choose a new code to open the app. Continue?','outline');
  if(nOv)cmd(dr,'Clear phone-side changes','clearOverrides',{},'Forget the app changes made on the phone with the master code?','outline');
  devBox.append(dr);
  const dd=h('div',{class:'row',style:'margin-top:12px'});
