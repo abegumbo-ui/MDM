@@ -27,8 +27,15 @@ same way with `adb install mdm-browser.apk` if you want it; it's optional and ca
 - **Enrollment code**: connects a new phone.
 - **Install-app code**: the person on the phone opens *MDM Agent → Install an app*, types the code, and picks an APK file. The agent installs it silently; "unknown sources" never has to be enabled. New apps still follow your Apps rules (hidden if "Hide apps that aren't allowed" is on and the app isn't set to Allow).
 - **Removal code**: *MDM Agent → Remove agent*. Releases all restrictions and starts the uninstall. You can do the same remotely with **Release device** or **Release & remove app** on the Devices tab.
+- **Browser connect code**: see "Browser allowlist" below.
+- **Browse code**: see "Browse freely for a while" below.
 
 Codes work once and expire after an hour. The phone must be online to check them.
+
+## Browse freely for a while (opt-in, needs the agent)
+The same idea as a timed Play Store window for app installs, applied to Browser. Codes tab → **Browse code**, pick how long (15 minutes to 4 hours), and give the code to the person. On the phone, *MDM Agent → Browser → "Browse freely for a while"*, type the code (or the master code, which defaults to 60 minutes with no server needed). For that long, Browser opens **any** site, including the address bar's search, bypassing the Sites allowlist entirely — except the hardcoded adult-site block, which no code or master code ever overrides.
+
+Every new site it lands on during that window is silently queued in **Sites → Site requests**, exactly like a newly installed app waits in Apps for your approval — so you still see and decide on everything that was visited, just after the fact instead of before. When the time is up, Browser goes straight back to only opening sites already on the allowlist (plus whatever you approved from that session). This only works with the agent on the phone; Browser's own direct-to-dashboard and offline setups don't have it.
 
 ## Master code (works with no internet)
 Set it in the dashboard under **Settings → Master code**. On the phone, open **MDM Agent → Administrator (master code)**. The panel can: lock, set or remove the screen PIN, reboot, install an APK, allow or block apps, release the phone, remove the agent, or erase it. The phone stores only a salted PBKDF2 hash, checks the code itself, and locks out for 15 minutes after 5 wrong tries. App changes made there sync to the dashboard (shown as "N app change(s) made on the phone"; clear them with **Clear phone-side changes**).

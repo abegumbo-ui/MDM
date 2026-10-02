@@ -28,7 +28,8 @@ const imageResponse = (b64) =>
 const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this is a safety cap
 const MASTER_ITERATIONS = 100000;
 const MAX_EVENTS = 60;
-const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser"]);
+const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser", "freebrowse"]);
+const MAX_FREEBROWSE_MINUTES = 240;
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
 const MAX_ICON_B64 = 30000;
@@ -253,8 +254,13 @@ async function adminApi(request, env, url) {
   if (path === "/api/codes" && method === "POST") {
     if (!CODE_TYPES.has(body.type)) return json({ error: "Unknown code type" }, 400);
     const code = randomHex(4).toUpperCase();
-    await putJSON(env, `code:${body.type}:${code}`, { created: Date.now() }, { expirationTtl: 3600 });
-    return json({ code, type: body.type, server: url.origin, expiresInSeconds: 3600 });
+    const value = { created: Date.now() };
+    if (body.type === "freebrowse") {
+      const minutes = Number.isInteger(body.minutes) ? Math.min(Math.max(body.minutes, 5), MAX_FREEBROWSE_MINUTES) : 60;
+      value.minutes = minutes;
+    }
+    await putJSON(env, `code:${body.type}:${code}`, value, { expirationTtl: 3600 });
+    return json({ code, type: body.type, server: url.origin, expiresInSeconds: 3600, minutes: value.minutes });
   }
   const iconMatch = /^\/api\/icon\/([A-Za-z0-9_.]+)$/.exec(path);
   if (iconMatch && method === "GET") {
@@ -419,16 +425,18 @@ async function agentApi(request, env, url) {
     if (url.pathname === "/agent/update") return json({ latest: await latestAgent(env) });
 
     if (url.pathname === "/agent/redeem") {
-      // One-time codes unlock features inside the phone app (install an APK, remove the agent).
+      // One-time codes unlock features inside the phone app (install an APK, remove the agent,
+      // browse freely for a while).
       const type = body.type;
       const code = String(body.code || "").toUpperCase();
-      if (!["install", "uninstall"].includes(type) || !/^[0-9A-F]{8}$/.test(code) || !(await env.STATE.get(`code:${type}:${code}`))) {
-        return json({ error: "Invalid or expired code" }, 403);
-      }
+      const stored = ["install", "uninstall", "freebrowse"].includes(type) && /^[0-9A-F]{8}$/.test(code)
+        ? await getJSON(env, `code:${type}:${code}`, null)
+        : null;
+      if (!stored) return json({ error: "Invalid or expired code" }, 403);
       await env.STATE.delete(`code:${type}:${code}`);
       d.results = [...(d.results || []), { id: randomHex(6), type: `code:${type}`, ok: true, msg: "one-time code used on the phone", at: Date.now() }].slice(-30);
       await putJSON(env, key, d);
-      return json({ ok: true });
+      return json(type === "freebrowse" ? { ok: true, minutes: stored.minutes || 60 } : { ok: true });
     }
 
     let dirty = false;

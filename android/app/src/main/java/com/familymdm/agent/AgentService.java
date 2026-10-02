@@ -182,6 +182,8 @@ public class AgentService extends Service {
             lock.put("msg", Agent.prefs(this).getString("lockMsg", ""));
             o.put("lock", lock);
         }
+        long browseUntil = Agent.prefs(this).getLong("browseUntil", 0);
+        if (browseUntil > System.currentTimeMillis()) o.put("browseUntil", browseUntil);
         return o;
     }
 
