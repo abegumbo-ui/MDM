@@ -32,6 +32,11 @@ Codes work once and expire after an hour. The phone must be online to check them
 Set it in the dashboard under **Settings → Master code**. On the phone, open **MDM Agent → Administrator (master code)**. The panel can: lock, set or remove the screen PIN, reboot, install an APK, allow or block apps, release the phone, remove the agent, or erase it. The phone stores only a salted PBKDF2 hash, checks the code itself, and locks out for 15 minutes after 5 wrong tries. App changes made there sync to the dashboard (shown as "N app change(s) made on the phone"; clear them with **Clear phone-side changes**).
 If you forget it, set a new one in the dashboard; the phone picks it up at its next check-in.
 
+## Seeing or removing the screen lock
+- A PIN you set from the dashboard (or the phone's admin panel) is shown on the phone's **Overview → PIN you set → Show**.
+- **Nobody can read a PIN or pattern the person chose themselves.** Android stores only a scrambled form. What you can do is **Remove screen lock** (works for any PIN, pattern or password) or replace it with **Set PIN**. For that, **PIN control** (Overview) must say *Ready*. If it doesn't: open the agent app → Administrator → **Activate PIN control**, and confirm the current lock once on the phone.
+- To make sure every lock is one you can see, turn on **Settings → Only the administrator can set the screen lock**. The person then can't set their own PIN or pattern.
+
 ## Real lock
 **Lock** only turns the screen off if the phone has no screen lock. Use **Set PIN** on the Devices tab (or in the admin panel) first. If the phone already has a lock, open the admin panel once and tap **Activate PIN control**.
 

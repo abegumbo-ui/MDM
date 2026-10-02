@@ -47,6 +47,7 @@ export const RESTRICTIONS = {
   addUserDisabled: { key: "no_add_user", label: "Block adding users", on: true },
   installUnknownSourcesDisabled: { key: "no_install_unknown_sources", label: "Block installing from unknown sources", on: true },
   installAppsDisabled: { key: "no_install_apps", label: "Block ALL app installs (including Play Store)", on: false },
+  configCredentialsDisabled: { key: "no_config_credentials", label: "Only the administrator can set the screen lock (the person can't set their own PIN or pattern)", on: false },
   // Also hides Developer options. USB debugging (adb) stops working while this is on;
   // use "Release device" in the dashboard (or recovery mode) to get back in.
   debuggingDisabled: { key: "no_debugging_features", label: "Block Developer options and USB debugging", on: true },

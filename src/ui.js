@@ -179,7 +179,7 @@ function render(){
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
-const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen PIN',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result'};
+const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result'};
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
@@ -225,8 +225,12 @@ function renderDeviceDetail(m,d){
   kv('Last check-in',ago(d.lastSeen)),kv('Battery',d.info.battery?d.info.battery.pct+'%'+(d.info.battery.charging?' (charging)':''):'unknown'),
   kv('Connection',d.info.wifi?(d.info.wifi.transport==='wifi'?'Wi-Fi '+(d.info.wifi.ssid||'(name hidden)')+(d.info.wifi.rssi?' · '+d.info.wifi.rssi+' dBm':''):d.info.wifi.transport==='mobile'?'Mobile data':'None'):'unknown'),
   kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On':'Off'),
+  kv('PIN control',d.info.pinControl===undefined?'unknown':d.info.pinControl?'Ready: you can set or remove the lock':'Not active yet (see Controls)'),
   kv('Apps',d.packages.length+' ('+d.packages.filter(function(p){return p.h}).length+' hidden)'),
   kv('Sync',pendingCount(d)?pendingCount(d)+' changes pending':'In sync'));
+ if(d.adminPin&&d.adminPin.ok){
+  const pinV=h('b',null,'••••');const showPin=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');showPin.onclick=function(){pinV.textContent=d.adminPin.pin};
+  info.append(h('div',{class:'kv'},h('span',{class:'mute'},'PIN you set'),h('span',null,pinV,showPin)))}
  const nOv=Object.keys(d.overrides||{}).length;
  if(nOv)info.append(kv('Changed on the phone',nOv+' app(s)'));
  ov.append(info);
@@ -248,8 +252,10 @@ function renderDeviceDetail(m,d){
    if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
  cmd(lr,'Unlock now','unlock',{},null,lockedNow(d)?'':'outline');
  cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
- cmd(lr,'Remove PIN','clearPin',{},'Remove the screen lock PIN?','outline');
- lockBox.append(lr);ct.append(lockBox);
+ cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
+ lockBox.append(lr);
+ lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Settings.'));
+ ct.append(lockBox);
 
  const appBox=h('div',{class:'card'},h('h2',null,'Apps'));const ar=h('div',{class:'row',style:'margin-top:8px'});
  const file=h('input',{type:'file',accept:'.apk,application/vnd.android.package-archive',style:'display:none'});

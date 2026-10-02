@@ -38,7 +38,7 @@ final class PolicyApplier {
     private static final Set<String> ALLOWED_RESTRICTIONS = new HashSet<>(Arrays.asList(
             "no_factory_reset", "no_safe_boot", "no_uninstall_apps", "no_control_apps",
             "no_modify_accounts", "no_add_user", "no_install_unknown_sources",
-            "no_install_apps", "no_debugging_features"));
+            "no_install_apps", "no_debugging_features", "no_config_credentials"));
 
     // Restrictions that would also stop the agent's own installs, updates and uninstalls.
     private static final Set<String> INSTALL_RELATED = new HashSet<>(Arrays.asList(
