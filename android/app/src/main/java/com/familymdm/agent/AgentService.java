@@ -187,8 +187,6 @@ public class AgentService extends Service {
         body.put("events", events);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
-        String codeReport = AppCode.pendingReport(this);
-        if (codeReport != null) body.put("appCode", codeReport);
         List<String> iconsSent = new ArrayList<>();
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);
@@ -196,7 +194,6 @@ public class AgentService extends Service {
         JSONObject reply = Api.post(server + "/agent/sync", body, token);
         Agent.dropResults(this, results.length());
         Agent.dropEvents(this, events.length());
-        if (codeReport != null) AppCode.reported(this);
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
         Master.store(this, reply.optJSONObject("master"));
         if (!iconsSent.isEmpty()) {
@@ -299,8 +296,7 @@ public class AgentService extends Service {
                     }
                     break;
                 case "resetAppCode":
-                    AppCode.clear(this);
-                    msg = "app code reset; the person must choose a new one";
+                    msg = "no longer used";
                     break;
                 case "updateAgent":
                     msg = Updater.update(this, false);

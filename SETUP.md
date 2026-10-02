@@ -32,22 +32,33 @@ Codes work once and expire after an hour. The phone must be online to check them
 Set it in the dashboard under **Settings → Master code**. On the phone, open **MDM Agent → Administrator (master code)**. The panel can: lock, set or remove the screen PIN, reboot, install an APK, allow or block apps, release the phone, remove the agent, or erase it. The phone stores only a salted PBKDF2 hash, checks the code itself, and locks out for 15 minutes after 5 wrong tries. App changes made there sync to the dashboard (shown as "N app change(s) made on the phone"; clear them with **Clear phone-side changes**).
 If you forget it, set a new one in the dashboard; the phone picks it up at its next check-in.
 
+## Seeing or removing the screen lock
+- A PIN you set from the dashboard (or the phone's admin panel) is shown on the phone's **Overview → PIN you set → Show**.
+- **Nobody can read a PIN or pattern the person chose themselves.** Android stores only a scrambled form. What you can do is **Remove screen lock** (works for any PIN, pattern or password) or replace it with **Set PIN**. For that, **PIN control** (Overview) must say *Ready*. If it doesn't: open the agent app → Administrator → **Activate PIN control**, and confirm the current lock once on the phone.
+- To make sure every lock is one you can see, turn on **Settings → Only the administrator can set the screen lock**. The person then can't set their own PIN or pattern.
+
 ## Real lock
 **Lock** only turns the screen off if the phone has no screen lock. Use **Set PIN** on the Devices tab (or in the admin panel) first. If the phone already has a lock, open the admin panel once and tap **Activate PIN control**.
 
+## The agent is exempt from the install restrictions
+Because the agent is the device owner, its own installs, updates and uninstalls work even when **Block ALL app installs**, **Block installing from unknown sources** or **Block uninstalling apps** are on. For those moments (two minutes at most, or until the result arrives) the agent pauses those restrictions, then puts them back. This covers **Update agent**, **Upload APK**, **Install from link**, the in-app install, and the **Uninstall** button.
+
+## What "Block" really does
+Block switches an app off completely, as if it were uninstalled for the person. It is not "unreachable but still running": apps that depend on a blocked app stop working too (for example Maps needs Google Play services, which is why Play services and other core parts are protected, and the dashboard warns before you block one). Blocking the Play Store is fine for Maps; it only stops installs and updates from the store.
+
+## Uninstall
+On the **Apps** tab, an app the person installed has a red **Uninstall** button and a green "can be uninstalled" tag. System apps say "cannot be uninstalled, use Block to switch it off". Uninstall also works on an app you had blocked (the agent switches it back on first, then removes it).
+
 ## Master code works everywhere on the phone
-Wherever the agent app asks for a code, the **master code** is accepted too: the code to open the app, the install code, the removal code, the timed-lock screen's **Administrator unlock** button, and the admin panel. It works with no internet. (Android's own screen-lock PIN is separate; Android doesn't let an app make its lock screen accept another code. Set the PIN from the dashboard, and you may choose the same digits as your master code if you like.)
+Wherever the agent app asks for a code, the **master code** is accepted too: the install code, the removal code, the timed-lock screen's **Administrator unlock** button, and the admin panel. It works with no internet. (Android's own screen-lock PIN is separate; Android doesn't let an app make its lock screen accept another code. Set the PIN from the dashboard, and you may choose the same digits as your master code if you like.)
 
 ## Logo and custom icons
 - **Settings → Logo on the phones:** upload an image; phones show it on the timed-lock screen and at the top of the agent app.
 - **Apps tab → Icon…** changes how an app looks *in the dashboard* (Reset icon undoes it). Android doesn't allow changing another app's icon on the phone's home screen.
 
-## The code to open the app
-When the agent app is opened on the phone it asks for a code. The first time, the person **chooses** one (4+ characters); after that they type it every time they open the app. The phone checks it itself (5 wrong tries locks it for 5 minutes), and the code is also sent to the dashboard: open the phone's page, **Overview → Code to open the app → Show**. The master code always opens it too. **Reset app code** (Controls page) makes the person choose a new one.
-
 ## Updating the agent
 - **From the dashboard:** the phone's page shows "Update available" when GitHub has a newer build. **Controls → Update agent** installs it silently over the old one (same signing key, so the phone stays managed).
-- **From the phone:** open the admin panel (master code) → **Agent update**.
+- **From the phone:** open the agent app. **Update** is on the main screen: **Check for an update** / **Update now**. No code needed.
 - **Automatically:** **Settings → Agent updates**. Phones check every 6 hours.
 Updates come from the "Latest agent build" release in this repo (the repo is public, so no token is needed).
 

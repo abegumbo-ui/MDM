@@ -25,8 +25,11 @@ public class InstallReceiver extends BroadcastReceiver {
             return;
         }
         boolean ok = status == PackageInstaller.STATUS_SUCCESS;
+        boolean uninstall = "uninstall".equals(intent.getStringExtra("kind"));
         String text = (pkg == null ? "" : pkg + ": ") + (ok ? "done" : (message == null ? "failed (status " + status + ")" : message));
-        Agent.addResult(context, "pkg-" + System.currentTimeMillis(), "install-result", ok, text);
-        Toast.makeText(context, ok ? "App installed" : "Install failed: " + text, Toast.LENGTH_LONG).show();
+        Agent.addResult(context, "pkg-" + System.currentTimeMillis(), uninstall ? "uninstall-result" : "install-result", ok, text);
+        Toast.makeText(context, ok ? (uninstall ? "App uninstalled" : "App installed")
+                : (uninstall ? "Uninstall failed: " : "Install failed: ") + text, Toast.LENGTH_LONG).show();
+        Installer.closeWindow(context); // the install/uninstall restrictions come back now
     }
 }

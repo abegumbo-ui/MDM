@@ -179,7 +179,7 @@ function render(){
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
-const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen PIN',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent'};
+const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result'};
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
@@ -225,11 +225,12 @@ function renderDeviceDetail(m,d){
   kv('Last check-in',ago(d.lastSeen)),kv('Battery',d.info.battery?d.info.battery.pct+'%'+(d.info.battery.charging?' (charging)':''):'unknown'),
   kv('Connection',d.info.wifi?(d.info.wifi.transport==='wifi'?'Wi-Fi '+(d.info.wifi.ssid||'(name hidden)')+(d.info.wifi.rssi?' · '+d.info.wifi.rssi+' dBm':''):d.info.wifi.transport==='mobile'?'Mobile data':'None'):'unknown'),
   kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On':'Off'),
+  kv('PIN control',d.info.pinControl===undefined?'unknown':d.info.pinControl?'Ready: you can set or remove the lock':'Not active yet (see Controls)'),
   kv('Apps',d.packages.length+' ('+d.packages.filter(function(p){return p.h}).length+' hidden)'),
   kv('Sync',pendingCount(d)?pendingCount(d)+' changes pending':'In sync'));
- const codeV=h('b',null,d.appCode?'••••••':'not chosen yet');
- const showCode=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');showCode.onclick=function(){codeV.textContent=d.appCode};
- info.append(h('div',{class:'kv'},h('span',{class:'mute'},'Code to open the app'),h('span',null,codeV,d.appCode?showCode:null)));
+ if(d.adminPin&&d.adminPin.ok){
+  const pinV=h('b',null,'••••');const showPin=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');showPin.onclick=function(){pinV.textContent=d.adminPin.pin};
+  info.append(h('div',{class:'kv'},h('span',{class:'mute'},'PIN you set'),h('span',null,pinV,showPin)))}
  const nOv=Object.keys(d.overrides||{}).length;
  if(nOv)info.append(kv('Changed on the phone',nOv+' app(s)'));
  ov.append(info);
@@ -251,8 +252,10 @@ function renderDeviceDetail(m,d){
    if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
  cmd(lr,'Unlock now','unlock',{},null,lockedNow(d)?'':'outline');
  cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
- cmd(lr,'Remove PIN','clearPin',{},'Remove the screen lock PIN?','outline');
- lockBox.append(lr);ct.append(lockBox);
+ cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
+ lockBox.append(lr);
+ lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Settings.'));
+ ct.append(lockBox);
 
  const appBox=h('div',{class:'card'},h('h2',null,'Apps'));const ar=h('div',{class:'row',style:'margin-top:8px'});
  const file=h('input',{type:'file',accept:'.apk,application/vnd.android.package-archive',style:'display:none'});
@@ -270,7 +273,6 @@ function renderDeviceDetail(m,d){
  const devBox=h('div',{class:'card'},h('h2',null,'Phone'));const dr=h('div',{class:'row',style:'margin-top:8px'});
  cmd(dr,'Sync now','sync');cmd(dr,'Reboot','reboot');
  if(needsUpdate(d))cmd(dr,'Update agent to build '+latest.versionCode,'updateAgent',{});else cmd(dr,'Update agent','updateAgent',{},null,'outline');
- cmd(dr,'Reset app code','resetAppCode',{},'The person will have to choose a new code to open the app. Continue?','outline');
  if(nOv)cmd(dr,'Clear phone-side changes','clearOverrides',{},'Forget the app changes made on the phone with the master code?','outline');
  devBox.append(dr);
  const dd=h('div',{class:'row',style:'margin-top:12px'});
@@ -340,7 +342,7 @@ function renderApps(m){
   m.append(pc)}
  const top=h('div',{class:'card'});
  top.append(h('div',{class:'setting'},h('div',{class:'grow'},h('h2',null,'Hide apps that aren\'t allowed'),
-  h('div',{class:'mute'},'When on, every launcher app that isn\'t set to Allow is hidden. Protected system parts are never hidden. Allow the apps you need (phone, messages, maps…) first.')),
+  h('div',{class:'mute'},'Block switches an app off completely, as if it were uninstalled for the person. Apps that depend on it stop working too, which is why core parts are protected. When this is on, every launcher app that isn\'t set to Allow is hidden. Protected system parts are never hidden. Allow the apps you need (phone, messages, maps…) first.')),
   sw(state.config.blockUnlisted,async function(on){
    if(on&&!confirm('Hide every app that is not set to Allow? Make sure phone, messages and maps are allowed first.')){render();return}
    state.config.blockUnlisted=on;try{await saveConfig(on?'Hiding unlisted apps.':'Unlisted apps stay visible.')}catch(e){snack(e.message,1)}render()})));
@@ -363,7 +365,7 @@ function appRow(a){
  const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy'});img.onerror=function(){img.replaceWith(h('div',{class:'ph'}))};
  const body=h('div',{class:'grow'});
  const tags=h('div');
- if(a.s)tags.append(h('span',{class:'chip'},'system'));
+ if(a.s)tags.append(h('span',{class:'chip'},'system app · cannot be uninstalled, use Block to switch it off'));else tags.append(h('span',{class:'chip ok'},'can be uninstalled'));
  if(a.prot)tags.append(h('span',{class:'chip'},'protected'));
  if(a.hiddenOn)tags.append(h('span',{class:'chip warn'},'hidden on '+a.hiddenOn));
  if(!saved.mode&&state.config.blockUnlisted&&!a.prot)tags.append(h('span',{class:'chip bad'},'will be hidden (default)'));
@@ -377,19 +379,20 @@ function appRow(a){
  const seg=h('div',{class:'seg'});
  for(const o of [['','Default',''],['allow','Allow',''],['block','Block','block']]){
   const b=h('button',{class:(d.mode===o[0]?'on ':'')+o[2]},o[1]);
-  b.onclick=function(){d.mode=o[0];if(d.mode==='block')d.schedule=null;render2()};seg.append(b)}
+  b.onclick=function(){
+   if(o[0]==='block'&&a.prot&&!confirm('This is a core part of the phone. Blocking switches it off completely, and other apps that need it (for example Maps needs Google Play services) can stop working. Block it anyway?'))return;
+   d.mode=o[0];if(d.mode==='block')d.schedule=null;render2()};seg.append(b)}
  const render2=function(){render()};
  const ctl=h('div',{class:'row',style:'margin-top:8px'},seg);
+ const holders=devices.filter(function(dv){return dv.packages.some(function(x){return x.p===a.p})});
+ if(!a.s&&holders.length)ctl.append(btn('Uninstall','danger',async function(){
+  if(!confirm('Uninstall '+(a.l||a.p)+' from: '+holders.map(function(x){return x.name}).join(', ')+'? This removes the app and its data from the phone.'))return;
+  for(const dv of holders)await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
+  snack('Uninstall queued. The phone does it at its next check-in (within about a minute).');load()}));
  const schedBtn=h('button',{class:'btn tonal'},d.schedule?'Schedule on':'Schedule');
  schedBtn.onclick=function(){open[a.p]=!open[a.p];render()};
  if(d.mode!=='block')ctl.append(schedBtn);
  ctl.append(saveBtn);
- if(!a.s){
-  const holders=devices.filter(function(dv){return dv.packages.some(function(x){return x.p===a.p})});
-  if(holders.length)ctl.append(btn('Uninstall','danger',async function(){
-   if(!confirm('Uninstall '+(a.l||a.p)+' from: '+holders.map(function(x){return x.name}).join(', ')+'?'))return;
-   for(const dv of holders)await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
-   snack('Uninstall queued. The phone does it at its next check-in.');load()}))}
 
  ctl.append(btn('Icon…','outline',async function(){
   const blob=await pickImage(96,true);if(!blob)return;

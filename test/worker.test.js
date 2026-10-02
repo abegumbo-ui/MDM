@@ -213,7 +213,7 @@ test("PIN commands validate the PIN and never echo it back in the device record"
   const sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.commands[0].args.pin, "4821");
   const dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
-  assert.ok(!JSON.stringify(dev).includes("4821"), "PIN is gone once delivered");
+  assert.ok(!JSON.stringify({ ...dev, adminPin: undefined }).includes("4821"), "PIN is not in the queue, log or results once delivered; only the admin-only adminPin field keeps it");
   assert.equal((await cmd("clearPin", {})).status, 200);
 });
 
@@ -328,4 +328,27 @@ test("logo: admin uploads a PNG, phones see a new revision and can fetch it", as
   assert.equal((await req("/api/logo", { method: "DELETE", headers: { cookie } })).status, 200);
   sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.logoRev, 0);
+});
+
+test("a PIN the administrator sets can be shown on the dashboard once the phone confirms it", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  const cmd = (type, args) => post(`/api/devices/${id}/command`, { type, args }, { cookie });
+  const dev = async () => (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+
+  await cmd("setPin", { pin: "4821" });
+  assert.deepEqual((await dev()).adminPin, { pin: "4821", ok: false }, "pending until the phone confirms");
+  const sync = await (await post("/agent/sync", {}, auth)).json();
+  await post("/agent/sync", { results: [{ id: sync.commands[0].id, type: "setPin", ok: true, msg: "screen lock PIN set" }] }, auth);
+  assert.deepEqual((await dev()).adminPin, { pin: "4821", ok: true });
+
+  await cmd("clearPin", {});
+  const s2 = await (await post("/agent/sync", {}, auth)).json();
+  await post("/agent/sync", { results: [{ id: s2.commands[0].id, type: "clearPin", ok: true, msg: "screen lock removed" }] }, auth);
+  assert.equal((await dev()).adminPin, null);
+
+  await cmd("setPin", { pin: "9999" });
+  const s3 = await (await post("/agent/sync", {}, auth)).json();
+  await post("/agent/sync", { results: [{ id: s3.commands[0].id, type: "setPin", ok: false, msg: "rejected" }] }, auth);
+  assert.equal((await dev()).adminPin, null, "a rejected PIN is not shown");
 });

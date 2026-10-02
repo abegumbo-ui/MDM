@@ -98,6 +98,7 @@ const publicDevice = (d) => ({
   overrides: d.overrides || {},
   wifiNetworks: d.wifiNetworks || [],
   appCode: d.appCode || null,
+  adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
 });
 
 // Latest agent build, published by GitHub Actions next to the APK. Cached at the edge for 5 minutes.
@@ -272,6 +273,8 @@ async function adminApi(request, env, url) {
       if (body.type === "setPin") {
         if (!/^\d{4,16}$/.test(given.pin || "")) return json({ error: "PIN must be 4 to 16 digits" }, 400);
         args.pin = given.pin; // delivered once, then dropped from the queue; never written to the activity log
+        // Kept (admin-only) so the dashboard can show a PIN the administrator set. Confirmed when the phone reports success.
+        d.adminPin = { pin: given.pin, ok: false, at: Date.now() };
       }
       if (body.type === "clearOverrides") {
         // Handled here: the next sync hands the phone the cleared list.
@@ -373,6 +376,10 @@ async function agentApi(request, env, url) {
     if (Array.isArray(body.results) && body.results.length) {
       const done = new Set(body.results.map((r) => r.id));
       d.inflight = (d.inflight || []).filter((c) => !done.has(c.id));
+      for (const r of body.results) {
+        if (r.type === "setPin") d.adminPin = r.ok && d.adminPin ? { ...d.adminPin, ok: true } : null;
+        if (r.type === "clearPin" && r.ok) d.adminPin = null;
+      }
       d.results = [...(d.results || []), ...body.results.slice(0, 20).map((r) => ({ ...r, at: now }))].slice(-30);
       dirty = true;
     }

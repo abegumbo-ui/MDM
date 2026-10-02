@@ -106,12 +106,6 @@ public class AdminActivity extends Activity {
         net.addView(Ui.titleText(this, "Wi-Fi"));
         action(net, "Add a Wi-Fi network…", Ui.TONAL, v -> askWifi());
 
-        LinearLayout upd = Ui.card(this, root);
-        upd.addView(Ui.titleText(this, "Agent update"));
-        upd.addView(Ui.body(this, "This agent is build " + Updater.currentBuild(this) + ".", true));
-        action(upd, "Check for an update", Ui.TONAL, v -> checkUpdate(false));
-        action(upd, "Update now", Ui.FILLED, v -> checkUpdate(true));
-
         LinearLayout device = Ui.card(this, root);
         device.addView(Ui.titleText(this, "Device"));
         action(device, "Reboot", Ui.TONAL, v -> confirm("Reboot the phone?", () -> run(() -> {
@@ -124,26 +118,6 @@ public class AdminActivity extends Activity {
                 "Release this phone and uninstall the agent?", () -> release(true)));
         action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
         refreshStatus();
-    }
-
-    private void checkUpdate(final boolean install) {
-        toast(install ? "Looking for an update..." : "Checking...");
-        new Thread(() -> {
-            String msg;
-            try {
-                if (install) {
-                    msg = Updater.update(this, false);
-                } else {
-                    JSONObject latest = Updater.latest(this);
-                    msg = latest == null ? "Could not find the latest build."
-                            : "Latest build is " + latest.getInt("versionCode") + "; this agent is " + Updater.currentBuild(this) + ".";
-                }
-            } catch (Exception e) {
-                msg = "Update failed: " + (e.getMessage() == null ? e.toString() : e.getMessage());
-            }
-            final String text = msg;
-            runOnUiThread(() -> toast(text));
-        }).start();
     }
 
     private void refreshStatus() {
