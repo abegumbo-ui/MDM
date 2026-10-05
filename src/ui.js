@@ -470,7 +470,6 @@ function appRow(a,dv){
  for(const o of options){
   const b=h('button',{class:(d.mode===o[0]?'on ':'')+o[2]},o[1]);
   b.onclick=function(){
-   if(o[0]==='block'&&a.prot&&!confirm('This is a core part of the phone. Blocking switches it off completely, and other apps that depend on it can stop working. Block it anyway?'))return;
    d.mode=o[0];if(d.mode==='block'||d.mode==='soft')d.schedule=null;render2()};seg.append(b)}
  const render2=function(){render()};
  const ctl=h('div',{class:'row',style:'margin-top:8px'},seg);
