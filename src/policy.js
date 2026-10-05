@@ -158,8 +158,13 @@ export function normalizeConfig(input) {
   for (const k of Object.keys(RESTRICTIONS)) {
     if (c.restrictions && typeof c.restrictions[k] === "boolean") restrictions[k] = c.restrictions[k];
   }
+  const homeScreen = c.homeScreen === true;
   const apps = {};
   for (const [pkg, a] of Object.entries(c.apps && typeof c.apps === "object" ? c.apps : {})) {
+    // "soft" only means anything while Home screen mode is on; once it's off, a leftover "soft"
+    // entry would otherwise sit there forever (never selectable in the dashboard, never hidden
+    // either) instead of going back to Default like the dashboard already shows it doing.
+    if (a && a.mode === "soft" && !homeScreen) continue;
     if (a && ["allow", "force", "block", "soft"].includes(a.mode)) {
       const entry = { mode: a.mode, label: a.label };
       const schedule = normalizeSchedule(a.schedule);
@@ -179,7 +184,7 @@ export function normalizeConfig(input) {
     // Newly installed apps stay hidden until you approve them.
     approveNew: c.approveNew === true,
     // Android only shows the Wi-Fi name when Location is on; this lets the agent turn it on (no location is collected).
-    reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, homeScreen: c.homeScreen === true,
+    reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, homeScreen,
     // Makes the agent's own browser the phone's only handler for web links (so Chrome etc. stop opening them).
     restrictBrowsing: c.restrictBrowsing === true, frpAccounts,
     sites, restrictions };
