@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using LockGuard.Common;
 
@@ -24,10 +26,20 @@ public sealed class PipeServer
 
     public async Task RunAsync(CancellationToken ct)
     {
+        // The service runs as SYSTEM; without an explicit ACL here, Windows applies the default
+        // security descriptor from that token, which doesn't grant the signed-in user's own
+        // process (Setup) access to the pipe at all -- not even when it's running elevated. The
+        // actual authorization boundary is the per-request code check in Handle(), not the OS
+        // pipe ACL, so it's correct to let any local, authenticated user open the pipe here.
+        var pipeSecurity = new PipeSecurity();
+        pipeSecurity.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite, AccessControlType.Allow));
+
         while (!ct.IsCancellationRequested)
         {
-            using var pipe = new NamedPipeServerStream(Paths.PipeName, PipeDirection.InOut, 1,
-                PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            using var pipe = NamedPipeServerStreamAcl.Create(Paths.PipeName, PipeDirection.InOut, 1,
+                PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, pipeSecurity);
             try
             {
                 await pipe.WaitForConnectionAsync(ct);
