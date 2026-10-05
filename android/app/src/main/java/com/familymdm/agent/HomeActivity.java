@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.Drawable;
@@ -124,8 +125,28 @@ public class HomeActivity extends Activity {
             stopLockTask();
         } catch (Exception ignored) {
         }
+        // Just finishing this screen leaves Android to work out what to show next on its own,
+        // right after this app stopped being the preferred home app -- that handoff was landing
+        // on a stuck black screen instead of the real launcher. Launching it ourselves removes
+        // the ambiguity.
+        goToRealLauncher();
         alive = false;
         finish();
+    }
+
+    private void goToRealLauncher() {
+        try {
+            Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+            for (ResolveInfo ri : getPackageManager().queryIntentActivities(home, 0)) {
+                String pkg = ri.activityInfo.packageName;
+                if (pkg.equals(getPackageName())) continue;
+                startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                        .setClassName(pkg, ri.activityInfo.name)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+                return;
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void build() {
