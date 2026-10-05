@@ -160,10 +160,10 @@ export function normalizeConfig(input) {
   }
   const apps = {};
   for (const [pkg, a] of Object.entries(c.apps && typeof c.apps === "object" ? c.apps : {})) {
-    if (a && ["allow", "force", "block"].includes(a.mode)) {
+    if (a && ["allow", "force", "block", "soft"].includes(a.mode)) {
       const entry = { mode: a.mode, label: a.label };
       const schedule = normalizeSchedule(a.schedule);
-      if (schedule && a.mode !== "block") entry.schedule = schedule;
+      if (schedule && a.mode !== "block" && a.mode !== "soft") entry.schedule = schedule;
       apps[pkg] = entry;
     }
   }
@@ -210,13 +210,17 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   const show = [];
   const pending = [];
   const allowed = [];
-  // Explicit blocks apply even to packages the device didn't report.
-  for (const [pkg, a] of Object.entries(apps)) if (a.mode === "block") hide.add(pkg);
+  // Explicit blocks and soft-blocks apply even to packages the device didn't report.
+  for (const [pkg, a] of Object.entries(apps)) {
+    if (a.mode === "block") hide.add(pkg);
+    if (a.mode === "soft") show.push(pkg);
+  }
   for (const pkg of reportedPackages) {
     const mode = apps[pkg]?.mode;
     if (mode === "allow" || mode === "force") allowed.push(pkg);
     if (mode === "block") hide.add(pkg);
     else if (mode === "allow" || mode === "force") show.push(pkg);
+    else if (mode === "soft") show.push(pkg);
     else if (cfg.approveNew && known && !known.has(pkg) && !isProtected(pkg)) {
       hide.add(pkg);
       pending.push(pkg);
@@ -231,7 +235,9 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   for (const [pkg, a] of Object.entries(apps)) if (a.schedule) schedules[pkg] = a.schedule;
   // With approval mode on, the phone also gets the approved baseline so it can hold a new app
   // right away, even when it has no connection to the dashboard.
-  // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened (blocked apps keep running).
+  // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
+  // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
+  // outright via `hide`, same as it always is outside home-screen mode too.
   const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;

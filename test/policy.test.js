@@ -32,6 +32,30 @@ test("explicit blocks apply even if the device never reported the package", () =
   assert.deepEqual(p.hide, ["com.example.game"]);
 });
 
+test("soft block: stays visible (never hidden) and never appears in the home-screen allowed list", () => {
+  const p = buildAgentPolicy({ apps: { "com.example.game": { mode: "soft" }, "com.example.maps": { mode: "allow" } } }, [
+    "com.example.game",
+    "com.example.maps",
+  ]);
+  assert.ok(p.show.includes("com.example.game"), "soft-blocked apps are never hidden");
+  assert.ok(!p.hide.includes("com.example.game"));
+  assert.ok(!p.allowed.includes("com.example.game"), "soft-blocked apps don't appear in the home-screen launcher");
+  assert.ok(p.allowed.includes("com.example.maps"));
+  // Also applies to a soft-blocked app the device hasn't reported yet.
+  const q = buildAgentPolicy({ apps: { "com.example.other": { mode: "soft" } } }, []);
+  assert.ok(q.show.includes("com.example.other"));
+  assert.ok(!q.hide.includes("com.example.other"));
+});
+
+test("a harsh Block still hides the app even with blockUnlisted off, unlike soft block", () => {
+  const p = buildAgentPolicy({ apps: { "com.example.a": { mode: "block" }, "com.example.b": { mode: "soft" } } }, [
+    "com.example.a",
+    "com.example.b",
+  ]);
+  assert.deepEqual(p.hide, ["com.example.a"]);
+  assert.ok(p.show.includes("com.example.b"));
+});
+
 test("developer options and factory reset are blocked by default; toggles work", () => {
   const p = buildAgentPolicy({}, []);
   assert.ok(p.restrictions.includes("no_factory_reset"));

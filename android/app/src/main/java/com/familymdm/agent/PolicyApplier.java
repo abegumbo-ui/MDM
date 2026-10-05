@@ -128,8 +128,8 @@ final class PolicyApplier {
 
         Set<String> hideSet = new LinkedHashSet<>(strings(policy.optJSONArray("hide")));
         Set<String> showSet = new LinkedHashSet<>(strings(policy.optJSONArray("show")));
-        // Home-screen mode: only these apps may be opened (blocked apps are not switched off, just unreachable).
-        boolean kiosk = policy.optBoolean("homeScreen", false) && !Kiosk.paused(c);
+        // Home-screen mode: only these apps may be opened. Harsh-blocked apps are still disabled
+        // outright (below); "soft" apps are left running, just excluded from this launcher's list.
         Set<String> allowedSet = new LinkedHashSet<>(strings(policy.optJSONArray("allowed")));
 
         // Changes made on the phone with the master code win over the dashboard.
@@ -160,12 +160,6 @@ final class PolicyApplier {
                     allowedSet.remove(pkg);
                 }
             }
-        }
-
-        if (kiosk) {
-            // Nothing is switched off in home-screen mode: bring back anything hidden earlier.
-            showSet.addAll(hiddenByUs);
-            hideSet.clear();
         }
 
         for (String pkg : hideSet) {
