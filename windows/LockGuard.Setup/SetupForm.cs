@@ -155,9 +155,9 @@ public sealed class SetupForm : Form
 
         add.Click += async (_, _) =>
         {
-            using var dlg = new OpenFileDialog { Filter = "Programs (*.exe)|*.exe", Title = "Pick the program to allow" };
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-            var resp = await PipeClient.SendAsync(new PipeRequest { Action = PipeActions.AddProgram, Code = _unlockedCode, Arg = dlg.FileName });
+            using var dlg = new ProgramPickerDialog();
+            if (dlg.ShowDialog(this) != DialogResult.OK || string.IsNullOrEmpty(dlg.SelectedPath)) return;
+            var resp = await PipeClient.SendAsync(new PipeRequest { Action = PipeActions.AddProgram, Code = _unlockedCode, Arg = dlg.SelectedPath });
             if (!resp.Ok) MessageBox.Show(this, resp.Message, "Could not add it");
             await RefreshAsync();
         };
@@ -214,6 +214,78 @@ public sealed class SetupForm : Form
         var box = new TextBox { Location = new Point(0, y + 20), Width = 260, UseSystemPasswordChar = password };
         parent.Controls.Add(box);
         return box;
+    }
+}
+
+/// <summary>
+/// Pick list for "Add a program": installed programs found from Start Menu shortcuts
+/// (InstalledPrograms), searchable, with a manual file-browse fallback for anything not found
+/// there (portable apps, etc.) -- instead of making everyone start with a raw file path.
+/// </summary>
+internal sealed class ProgramPickerDialog : Form
+{
+    public string? SelectedPath { get; private set; }
+
+    private readonly List<(string Name, string Path)> _all = InstalledPrograms.Find();
+
+    public ProgramPickerDialog()
+    {
+        Text = "Add a program";
+        Width = 420;
+        Height = 420;
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+
+        var search = new TextBox { Location = new Point(16, 16), Width = 370 };
+        var list = new ListBox { Location = new Point(16, 46), Width = 370, Height = 260 };
+        var browse = new Button { Text = "Can't find it? Browse for the program...", Location = new Point(16, 316), Width = 370 };
+        var buttons = new FlowLayoutPanel { Location = new Point(16, 350), Width = 370, Height = 30, FlowDirection = FlowDirection.RightToLeft };
+        var ok = new Button { Text = "Add" };
+        var cancel = new Button { Text = "Cancel" };
+        buttons.Controls.Add(cancel);
+        buttons.Controls.Add(ok);
+        Controls.Add(search);
+        Controls.Add(list);
+        Controls.Add(browse);
+        Controls.Add(buttons);
+
+        void Repopulate()
+        {
+            var term = search.Text.Trim();
+            list.Items.Clear();
+            foreach (var p in _all.Where(p => term.Length == 0 || p.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))
+                list.Items.Add(p.Name);
+        }
+        Repopulate();
+
+        if (_all.Count == 0)
+            list.Items.Add("(No programs found automatically -- use Browse below.)");
+
+        search.TextChanged += (_, _) => Repopulate();
+
+        ok.Click += (_, _) =>
+        {
+            if (list.SelectedItem is not string name) return;
+            var match = _all.FirstOrDefault(p => p.Name == name);
+            if (match.Path is null) return;
+            SelectedPath = match.Path;
+            DialogResult = DialogResult.OK;
+            Close();
+        };
+        list.DoubleClick += (_, _) => ok.PerformClick();
+
+        browse.Click += (_, _) =>
+        {
+            using var dlg = new OpenFileDialog { Filter = "Programs (*.exe)|*.exe", Title = "Pick the program to allow" };
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            SelectedPath = dlg.FileName;
+            DialogResult = DialogResult.OK;
+            Close();
+        };
+
+        cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
     }
 }
 
