@@ -23,6 +23,8 @@ same way with `adb install mdm-browser.apk` if you want it; it's optional and ca
    ```
 4. The phone appears under **Devices**. Tap it, open its **App rules** tab, pick what to allow, then **Save**. The phone picks changes up within about a minute (longer if the phone is idle in Doze).
 
+**Just want to look around the screens** — on a phone you're not actually setting up, or one that still has accounts on it — without running the adb command? Step 1's card has **Skip for now (preview only)**. It lets you into the rest of the app (online/offline setup, Browser, Administrator, all the menus), but nothing is actually enforced: without device owner, Android refuses every hide/lock/restrict call, so every switch looks like it works but silently does nothing. The status line keeps saying so for as long as you're in this state. Don't use it for a phone you actually intend to manage — do step 1 for real there.
+
 The top of the dashboard only ever says **Devices** — tap a phone or a Browser to get everything specific to it (App rules, Sites, Controls, Log, Network for a phone; just its own requests and Sites for a Browser, since it has no apps). **Codes** and **Settings**, which aren't about any one device, are reached from buttons on the Devices list itself.
 
 ## One-time codes (Codes, from the Devices list)
