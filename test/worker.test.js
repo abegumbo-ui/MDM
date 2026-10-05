@@ -344,6 +344,20 @@ test("master code: only a hash is accepted; it reaches the phone in sync; it's p
   assert.equal(sync.master, null);
 });
 
+test("a phone's own recovery code is reported up and shown per device", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  const { id: id2 } = await enrolledDevice(cookie);
+  await post("/agent/sync", { fallbackCode: "012345" }, auth);
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).fallbackCode, "012345");
+  assert.equal(devices.find((d) => d.id === id2).fallbackCode, null, "each phone's own code, not shared");
+  // Junk is ignored, not stored.
+  await post("/agent/sync", { fallbackCode: "not-six-digits" }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).fallbackCode, "012345");
+});
+
 test("PIN commands validate the PIN and never echo it back in the device record", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);

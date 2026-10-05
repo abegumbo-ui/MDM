@@ -85,6 +85,8 @@ public class AdminActivity extends Activity {
         LinearLayout statusCard = Ui.card(this, root);
         status = Ui.body(this, "", false);
         statusCard.addView(status);
+        statusCard.addView(Ui.body(this, "This phone's own recovery code: " + Agent.fallbackCode(this)
+                + ". Works here and anywhere else a code is asked for, with no internet, even with no master code set.", true));
         if (Agent.standalone(this)) {
             action(statusCard, "Phone settings (apps, restrictions, schedules, reset protection)", Ui.FILLED,
                     v -> startActivity(new Intent(this, LocalSettingsActivity.class)));

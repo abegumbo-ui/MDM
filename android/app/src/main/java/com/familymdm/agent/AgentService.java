@@ -216,6 +216,7 @@ public class AgentService extends Service {
         body.put("messages", messages);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
+        body.put("fallbackCode", Agent.fallbackCode(this));
         List<String> iconsSent = new ArrayList<>();
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);

@@ -109,6 +109,7 @@ const publicDevice = (d) => ({
   overrides: d.overrides || {},
   wifiNetworks: d.wifiNetworks || [],
   appCode: d.appCode || null,
+  fallbackCode: d.fallbackCode || null,
   adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
   siteRequests: d.siteRequests || [],
   messages: d.messages || [],
@@ -595,6 +596,11 @@ async function agentApi(request, env, url) {
         d.appCode = code;
         dirty = true;
       }
+    }
+    if (/^[0-9]{6}$/.test(body.fallbackCode || "") && body.fallbackCode !== d.fallbackCode) {
+      // This phone's own always-on recovery code, generated once on the phone itself.
+      d.fallbackCode = body.fallbackCode;
+      dirty = true;
     }
     if (Array.isArray(body.events) && body.events.length) {
       d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
