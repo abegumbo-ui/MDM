@@ -204,7 +204,8 @@ function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
 function browsingFreely(d){return d.info.browseUntil&&d.info.browseUntil>Date.now()}
 function needsUpdate(d){return latest&&d.info.versionCode&&d.info.versionCode<latest.versionCode}
-function pendingCount(d){const want=new Set(d.applied.hide);return d.packages.filter(function(p){return want.has(p.p)!==p.h}).length}
+function pendingApps(d){const want=new Set(d.applied.hide);return d.packages.filter(function(p){return want.has(p.p)!==p.h})}
+function pendingCount(d){return pendingApps(d).length}
 function chipsFor(d,full){
  const c=h('div',{style:'margin-top:6px'});
  c.append(h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},isOnline(d)?'Online':'Offline'));
@@ -219,7 +220,7 @@ function chipsFor(d,full){
  if(d.info.kioskPaused)c.append(h('span',{class:'chip warn'},'Home screen mode paused'));
  if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
  if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'⬆️ Update available'));
- const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn'},n+' changes pending'));
+ const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn',title:pendingApps(d).map(function(p){return p.l||p.p}).join(', ')},n+' changes pending'));
  return c}
 function renderDevices(m){
  if(!devices.length&&!browsers.length){
@@ -284,7 +285,7 @@ function renderDeviceDetail(m,d){
   kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On':'Off'),
   kv('PIN control',d.info.pinControl===undefined?'unknown':d.info.pinControl?'Ready: you can set or remove the lock':'Not active yet (see Controls)'),
   kv('Apps',d.packages.length+' ('+d.packages.filter(function(p){return p.h}).length+' hidden)'),
-  kv('Sync',pendingCount(d)?pendingCount(d)+' changes pending':'In sync'));
+  kv('Sync',pendingCount(d)?pendingApps(d).map(function(p){const want=new Set(d.applied.hide);return (p.l||p.p)+(want.has(p.p)?' (hiding)':' (showing)')}).join(', ')+' — applies within about 15 seconds':'In sync'));
  if(d.adminPin&&d.adminPin.ok){
   const pinV=h('b',null,'••••');const showPin=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');showPin.onclick=function(){pinV.textContent=d.adminPin.pin};
   info.append(h('div',{class:'kv'},h('span',{class:'mute'},'PIN you set'),h('span',null,pinV,showPin)))}
