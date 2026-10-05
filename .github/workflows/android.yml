@@ -61,3 +61,16 @@ jobs:
         run: |
           gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent and browser (debug-signed)." --prerelease --target "$GITHUB_SHA"
           gh release upload latest mdm-agent.apk mdm-browser.apk version.json --clobber
+      - name: Publish a versioned release
+        # "latest" above is the one phones and the dashboard actually check against (it's a fixed,
+        # never-changing URL on purpose -- see its own comment). This is the human-facing release
+        # history alongside it: a new, permanent release for every build, so past versions stay
+        # downloadable and you can see what changed build-over-build on the repo's Releases page.
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-browser.apk version.json \
+            --title "Agent + Browser build ${{ github.run_number }}" \
+            --notes "Android agent and browser, build ${{ github.run_number }} (debug-signed). Commit: ${{ github.sha }}" \
+            --prerelease --target "$GITHUB_SHA"

@@ -7,6 +7,9 @@ on:
       - ".github/workflows/windows.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -33,3 +36,18 @@ jobs:
         with:
           name: LockGuard-windows
           path: publish
+
+      - name: Zip it for a release asset
+        run: Compress-Archive -Path publish\* -DestinationPath LockGuard-windows.zip
+
+      - name: Publish a versioned release
+        # Only from main, same reasoning as the Android workflow: a feature-branch push shouldn't
+        # create a public release of its own, only a merge should.
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "lockguard-v${{ github.run_number }}" LockGuard-windows.zip `
+            --title "LockGuard build ${{ github.run_number }}" `
+            --notes "Windows internet-lockdown app, build ${{ github.run_number }}. Extract the zip and run install.ps1 as Administrator. Commit: ${{ github.sha }}" `
+            --prerelease --target "$env:GITHUB_SHA"
