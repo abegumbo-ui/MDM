@@ -508,12 +508,13 @@ public class MainActivity extends Activity {
             long now = System.currentTimeMillis();
             long lockedUntil = p.getLong("redeemLockUntil", 0);
             String error = null;
-            if (now < lockedUntil) {
+            final boolean masterOk = Master.matches(this, code);
+            if (now < lockedUntil && !masterOk) {
                 error = "Too many wrong tries. Try again in " + ((lockedUntil - now) / 60000 + 1) + " min.";
-            } else if (Master.matches(this, code)) {
+            } else if (masterOk) {
                 // The master code works in place of any one-time code, with no internet needed.
                 Agent.addEvent(this, "local", "Master code used instead of a one-time " + type + " code");
-                p.edit().putInt("redeemFails", 0).apply();
+                p.edit().putInt("redeemFails", 0).putLong("redeemLockUntil", 0).apply();
             } else if (standalone) {
                 error = failedTry(p, now, "Wrong code.");
             } else {
