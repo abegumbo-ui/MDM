@@ -12,16 +12,29 @@ repo's **Releases → Latest agent build** (or from the Actions run's artifacts)
 has `mdm-browser.apk` — the separate **Browser** app (see "Browser allowlist" below) — install it the
 same way with `adb install mdm-browser.apk` if you want it; it's optional and can be added any time.
 
-## 3. Put the agent on a phone (needs a computer with `adb`)
-1. Factory-reset the phone. Skip Google sign-in so it has **no accounts** (device owner can only be set on a phone without accounts).
+## 3. Put the agent on a phone
+Two ways to make the agent device owner — pick whichever is easier. Either way, the phone needs **no accounts signed in yet** (device owner can only be set on a phone that hasn't finished its own setup).
+
+**No computer, scan a QR code (recommended):**
+1. Factory-reset the phone (or use it fresh out of the box) and stop at the Welcome screen — don't sign in to anything yet.
+2. Tap the Welcome screen **6 times**. A camera opens for provisioning.
+3. In the dashboard open **Codes → Enrollment code**, scroll to **"Set up with a QR code"**, optionally fill in your Wi-Fi so the phone can get online to download the app, and tap **Generate enrollment QR**.
+4. Scan it. The phone downloads the agent, verifies it, installs it, becomes device owner, and enrolls itself with the dashboard — nothing to type, on either end. It opens straight into the normal agent screen.
+
+**With a computer and `adb`:**
+1. Factory-reset the phone. Skip Google sign-in so it has **no accounts**.
 2. Settings → About phone → tap *Build number* 7 times → Developer options → turn on **USB debugging**.
 3. In the dashboard open **Codes → Enrollment code → Generate**. It prints the exact commands. They look like:
    ```
    adb install mdm-agent.apk
    adb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver
-   adb shell am start -n com.familymdm.agent/.MainActivity --es server https://YOUR-WORKER.workers.dev --es code CODE
+   adb shell am start -n com.familymdm.agent/.MainActivity --es code CODE
    ```
-4. The phone appears under **Devices**. Tap it, open its **App rules** tab, pick what to allow, then **Save**. The phone picks changes up within about a minute (longer if the phone is idle in Doze).
+   If your build has the dashboard address baked in (set via the `DASHBOARD_URL` repository variable), that's all you need — the agent already knows where to connect. If not, tap **"Use a different dashboard"** on the phone once and type the address.
+
+Either way: the phone appears under **Devices**. Tap it, open its **App rules** tab, pick what to allow, then **Save**. The phone picks changes up within about a minute (longer if the phone is idle in Doze).
+
+QR provisioning needs the agent build to have finished publishing its checksum (automatic, from GitHub Actions) — if "Generate enrollment QR" says the checksum isn't ready yet, wait a minute for the latest build to finish and try again.
 
 **Just want to look around the screens** — on a phone you're not actually setting up, or one that still has accounts on it — without running the adb command? Step 1's card has **Skip for now (preview only)**. It lets you into the rest of the app (online/offline setup, Browser, Administrator, all the menus), but nothing is actually enforced: without device owner, Android refuses every hide/lock/restrict call, so every switch looks like it works but silently does nothing. The status line keeps saying so for as long as you're in this state. Don't use it for a phone you actually intend to manage — do step 1 for real there.
 

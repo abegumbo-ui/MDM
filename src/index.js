@@ -165,7 +165,7 @@ async function latestAgent(env) {
     if (!r.ok) return null;
     const v = await r.json();
     if (!Number.isInteger(v.versionCode)) return null;
-    return { versionCode: v.versionCode, apkUrl: `${base}/mdm-agent.apk` };
+    return { versionCode: v.versionCode, apkUrl: `${base}/mdm-agent.apk`, sha256: v.sha256 || null };
   } catch {
     return null;
   }
@@ -278,7 +278,15 @@ async function adminApi(request, env, url) {
       value.minutes = minutes;
     }
     await putJSON(env, `code:${body.type}:${code}`, value, { expirationTtl: 3600 });
-    return json({ code, type: body.type, server: url.origin, expiresInSeconds: 3600, minutes: value.minutes });
+    const reply = { code, type: body.type, server: url.origin, expiresInSeconds: 3600, minutes: value.minutes };
+    if (body.type === "enroll") {
+      const latest = await latestAgent(env);
+      if (latest && latest.sha256) {
+        reply.apkUrl = latest.apkUrl;
+        reply.sha256 = latest.sha256;
+      }
+    }
+    return json(reply);
   }
   const iconMatch = /^\/api\/icon\/([A-Za-z0-9_.]+)$/.exec(path);
   if (iconMatch && method === "GET") {

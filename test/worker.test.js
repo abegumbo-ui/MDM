@@ -364,6 +364,35 @@ test("agent update info comes from the latest GitHub build and needs a device to
   }
 });
 
+test("enrollment code carries the APK URL and checksum for QR-code provisioning, when published", async () => {
+  const cookie = await login();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u) => (String(u).endsWith("/version.json") ? new Response(JSON.stringify({ versionCode: 42, sha256: "abc123" })) : new Response("no", { status: 404 }));
+  try {
+    const r = await (await post("/api/codes", { type: "enroll" }, { cookie })).json();
+    assert.equal(r.sha256, "abc123");
+    assert.match(r.apkUrl, /mdm-agent\.apk$/);
+    // Other code types never need this, since only "enroll" drives QR provisioning.
+    const r2 = await (await post("/api/codes", { type: "install" }, { cookie })).json();
+    assert.equal(r2.sha256, undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("enrollment code omits the checksum when the build hasn't published one yet", async () => {
+  const cookie = await login();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("no", { status: 404 });
+  try {
+    const r = await (await post("/api/codes", { type: "enroll" }, { cookie })).json();
+    assert.equal(r.apkUrl, undefined);
+    assert.equal(r.sha256, undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 const PNG = (n = 200) => { const b = new Uint8Array(n); b.set([0x89, 0x50, 0x4e, 0x47]); return b; };
 
 test("custom app icons override the phone's icon and can be reset", async () => {
