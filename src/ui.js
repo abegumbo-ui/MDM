@@ -428,7 +428,7 @@ function renderApps(m,dv){
   m.append(pc)}
  const top=h('div',{class:'card'});
  top.append(h('div',{class:'setting'},h('div',{class:'grow'},h('h2',null,'Hide apps that aren\'t allowed'),
-  h('div',{class:'mute'},'Block switches an app off completely, as if it were uninstalled for the person (in Home screen mode, Block just means the app can\'t be opened and keeps running in the background). Icon… changes how an app looks on this dashboard, and on the phone\'s home screen when Home screen mode is on. Apps that depend on it stop working too, which is why core parts are protected. When this is on, every launcher app that isn\'t set to Allow is hidden. Protected system parts are never hidden. Allow the apps you need (phone, messages, maps…) first.')),
+  h('div',{class:'mute'},'Block switches an app off completely, as if it were uninstalled for the person — this now always disables it, whether Home screen mode is on or off. Soft block is gentler and only does anything while Home screen mode is on: the app stays installed and running, it just has no icon and can\'t be opened from that launcher — turn Home screen mode off and a Soft-blocked app opens normally again, so use Block instead for anything you never want opened either way. Icon… changes how an app looks on this dashboard, and on the phone\'s home screen when Home screen mode is on. Apps that depend on a Blocked app can stop working too, which is why core parts are protected. When this switch is on, every launcher app that isn\'t set to Allow is Blocked. Protected system parts are never hidden. Allow the apps you need (phone, messages, maps…) first.')),
   sw(dv.config.blockUnlisted,async function(on){
    if(on&&!confirm('Hide every app that is not set to Allow? Make sure phone, messages and maps are allowed first.')){render();return}
    dv.config.blockUnlisted=on;try{await saveConfigFor(dv,on?'Hiding unlisted apps.':'Unlisted apps stay visible.')}catch(e){snack(e.message,1)}render()})));
@@ -463,11 +463,11 @@ function appRow(a,dv){
  saveBtn.disabled=!dirty();
  const refresh=function(){saveBtn.disabled=!dirty()};
  const seg=h('div',{class:'seg'});
- for(const o of [['','Default',''],['allow','Allow',''],['block','Block','block']]){
+ for(const o of [['','Default',''],['allow','Allow',''],['soft','Soft block',''],['block','Block','block']]){
   const b=h('button',{class:(d.mode===o[0]?'on ':'')+o[2]},o[1]);
   b.onclick=function(){
    if(o[0]==='block'&&a.prot&&!confirm('This is a core part of the phone. Blocking switches it off completely, and other apps that need it (for example Maps needs Google Play services) can stop working. Block it anyway?'))return;
-   d.mode=o[0];if(d.mode==='block')d.schedule=null;render2()};seg.append(b)}
+   d.mode=o[0];if(d.mode==='block'||d.mode==='soft')d.schedule=null;render2()};seg.append(b)}
  const render2=function(){render()};
  const ctl=h('div',{class:'row',style:'margin-top:8px'},seg);
  const installedHere=dv.packages.some(function(x){return x.p===a.p});
@@ -676,7 +676,7 @@ function renderDeviceSettings(m,dv){
   h('div',{class:'mute small',style:'margin-top:8px'},'Keep that Google account safe: whoever can sign in to it can set the phone up again after a reset.'));
  m.append(frp);
  m.append(h('div',{class:'card'},h('h2',null,'Home screen mode'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
-  h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. Other apps are NOT switched off: they keep running in the background (Maps keeps using Google Play services), they just can\'t be opened. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode, and turning it off here gives the phone back its normal home screen.')),
+  h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. An app set to Block is fully switched off, same as always; one left at Default or set to Soft block just has no icon here and stays installed and running in the background. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode, and turning it off here gives the phone back its normal home screen.')),
   sw(dv.config.homeScreen,async function(on){
    if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the App rules box above, because only those will appear.')){render();return}
    dv.config.homeScreen=on;try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches within about 15 seconds.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()}))));

@@ -80,11 +80,12 @@ On the phone: **MDM Agent → Message the administrator → Send a message**. No
 **Lock** only turns the screen off if the phone has no screen lock. Use **Set PIN** on the Devices tab (or in the admin panel) first. If the phone already has a lock, open the admin panel once and tap **Activate PIN control**.
 
 ## Home screen mode (opt-in)
-**Settings → Home screen mode.** The agent becomes the phone's home screen. It shows only the apps you set to **Allow**, with your logo and custom icons. Apps you didn't allow are **not switched off**: they keep working in the background (Maps keeps using Google Play services) but cannot be opened, because Android's lock-task mode is limited to the allowed apps. Calls and texts keep working; the phone, messages, file picker, permission prompts and Google dialogs are always permitted.
+**That phone's own Settings box → Home screen mode.** The agent becomes the phone's home screen. It shows only the apps you set to **Allow**, with your logo and custom icons. An app set to **Block** is fully switched off, same as it always is. An app left at **Default**, or explicitly set to **Soft block**, is not switched off: it keeps working in the background (Maps keeps using Google Play services) but cannot be opened from this launcher, because Android's lock-task mode is limited to the allowed apps. Calls and texts keep working; the phone, messages, file picker, permission prompts and Google dialogs are always permitted.
 - **Allow the apps people need first** (phone, messages, maps…). Only allowed apps appear.
+- **Soft block vs Block:** Soft block only has any effect while Home screen mode is on — turn it off and a Soft-blocked app opens normally. Block always disables the app, whether Home screen mode is on or off; use it for anything you never want opened either way.
 - **Settings is not available** unless you Allow it. Add Wi-Fi from the dashboard.
 - **Escape hatches:** switch it off in the dashboard; or on the phone tap **Administrator → Administrator (master code) → Pause home screen mode**; **Release device** also removes it.
-- **Custom icons** (App rules tab (inside any device) → Icon…) show on this home screen.
+- **Custom icons** (App rules box, inside any device → Icon…) show on this home screen.
 - It is off by default. Test it on a spare phone first.
 
 ## Browser allowlist (opt-in)
@@ -143,8 +144,10 @@ Keep that Google account safe: whoever can sign in to it can set the phone up ag
 ## The agent is exempt from the install restrictions
 Because the agent is the device owner, its own installs, updates and uninstalls work even when **Block ALL app installs**, **Block installing from unknown sources** or **Block uninstalling apps** are on. For those moments (two minutes at most, or until the result arrives) the agent pauses those restrictions, then puts them back. This covers **Update agent**, **Upload APK**, **Install from link**, the in-app install, and the **Uninstall** button.
 
-## What "Block" really does
-Block switches an app off completely, as if it were uninstalled for the person. It is not "unreachable but still running": apps that depend on a blocked app stop working too (for example Maps needs Google Play services, which is why Play services and other core parts are protected, and the dashboard warns before you block one). Blocking the Play Store is fine for Maps; it only stops installs and updates from the store.
+## What "Block" and "Soft block" really do
+**Block** switches an app off completely, as if it were uninstalled for the person, whether Home screen mode is on or off. It is not "unreachable but still running": apps that depend on a blocked app stop working too (for example Maps needs Google Play services, which is why Play services and other core parts are protected, and the dashboard warns before you block one). Blocking the Play Store is fine for Maps; it only stops installs and updates from the store.
+
+**Soft block** is gentler, and only does anything while **Home screen mode** is on for that phone: the app stays installed and running, it just has no icon in that launcher and can't be opened from it. Turn Home screen mode off (or pause it) and a Soft-blocked app opens completely normally again — nothing is actually stopping it. Use Soft block for things you'd rather just keep out of sight while the custom launcher is active; use Block for anything you never want opened, launcher or no launcher.
 
 ## Uninstall
 On the **Apps** tab, an app the person installed has a red **Uninstall** button and a green "can be uninstalled" tag. System apps say "cannot be uninstalled, use Block to switch it off". Uninstall also works on an app you had blocked (the agent switches it back on first, then removes it).
