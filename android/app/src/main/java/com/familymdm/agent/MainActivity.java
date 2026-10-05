@@ -87,6 +87,17 @@ public class MainActivity extends Activity {
         adbCommand.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
         Ui.add(ownerBox, adbCommand, 8);
         ownerBox.addView(Ui.body(this, "It should print \"Success\". This screen updates by itself.", true));
+        Ui.add(ownerBox, Ui.button(this, "Skip for now (preview only)", Ui.OUTLINED, v -> {
+            new AlertDialog.Builder(this)
+                    .setTitle("Skip step 1?")
+                    .setMessage("Only for trying out the screens on a phone you're not setting up for real. Without device owner, nothing is actually hidden, locked, or restricted — every switch here will look like it works but won't enforce anything. Do step 1 for real use.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Skip", (d, w) -> {
+                        Agent.prefs(this).edit().putBoolean("previewSkip", true).apply();
+                        refresh();
+                    })
+                    .show();
+        }), 12);
 
         // ---- step 2: online or offline ----
         modeBox = Ui.card(this, root);
@@ -237,11 +248,13 @@ public class MainActivity extends Activity {
 
     private void refresh() {
         boolean owner = Agent.isOwner(this);
+        boolean previewSkip = !owner && Agent.prefs(this).getBoolean("previewSkip", false);
+        boolean pastStep1 = owner || previewSkip;
         boolean enrolled = Agent.enrolled(this);
         boolean standalone = Agent.standalone(this);
         boolean active = enrolled || standalone;
         StringBuilder sb = new StringBuilder();
-        sb.append(owner ? "Device owner: yes\n" : "Device owner: NO (do step 1 below)\n");
+        sb.append(owner ? "Device owner: yes\n" : previewSkip ? "Device owner: NO — previewing without it; nothing is actually enforced\n" : "Device owner: NO (do step 1 below)\n");
         if (enrolled) {
             long last = Agent.prefs(this).getLong("lastSync", 0);
             sb.append("Mode: online (dashboard)\nServer: ").append(Agent.prefs(this).getString("server", ""));
@@ -258,8 +271,8 @@ public class MainActivity extends Activity {
         android.widget.ImageView logo = Ui.logoView(this);
         if (logo != null) Ui.add(logoHolder, logo, 8);
 
-        ownerBox.setVisibility(owner ? View.GONE : View.VISIBLE);
-        modeBox.setVisibility(!active && owner && !showEnroll ? View.VISIBLE : View.GONE);
+        ownerBox.setVisibility(pastStep1 ? View.GONE : View.VISIBLE);
+        modeBox.setVisibility(!active && pastStep1 && !showEnroll ? View.VISIBLE : View.GONE);
         enrollBox.setVisibility(!enrolled && showEnroll ? View.VISIBLE : View.GONE);
         actionsBox.setVisibility(active ? View.VISIBLE : View.GONE);
         switchBox.setVisibility(standalone && !showEnroll ? View.VISIBLE : View.GONE);
@@ -280,7 +293,7 @@ public class MainActivity extends Activity {
 
     // ---------- offline mode setup ----------
     private void startStandaloneSetup() {
-        if (!Agent.isOwner(this)) {
+        if (!Agent.isOwner(this) && !Agent.prefs(this).getBoolean("previewSkip", false)) {
             toast("First make this app the device owner (step 1).");
             return;
         }
