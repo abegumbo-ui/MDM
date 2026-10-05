@@ -8,7 +8,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>LockGuard.Setup</RootNamespace>
     <!-- No admin manifest: this talks to the service (which runs as SYSTEM and does all the
-         privileged work) over the pipe, authenticated by the code -- it never touches the
+         privileged work) over the pipe, authenticated by the code. It never touches the
          firewall or the service itself directly, so it doesn't need elevation. -->
   </PropertyGroup>
 
