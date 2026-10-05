@@ -198,6 +198,7 @@ final class PolicyApplier {
         Agent.putSet(c, "hidden", hiddenByUs);
         Kiosk.apply(c, policy, allowedSet);
         Kiosk.syncPreferredActivities(c, Kiosk.active(c), policy.optBoolean("restrictBrowsing", false));
+        Kiosk.announceChange(c);
         pushBrowserConfig(c, dpm, admin, policy);
 
         Set<String> wanted = new HashSet<>();

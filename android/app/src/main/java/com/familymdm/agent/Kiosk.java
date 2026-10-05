@@ -113,8 +113,16 @@ final class Kiosk {
         }
         Agent.prefs(c).edit().putBoolean("kioskOn", false).remove("kioskAllowed").apply();
         Agent.addEvent(c, "restriction", "Home screen mode is off");
-        // HomeActivity only re-checks whether it should still be active every 30s or on resume;
-        // tell it right away instead of leaving the phone stuck on the kiosk screen until then.
+    }
+
+    /**
+     * HomeActivity only re-checks whether it should still be active every 30s or on resume; this
+     * tells it right away instead of leaving the phone stuck on the kiosk screen until then. Call
+     * this AFTER syncPreferredActivities() has already cleared HomeActivity as the preferred home
+     * app -- telling it to leave before that was cleared raced finish() against Android still
+     * considering HomeActivity the home app, which could show a stuck black screen in between.
+     */
+    static void announceChange(Context c) {
         c.sendBroadcast(new Intent(ACTION_CHANGED).setPackage(c.getPackageName()));
     }
 
