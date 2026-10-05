@@ -168,6 +168,65 @@ async function authBrowserDevice(request, env) {
   return { key, d };
 }
 
+// Windows LockGuard devices: self-registers the moment it installs (no code to type, the same way
+// a standalone Browser can with /browser/register), and shows up immediately as "New LockGuard
+// Device" for the admin to rename and manage -- enable/disable lockdown, the allowed-programs
+// list, and remote removal, all from here instead of only locally on the machine's own Setup app.
+async function listWinDevices(env) {
+  const out = [];
+  let cursor;
+  do {
+    const page = await env.STATE.list({ prefix: "winDevice:", ...(cursor && { cursor }) });
+    for (const k of page.keys) {
+      const d = await getJSON(env, k.name, null);
+      if (d) out.push(d);
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return out;
+}
+
+const publicWinDevice = (d) => ({
+  id: d.id,
+  name: d.name,
+  lastSeen: d.lastSeen,
+  info: d.info || {},
+  enabled: !!d.enabled,
+  allowedPrograms: d.allowedPrograms || [],
+  reportedEnabled: !!d.reportedEnabled,
+  reportedAllowedPrograms: d.reportedAllowedPrograms || [],
+  pending: (d.queue || []).length,
+});
+
+async function createWinDevice(env, info) {
+  const id = randomHex(8);
+  const secret = randomHex(24);
+  info = info || {};
+  await putJSON(env, `winDevice:${id}`, {
+    id,
+    name: `New LockGuard Device (${id.slice(0, 4)})`,
+    tokenHash: await sha256(secret),
+    lastSeen: Date.now(),
+    info,
+    enabled: false,
+    allowedPrograms: [],
+    reportedEnabled: false,
+    reportedAllowedPrograms: [],
+    queue: [],
+  });
+  return { id, secret };
+}
+
+/** Finds the LockGuard device a bearer token belongs to, or null. */
+async function authWinDevice(request, env) {
+  const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
+  if (!m) return null;
+  const key = `winDevice:${m[1]}`;
+  const d = await getJSON(env, key, null);
+  if (!d || !safeEqual(d.tokenHash, await sha256(m[2]))) return null;
+  return { key, d };
+}
+
 // Latest agent build, published by GitHub Actions next to the APK. Cached at the edge for 5 minutes.
 async function latestAgent(env) {
   const repo = env.GITHUB_REPO || DEFAULT_REPO;
@@ -472,6 +531,44 @@ async function adminApi(request, env, url) {
       return json({ ok: true });
     }
   }
+  if (path === "/api/windevices" && method === "GET") {
+    const wins = await listWinDevices(env);
+    return json(wins.map(publicWinDevice));
+  }
+  const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command))?$/.exec(path);
+  if (wdev) {
+    const key = `winDevice:${wdev[1]}`;
+    const d = await getJSON(env, key, null);
+    if (!d) return json({ error: "Unknown device" }, 404);
+    if (method === "DELETE" && !wdev[2]) {
+      // Same as disconnecting a Browser: without a token it goes right back to doing nothing
+      // locally until re-registered. If the device is still alive, use the "uninstall" command
+      // below first so it actually removes itself, rather than just losing contact with it.
+      await env.STATE.delete(key);
+      return json({ ok: true });
+    }
+    if (method === "PUT" && !wdev[2]) {
+      const name = String(body.name || "").trim().slice(0, 60);
+      if (!name) return json({ error: "Name can't be empty" }, 400);
+      d.name = name;
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (method === "PUT" && wdev[2] === "config") {
+      d.enabled = !!body.enabled;
+      d.allowedPrograms = Array.isArray(body.allowedPrograms)
+        ? body.allowedPrograms.map((p) => String(p).slice(0, 300)).filter(Boolean).slice(0, 200)
+        : [];
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (method === "POST" && wdev[2] === "command") {
+      if (body.type !== "uninstall") return json({ error: "Unknown command" }, 400);
+      d.queue = [...(d.queue || []), { id: randomHex(6), type: "uninstall" }];
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+  }
   return json({ error: "Not found" }, 404);
 }
 
@@ -748,6 +845,59 @@ async function browserApi(request, env, url) {
   return json({ error: "Not found" }, 404);
 }
 
+// ---- Windows LockGuard API (per-device bearer token, no agent/MDM involved) ----
+async function windowsApi(request, env, url) {
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const body = await request.json().catch(() => ({}));
+
+  if (url.pathname === "/windows/register") {
+    // No code, same reasoning as /browser/register: it shows up immediately on the dashboard,
+    // disabled and with nothing allowed, for the admin to configure and name.
+    const { id, secret } = await createWinDevice(env, body.info);
+    return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
+  }
+
+  if (url.pathname === "/windows/sync") {
+    const auth = await authWinDevice(request, env);
+    if (!auth) return json({ error: "Unauthorized" }, 401);
+    const { key, d } = auth;
+    const now = Date.now();
+    let dirty = false;
+    if (now - (d.lastSeen || 0) > LAST_SEEN_WRITE_MS) dirty = true;
+    d.lastSeen = now;
+    if (body.info && typeof body.info === "object" && JSON.stringify(body.info) !== JSON.stringify(d.info || {})) {
+      d.info = body.info;
+      dirty = true;
+    }
+    if (typeof body.enabled === "boolean" && body.enabled !== d.reportedEnabled) {
+      d.reportedEnabled = body.enabled;
+      dirty = true;
+    }
+    const reportedPrograms = Array.isArray(body.allowedPrograms)
+      ? body.allowedPrograms.map((p) => String(p).slice(0, 300)).slice(0, 200)
+      : [];
+    if (JSON.stringify(reportedPrograms) !== JSON.stringify(d.reportedAllowedPrograms || [])) {
+      d.reportedAllowedPrograms = reportedPrograms;
+      dirty = true;
+    }
+    // Delivered at most once: the service applies a queued "uninstall" and tears itself down, so
+    // there's no later sync to retry a lost command on anyway.
+    const commands = d.queue || [];
+    if (commands.length) {
+      d.queue = [];
+      dirty = true;
+    }
+    if (dirty) await putJSON(env, key, d);
+    return json({
+      enabled: !!d.enabled,
+      allowedPrograms: d.allowedPrograms || [],
+      commands,
+      pollSeconds: POLL_SECONDS,
+    });
+  }
+  return json({ error: "Not found" }, 404);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -759,6 +909,7 @@ export default {
     try {
       if (url.pathname.startsWith("/agent/")) return await agentApi(request, env, url);
       if (url.pathname.startsWith("/browser/")) return await browserApi(request, env, url);
+      if (url.pathname.startsWith("/windows/")) return await windowsApi(request, env, url);
 
       if (url.pathname === "/login" && request.method === "POST") {
         const form = await request.formData();
@@ -777,7 +928,7 @@ export default {
       return html("Not found", 404);
     } catch (e) {
       const msg = e.message || String(e);
-      return url.pathname.startsWith("/api/") || url.pathname.startsWith("/agent/") || url.pathname.startsWith("/browser/")
+      return url.pathname.startsWith("/api/") || url.pathname.startsWith("/agent/") || url.pathname.startsWith("/browser/") || url.pathname.startsWith("/windows/")
         ? json({ error: msg }, 500)
         : html(`Error: ${msg}`, 500);
     }

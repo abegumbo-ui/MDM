@@ -108,11 +108,12 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <script>
 const DAYS=['S','M','T','W','T','F','S'];
 let deviceTab=0,lastOpenId=null; // which pager page a device's detail view is on, kept across re-renders (e.g. typing in a search box)
-let state=null,devices=[],browsers=[],latest=null,tab='devices',openId=null,openBrowserId=null,search='';
+let state=null,devices=[],browsers=[],windevices=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='';
 function route(){const x=(location.hash||'#devices').slice(1);
- if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null}
- else if(x.indexOf('browser/')===0){tab='devices';openBrowserId=x.slice(8);openId=null}
- else{tab=x||'devices';openId=null;openBrowserId=null}}
+ if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null;openWinId=null}
+ else if(x.indexOf('browser/')===0){tab='devices';openBrowserId=x.slice(8);openId=null;openWinId=null}
+ else if(x.indexOf('win/')===0){tab='devices';openWinId=x.slice(4);openId=null;openBrowserId=null}
+ else{tab=x||'devices';openId=null;openBrowserId=null;openWinId=null}}
 route();
 const draft={},open={};
 
@@ -170,7 +171,7 @@ function ask(title,fields,okLabel,note){
 
 /* ---------- data ---------- */
 async function load(){
- state=await call('GET','/api/state');devices=await call('GET','/api/devices');browsers=await call('GET','/api/browsers');
+ state=await call('GET','/api/state');devices=await call('GET','/api/devices');browsers=await call('GET','/api/browsers');windevices=await call('GET','/api/windevices');
  for(const b of browsers)b.isBrowser=true;
  render();
  call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
@@ -189,6 +190,7 @@ function render(){
  const m=document.getElementById('main');m.textContent='';
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){renderDeviceDetail(m,d);return}openId=null}
  if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){renderBrowserDetail(m,b);return}openBrowserId=null}
+ if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){renderWinDetail(m,w);return}openWinId=null}
  if(tab==='codes'||tab==='settings'){
   const back=h('button',{class:'btn outline'},'‹ Devices');back.onclick=function(){location.hash='devices'};
   m.append(h('div',{class:'row'},back));
@@ -224,7 +226,7 @@ function chipsFor(d,full){
  const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn',title:pendingApps(d).map(function(p){return p.l||p.p}).join(', ')},n+' changes pending'));
  return c}
 function renderDevices(m){
- if(!devices.length&&!browsers.length){
+ if(!devices.length&&!browsers.length&&!windevices.length){
   m.append(h('div',{class:'card'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Get a code below to add a phone or a Browser.')));
  }else{
   for(const d of devices){
@@ -236,6 +238,11 @@ function renderDevices(m){
    const card=h('div',{class:'card dev'});
    card.onclick=function(){location.hash='browser/'+b.id};
    card.append(h('div',{class:'ico'},'🌐'),h('div',{class:'grow'},h('div',{class:'name'},'Browser'),h('div',{class:'mute small'},b.name+' · no MDM on this phone')),h('div',{class:'mute',style:'font-size:22px'},'›'));
+   m.append(card)}
+  for(const w of windevices){
+   const card=h('div',{class:'card dev'});
+   card.onclick=function(){location.hash='win/'+w.id};
+   card.append(h('div',{class:'ico'},'💻'),h('div',{class:'grow'},h('div',{class:'name'},w.name),h('div',{class:'mute small'},(w.info.hostname||'LockGuard')+' · '+(w.enabled?'Locked down':'Not locked down'))),h('div',{class:'mute',style:'font-size:22px'},'›'));
    m.append(card)}
   m.append(h('div',{class:'mute small',style:'margin:4px 4px 12px'},'Tap one to see everything and control it — apps, sites, and all its own controls live there.'));
  }
@@ -595,6 +602,37 @@ function renderBrowserDetail(m,b){
  renderSitesEditor(m,b);
 }
 
+function renderWinDetail(m,w){
+ const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
+ m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
+ m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none'},'💻'),
+  h('div',{class:'grow'},h('h2',{style:'font-size:20px'},w.name),h('div',{class:'mute small'},(w.info.hostname||'Windows computer')+' · last check-in '+ago(w.lastSeen)))));
+
+ const controls=h('div',{class:'card'},h('h2',null,'This computer'));
+ controls.append(h('div',{style:'margin-top:4px'},sw(w.enabled,async function(on){
+  await call('PUT','/api/windevices/'+w.id+'/config',{enabled:on,allowedPrograms:w.allowedPrograms});
+  snack(on?'Locking down. The computer applies this within about 15 seconds.':'Lockdown turned off.');load()}),
+  ' Lock down internet access (everything except the allowed programs below)'));
+ if(w.enabled!==w.reportedEnabled)controls.append(h('div',{class:'mute small',style:'margin-top:4px'},'⏳ Waiting for the computer to apply this.'));
+ controls.append(h('div',{class:'row',style:'margin-top:12px'},
+  btn('Rename','outline',async function(){const name=prompt('Name for this computer',w.name);if(!name)return;await call('PUT','/api/windevices/'+w.id,{name:name});load()}),
+  btn('Uninstall from this computer','danger',async function(){if(!confirm('Remove LockGuard from '+w.name+' entirely? It will take internet access and the firewall rules off automatically, next time it checks in.'))return;await call('POST','/api/windevices/'+w.id+'/command',{type:'uninstall'});snack('Queued. It\'ll remove itself within about 15 seconds.')}),
+  btn('Remove from this list','outline',async function(){if(!confirm('Remove '+w.name+' from the dashboard? Only do this if it\'s already gone — otherwise use "Uninstall from this computer" instead, or it stays locked down with no way to control it from here.'))return;await call('DELETE','/api/windevices/'+w.id);location.hash='devices'})));
+ m.append(controls);
+
+ const progCard=h('div',{class:'card'},h('h2',null,'Allowed programs'),
+  h('div',{class:'mute'},'Everything else on this computer stays installed and opens normally — it just can\'t reach the internet. Full path to the .exe, e.g. C:\\Program Files\\Outlook\\outlook.exe'));
+ const list=h('div',{style:'margin-top:8px'});
+ (w.allowedPrograms||[]).forEach(function(p,i){
+  list.append(h('div',{class:'row',style:'align-items:center'},h('div',{class:'grow mono small'},p),
+   btn('Remove','outline',async function(){const next=w.allowedPrograms.filter(function(_,j){return j!==i});await call('PUT','/api/windevices/'+w.id+'/config',{enabled:w.enabled,allowedPrograms:next});load()})))});
+ if(!(w.allowedPrograms||[]).length)list.append(h('div',{class:'mute small'},'Nothing allowed yet.'));
+ progCard.append(list,h('div',{style:'margin-top:10px'},btn('Add a program','',async function(){
+  const path=prompt('Full path to the program\'s .exe on that computer');if(!path)return;
+  const next=[...(w.allowedPrograms||[]),path];await call('PUT','/api/windevices/'+w.id+'/config',{enabled:w.enabled,allowedPrograms:next});load()})));
+ m.append(progCard);
+}
+
 /* ---------- codes ---------- */
 const CODE_INFO={
  enroll:['Enrollment code','Connects a new phone to this dashboard. Used in the adb command or typed into the agent app. Valid 1 hour, one use.'],
@@ -724,5 +762,6 @@ load().catch(function(e){snack(e.message,1);document.getElementById('main').text
 setInterval(function(){if(document.hidden)return;
  call('GET','/api/devices').then(function(d){devices=d;if(tab==='devices')render()}).catch(function(){});
  call('GET','/api/browsers').then(function(b){for(const x of b)x.isBrowser=true;browsers=b;if(tab==='devices')render()}).catch(function(){});
+ call('GET','/api/windevices').then(function(w){windevices=w;if(tab==='devices')render()}).catch(function(){});
 },60000);
 </script></body></html>`;

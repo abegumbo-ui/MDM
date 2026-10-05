@@ -19,6 +19,15 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
+      - name: Bake in the dashboard address
+        # Same repo variable the Android agent bakes in (see android/app/build.gradle). Written
+        # before the build so LockGuard.Service's EmbeddedResource picks it up; no DASHBOARD_URL
+        # set just means dashboard integration is off in this build.
+        env:
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
+        run: |
+          if ($env:DASHBOARD_URL) { Set-Content -Path windows\LockGuard.Service\DashboardUrl.txt -Value $env:DASHBOARD_URL -NoNewline }
+
       - name: Build every project
         run: |
           dotnet build windows\LockGuard.Common\LockGuard.Common.csproj -c Release
