@@ -285,6 +285,12 @@ function renderDeviceDetail(m,d){
   info.append(h('div',{class:'kv'},h('span',{class:'mute'},'PIN you set'),h('span',null,pinV,showPin)))}
  const nOv=Object.keys(d.overrides||{}).length;
  if(nOv)info.append(kv('Changed on the phone',nOv+' app(s)'));
+ if((d.messages||[]).length){
+  const mc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Messages from the phone ('+d.messages.length+')'));
+  for(const msg of d.messages.slice().reverse()){
+   mc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',null,msg.msg),h('div',{class:'mute small'},ago(msg.at))),
+    btn('Dismiss','outline',async function(){await call('DELETE','/api/devices/'+d.id+'/messages?id='+encodeURIComponent(msg.id));load()})))}
+  ov.append(mc)}
  ov.append(info);
  ov.append(resetCard(d));
  const acts=h('div',{class:'card'},h('h2',null,'Activity'));

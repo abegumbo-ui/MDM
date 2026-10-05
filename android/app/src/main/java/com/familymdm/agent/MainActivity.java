@@ -2,6 +2,7 @@ package com.familymdm.agent;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.KeyguardManager;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -27,7 +28,13 @@ import java.util.Date;
  */
 public class MainActivity extends Activity {
     private static final int PICK_APK = 1;
+    private static final int CONFIRM_APP_LOCK = 2;
     private static final long PICK_WINDOW_MS = 5 * 60 * 1000;
+    // Survives Activity re-creation within the same process, but not a fresh launch (process restart,
+    // reboot, the app swiped away) — so the app re-locks whenever it was actually closed, without
+    // nagging for every internal navigation (e.g. opening the file picker and coming back).
+    private static boolean appLockPassed = false;
+    private boolean locked;
 
     private TextView status;
     private LinearLayout logoHolder;
@@ -51,6 +58,11 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (Agent.prefs(this).getBoolean("appLock", false) && !appLockPassed) {
+            showLockScreen();
+            return;
+        }
+        locked = false;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 16);
@@ -129,6 +141,11 @@ public class MainActivity extends Activity {
         admin.addView(Ui.body(this, "Master code: everything the dashboard can do, here on the phone, even without internet.", true));
         Ui.add(admin, Ui.button(this, "Administrator (master code)", Ui.TONAL, v -> promptMaster()), 12);
 
+        LinearLayout msg = Ui.card(this, actionsBox);
+        msg.addView(Ui.titleText(this, "Message the administrator"));
+        msg.addView(Ui.body(this, "A bug, a question, anything — no code needed.", true));
+        Ui.add(msg, Ui.button(this, "Send a message", Ui.OUTLINED, v -> promptMessage()), 12);
+
         LinearLayout remove = Ui.card(this, actionsBox);
         remove.addView(Ui.titleText(this, "Remove this agent"));
         removeHint = Ui.body(this, "", true);
@@ -160,12 +177,62 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (locked) return;
         refresh();
         Agent.startServiceIfEnrolled(this);
         if (reshowFrp) {
             reshowFrp = false;
             askFrp();
         }
+    }
+
+    private void promptMessage() {
+        final EditText input = Ui.field(this, "Message");
+        new AlertDialog.Builder(this)
+                .setTitle("Message the administrator")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Send", (d, w) -> {
+                    String text = input.getText().toString().trim();
+                    if (text.isEmpty()) return;
+                    if (Agent.standalone(this)) {
+                        Agent.addEvent(this, "local", "Message: " + text);
+                        toast("No dashboard is connected offline, so this was only saved to the phone log.");
+                    } else {
+                        Agent.addMessage(this, text);
+                        AgentService.requestSync();
+                        toast("Sent.");
+                    }
+                })
+                .show();
+    }
+
+    // ---------- app lock: fingerprint, face, or the phone's own PIN/pattern/password ----------
+    private void showLockScreen() {
+        locked = true;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(android.view.Gravity.CENTER);
+        int pad = Ui.dp(this, 24);
+        box.setPadding(pad, pad, pad, pad);
+        box.addView(Ui.headline(this, "Locked"));
+        Ui.add(box, Ui.body(this, "Unlock with your fingerprint, face, or device PIN to open MDM Agent.", true), 8);
+        Ui.add(box, Ui.button(this, "Unlock", Ui.FILLED, v -> requestUnlock()), 20);
+        setContentView(box);
+        requestUnlock();
+    }
+
+    private void requestUnlock() {
+        KeyguardManager km = getSystemService(KeyguardManager.class);
+        Intent i = km.createConfirmDeviceCredentialIntent("Unlock MDM Agent", null);
+        if (i == null) {
+            // The phone has no lock screen set up at all (so nothing to confirm against): don't
+            // permanently lock the admin out of their own app over a setting that got turned off.
+            appLockPassed = true;
+            recreate();
+            return;
+        }
+        startActivityForResult(i, CONFIRM_APP_LOCK);
     }
 
     private void refresh() {
@@ -514,6 +581,15 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == CONFIRM_APP_LOCK) {
+            if (resultCode == RESULT_OK) {
+                appLockPassed = true;
+                recreate();
+            } else if (!isFinishing()) {
+                finish(); // cancelled or backed out: don't leave a half-built locked screen sitting open
+            }
+            return;
+        }
         if (requestCode != PICK_APK || resultCode != RESULT_OK || data == null || data.getData() == null) return;
         if (System.currentTimeMillis() > Agent.prefs(this).getLong("installUntil", 0)) {
             toast("The install code window has expired. Ask for a new code.");
