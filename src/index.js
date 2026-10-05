@@ -2,7 +2,7 @@ import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, nor
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
-const POLL_SECONDS = 60;
+const POLL_SECONDS = 15; // how often an online phone checks in (it already jumps to 3s for a moment right after running a command)
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
