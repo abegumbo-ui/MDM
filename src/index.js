@@ -110,6 +110,7 @@ const publicDevice = (d) => ({
   wifiNetworks: d.wifiNetworks || [],
   appCode: d.appCode || null,
   fallbackCode: d.fallbackCode || null,
+  syncPaused: !!d.syncPaused,
   adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
   siteRequests: d.siteRequests || [],
   messages: d.messages || [],
@@ -612,6 +613,12 @@ async function agentApi(request, env, url) {
     if (/^[0-9]{6}$/.test(body.fallbackCode || "") && body.fallbackCode !== d.fallbackCode) {
       // This phone's own always-on recovery code, generated once on the phone itself.
       d.fallbackCode = body.fallbackCode;
+      dirty = true;
+    }
+    if (typeof body.syncPaused === "boolean" && body.syncPaused !== !!d.syncPaused) {
+      // The phone itself decided to stop checking in (to save battery) or start again -- this is
+      // its one chance to tell the dashboard that before it goes quiet.
+      d.syncPaused = body.syncPaused;
       dirty = true;
     }
     if (Array.isArray(body.events) && body.events.length) {

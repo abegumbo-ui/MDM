@@ -362,6 +362,20 @@ test("a phone's own recovery code is reported up and shown per device", async ()
   assert.equal(devices.find((d) => d.id === id).fallbackCode, "012345");
 });
 
+test("a phone can report itself as paused (battery saving), and the dashboard shows it", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).syncPaused, false);
+  await post("/agent/sync", { syncPaused: true }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).syncPaused, true);
+  // Resuming (a later sync reporting it back off) clears it.
+  await post("/agent/sync", { syncPaused: false }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).syncPaused, false);
+});
+
 test("PIN commands validate the PIN and never echo it back in the device record", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);

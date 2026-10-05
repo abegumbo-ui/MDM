@@ -112,7 +112,7 @@ public class AgentService extends Service {
         while (running) {
             long sleepSeconds = 60;
             try {
-                sleepSeconds = Agent.standalone(this) ? standaloneOnce() : syncOnce();
+                sleepSeconds = Agent.syncPaused(this) ? 1800 : Agent.standalone(this) ? standaloneOnce() : syncOnce();
                 if (ranCommands) sleepSeconds = 3; // report what a command did right away
             } catch (Api.HttpException e) {
                 Log.w(TAG, "sync failed: " + e.getMessage());
@@ -217,6 +217,7 @@ public class AgentService extends Service {
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
         body.put("fallbackCode", Agent.fallbackCode(this));
+        body.put("syncPaused", Agent.syncPaused(this));
         List<String> iconsSent = new ArrayList<>();
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);
