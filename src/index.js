@@ -605,6 +605,15 @@ async function agentApi(request, env, url) {
       d.overridesRev = Date.now();
       dirty = true;
     }
+    if (Number(body.homeScreenRev) > (d.homeScreenRev || 0)) {
+      // Turned on (or off) from the phone's own Admin screen, same mirroring as app overrides
+      // above: it becomes the real dashboard setting, not a value that gets silently stomped by
+      // whatever this device's next ordinary sync would otherwise have sent back down.
+      config.homeScreen = !!body.homeScreenValue;
+      d.config = config;
+      d.homeScreenRev = Number(body.homeScreenRev);
+      dirty = true;
+    }
     if (typeof body.appCode === "string") {
       // The code the person chose to open the phone app; the administrator can see it on the dashboard.
       const code = body.appCode.slice(0, 32) || null;

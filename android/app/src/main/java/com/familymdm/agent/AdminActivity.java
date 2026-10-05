@@ -151,9 +151,37 @@ public class AdminActivity extends Activity {
 
         LinearLayout home = Ui.card(this, root);
         home.addView(Ui.titleText(this, "Home screen mode"));
+        JSONArray storedAllowed = null;
+        try {
+            String stored = Agent.prefs(this).getString("policy", null);
+            if (stored != null) storedAllowed = new JSONObject(stored).optJSONArray("allowed");
+        } catch (Exception ignored) {
+        }
+        boolean canTurnOnHere = storedAllowed != null && storedAllowed.length() > 0;
         home.addView(Ui.body(this, Kiosk.paused(this) ? "Paused: the phone is working normally."
                 : Kiosk.active(this) ? "On: only allowed apps can be opened."
-                : "Off. Turn it on from the dashboard (this phone's Settings box) — not from here, since it needs the allowed-apps list set up first.", true));
+                : canTurnOnHere ? "Off."
+                : "Off. Allow some apps first (App rules, from the dashboard or this phone's App rules screen) — otherwise there'd be nothing to open here.", true));
+        if (!Kiosk.active(this) && !Kiosk.paused(this) && canTurnOnHere) {
+            action(home, "Turn on home screen mode", Ui.TONAL, v -> {
+                if (!unlocked()) return;
+                try {
+                    String stored = Agent.prefs(this).getString("policy", "{}");
+                    JSONObject policy = new JSONObject(stored);
+                    policy.put("homeScreen", true);
+                    Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+                    long rev = System.currentTimeMillis();
+                    Agent.prefs(this).edit().putLong("homeScreenRev", rev).putBoolean("homeScreenValue", true).apply();
+                    Agent.addEvent(this, "local", "Master code on phone: turned on home screen mode");
+                    PolicyApplier.applyStored(this);
+                    AgentService.requestSync();
+                    build();
+                    toast("Home screen mode on. The phone switches right away.");
+                } catch (Exception e) {
+                    toast("Could not turn it on: " + e.getMessage());
+                }
+            });
+        }
         if (Kiosk.paused(this)) {
             action(home, "Resume home screen mode", Ui.FILLED, v -> {
                 Agent.prefs(this).edit().putBoolean("kioskPaused", false).apply();

@@ -376,6 +376,24 @@ test("a phone can report itself as paused (battery saving), and the dashboard sh
   assert.equal(devices.find((d) => d.id === id).syncPaused, false);
 });
 
+test("turning Home screen mode on from the phone's own Admin screen mirrors into the dashboard config", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).config.homeScreen, false);
+  await post("/agent/sync", { homeScreenRev: 100, homeScreenValue: true }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).config.homeScreen, true);
+  // A stale revision is ignored.
+  await post("/agent/sync", { homeScreenRev: 50, homeScreenValue: false }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).config.homeScreen, true);
+  // A newer one wins.
+  await post("/agent/sync", { homeScreenRev: 200, homeScreenValue: false }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).config.homeScreen, false);
+});
+
 test("PIN commands validate the PIN and never echo it back in the device record", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);
