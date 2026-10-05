@@ -184,26 +184,18 @@ public class AdminActivity extends Activity {
         appLockCard.addView(Ui.titleText(this, "App lock"));
         boolean appLockOn = Agent.prefs(this).getBoolean("appLock", false);
         appLockCard.addView(Ui.body(this, appLockOn
-                ? "On: opening MDM Agent needs your fingerprint, face, or device PIN."
+                ? "On: opening MDM Agent needs its own PIN, separate from the phone's screen lock."
                 : "Off: anyone who opens this app can see it with no extra check.", true));
         if (appLockOn) {
+            action(appLockCard, "Change app PIN", Ui.OUTLINED, v -> promptNewAppPin(false));
             action(appLockCard, "Turn off app lock", Ui.OUTLINED, v -> {
+                AppPin.clear(this);
                 Agent.prefs(this).edit().putBoolean("appLock", false).apply();
                 Agent.addEvent(this, "local", "Master code on phone: turned off app lock");
                 build();
             });
         } else {
-            action(appLockCard, "Turn on app lock", Ui.TONAL, v -> {
-                KeyguardManager km = getSystemService(KeyguardManager.class);
-                if (!km.isDeviceSecure()) {
-                    toast("Set a screen lock (PIN, pattern, or password) on this phone first, in Android Settings — otherwise there'd be nothing to confirm against.");
-                    return;
-                }
-                Agent.prefs(this).edit().putBoolean("appLock", true).apply();
-                Agent.addEvent(this, "local", "Master code on phone: turned on app lock");
-                toast("App lock on. It applies the next time MDM Agent is opened.");
-                build();
-            });
+            action(appLockCard, "Turn on app lock", Ui.TONAL, v -> promptNewAppPin(true));
         }
 
         if (!Agent.standalone(this)) {
@@ -351,6 +343,35 @@ public class AdminActivity extends Activity {
                         PolicyApplier.startBrowseWindow(this, mins);
                         Agent.addEvent(this, "local", "Master code on phone: started free browsing for " + mins + " minutes");
                         toast("Browser can open any site for " + mins + " minutes.");
+                    }
+                })
+                .show();
+    }
+
+    private void promptNewAppPin(boolean turningOn) {
+        final EditText one = Ui.field(this, "App PIN or password (4+ characters)");
+        final EditText two = Ui.field(this, "Repeat it");
+        one.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        two.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle(turningOn ? "Choose an app PIN" : "Change the app PIN")
+                .setMessage("This only locks MDM Agent's own screen. It has nothing to do with the phone's own screen lock, and works even if the phone has none set.")
+                .setView(form(one, two))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    final String a = one.getText().toString();
+                    if (a.length() < 4 || !a.equals(two.getText().toString())) {
+                        toast("Use at least 4 characters, typed the same twice.");
+                        return;
+                    }
+                    try {
+                        AppPin.set(this, a);
+                        Agent.prefs(this).edit().putBoolean("appLock", true).apply();
+                        Agent.addEvent(this, "local", "Master code on phone: " + (turningOn ? "turned on app lock" : "changed the app PIN"));
+                        toast(turningOn ? "App lock on. It applies the next time MDM Agent is opened." : "App PIN changed.");
+                        build();
+                    } catch (Exception e) {
+                        toast("Could not save the PIN: " + e.getMessage());
                     }
                 })
                 .show();

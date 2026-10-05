@@ -2,7 +2,6 @@ package com.familymdm.agent;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.KeyguardManager;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -27,7 +26,6 @@ import java.util.Date;
  */
 public class MainActivity extends Activity {
     private static final int PICK_APK = 1;
-    private static final int CONFIRM_APP_LOCK = 2;
     private static final long PICK_WINDOW_MS = 5 * 60 * 1000;
     // Survives Activity re-creation within the same process, but not a fresh launch (process restart,
     // reboot, the app swiped away) — so the app re-locks whenever it was actually closed, without
@@ -226,23 +224,55 @@ public class MainActivity extends Activity {
         int pad = Ui.dp(this, 24);
         box.setPadding(pad, pad, pad, pad);
         box.addView(Ui.headline(this, "Locked"));
-        Ui.add(box, Ui.body(this, "Unlock with your fingerprint, face, or device PIN to open MDM Agent.", true), 8);
-        Ui.add(box, Ui.button(this, "Unlock", Ui.FILLED, v -> requestUnlock()), 20);
+        Ui.add(box, Ui.body(this, "Enter the app PIN to open MDM Agent.", true), 8);
+        Ui.add(box, Ui.button(this, "Unlock", Ui.FILLED, v -> promptAppPin()), 20);
+        Ui.add(box, Ui.button(this, "Forgot it? Use the Administrator code", Ui.OUTLINED, v -> promptMasterBypass()), 8);
         setContentView(box);
-        requestUnlock();
+        promptAppPin();
     }
 
-    private void requestUnlock() {
-        KeyguardManager km = getSystemService(KeyguardManager.class);
-        Intent i = km.createConfirmDeviceCredentialIntent("Unlock MDM Agent", null);
-        if (i == null) {
-            // The phone has no lock screen set up at all (so nothing to confirm against): don't
-            // permanently lock the admin out of their own app over a setting that got turned off.
-            appLockPassed = true;
-            recreate();
-            return;
-        }
-        startActivityForResult(i, CONFIRM_APP_LOCK);
+    private void promptAppPin() {
+        final EditText input = Ui.field(this, "App PIN");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Unlock MDM Agent")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Unlock", (d, w) -> {
+                    String err = AppPin.check(this, input.getText().toString());
+                    if (err != null) {
+                        toast(err);
+                    } else {
+                        appLockPassed = true;
+                        recreate();
+                    }
+                })
+                .show();
+    }
+
+    private void promptMasterBypass() {
+        final EditText input = Ui.field(this, "Administrator (master) code");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Administrator")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Unlock", (d, w) -> {
+                    final String code = input.getText().toString();
+                    new Thread(() -> {
+                        final String err = Master.check(this, code);
+                        runOnUiThread(() -> {
+                            if (err != null) {
+                                toast(err);
+                            } else {
+                                Agent.addEvent(this, "local", "Administrator code used to bypass the app PIN");
+                                appLockPassed = true;
+                                recreate();
+                            }
+                        });
+                    }).start();
+                })
+                .show();
     }
 
     private void refresh() {
@@ -579,15 +609,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == CONFIRM_APP_LOCK) {
-            if (resultCode == RESULT_OK) {
-                appLockPassed = true;
-                recreate();
-            } else if (!isFinishing()) {
-                finish(); // cancelled or backed out: don't leave a half-built locked screen sitting open
-            }
-            return;
-        }
         if (requestCode != PICK_APK || resultCode != RESULT_OK || data == null || data.getData() == null) return;
         if (System.currentTimeMillis() > Agent.prefs(this).getLong("installUntil", 0)) {
             toast("The install code window has expired. Ask for a new code.");
