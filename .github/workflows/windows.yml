@@ -66,4 +66,4 @@ jobs:
           gh release create "lockguard-v${{ github.run_number }}" LockGuard-Setup.exe LockGuard-windows.zip `
             --title "LockGuard build ${{ github.run_number }}" `
             --notes "Windows internet-lockdown app, build ${{ github.run_number }}. Download LockGuard-Setup.exe and run it (it will ask for admin). LockGuard-windows.zip is the same build for anyone who wants to run install.ps1 manually. Commit: ${{ github.sha }}" `
-            --prerelease --target "$env:GITHUB_SHA"
+            --target "$env:GITHUB_SHA"

@@ -59,8 +59,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent and browser (debug-signed)." --prerelease --target "$GITHUB_SHA"
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent and browser (debug-signed)." --target "$GITHUB_SHA"
           gh release upload latest mdm-agent.apk mdm-browser.apk version.json --clobber
+          # Fixes the flag on every run too, in case an earlier run created this release as a
+          # prerelease (this session's own gh token can't edit an already-published release, so
+          # that correction has to happen here, with the Actions-provided token, instead).
+          gh release edit latest --prerelease=false --latest=false
       - name: Publish a versioned release
         # "latest" above is the one phones and the dashboard actually check against (it's a fixed,
         # never-changing URL on purpose -- see its own comment). This is the human-facing release
@@ -73,4 +77,4 @@ jobs:
           gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-browser.apk version.json \
             --title "Agent + Browser build ${{ github.run_number }}" \
             --notes "Android agent and browser, build ${{ github.run_number }} (debug-signed). Commit: ${{ github.sha }}" \
-            --prerelease --target "$GITHUB_SHA"
+            --target "$GITHUB_SHA"
