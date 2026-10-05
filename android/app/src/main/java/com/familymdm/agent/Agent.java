@@ -67,6 +67,22 @@ final class Agent {
         }
     }
 
+    /** Shared by the manual "Enroll" button and the QR-code provisioning callback, which has no form to read from. */
+    static void enrollWith(Context c, String server, String code) throws Exception {
+        JSONObject info = new JSONObject();
+        info.put("manufacturer", android.os.Build.MANUFACTURER);
+        info.put("model", android.os.Build.MODEL);
+        JSONObject body = new JSONObject();
+        body.put("code", code);
+        body.put("info", info);
+        JSONObject reply = Api.post(server + "/agent/enroll", body, null);
+        prefs(c).edit()
+                .putString("server", server)
+                .putString("token", reply.getString("token"))
+                .putBoolean("standalone", false)
+                .apply();
+    }
+
     static Set<String> getSet(Context c, String key) {
         return new HashSet<>(prefs(c).getStringSet(key, new HashSet<String>()));
     }

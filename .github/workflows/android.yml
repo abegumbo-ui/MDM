@@ -37,7 +37,10 @@ jobs:
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk mdm-agent.apk
           cp android/browser/build/outputs/apk/debug/browser-debug.apk mdm-browser.apk
-          echo "{\"versionCode\": ${{ github.run_number }}}" > version.json
+          # URL-safe base64 of the raw SHA-256 digest, no padding -- exactly the format Android's
+          # QR-code device-owner provisioning expects for EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM.
+          AGENT_SHA256=$(openssl dgst -binary -sha256 mdm-agent.apk | openssl base64 | tr '+/' '-_' | tr -d '=')
+          echo "{\"versionCode\": ${{ github.run_number }}, \"sha256\": \"$AGENT_SHA256\"}" > version.json
       - uses: actions/upload-artifact@v4
         with:
           name: mdm-agent

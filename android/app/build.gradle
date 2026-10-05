@@ -16,6 +16,10 @@ android {
         targetSdk 30
         versionCode buildNumber
         versionName "0.3." + buildNumber
+        // Your dashboard's own https:// address, baked in at build time (set the DASHBOARD_URL
+        // repository variable), so enrolling only ever needs typing a code, never the server too.
+        // Leave it unset to build a generic APK that still asks for the server once.
+        resValue "string", "default_server", (System.getenv("DASHBOARD_URL") ?: "")
     }
 
     compileOptions {

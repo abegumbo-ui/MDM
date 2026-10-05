@@ -94,6 +94,7 @@ export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><
 export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>MDM Dashboard</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>${STYLE}</style></head>
 <body>
 <header class="bar"><div class="top"><h1>MDM Dashboard</h1><a href="/logout">Sign out</a></div>
@@ -583,15 +584,39 @@ function renderCodes(m){
    out.append(h('div',{class:'code'},r.code),h('div',{class:'mute small'},'Valid for 1 hour. Shown once; generate another any time.'));
    if(type==='enroll'){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'On your computer, with the phone connected and USB debugging on:'),
-     h('pre',{class:'cmd'},'adb install mdm-agent.apk\nadb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver\nadb shell am start -n com.familymdm.agent/.MainActivity --es server '+r.server+' --es code '+r.code),
-     h('div',{class:'mute small'},'Get mdm-agent.apk from GitHub → Releases → "Latest agent build". The phone needs no Google account when you run the second command.'))}
+     h('pre',{class:'cmd'},'adb install mdm-agent.apk\nadb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver\nadb shell am start -n com.familymdm.agent/.MainActivity --es code '+r.code),
+     h('div',{class:'mute small'},'Get mdm-agent.apk from GitHub → Releases → "Latest agent build". If this build has the dashboard address baked in, that\'s all you need to type — otherwise tap "Use a different dashboard" on the phone once and enter '+r.server+'. No Google account needed for either command.'),
+     h('div',{class:'mute small',style:'margin-top:8px'},'Prefer no computer at all? Use the QR code below instead — scan it on a brand-new or freshly reset phone, nothing to type.'))}
    if(type==='browser'){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'In the Browser app (no agent needed), tap "Connect to a dashboard" and enter:'),
      h('pre',{class:'cmd'},'Dashboard address: '+r.server+'\nCode: '+r.code),
      h('div',{class:'mute small'},'Get mdm-browser.apk from GitHub → Releases → "Latest agent build", same place as the agent. It shows up under Sites → Standalone browsers once connected.'))}
    if(type==='freebrowse'){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'On the phone, in the agent app\'s Browser card, tap "Browse freely for a while" and type this code. It opens any site for '+r.minutes+' minutes.'))}
-  })),out);m.append(card)}
+  })),out);m.append(card);
+  if(type==='enroll'){
+   const qrCard=h('div',{class:'card'},h('h2',null,'Set up with a QR code (no computer)'),
+    h('div',{class:'mute'},'Works on a brand-new or freshly factory-reset phone, before it finishes its own setup wizard. Tap the Welcome screen 6 times, scan this, and the phone downloads the agent, becomes managed, and enrolls itself — nothing to type.'));
+   const ssid=h('input',{type:'text',placeholder:'Wi-Fi network name (optional, so the phone can get online to download the app)',style:'width:100%;margin-top:10px'});
+   const pass=h('input',{type:'text',placeholder:'Wi-Fi password (leave empty for an open network)',style:'width:100%;margin-top:8px'});
+   const qrOut=h('div',{style:'margin-top:10px'});
+   qrCard.append(ssid,pass,qrOut,h('div',{style:'margin-top:10px'},btn('Generate enrollment QR','',async function(){
+    qrOut.textContent='';
+    const r=await call('POST','/api/codes',{type:'enroll'});
+    if(!r.apkUrl||!r.sha256){qrOut.append(h('div',{class:'mute',style:'color:var(--error)'},'The latest agent build has not finished publishing its checksum yet. Wait a minute for the build to finish, or use the adb command above instead.'));return}
+    const payload={
+     'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME':'com.familymdm.agent/.AdminReceiver',
+     'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION':r.apkUrl,
+     'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM':r.sha256,
+     'android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED':true,
+     'android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE':{server:r.server,code:r.code}};
+    if(ssid.value.trim()){
+     payload['android.app.extra.PROVISIONING_WIFI_SSID']=ssid.value.trim();
+     if(pass.value){payload['android.app.extra.PROVISIONING_WIFI_PASSWORD']=pass.value;payload['android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE']='WPA'}}
+    const qr=qrcode(0,'M');qr.addData(JSON.stringify(payload));qr.make();
+    qrOut.append(h('img',{src:qr.createDataURL(6,8),alt:'Enrollment QR code',style:'background:#fff;padding:4px;border-radius:12px;display:block'}),
+     h('div',{class:'mute small',style:'margin-top:8px'},'Valid for 1 hour, one use. On the new phone: tap the Welcome screen 6 times, then scan.'))})));
+   m.append(qrCard)}}
 }
 
 /* ---------- settings ---------- */

@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.app.KeyguardManager;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.InputType;
@@ -115,6 +114,13 @@ public class MainActivity extends Activity {
         enrollBox.addView(Ui.titleText(this, "Connect to the dashboard"));
         serverField = Ui.field(this, "Dashboard address (https://...)");
         Ui.add(enrollBox, serverField, 12);
+        String defaultServer = getString(R.string.default_server);
+        if (!defaultServer.isEmpty()) {
+            serverField.setText(defaultServer);
+            serverField.setVisibility(View.GONE);
+            Ui.add(enrollBox, Ui.button(this, "Use a different dashboard", Ui.OUTLINED,
+                    v -> serverField.setVisibility(View.VISIBLE)), 8);
+        }
         codeField = Ui.field(this, "Enrollment code");
         Ui.add(enrollBox, codeField, 8);
         enrollButton = Ui.button(this, "Enroll", Ui.FILLED, v -> enroll());
@@ -439,18 +445,7 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             String error = null;
             try {
-                JSONObject info = new JSONObject();
-                info.put("manufacturer", Build.MANUFACTURER);
-                info.put("model", Build.MODEL);
-                JSONObject body = new JSONObject();
-                body.put("code", code);
-                body.put("info", info);
-                JSONObject reply = Api.post(server + "/agent/enroll", body, null);
-                Agent.prefs(this).edit()
-                        .putString("server", server)
-                        .putString("token", reply.getString("token"))
-                        .putBoolean("standalone", false)
-                        .apply();
+                Agent.enrollWith(this, server, code);
                 showEnroll = false;
                 Agent.startServiceIfEnrolled(this);
             } catch (Exception e) {
