@@ -22,6 +22,20 @@ actually running it. Build and test it for real before trusting it on anyone's c
 - `LockGuard.Setup/` -- the only UI. A small WinForms app that talks to the service over a local
   named pipe, authenticated by the code on every single action (not just once per session). First
   run walks through choosing a code without ever asking for or showing the bootstrap one.
+- `LockGuard.Installer/` -- the single `LockGuard-Setup.exe` download (see "Installing" below);
+  wraps the Service and Setup apps up as one self-elevating installer.
+
+## Dashboard integration
+
+If `DASHBOARD_URL` is set (same repo variable the Android agent bakes in -- see "Secrets and
+variables" in the repo's GitHub settings), the Service self-registers with that dashboard the
+moment it starts, no code to type -- it shows up as a new "LockGuard Device" to rename and
+control: turn lockdown on/off, edit the allowed-programs list, and remotely uninstall it, all from
+there instead of only locally in Setup. It checks in every 30 seconds (the same timer that
+reapplies the firewall rules) and treats the dashboard as authoritative: whatever it says to apply
+replaces whatever was set locally through Setup. With no `DASHBOARD_URL` baked in, this is simply
+off and everything works exactly as if the dashboard didn't exist. This has not been tested
+end-to-end on a real machine yet -- see "What specifically needs checking" below.
 
 ## Building
 
@@ -101,6 +115,9 @@ repeating here.
 5. Whether `HNetCfg.FwPolicy2` (the Windows Firewall COM API this uses) needs the service to run
    with any additional privilege beyond LocalSystem, and behaves the same across whatever Windows
    version(s) this actually needs to run on.
+6. **Dashboard integration end-to-end** -- with `DASHBOARD_URL` set, confirm a fresh install shows
+   up on the dashboard, a policy change there (lockdown on/off, allowed programs) actually reaches
+   the computer within about 30 seconds, and "Uninstall from this computer" removes it cleanly.
 
 ## Not built yet (Phase 2)
 

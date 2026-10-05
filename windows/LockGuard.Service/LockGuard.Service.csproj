@@ -18,4 +18,13 @@
     <ProjectReference Include="..\LockGuard.Common\LockGuard.Common.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Written by CI (see .github/workflows/windows.yml) right before this project builds, from
+         the same DASHBOARD_URL repo variable the Android agent bakes in. Not checked into the
+         repo; a local build without it simply has dashboard integration turned off. -->
+    <EmbeddedResource Include="DashboardUrl.txt" Condition="Exists('DashboardUrl.txt')">
+      <LogicalName>DashboardUrl.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

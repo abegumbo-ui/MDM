@@ -139,6 +139,49 @@ test("standalone Browser: self-registers with no code at all, named so it's find
   assert.equal((await req(`/api/browsers/${browsers[0].id}`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "" }) })).status, 400, "an empty name is rejected");
 });
 
+test("Windows LockGuard device: self-registers, takes dashboard-set policy, and self-uninstalls on command", async () => {
+  const cookie = await login();
+
+  const { token } = await (await post("/windows/register", { info: { hostname: "KIDS-LAPTOP" } })).json();
+  assert.ok(token);
+  const auth = { authorization: `Bearer ${token}` };
+
+  let devices = await (await req("/api/windevices", { headers: { cookie } })).json();
+  assert.equal(devices.length, 1);
+  assert.match(devices[0].name, /^New LockGuard Device \(/);
+  assert.equal(devices[0].enabled, false, "disabled until the admin turns it on");
+
+  // Nothing allowed yet: a fresh registration starts locked out, same as a fresh Browser.
+  let sync = await (await post("/windows/sync", { info: { hostname: "KIDS-LAPTOP" }, enabled: false, allowedPrograms: [] }, auth)).json();
+  assert.equal(sync.enabled, false);
+  assert.deepEqual(sync.allowedPrograms, []);
+
+  await req(`/api/windevices/${devices[0].id}/config`, {
+    method: "PUT",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ enabled: true, allowedPrograms: ["C:\\\\Program Files\\\\Outlook\\\\outlook.exe"] }),
+  });
+  sync = await (await post("/windows/sync", { info: { hostname: "KIDS-LAPTOP" }, enabled: false, allowedPrograms: [] }, auth)).json();
+  assert.equal(sync.enabled, true, "the device picks up the admin's policy on its next sync");
+  assert.deepEqual(sync.allowedPrograms, ["C:\\\\Program Files\\\\Outlook\\\\outlook.exe"]);
+
+  devices = await (await req("/api/windevices", { headers: { cookie } })).json();
+  assert.equal(devices[0].reportedEnabled, false, "what the device last reported, before it applied the new policy");
+
+  await req(`/api/windevices/${devices[0].id}`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "Kid's laptop" }) });
+  devices = await (await req("/api/windevices", { headers: { cookie } })).json();
+  assert.equal(devices[0].name, "Kid's laptop");
+
+  await req(`/api/windevices/${devices[0].id}/command`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ type: "uninstall" }) });
+  sync = await (await post("/windows/sync", { info: { hostname: "KIDS-LAPTOP" }, enabled: true, allowedPrograms: [] }, auth)).json();
+  assert.deepEqual(sync.commands.map((c) => c.type), ["uninstall"], "the queued uninstall command is delivered on the next sync");
+  sync = await (await post("/windows/sync", { info: { hostname: "KIDS-LAPTOP" }, enabled: true, allowedPrograms: [] }, auth)).json();
+  assert.deepEqual(sync.commands, [], "delivered once -- the queue is cleared, not retried");
+
+  await req(`/api/windevices/${devices[0].id}`, { method: "DELETE", headers: { cookie } });
+  assert.equal((await post("/windows/sync", {}, auth)).status, 401, "once removed, its old token is dead");
+});
+
 test("one-time install/uninstall codes: typed, single use, need a device token", async () => {
   const cookie = await login();
   const { auth } = await enrolledDevice(cookie);
