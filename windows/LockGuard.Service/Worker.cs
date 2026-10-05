@@ -153,6 +153,15 @@ Remove-Item -Force '{scriptPath}' -ErrorAction SilentlyContinue
             CreateNoWindow = true,
         });
 
-        Environment.Exit(0);
+        // This method is called from inside PipeServer.Handle(), which still needs to write its
+        // "Removing..." response back to Setup before the pipe goes away -- exiting immediately
+        // here (as this used to) kills the process mid-handler, so Setup always saw a timeout
+        // instead of that confirmation, even though the uninstall itself had already kicked off.
+        // A short delay on a separate thread lets that response actually reach the pipe first.
+        new Thread(() =>
+        {
+            Thread.Sleep(500);
+            Environment.Exit(0);
+        }) { IsBackground = true }.Start();
     }
 }
