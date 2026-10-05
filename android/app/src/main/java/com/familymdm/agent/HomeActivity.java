@@ -2,7 +2,10 @@ package com.familymdm.agent;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -47,6 +50,14 @@ public class HomeActivity extends Activity {
         }
     };
 
+    /** Lets Kiosk.clear() exit this screen right away instead of waiting for the 30s refresh. */
+    private final BroadcastReceiver kioskChanged = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context ctx, Intent intent) {
+            if (!Kiosk.active(HomeActivity.this)) leave();
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -73,6 +84,7 @@ public class HomeActivity extends Activity {
             if (am.getLockTaskModeState() == ActivityManager.LOCK_TASK_MODE_NONE) startLockTask();
         } catch (Exception ignored) {
         }
+        registerReceiver(kioskChanged, new IntentFilter(Kiosk.ACTION_CHANGED));
         handler.removeCallbacks(refresh);
         refresh.run();
     }
@@ -87,6 +99,10 @@ public class HomeActivity extends Activity {
     @Override
     protected void onPause() {
         handler.removeCallbacks(refresh);
+        try {
+            unregisterReceiver(kioskChanged);
+        } catch (IllegalArgumentException ignored) {
+        }
         super.onPause();
     }
 

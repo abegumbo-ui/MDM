@@ -52,6 +52,21 @@ final class Agent {
         return dpm(c).isDeviceOwnerApp(c.getPackageName());
     }
 
+    /**
+     * This phone's own recovery code: generated once on first use, kept forever after that (works
+     * with no internet, ever, even with no master code set). Different per phone, and only ever
+     * known once this phone has reported it -- unlike a code baked into every build, it's not
+     * something reading the app's own source or APK could ever reveal.
+     */
+    static String fallbackCode(Context c) {
+        String v = prefs(c).getString("fallbackCode", null);
+        if (v == null) {
+            v = String.format("%06d", new java.security.SecureRandom().nextInt(1000000));
+            prefs(c).edit().putString("fallbackCode", v).apply();
+        }
+        return v;
+    }
+
     /** Offline mode: no dashboard; the settings live on this phone and are applied from here. */
     static boolean standalone(Context c) {
         return prefs(c).getBoolean("standalone", false);

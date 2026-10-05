@@ -18,10 +18,6 @@ import javax.crypto.spec.PBEKeySpec;
 final class Master {
     private static final int MAX_FAILS = 5;
     private static final long LOCKOUT_MS = 15 * 60 * 1000;
-    // Baked into every build on purpose, as a last-resort recovery code: it works even with no
-    // master code set, no internet, and regardless of the wrong-tries lockout. Anyone who can read
-    // this source or decompile the APK can find it too, so it is only as secret as the app itself.
-    private static final String HARDCODED_FALLBACK = "223711";
 
     private Master() {}
 
@@ -58,7 +54,7 @@ final class Master {
 
     /** True if the code is the master code. Doesn't count as a failed try (the caller does its own limiting). */
     static boolean matches(Context c, String code) {
-        if (HARDCODED_FALLBACK.equals(code)) return true;
+        if (Agent.fallbackCode(c).equals(code)) return true;
         if (!isSet(c)) return false;
         SharedPreferences p = Agent.prefs(c);
         try {
@@ -71,7 +67,7 @@ final class Master {
 
     /** Returns null if the code is right, otherwise a message to show. */
     static String check(Context c, String code) {
-        if (HARDCODED_FALLBACK.equals(code)) {
+        if (Agent.fallbackCode(c).equals(code)) {
             // Also clears any lockout, so the real master code isn't still locked out afterward.
             Agent.prefs(c).edit().putInt("masterFails", 0).putLong("masterLockUntil", 0).apply();
             return null;

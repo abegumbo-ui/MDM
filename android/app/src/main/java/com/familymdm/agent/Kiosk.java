@@ -113,7 +113,12 @@ final class Kiosk {
         }
         Agent.prefs(c).edit().putBoolean("kioskOn", false).remove("kioskAllowed").apply();
         Agent.addEvent(c, "restriction", "Home screen mode is off");
+        // HomeActivity only re-checks whether it should still be active every 30s or on resume;
+        // tell it right away instead of leaving the phone stuck on the kiosk screen until then.
+        c.sendBroadcast(new Intent(ACTION_CHANGED).setPackage(c.getPackageName()));
     }
+
+    static final String ACTION_CHANGED = "com.familymdm.agent.action.KIOSK_CHANGED";
 
     /**
      * The only place that touches Android's persistent-preferred-activity list, since setting one
