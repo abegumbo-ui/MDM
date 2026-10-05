@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LockGuard.Service</RootNamespace>
+    <UserSecretsId>dotnet-LockGuard.Service</UserSecretsId>
+    <!-- This is a Windows Service, not a console app you double-click: install.ps1 registers it
+         with the Service Control Manager, which is what actually starts it (as SYSTEM, at boot). -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LockGuard.Common\LockGuard.Common.csproj" />
+  </ItemGroup>
+
+</Project>

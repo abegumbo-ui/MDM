@@ -1,0 +1,53 @@
+name: Build Windows LockGuard
+
+on:
+  push:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build every project
+        run: |
+          dotnet build windows\LockGuard.Common\LockGuard.Common.csproj -c Release
+          dotnet build windows\LockGuard.Service\LockGuard.Service.csproj -c Release
+          dotnet build windows\LockGuard.Setup\LockGuard.Setup.csproj -c Release
+
+      - name: Publish the installable app
+        run: |
+          dotnet publish windows\LockGuard.Service -c Release -r win-x64 --self-contained false -o publish\LockGuard.Service\bin\Release\net8.0-windows\publish
+          dotnet publish windows\LockGuard.Setup -c Release -r win-x64 --self-contained false -o publish\LockGuard.Setup\bin\Release\net8.0-windows\publish
+          copy windows\install.ps1 publish\install.ps1
+          copy windows\README.md publish\README.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LockGuard-windows
+          path: publish
+
+      - name: Zip it for a release asset
+        run: Compress-Archive -Path publish\* -DestinationPath LockGuard-windows.zip
+
+      - name: Publish a versioned release
+        # Only from main, same reasoning as the Android workflow: a feature-branch push shouldn't
+        # create a public release of its own, only a merge should.
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "lockguard-v${{ github.run_number }}" LockGuard-windows.zip `
+            --title "LockGuard build ${{ github.run_number }}" `
+            --notes "Windows internet-lockdown app, build ${{ github.run_number }}. Extract the zip and run install.ps1 as Administrator. Commit: ${{ github.sha }}" `
+            --prerelease --target "$env:GITHUB_SHA"
