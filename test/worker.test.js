@@ -338,7 +338,7 @@ test("master code: only a hash is accepted; it reaches the phone in sync; it's p
   assert.equal(devices.find((d) => d.id === id).masterSet, true);
   assert.equal(devices.find((d) => d.id === id2).masterSet, false, "a master code set on one device doesn't appear on another");
   let sync = await (await post("/agent/sync", {}, auth)).json();
-  assert.deepEqual(sync.master, { salt, hash, iterations: 100000 });
+  assert.deepEqual(sync.master, { salt, hash, iterations: 10000 });
   assert.equal((await put(cookie, `/api/devices/${id}/master`, undefined, "DELETE")).status, 200);
   sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.master, null);

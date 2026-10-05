@@ -33,7 +33,7 @@ test("explicit blocks apply even if the device never reported the package", () =
 });
 
 test("soft block: stays visible (never hidden) and never appears in the home-screen allowed list", () => {
-  const p = buildAgentPolicy({ apps: { "com.example.game": { mode: "soft" }, "com.example.maps": { mode: "allow" } } }, [
+  const p = buildAgentPolicy({ homeScreen: true, apps: { "com.example.game": { mode: "soft" }, "com.example.maps": { mode: "allow" } } }, [
     "com.example.game",
     "com.example.maps",
   ]);
@@ -42,18 +42,31 @@ test("soft block: stays visible (never hidden) and never appears in the home-scr
   assert.ok(!p.allowed.includes("com.example.game"), "soft-blocked apps don't appear in the home-screen launcher");
   assert.ok(p.allowed.includes("com.example.maps"));
   // Also applies to a soft-blocked app the device hasn't reported yet.
-  const q = buildAgentPolicy({ apps: { "com.example.other": { mode: "soft" } } }, []);
+  const q = buildAgentPolicy({ homeScreen: true, apps: { "com.example.other": { mode: "soft" } } }, []);
   assert.ok(q.show.includes("com.example.other"));
   assert.ok(!q.hide.includes("com.example.other"));
 });
 
 test("a harsh Block still hides the app even with blockUnlisted off, unlike soft block", () => {
-  const p = buildAgentPolicy({ apps: { "com.example.a": { mode: "block" }, "com.example.b": { mode: "soft" } } }, [
+  const p = buildAgentPolicy({ homeScreen: true, apps: { "com.example.a": { mode: "block" }, "com.example.b": { mode: "soft" } } }, [
     "com.example.a",
     "com.example.b",
   ]);
   assert.deepEqual(p.hide, ["com.example.a"]);
   assert.ok(p.show.includes("com.example.b"));
+});
+
+test("a leftover \"soft\" entry goes back to Default once Home screen mode is off", () => {
+  const cfg = normalizeConfig({ homeScreen: false, apps: { "com.example.game": { mode: "soft" }, "com.example.b": { mode: "allow" } } });
+  assert.deepEqual(cfg.apps, { "com.example.b": { mode: "allow", label: undefined } }, "the soft entry is dropped, not just unselectable");
+  const kept = normalizeConfig({ homeScreen: true, apps: { "com.example.game": { mode: "soft" } } });
+  assert.equal(kept.apps["com.example.game"].mode, "soft", "kept while Home screen mode is actually on");
+});
+
+test("Google Play Store is protected from automatic hiding, but an explicit Block still hides it", () => {
+  assert.ok(isProtected("com.android.vending"), "never auto-hidden by blockUnlisted/approveNew");
+  const p = buildAgentPolicy({ apps: { "com.android.vending": { mode: "block" } } }, ["com.android.vending"]);
+  assert.deepEqual(p.hide, ["com.android.vending"], "an explicit Block always wins, even over protection");
 });
 
 test("developer options and factory reset are blocked by default; toggles work", () => {

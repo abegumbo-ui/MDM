@@ -678,11 +678,18 @@ function renderDeviceSettings(m,dv){
    h('li',null,'In the result, copy the long number (about 21 digits) next to "id" or after "people/". Paste it above.')),
   h('div',{class:'mute small',style:'margin-top:8px'},'Keep that Google account safe: whoever can sign in to it can set the phone up again after a reset.'));
  m.append(frp);
- m.append(h('div',{class:'card'},h('h2',null,'Home screen mode'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
-  h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. An app set to Block is fully switched off, same as always; one left at Default or set to Soft block just has no icon here and stays installed and running in the background. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode, and turning it off here gives the phone back its normal home screen.')),
+ const hsCard=h('div',{class:'card'},h('h2',null,'Home screen mode'));
+ if(dv.config.homeScreen&&dv.info.kioskPaused)hsCard.append(h('div',{class:'row',style:'margin-bottom:8px'},h('span',{class:'chip warn'},'Currently paused on the phone itself')));
+ hsCard.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
+  h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. An app set to Block is fully switched off, same as always; one left at Default or set to Soft block just has no icon here and stays installed and running in the background. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode without changing this switch — that\'s what the "paused" note above means, when it is showing — and turning this switch off gives the phone back its normal home screen for good.')),
   sw(dv.config.homeScreen,async function(on){
    if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the App rules box above, because only those will appear.')){render();return}
-   dv.config.homeScreen=on;try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches within about 15 seconds.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()}))));
+   dv.config.homeScreen=on;
+   // Soft block only means anything while this switch is on; off a leftover "soft" app would be
+   // stuck invisible in App rules (no button shows it as selected) instead of back at Default.
+   if(!on)for(const pkg in dv.config.apps)if(dv.config.apps[pkg].mode==='soft')delete dv.config.apps[pkg];
+   try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches within about 15 seconds.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()})));
+ m.append(hsCard);
  m.append(h('div',{class:'card'},h('h2',null,'Agent updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Update the agent automatically'),
   h('div',{class:'mute'},'The phone checks GitHub for a newer build every 6 hours and installs it itself. You can always update it yourself from the Controls box, or from the phone\'s admin panel.')),
   sw(dv.config.autoUpdate,async function(on){dv.config.autoUpdate=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));
