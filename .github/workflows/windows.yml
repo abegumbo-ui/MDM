@@ -40,6 +40,22 @@ jobs:
       - name: Zip it for a release asset
         run: Compress-Archive -Path publish\* -DestinationPath LockGuard-windows.zip
 
+      - name: Build the single-file installer
+        # Bundles the just-published Service and Setup apps as embedded resources inside one
+        # self-contained exe (LockGuard.Installer), so there's one thing to download and
+        # double-click instead of a zip plus a PowerShell script. See LockGuard.Installer/Program.cs.
+        run: |
+          New-Item -ItemType Directory -Force -Path windows\LockGuard.Installer\Resources | Out-Null
+          Compress-Archive -Path publish\LockGuard.Service\bin\Release\net8.0-windows\publish\* -DestinationPath windows\LockGuard.Installer\Resources\Service.zip -Force
+          Compress-Archive -Path publish\LockGuard.Setup\bin\Release\net8.0-windows\publish\* -DestinationPath windows\LockGuard.Installer\Resources\Setup.zip -Force
+          dotnet publish windows\LockGuard.Installer -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish-installer
+          copy publish-installer\LockGuard.Installer.exe LockGuard-Setup.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LockGuard-Setup-exe
+          path: LockGuard-Setup.exe
+
       - name: Publish a versioned release
         # Only from main, same reasoning as the Android workflow: a feature-branch push shouldn't
         # create a public release of its own, only a merge should.
@@ -47,7 +63,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "lockguard-v${{ github.run_number }}" LockGuard-windows.zip `
+          gh release create "lockguard-v${{ github.run_number }}" LockGuard-Setup.exe LockGuard-windows.zip `
             --title "LockGuard build ${{ github.run_number }}" `
-            --notes "Windows internet-lockdown app, build ${{ github.run_number }}. Extract the zip and run install.ps1 as Administrator. Commit: ${{ github.sha }}" `
+            --notes "Windows internet-lockdown app, build ${{ github.run_number }}. Download LockGuard-Setup.exe and run it (it will ask for admin). LockGuard-windows.zip is the same build for anyone who wants to run install.ps1 manually. Commit: ${{ github.sha }}" `
             --prerelease --target "$env:GITHUB_SHA"
