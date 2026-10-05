@@ -218,6 +218,11 @@ public class AgentService extends Service {
         body.put("overridesRev", Agent.overridesRev(this));
         body.put("fallbackCode", Agent.fallbackCode(this));
         body.put("syncPaused", Agent.syncPaused(this));
+        long hsRev = Agent.prefs(this).getLong("homeScreenRev", 0);
+        if (hsRev > 0) {
+            body.put("homeScreenRev", hsRev);
+            body.put("homeScreenValue", Agent.prefs(this).getBoolean("homeScreenValue", false));
+        }
         List<String> iconsSent = new ArrayList<>();
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);
