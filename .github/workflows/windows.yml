@@ -1,0 +1,35 @@
+name: Build Windows LockGuard
+
+on:
+  push:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build every project
+        run: |
+          dotnet build windows\LockGuard.Common\LockGuard.Common.csproj -c Release
+          dotnet build windows\LockGuard.Service\LockGuard.Service.csproj -c Release
+          dotnet build windows\LockGuard.Setup\LockGuard.Setup.csproj -c Release
+
+      - name: Publish the installable app
+        run: |
+          dotnet publish windows\LockGuard.Service -c Release -r win-x64 --self-contained false -o publish\LockGuard.Service\bin\Release\net8.0-windows\publish
+          dotnet publish windows\LockGuard.Setup -c Release -r win-x64 --self-contained false -o publish\LockGuard.Setup\bin\Release\net8.0-windows\publish
+          copy windows\install.ps1 publish\install.ps1
+          copy windows\README.md publish\README.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LockGuard-windows
+          path: publish

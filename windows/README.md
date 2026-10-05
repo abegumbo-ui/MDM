@@ -25,8 +25,19 @@ actually running it. Build and test it for real before trusting it on anyone's c
 
 ## Building
 
-Requires the .NET 8 SDK (`dotnet --version` should print something starting with `8.`) and
-Windows, since both the service and the firewall APIs it uses are Windows-only.
+Every push that touches `windows/**` is actually compiled by GitHub Actions on a real Windows
+runner (`.github/workflows/windows.yml`) -- this is how "does this even build" gets checked
+without needing a Windows machine locally. The easiest way to get an installable copy:
+
+1. Open the **Actions** tab on the GitHub repo, find the latest green "Build Windows LockGuard"
+   run, and download its `LockGuard-windows` artifact (a zip).
+2. Extract it anywhere on the target Windows computer.
+3. Run `install.ps1` from inside that extracted folder, as Administrator (see "Installing" below)
+   -- no .NET SDK needed on that computer at all, since the artifact already contains the built app.
+
+To build it yourself instead (e.g. to test a change before pushing), you need the .NET 8 SDK
+(`dotnet --version` should print something starting with `8.`) and Windows, since both the
+service and the firewall APIs it uses are Windows-only:
 
 ```powershell
 dotnet publish windows\LockGuard.Service -c Release -r win-x64 --self-contained false
@@ -36,8 +47,9 @@ dotnet publish windows\LockGuard.Setup -c Release -r win-x64 --self-contained fa
 ## Installing
 
 ```powershell
-# As Administrator:
-powershell -ExecutionPolicy Bypass -File windows\install.ps1
+# As Administrator, from the folder containing install.ps1 (either the extracted CI artifact,
+# or the windows\ folder itself if you built it locally):
+powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 This registers the Windows Service, starts it, and puts a "LockGuard Setup" shortcut on the
