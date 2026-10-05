@@ -138,6 +138,7 @@ public sealed class PipeServer
     private PipeResponse StatusResponse(string message)
     {
         var config = LockConfig.Load();
+        var firewall = FirewallStatus.Load();
         return new PipeResponse
         {
             Ok = true,
@@ -145,6 +146,8 @@ public sealed class PipeServer
             Enabled = config.Enabled,
             IsDefaultCode = _codeStore.IsDefault(),
             AllowedPrograms = config.AllowedPrograms,
+            FirewallOk = firewall.Ok,
+            FirewallError = firewall.Error,
         };
     }
 }

@@ -133,8 +133,21 @@ public sealed class SetupForm : Form
     // ---------- management screen ----------
     private void ShowManage(PipeResponse status)
     {
-        _status.Text = "LockGuard is " + (status.Enabled ? "ON" : "OFF") +
-            ". These programs keep working with the internet; everything else on this computer doesn't.";
+        if (status.Enabled && !status.FirewallOk)
+        {
+            // config.json saying "on" and the firewall actually agreeing are two different
+            // things -- this is the difference between them, shown plainly instead of a blind
+            // "LockGuard is ON" that would be true locally but false on the actual network.
+            _status.Text = "LockGuard could NOT apply the lockdown: " + (status.FirewallError ?? "unknown error") +
+                "\nInternet is NOT actually restricted right now.";
+            _status.ForeColor = Color.Firebrick;
+        }
+        else
+        {
+            _status.Text = "LockGuard is " + (status.Enabled ? "ON" : "OFF") +
+                ". These programs keep working with the internet; everything else on this computer doesn't.";
+            _status.ForeColor = SystemColors.ControlText;
+        }
         _body.Controls.Clear();
 
         var list = new ListBox { Location = new Point(0, 0), Size = new Size(430, 140) };

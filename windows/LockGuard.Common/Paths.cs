@@ -14,6 +14,7 @@ public static class Paths
     public static readonly string ConfigFile = Path.Combine(RootDir, "config.json");
     public static readonly string LogFile = Path.Combine(RootDir, "lockguard.log");
     public static readonly string DashboardStateFile = Path.Combine(RootDir, "dashboard.json");
+    public static readonly string FirewallStatusFile = Path.Combine(RootDir, "firewall-status.json");
 
     /// <summary>Name of the named pipe the Setup app uses to talk to the running service.</summary>
     public const string PipeName = "LockGuardControlPipe";
