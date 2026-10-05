@@ -456,6 +456,8 @@ function appRow(a,dv){
  if(a.prot)tags.append(h('span',{class:'chip'},'protected'));
  if(a.hiddenOn)tags.append(h('span',{class:'chip warn'},'currently blocked on this phone'));
  if(!saved.mode&&dv.config.blockUnlisted&&!a.prot)tags.append(h('span',{class:'chip bad'},'will be hidden (default)'));
+ const ov=(dv.overrides||{})[a.p];
+ if(ov)tags.append(h('span',{class:'chip bad'},'set to "'+ov+'" on the phone itself — overrides this box until cleared in Controls'));
  body.append(h('div',{style:'font-weight:500'},a.l||a.p),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p),tags);
 
  const saveBtn=btn('Save','',async function(){
