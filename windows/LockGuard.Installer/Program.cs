@@ -1,14 +1,14 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Principal;
 using System.Windows.Forms;
 
 namespace LockGuard.Installer;
 
-// The single-exe installer: double-click, approve the UAC prompt (the app manifest asks for
-// elevation directly -- no manual relaunch needed), and this does everything install.ps1 does,
-// then opens Setup to finish configuration. See windows/README.md for the manual, zip-based
-// path this replaces for most people.
+// The single-exe installer: double-click, approve the UAC prompt, and this does everything
+// install.ps1 does, then opens Setup to finish configuration. See windows/README.md for the
+// manual, zip-based path this replaces for most people.
 internal static class Program
 {
     private static readonly string InstallDir = Path.Combine(
@@ -21,6 +21,32 @@ internal static class Program
     [STAThread]
     private static int Main()
     {
+        // The app manifest already asks Windows for requireAdministrator, which should elevate
+        // this before Main() ever runs -- but single-file published apps have been seen not to
+        // honor that reliably. This is the same fallback a plain "right-click, Run as
+        // Administrator" does, just automatic: if we're not elevated yet, relaunch ourselves
+        // with the "runas" verb (which always shows the UAC prompt, regardless of manifest
+        // quirks) and let the manifest-triggered run, if it happened, just see this as a no-op.
+        if (!IsElevated())
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = Environment.ProcessPath ?? Application.ExecutablePath,
+                    UseShellExecute = true,
+                    Verb = "runas",
+                });
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // The user clicked "No" on the UAC prompt -- nothing to install without it.
+                MessageBox.Show("LockGuard needs administrator access to install. Run it again and click \"Yes\" when Windows asks.",
+                    "LockGuard", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            return 0;
+        }
+
         try
         {
             Install();
@@ -36,6 +62,12 @@ internal static class Program
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
+    }
+
+    private static bool IsElevated()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
     private static void Install()
