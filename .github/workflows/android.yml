@@ -48,6 +48,14 @@ jobs:
             mdm-agent.apk
             mdm-browser.apk
       - name: Publish to the "latest" release
+        # Every push to a branch with android/** changes runs this workflow, including a PR
+        # branch's own push and then, right after merging, another run on main for that same
+        # commit's content. Publishing from both raced to overwrite the same "latest" release:
+        # whichever run's "gh release upload --clobber" finished last won, so version.json (from
+        # one run) and mdm-agent.apk (from a different run, built with a different embedded
+        # versionCode) could end up mismatched -- the dashboard reporting a build the installed
+        # APK doesn't actually match. Only the push that lands on main is ever the real release.
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
