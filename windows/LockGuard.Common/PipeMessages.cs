@@ -22,6 +22,8 @@ public sealed class PipeResponse
     [JsonPropertyName("enabled")] public bool Enabled { get; set; }
     [JsonPropertyName("isDefaultCode")] public bool IsDefaultCode { get; set; }
     [JsonPropertyName("allowedPrograms")] public List<string> AllowedPrograms { get; set; } = new();
+    [JsonPropertyName("firewallOk")] public bool FirewallOk { get; set; } = true;
+    [JsonPropertyName("firewallError")] public string? FirewallError { get; set; }
 }
 
 public static class PipeActions

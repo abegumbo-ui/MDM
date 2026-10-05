@@ -32,35 +32,68 @@ public static class FirewallManager
     private const int NET_FW_ACTION_BLOCK = 0;
     private const int NET_FW_ACTION_ALLOW = 1;
     private const int NET_FW_RULE_DIR_OUT = 2;
-    private const int ALL_PROFILES = 0x7FFFFFFF; // Domain | Private | Public
+    private const int ALL_PROFILES = 0x7FFFFFFF; // Domain | Private | Public -- valid for reading CurrentProfileTypes, but NOT documented as valid for the DefaultOutboundAction setter below, which is why that now loops over each one individually instead.
+    private static readonly int[] IndividualProfiles = { 1 /* Domain */, 2 /* Private */, 4 /* Public */ };
 
-    public static void ApplyLockdown(IEnumerable<string> allowedProgramPaths)
+    /// <summary>Set after every ApplyLockdown/RemoveLockdown call: null on success, the exception
+    /// message on failure. Worker surfaces this to Setup so "LockGuard is ON" is never shown
+    /// while the firewall itself silently failed to actually apply.</summary>
+    public static string? LastError { get; private set; }
+
+    public static bool ApplyLockdown(IEnumerable<string> allowedProgramPaths)
     {
-        dynamic policy = CreatePolicy();
-
-        // Default-deny outbound on every profile. Inbound is left alone -- this is about what the
-        // computer can reach, not what can reach it.
-        policy.DefaultOutboundAction[ALL_PROFILES] = NET_FW_ACTION_BLOCK;
-
-        RemoveAllLockGuardRules(policy);
-
-        AddAllowRule(policy, DnsRuleName, applicationName: null, serviceName: "Dnscache", protocol: 17 /* UDP */, remotePort: "53");
-        AddAllowRule(policy, DhcpRuleName, applicationName: null, serviceName: "Dhcp", protocol: 17 /* UDP */, remotePort: "67,68");
-
-        int i = 0;
-        foreach (var path in allowedProgramPaths)
+        try
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) continue;
-            AddAllowRule(policy, RuleNamePrefix + i++, applicationName: path, serviceName: null, protocol: 256 /* ANY */, remotePort: null);
+            dynamic policy = CreatePolicy();
+
+            // Default-deny outbound on every profile. Inbound is left alone -- this is about what
+            // the computer can reach, not what can reach it. Each profile is set individually --
+            // the combined NET_FW_PROFILE2_ALL bitmask is documented for some INetFwPolicy2 members
+            // but not confirmed for this particular setter, and a silent no-op here (rather than a
+            // thrown error) would look exactly like what was seen on a real machine: Setup saying
+            // "ON" while nothing was actually blocked.
+            foreach (var profile in IndividualProfiles)
+                policy.DefaultOutboundAction[profile] = NET_FW_ACTION_BLOCK;
+
+            RemoveAllLockGuardRules(policy);
+
+            AddAllowRule(policy, DnsRuleName, applicationName: null, serviceName: "Dnscache", protocol: 17 /* UDP */, remotePort: "53");
+            AddAllowRule(policy, DhcpRuleName, applicationName: null, serviceName: "Dhcp", protocol: 17 /* UDP */, remotePort: "67,68");
+
+            int i = 0;
+            foreach (var path in allowedProgramPaths)
+            {
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) continue;
+                AddAllowRule(policy, RuleNamePrefix + i++, applicationName: path, serviceName: null, protocol: 256 /* ANY */, remotePort: null);
+            }
+
+            LastError = null;
+            return true;
+        }
+        catch (Exception e)
+        {
+            LastError = e.Message;
+            return false;
         }
     }
 
     /// <summary>Restores normal (allow-all) outbound networking and removes every rule this app added.</summary>
-    public static void RemoveLockdown()
+    public static bool RemoveLockdown()
     {
-        dynamic policy = CreatePolicy();
-        policy.DefaultOutboundAction[ALL_PROFILES] = NET_FW_ACTION_ALLOW;
-        RemoveAllLockGuardRules(policy);
+        try
+        {
+            dynamic policy = CreatePolicy();
+            foreach (var profile in IndividualProfiles)
+                policy.DefaultOutboundAction[profile] = NET_FW_ACTION_ALLOW;
+            RemoveAllLockGuardRules(policy);
+            LastError = null;
+            return true;
+        }
+        catch (Exception e)
+        {
+            LastError = e.Message;
+            return false;
+        }
     }
 
     private static dynamic CreatePolicy()

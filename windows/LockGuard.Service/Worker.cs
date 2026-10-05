@@ -109,13 +109,15 @@ public sealed class Worker : BackgroundService
         try
         {
             var config = LockConfig.Load();
-            if (config.Enabled)
-                FirewallManager.ApplyLockdown(config.AllowedPrograms);
-            else
-                FirewallManager.RemoveLockdown();
+            var ok = config.Enabled
+                ? FirewallManager.ApplyLockdown(config.AllowedPrograms)
+                : FirewallManager.RemoveLockdown();
+            new FirewallStatus { Ok = ok, Error = ok ? null : FirewallManager.LastError }.Save();
+            if (!ok) _logger.LogError("Could not apply the firewall lockdown: {Error}", FirewallManager.LastError);
         }
         catch (Exception e)
         {
+            new FirewallStatus { Ok = false, Error = e.Message }.Save();
             _logger.LogError(e, "Could not apply the firewall lockdown.");
         }
     }
