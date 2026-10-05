@@ -16,7 +16,8 @@ const STYLE = String.raw`
   --error:#f2b8b5;--error-container:#8c1d18;--ok:#7fd99a;--ok-container:#0f3d1c;--warn:#ffb95c;--warn-container:#4a2f00;
 }}
 *{box-sizing:border-box}
-body{margin:0;background:var(--surface);color:var(--on-surface);font:14px/1.5 Roboto,system-ui,sans-serif}
+html{background:var(--surface)}
+body{margin:0;background:var(--surface);color:var(--on-surface);font:14px/1.5 Roboto,system-ui,sans-serif;overscroll-behavior-y:none}
 header.bar{position:sticky;top:0;z-index:5;background:var(--surface-2);padding:12px 16px 0}
 .bar .top{display:flex;align-items:center;gap:12px;max-width:960px;margin:0 auto}
 .bar h1{font-size:22px;font-weight:500;margin:0;flex:1}
@@ -356,7 +357,7 @@ function renderDeviceDetail(m,d){
  cmd(dd,'Release device','release',{uninstall:false},'Release this device? It stops being managed and every restriction is removed.','outline');
  cmd(dd,'Release & remove app','release',{uninstall:true},'Release the device AND start removing the agent app? The phone will ask to confirm.','outline');
  cmd(dd,'Wipe','wipe',null,'ERASE this device completely?','danger');
- dd.append(btn('Remove record','outline',async function(){if(!confirm('Delete this device from the dashboard? The phone stays managed; use Release first.'))return;await call('DELETE','/api/devices/'+d.id);location.hash='devices'}));
+ dd.append(btn('Delete device','outline',async function(){if(!confirm('Delete this device from the dashboard? The phone stays managed; use Release first if you want to actually free the phone.'))return;await call('DELETE','/api/devices/'+d.id);location.hash='devices'}));
  devBox.append(dd);ct.append(devBox);
 
  // ----- Apps on this phone -----
@@ -365,7 +366,7 @@ function renderDeviceDetail(m,d){
  for(const a of d.packages){
   const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy',style:'width:36px;height:36px;border-radius:9px;flex:none'});img.onerror=function(){img.replaceWith(h('div',{style:'width:36px;height:36px;border-radius:9px;background:var(--surface-3);flex:none'}))};
   const row=h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p),
-   h('div',null,h('span',{class:'chip '+(a.h?'warn':'ok')},a.h?'Hidden':'Visible'),a.s?h('span',{class:'chip'},'system'):null,a.protected?h('span',{class:'chip'},'protected'):null,want.has(a.p)!==a.h?h('span',{class:'chip warn'},'changing…'):null)));
+   h('div',null,h('span',{class:'chip '+(a.h?'warn':'ok')},a.h?'Blocked':'Allowed'),a.s?h('span',{class:'chip'},'system'):null,a.protected?h('span',{class:'chip'},'protected'):null,want.has(a.p)!==a.h?h('span',{class:'chip warn'},'changing…'):null)));
   if(!a.s)row.append(btn('Uninstall','danger',async function(){if(!confirm('Uninstall '+(a.l||a.p)+' from this phone?'))return;await queue('Uninstall '+(a.l||a.p),'uninstall',{packageName:a.p})}));
   al.append(row)}
  if(!d.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
@@ -408,7 +409,7 @@ function renderDeviceDetail(m,d){
 /* ---------- apps ---------- */
 function allApps(dv){
  const seen=new Map();
- for(const d of devices)for(const a of d.packages){
+ for(const a of dv.packages){
   const o=seen.get(a.p)||{p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:0};if(a.h)o.hiddenOn++;seen.set(a.p,o)}
  for(const p in dv.config.apps)if(!seen.has(p))seen.set(p,{p:p,l:dv.config.apps[p].label||p,s:false,prot:false,hiddenOn:0});
  return [...seen.values()].sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)})}
@@ -452,7 +453,7 @@ function appRow(a,dv){
  const tags=h('div');
  if(a.s)tags.append(h('span',{class:'chip'},'system app · cannot be uninstalled, use Block to switch it off'));else tags.append(h('span',{class:'chip ok'},'can be uninstalled'));
  if(a.prot)tags.append(h('span',{class:'chip'},'protected'));
- if(a.hiddenOn)tags.append(h('span',{class:'chip warn'},'hidden on '+a.hiddenOn));
+ if(a.hiddenOn)tags.append(h('span',{class:'chip warn'},'currently blocked on this phone'));
  if(!saved.mode&&dv.config.blockUnlisted&&!a.prot)tags.append(h('span',{class:'chip bad'},'will be hidden (default)'));
  body.append(h('div',{style:'font-weight:500'},a.l||a.p),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p),tags);
 
@@ -469,10 +470,10 @@ function appRow(a,dv){
    d.mode=o[0];if(d.mode==='block')d.schedule=null;render2()};seg.append(b)}
  const render2=function(){render()};
  const ctl=h('div',{class:'row',style:'margin-top:8px'},seg);
- const holders=devices.filter(function(dv){return dv.packages.some(function(x){return x.p===a.p})});
- if(!a.s&&holders.length)ctl.append(btn('Uninstall','danger',async function(){
-  if(!confirm('Uninstall '+(a.l||a.p)+' from: '+holders.map(function(x){return x.name}).join(', ')+'? This removes the app and its data from the phone.'))return;
-  for(const dv of holders)await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
+ const installedHere=dv.packages.some(function(x){return x.p===a.p});
+ if(!a.s&&installedHere)ctl.append(btn('Uninstall','danger',async function(){
+  if(!confirm('Uninstall '+(a.l||a.p)+' from '+dv.name+'? This removes the app and its data from the phone.'))return;
+  await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
   snack('Uninstall queued. The phone does it at its next check-in (within about a minute).');load()}));
  const schedBtn=h('button',{class:'btn tonal'},d.schedule?'Schedule on':'Schedule');
  schedBtn.onclick=function(){open[a.p]=!open[a.p];render()};
