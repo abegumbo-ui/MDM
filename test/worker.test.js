@@ -298,23 +298,27 @@ test("approval mode holds apps installed after it was switched on until approved
   assert.equal(dev.applied.pending.length, 0);
 });
 
-test("overrides made on the phone win by revision and can be cleared from the dashboard", async () => {
+test("an override made on the phone becomes the real dashboard setting, not a permanent shadow state", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);
   const pk = (p) => ({ p, l: p, s: false, h: false });
   await put(cookie, `/api/devices/${id}/config`, { blockUnlisted: true });
   let sync = await (await post("/agent/sync", { packages: [pk("a.b")], overrides: { "a.b": "allow" }, overridesRev: 100 }, auth)).json();
   assert.deepEqual(sync.policy.hide, [], "phone-side allow beats hide-unlisted");
-  assert.equal(sync.overridesRev, 100);
+  // Folded straight into config -- not kept around as a second state to re-fight every sync.
+  assert.deepEqual(sync.overrides, {});
+  assert.ok(sync.overridesRev > 100, "a newer revision, so the phone actually drops its own local copy");
+  let dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.config.apps["a.b"].mode, "allow", "the dashboard now mirrors what happened on the phone");
+
   // stale revision is ignored
   sync = await (await post("/agent/sync", { packages: [pk("a.b")], overrides: { "a.b": "block" }, overridesRev: 50 }, auth)).json();
   assert.deepEqual(sync.policy.hide, []);
-  // dashboard clears it
-  assert.equal((await post(`/api/devices/${id}/command`, { type: "clearOverrides" }, { cookie })).status, 200);
+
+  // Changing it from the dashboard now actually sticks -- no stale phone-side override left to fight it.
+  await put(cookie, `/api/devices/${id}/config`, { blockUnlisted: true, apps: { "a.b": { mode: "block" } } });
   sync = await (await post("/agent/sync", { packages: [pk("a.b")] }, auth)).json();
   assert.deepEqual(sync.policy.hide, ["a.b"]);
-  assert.deepEqual(sync.overrides, {});
-  assert.ok(sync.overridesRev > 100);
 });
 
 test("phone log events are stored and shown", async () => {

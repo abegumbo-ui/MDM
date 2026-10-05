@@ -584,9 +584,21 @@ async function agentApi(request, env, url) {
       dirty = true;
     }
     if (body.overrides && typeof body.overrides === "object" && Number(body.overridesRev) > (d.overridesRev || 0)) {
-      // Changes made on the phone with the master code (newest write wins).
-      d.overrides = normalizeOverrides(body.overrides);
-      d.overridesRev = Number(body.overridesRev);
+      // A change made on the phone itself becomes the real setting here, instead of a second,
+      // parallel state that would otherwise keep silently winning over the dashboard forever --
+      // the two are meant to mirror each other, not permanently disagree until someone remembers
+      // "Clear phone-side changes" in Controls. Folding it into config now means a later dashboard
+      // change isn't fighting a stale phone-side override it has no way to see.
+      const changes = normalizeOverrides(body.overrides);
+      for (const [pkg, mode] of Object.entries(changes)) {
+        config.apps[pkg] = { mode, label: config.apps[pkg]?.label };
+      }
+      d.config = config;
+      // A strictly newer revision than what the phone just sent is what makes its own
+      // adoptOverrides() actually replace its local copy with this empty one below, instead of
+      // ignoring it as an "older" echo of what it already has.
+      d.overrides = {};
+      d.overridesRev = Date.now();
       dirty = true;
     }
     if (typeof body.appCode === "string") {
