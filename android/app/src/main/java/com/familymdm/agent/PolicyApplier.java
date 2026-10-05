@@ -165,18 +165,19 @@ final class PolicyApplier {
         for (String pkg : hideSet) {
             if (never.contains(pkg)) continue;
             try {
+                // Re-asserted every sync, even if Android already reported it hidden last time --
+                // trusting that cached answer meant a package Android considers "hidden" for some
+                // unrelated reason (e.g. shipped as disabled-until-used) could sit here forever
+                // with nothing ever attempted and nothing ever logged, looking exactly like nothing
+                // was happening at all. The call itself is a no-op on Android's end once it's really hidden.
                 boolean wasHidden = dpm.isApplicationHidden(admin, pkg);
-                if (!wasHidden) {
-                    Agent.TOUCHED.put(pkg, System.currentTimeMillis());
-                    if (dpm.setApplicationHidden(admin, pkg, true)) {
-                        hiddenByUs.add(pkg);
-                        Agent.addEvent(c, "hide", "Hidden: " + nameOf(pkg));
-                        errorCleared(c, "hide:" + pkg);
-                    } else {
-                        errorOnce(c, "hide:" + pkg, "Could not hide " + nameOf(pkg) + " (the phone refused)");
-                    }
-                } else {
+                Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+                if (dpm.setApplicationHidden(admin, pkg, true)) {
                     hiddenByUs.add(pkg);
+                    if (!wasHidden) Agent.addEvent(c, "hide", "Hidden: " + nameOf(pkg));
+                    errorCleared(c, "hide:" + pkg);
+                } else {
+                    errorOnce(c, "hide:" + pkg, "Could not hide " + nameOf(pkg) + " (the phone refused)");
                 }
             } catch (Exception e) {
                 errorOnce(c, "hide:" + pkg, "Could not hide " + nameOf(pkg) + ": " + e.getMessage());
