@@ -32,7 +32,7 @@ Two ways to make the agent device owner — pick whichever is easier. Either way
    ```
    If your build has the dashboard address baked in (set via the `DASHBOARD_URL` repository variable), that's all you need — the agent already knows where to connect. If not, tap **"Use a different dashboard"** on the phone once and type the address.
 
-Either way: the phone appears under **Devices**. Tap it, open its **App rules** tab, pick what to allow, then **Save**. The phone picks changes up within about a minute (longer if the phone is idle in Doze).
+Either way: the phone appears under **Devices**. Tap it, open its **App rules** tab, pick what to allow, then **Save**. The phone picks changes up within about 15 seconds (longer if the phone is idle in Doze).
 
 QR provisioning needs the agent build to have finished publishing its checksum (automatic, from GitHub Actions) — if "Generate enrollment QR" says the checksum isn't ready yet, wait a minute for the latest build to finish and try again.
 
@@ -133,7 +133,7 @@ The phone keeps enforcing everything it last received with no internet: restrict
 ## Making a factory reset useless (Factory Reset Protection)
 Android can't block a reset from recovery mode in software, so the agent and device-owner status can be wiped. What it *can* do is make the wiped phone useless: after a reset from recovery mode, setup demands one of the Google accounts you choose, and anyone else is stuck. **No account has to be signed in on the phone.** It needs Android 11 or newer.
 1. Get your Google account ID (a number of about 21 digits, not your email): open the [Google People API page](https://developers.google.com/people/api/rest/v1/people/get), click **Try it**, set `resourceName` to `people/me` and `personFields` to `metadata`, click **Execute** and sign in. Copy the number next to `id`.
-2. Dashboard **Settings → Factory Reset Protection**: paste it and **Save**. Phones apply it within about a minute (the phone's log says "Factory Reset Protection set").
+2. Dashboard **Settings → Factory Reset Protection**: paste it and **Save**. Phones apply it within about 15 seconds (the phone's log says "Factory Reset Protection set").
 3. Open the phone's page: the **Reset protection** card is your checklist. It says **Strong** only when all of these hold: bootloader locked, protection set, reset from Settings blocked, Safe Mode blocked, Developer options and USB debugging blocked, and a recent security patch.
 
 For it to hold, use a phone whose **bootloader stays locked** (for example a Moto G; do not unlock it). With an unlocked bootloader the protection can be erased from a computer. With it locked there is no fastboot erase or flash for you either, so your way out is **Release device** in the dashboard (or the master-code panel). Keep the phone's system updates current: old patches have known bypasses. No protection is unbreakable. This closes the known doors, so **test it on a spare phone before relying on it**: reset it from recovery mode and confirm setup demands your Google account.

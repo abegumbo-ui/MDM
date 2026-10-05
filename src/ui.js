@@ -174,7 +174,7 @@ async function load(){
  for(const b of browsers)b.isBrowser=true;
  render();
  call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
-async function saveConfigFor(d,msg){await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about a minute.')}
+async function saveConfigFor(d,msg){await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about 15 seconds.')}
 
 /* ---------- shell ---------- */
 // Everything is sandboxed to its own thing: the top bar only ever says "Devices". Apps and Sites
@@ -271,7 +271,7 @@ function renderDeviceDetail(m,d){
  m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico dev',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;padding:0'},'📱'),
   h('div',{class:'grow'},h('h2',{style:'font-size:20px'},d.name),chipsFor(d,true))));
 
- const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it at its next check-in (within about a minute).');load()};
+ const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it at its next check-in (within about 15 seconds).');load()};
  const cmd=function(box,label,type,args,confirmMsg,cls){box.append(btn(label,cls||'tonal',async function(){
    if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}await queue(label,type,a)}))};
 
@@ -423,7 +423,7 @@ function renderApps(m,dv){
    const img=h('img',{src:'/api/icon/'+pkg,alt:'',style:'width:40px;height:40px;border-radius:10px'});img.onerror=function(){img.replaceWith(h('div',{class:'ph',style:'width:40px;height:40px;border-radius:10px;background:var(--surface-3)'}))};
    pc.append(h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},label),h('div',{class:'mute small mono'},pkg),
     h('div',{class:'row',style:'margin-top:8px'},
-     btn('Approve','',async function(){dv.config.apps[pkg]={mode:'allow',label:label};await saveConfigFor(dv,'Approved '+label+'. It appears on the phone within about a minute.');render()}),
+     btn('Approve','',async function(){dv.config.apps[pkg]={mode:'allow',label:label};await saveConfigFor(dv,'Approved '+label+'. It appears on the phone within about 15 seconds.');render()}),
      btn('Block','danger',async function(){dv.config.apps[pkg]={mode:'block',label:label};await saveConfigFor(dv,'Blocked '+label+'.');render()})))))}
   m.append(pc)}
  const top=h('div',{class:'card'});
@@ -459,7 +459,7 @@ function appRow(a,dv){
 
  const saveBtn=btn('Save','',async function(){
   if(d.mode)dv.config.apps[a.p]={mode:d.mode,label:a.l,schedule:d.schedule||undefined};else delete dv.config.apps[a.p];
-  await saveConfigFor(dv,'Saved '+(a.l||a.p)+'. The phone applies it within about a minute.');delete draft[a.p];render()});
+  await saveConfigFor(dv,'Saved '+(a.l||a.p)+'. The phone applies it within about 15 seconds.');delete draft[a.p];render()});
  saveBtn.disabled=!dirty();
  const refresh=function(){saveBtn.disabled=!dirty()};
  const seg=h('div',{class:'seg'});
@@ -474,7 +474,7 @@ function appRow(a,dv){
  if(!a.s&&installedHere)ctl.append(btn('Uninstall','danger',async function(){
   if(!confirm('Uninstall '+(a.l||a.p)+' from '+dv.name+'? This removes the app and its data from the phone.'))return;
   await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
-  snack('Uninstall queued. The phone does it at its next check-in (within about a minute).');load()}));
+  snack('Uninstall queued. The phone does it at its next check-in (within about 15 seconds).');load()}));
  const schedBtn=h('button',{class:'btn tonal'},d.schedule?'Schedule on':'Schedule');
  schedBtn.onclick=function(){open[a.p]=!open[a.p];render()};
  if(d.mode!=='block')ctl.append(schedBtn);
@@ -549,7 +549,7 @@ function renderSitesEditor(m,dv){
 function renderSites(m,dv){
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
   h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the App rules box so it can\'t be opened directly.')),
-  sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it within about a minute.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
+  sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it within about 15 seconds.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
  renderRequestsCard(m,(dv.siteRequests||[]).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at}}),dv);
  renderCloneCard(m,dv);
  renderSitesEditor(m,dv);
@@ -558,7 +558,7 @@ async function addSite(dv,entry){
  const key=(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  dv.config.sites=dv.config.sites||{};
  dv.config.sites[key]={type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true};
- await saveConfigFor(dv,'Added '+(entry.label||entry.url)+'. Phones pick it up within about a minute.');
+ await saveConfigFor(dv,'Added '+(entry.label||entry.url)+'. Phones pick it up within about 15 seconds.');
 }
 /** Copies another device's (or browser's) whole config -- or just its sites, into a browser -- over this one's. */
 function renderCloneCard(m,dv){
@@ -572,7 +572,7 @@ function renderCloneCard(m,dv){
   if(!confirm('Replace this '+(dv.isBrowser?'browser\'s sites':'device\'s settings')+' with a copy of the selected one\'s? This cannot be undone.'))return;
   const [rawId,kind]=sel.value.split('|');
   await call('POST',(dv.isBrowser?'/api/browsers/':'/api/devices/')+dv.id+'/clone-from',{sourceId:rawId,browser:kind==='browser'});
-  snack('Cloned. Phones pick up the change within about a minute.');load()})));
+  snack('Cloned. Phones pick up the change within about 15 seconds.');load()})));
  m.append(card);
 }
 function renderBrowserDetail(m,b){
@@ -646,7 +646,7 @@ function renderSettings(m){
   h('div',{class:'mute'},'Shown on the timed-lock screen and at the top of the agent app, on every phone. A square or wide PNG/JPG works; it is shrunk automatically.'));
  const prev=h('img',{src:'/api/logo?v='+(iconVer.__logo||0),alt:'',style:'max-height:80px;max-width:100%;margin-top:10px;border-radius:8px;display:block'});prev.onerror=function(){prev.replaceWith(h('div',{class:'mute small',style:'margin-top:10px'},'No logo set.'))};
  logoCard.append(prev,h('div',{class:'row',style:'margin-top:10px'},
-  btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up within about a minute.');render()}),
+  btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up within about 15 seconds.');render()}),
   btn('Remove logo','outline',async function(){await call('DELETE','/api/logo');iconVer.__logo=Date.now();snack('Logo removed.');render()})));
  m.append(logoCard);
  m.append(h('div',{class:'card'},h('h2',null,'Everything else moved'),
@@ -666,7 +666,7 @@ function renderDeviceSettings(m,dv){
   btn('Save','',async function(){
    const list=ids.value.split(/[ ,\n]+/).filter(Boolean);
    if(list.some(function(x){return !/^(people\/)?[0-9]{15,25}$/.test(x)})){snack('That is not a Google account ID. It is a number of about 21 digits (see the steps below), not an email address.',1);return}
-   dv.config.frpAccounts=list;await saveConfigFor(dv,'Saved. The phone applies it within about a minute.');await load()}),
+   dv.config.frpAccounts=list;await saveConfigFor(dv,'Saved. The phone applies it within about 15 seconds.');await load()}),
   btn('Turn off','outline',async function(){dv.config.frpAccounts=[];await saveConfigFor(dv,'Reset protection removed.');await load()})));
  frp.append(h('div',{class:'mute small',style:'margin-top:10px'},'How to get your Google account ID:'),
   h('ol',{class:'mute small',style:'margin:4px 0 0 18px;padding:0'},
@@ -679,7 +679,7 @@ function renderDeviceSettings(m,dv){
   h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. Other apps are NOT switched off: they keep running in the background (Maps keeps using Google Play services), they just can\'t be opened. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode, and turning it off here gives the phone back its normal home screen.')),
   sw(dv.config.homeScreen,async function(on){
    if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the App rules box above, because only those will appear.')){render();return}
-   dv.config.homeScreen=on;try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches within about a minute.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()}))));
+   dv.config.homeScreen=on;try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches within about 15 seconds.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()}))));
  m.append(h('div',{class:'card'},h('h2',null,'Agent updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Update the agent automatically'),
   h('div',{class:'mute'},'The phone checks GitHub for a newer build every 6 hours and installs it itself. You can always update it yourself from the Controls box, or from the phone\'s admin panel.')),
   sw(dv.config.autoUpdate,async function(on){dv.config.autoUpdate=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));
@@ -699,7 +699,7 @@ function renderDeviceSettings(m,dv){
    await call('PUT','/api/devices/'+dv.id+'/master',{salt:hex(salt),hash:hex(bits)});code.value='';dv.masterSet=true;snack('Master code saved. The phone receives it at its next check-in.');render()}),
   dv.masterSet?btn('Remove','outline',async function(){if(!confirm('Remove this phone\'s master code? Its on-phone admin panel stops working.'))return;await call('DELETE','/api/devices/'+dv.id+'/master');dv.masterSet=false;snack('Master code removed.');render()}):null));
  m.append(mc);
- const card=h('div',{class:'card'},h('h2',null,'Restrictions'),h('div',{class:'mute'},'Each switch saves immediately. The phone picks changes up within about a minute.'));
+ const card=h('div',{class:'card'},h('h2',null,'Restrictions'),h('div',{class:'mute'},'Each switch saves immediately. The phone picks changes up within about 15 seconds.'));
  for(const k in state.restrictions){
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},state.restrictions[k].label),
    sw(dv.config.restrictions[k],async function(on){dv.config.restrictions[k]=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}})))}
