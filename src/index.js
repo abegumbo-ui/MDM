@@ -26,7 +26,7 @@ const fromBase64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const imageResponse = (b64) =>
   new Response(fromBase64(b64), { headers: { "content-type": "image/png", "cache-control": "private, max-age=86400" } });
 const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this is a safety cap
-const MASTER_ITERATIONS = 100000;
+const MASTER_ITERATIONS = 10000; // 10k, not 100k: cheap flip-phone CPUs took ~5s to check a code at 100k
 const MAX_EVENTS = 60;
 const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser", "freebrowse"]);
 const MAX_FREEBROWSE_MINUTES = 240;

@@ -18,6 +18,9 @@ import javax.crypto.spec.PBEKeySpec;
 final class Master {
     private static final int MAX_FAILS = 5;
     private static final long LOCKOUT_MS = 15 * 60 * 1000;
+    // 10k, not 100k: a cheap flip-phone CPU took ~5 seconds to check a code at 100k iterations.
+    // Still backed by the 5-wrong-tries lockout below, which is the real defense against guessing.
+    private static final int ITERATIONS = 10000;
 
     private Master() {}
 
@@ -46,8 +49,8 @@ final class Master {
         for (byte b : salt) sb.append(String.format("%02x", b));
         JSONObject m = new JSONObject();
         m.put("salt", sb.toString());
-        m.put("hash", derive(code, sb.toString(), 100000));
-        m.put("iterations", 100000);
+        m.put("hash", derive(code, sb.toString(), ITERATIONS));
+        m.put("iterations", ITERATIONS);
         store(c, m);
         Agent.addEvent(c, "security", "A master code was set on the phone");
     }

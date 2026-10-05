@@ -152,7 +152,8 @@ public class AdminActivity extends Activity {
         LinearLayout home = Ui.card(this, root);
         home.addView(Ui.titleText(this, "Home screen mode"));
         home.addView(Ui.body(this, Kiosk.paused(this) ? "Paused: the phone is working normally."
-                : Kiosk.active(this) ? "On: only allowed apps can be opened." : "Off.", true));
+                : Kiosk.active(this) ? "On: only allowed apps can be opened."
+                : "Off. Turn it on from the dashboard (this phone's Settings box) — not from here, since it needs the allowed-apps list set up first.", true));
         if (Kiosk.paused(this)) {
             action(home, "Resume home screen mode", Ui.FILLED, v -> {
                 Agent.prefs(this).edit().putBoolean("kioskPaused", false).apply();
