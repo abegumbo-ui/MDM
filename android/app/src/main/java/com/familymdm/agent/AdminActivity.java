@@ -61,6 +61,15 @@ public class AdminActivity extends Activity {
         Toast.makeText(this, s, Toast.LENGTH_LONG).show();
     }
 
+    private boolean isPackageInstalled(String pkg) {
+        try {
+            getPackageManager().getPackageInfo(pkg, 0);
+            return true;
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
+
     /** Button that refuses to act once the 10-minute admin session has run out. */
     private android.widget.Button action(LinearLayout box, String label, int style, final View.OnClickListener l) {
         android.widget.Button b = Ui.button(this, label, style, v -> {
@@ -106,6 +115,37 @@ public class AdminActivity extends Activity {
         appsBox = new LinearLayout(this);
         appsBox.setOrientation(LinearLayout.VERTICAL);
         Ui.add(apps, appsBox, 0);
+
+        LinearLayout browser = Ui.card(this, root);
+        browser.addView(Ui.titleText(this, "Browser"));
+        boolean browserInstalled = isPackageInstalled("com.familymdm.browser");
+        browser.addView(Ui.body(this, browserInstalled
+                ? "Installed. Only opens sites you've allowed; hooks into this phone's site rules on its own."
+                : "A separate app with its own whitelist, so other apps don't need a browser inside them.", true));
+        action(browser, browserInstalled ? "Reinstall Browser app" : "Install Browser app", Ui.TONAL, v -> {
+            toast("Downloading the Browser app...");
+            new Thread(() -> {
+                String msg;
+                try {
+                    Installer.installFromUrl(this,
+                            "https://github.com/abegumbo-ui/MDM/releases/download/latest/mdm-browser.apk", null);
+                    PolicyApplier.applyStored(this);
+                    msg = "Installing the Browser app now.";
+                } catch (Exception e) {
+                    msg = "Could not install the Browser app: " + (e.getMessage() == null ? e.toString() : e.getMessage());
+                }
+                final String text = msg;
+                runOnUiThread(() -> toast(text));
+            }).start();
+        });
+        if (browserInstalled) {
+            action(browser, "Open Browser", Ui.TONAL, v -> {
+                Intent launch = getPackageManager().getLaunchIntentForPackage("com.familymdm.browser");
+                if (launch != null) startActivity(launch);
+                else toast("The Browser app isn't installed on this phone yet.");
+            });
+            action(browser, "Browse freely for a while…", Ui.OUTLINED, v -> askFreebrowse());
+        }
 
         LinearLayout home = Ui.card(this, root);
         home.addView(Ui.titleText(this, "Home screen mode"));
@@ -242,6 +282,31 @@ public class AdminActivity extends Activity {
                     final int mins = m;
                     final String msg = message.getText().toString();
                     if (unlocked()) run(() -> Actions.lock(this, mins, msg));
+                })
+                .show();
+    }
+
+    private void askFreebrowse() {
+        final EditText minutes = Ui.field(this, "Minutes");
+        minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
+        minutes.setText("60");
+        new AlertDialog.Builder(this)
+                .setTitle("Browse freely for a while")
+                .setMessage("Opens any site for a chosen time. Every new site visited is then held for approval, just like a newly installed app.")
+                .setView(minutes)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Start", (d, w) -> {
+                    int m = 60;
+                    try {
+                        m = Math.max(5, Math.min(240, Integer.parseInt(minutes.getText().toString().trim())));
+                    } catch (NumberFormatException ignored) {
+                    }
+                    final int mins = m;
+                    if (unlocked()) {
+                        PolicyApplier.startBrowseWindow(this, mins);
+                        Agent.addEvent(this, "local", "Master code on phone: started free browsing for " + mins + " minutes");
+                        toast("Browser can open any site for " + mins + " minutes.");
+                    }
                 })
                 .show();
     }

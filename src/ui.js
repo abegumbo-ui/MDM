@@ -75,12 +75,9 @@ pre.cmd{background:var(--surface-3);border-radius:12px;padding:12px;white-space:
 .dev:hover{background:var(--surface-2)}
 .dev .ico{width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
 .dev .name{font-weight:500;font-size:16px}
-.pagetabs{display:flex;gap:8px;overflow-x:auto;margin:12px 0 8px;padding-bottom:4px}
-.pagetabs button{white-space:nowrap;border:1px solid var(--outline);background:none;color:var(--on-surface);border-radius:8px;padding:6px 14px;font:500 13px Roboto,system-ui,sans-serif;cursor:pointer}
-.pagetabs button.on{background:var(--secondary-container);color:var(--on-secondary-container);border-color:transparent}
-.pager{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;align-items:flex-start;scrollbar-width:none}
-.pager::-webkit-scrollbar{display:none}
-.pager>section{flex:0 0 100%;scroll-snap-align:start;min-width:0}
+.boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start;margin-top:12px}
+.box{min-width:0}
+.box h3{font-size:13px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;color:var(--on-surface-variant);margin:0 0 8px}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--outline-variant)}
 .kv:first-child{border-top:0}.kv b{font-weight:500;text-align:right;word-break:break-word}
 .login{max-width:360px;margin:16vh auto 0;padding:0 16px}
@@ -105,7 +102,6 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <div id="snack"></div>
 <script>
 const DAYS=['S','M','T','W','T','F','S'];
-let deviceTab=0,lastOpenId=null; // which pager page a device's detail view is on, kept across re-renders (e.g. typing in a search box)
 let state=null,devices=[],browsers=[],latest=null,tab='devices',openId=null,openBrowserId=null,search='';
 function route(){const x=(location.hash||'#devices').slice(1);
  if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null}
@@ -261,7 +257,6 @@ function resetCard(d){
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No phone protection is unbreakable. This checks the known ways around a reset: resetting from Settings, Safe Mode, USB debugging, an unlocked bootloader, an old system, and simply setting the phone up again.'));
  return card}
 function renderDeviceDetail(m,d){
- if(d.id!==lastOpenId){lastOpenId=d.id;deviceTab=0}
  const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
  m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
  m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico dev',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;padding:0'},'📱'),
@@ -376,15 +371,11 @@ function renderDeviceDetail(m,d){
  const arules=h('section');renderApps(arules);
  const st=h('section');renderSites(st);
 
- // ----- pager -----
+ // ----- boxes: every section visible at once, side by side where there's room -----
  const parts=[['Overview',ov],['Controls',ct],['On this phone',ap],['App rules',arules],['Sites',st],['Log',lg],['Network',nw]];
- const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
- parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){deviceTab=i;pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
- pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));deviceTab=i;[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
- m.append(tabsRow,pager,h('div',{class:'mute small',style:'margin-top:8px;text-align:center'},'Swipe sideways or tap a tab'));
- // A re-render (e.g. typing in a search box inside a pager page) rebuilds this whole pager from
- // scratch, which would otherwise always snap back to the first tab — jump straight back instead.
- if(deviceTab)requestAnimationFrame(function(){pager.scrollTo({left:deviceTab*pager.clientWidth})});
+ const grid=h('div',{class:'boxes'});
+ parts.forEach(function(p){const box=h('div',{class:'box'},h('h3',null,p[0]));box.append(p[1]);grid.append(box)});
+ m.append(grid);
 }
 
 /* ---------- apps ---------- */

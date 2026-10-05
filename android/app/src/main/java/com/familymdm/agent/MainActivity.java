@@ -45,7 +45,6 @@ public class MainActivity extends Activity {
     private LinearLayout switchBox;
     private TextView installHint;
     private TextView removeHint;
-    private TextView browseHint;
     private boolean showEnroll;
     private boolean reshowFrp;
     private LinearLayout enrollBox;
@@ -54,6 +53,8 @@ public class MainActivity extends Activity {
     private EditText codeField;
     private android.widget.Button enrollButton;
     private android.widget.Button pickButton;
+    private android.widget.Button updateButton;
+    private boolean updateAvailable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -128,8 +129,8 @@ public class MainActivity extends Activity {
         upd.addView(Ui.titleText(this, "Update"));
         updateText = Ui.body(this, "", true);
         upd.addView(updateText);
-        Ui.add(upd, Ui.button(this, "Check for an update", Ui.TONAL, v -> checkUpdate(false)), 12);
-        Ui.add(upd, Ui.button(this, "Update now", Ui.FILLED, v -> checkUpdate(true)), 8);
+        updateButton = Ui.button(this, "Check for an update", Ui.TONAL, v -> checkUpdate(updateAvailable));
+        Ui.add(upd, updateButton, 12);
 
         LinearLayout install = Ui.card(this, actionsBox);
         install.addView(Ui.titleText(this, "Install an app"));
@@ -139,18 +140,10 @@ public class MainActivity extends Activity {
         pickButton = Ui.button(this, "Choose APK file", Ui.TONAL, v -> pickApk());
         Ui.add(install, pickButton, 8);
 
-        LinearLayout browse = Ui.card(this, actionsBox);
-        browse.addView(Ui.titleText(this, "Browser"));
-        browse.addView(Ui.body(this, "A separate app. Only opens sites the administrator has allowed.", true));
-        Ui.add(browse, Ui.button(this, "Open Browser", Ui.TONAL, v -> openBrowserApp()), 12);
-        browseHint = Ui.body(this, "", true);
-        Ui.add(browse, browseHint, 8);
-        Ui.add(browse, Ui.button(this, "Browse freely for a while (needs code)", Ui.OUTLINED, v -> promptCode("freebrowse")), 8);
-
         LinearLayout admin = Ui.card(this, actionsBox);
         admin.addView(Ui.titleText(this, "Administrator"));
-        admin.addView(Ui.body(this, "Master code: everything the dashboard can do, here on the phone, even without internet.", true));
-        Ui.add(admin, Ui.button(this, "Administrator (master code)", Ui.TONAL, v -> promptMaster()), 12);
+        admin.addView(Ui.body(this, "Everything the dashboard can do, here on the phone, even without internet.", true));
+        Ui.add(admin, Ui.button(this, "Administrator (code)", Ui.TONAL, v -> promptMaster()), 12);
 
         LinearLayout msg = Ui.card(this, actionsBox);
         msg.addView(Ui.titleText(this, "Message the administrator"));
@@ -277,18 +270,14 @@ public class MainActivity extends Activity {
         actionsBox.setVisibility(active ? View.VISIBLE : View.GONE);
         switchBox.setVisibility(standalone && !showEnroll ? View.VISIBLE : View.GONE);
         installHint.setText(standalone
-                ? "Enter the master code, then pick the APK file from this phone."
-                : "Ask the administrator for a one-time install code (or use the master code), then pick the APK file from this phone.");
+                ? "Enter the code, then pick the APK file from this phone."
+                : "Ask the administrator for a code to install this, then pick the APK file from this phone.");
         removeHint.setText(standalone
-                ? "Enter the master code. This ends all management of the phone."
-                : "Ask the administrator for a one-time removal code (or use the master code). This ends all management of the phone.");
+                ? "Enter the code. This ends all management of the phone."
+                : "Ask the administrator for a code to remove this. This ends all management of the phone.");
         updateText.setText("This agent is build " + Updater.currentBuild(this) + ".");
         boolean canPick = System.currentTimeMillis() < Agent.prefs(this).getLong("installUntil", 0);
         pickButton.setVisibility(canPick ? View.VISIBLE : View.GONE);
-        long browseUntil = Agent.prefs(this).getLong("browseUntil", 0);
-        browseHint.setText(browseUntil > System.currentTimeMillis()
-                ? "Free browsing until " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(browseUntil)) + ". New sites visited will need your approval afterward."
-                : "Opens any site for a chosen time. Every new site visited is then held for your approval, just like a newly installed app.");
     }
 
     // ---------- offline mode setup ----------
@@ -397,42 +386,44 @@ public class MainActivity extends Activity {
         startActivity(new Intent(this, LocalSettingsActivity.class));
     }
 
+    /** One button: first tap checks, and if a newer build exists it becomes "Update now" for the next tap. */
     private void checkUpdate(final boolean install) {
-        toast(install ? "Looking for an update..." : "Checking...");
+        toast(install ? "Updating..." : "Checking...");
+        updateButton.setEnabled(false);
         new Thread(() -> {
             String msg;
+            boolean available = false;
             try {
                 if (install) {
                     msg = Updater.update(this, false);
                 } else {
                     JSONObject latest = Updater.latest(this);
-                    msg = latest == null ? "Could not find the latest build."
-                            : latest.getInt("versionCode") > Updater.currentBuild(this)
-                            ? "Build " + latest.getInt("versionCode") + " is available. This agent is build " + Updater.currentBuild(this) + "."
-                            : "Up to date (build " + Updater.currentBuild(this) + ").";
+                    if (latest == null) {
+                        msg = "Could not find the latest build.";
+                    } else if (latest.getInt("versionCode") > Updater.currentBuild(this)) {
+                        msg = "Build " + latest.getInt("versionCode") + " is available. This agent is build " + Updater.currentBuild(this) + ".";
+                        available = true;
+                    } else {
+                        msg = "Up to date (build " + Updater.currentBuild(this) + ").";
+                    }
                 }
             } catch (Exception e) {
                 msg = "Update failed: " + (e.getMessage() == null ? e.toString() : e.getMessage());
             }
             final String text = msg;
+            final boolean avail = install ? false : available;
             runOnUiThread(() -> {
                 toast(text);
                 updateText.setText(text);
+                updateAvailable = avail;
+                updateButton.setText(avail ? "Update now" : "Check for an update");
+                updateButton.setEnabled(true);
             });
         }).start();
     }
 
     private void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_LONG).show();
-    }
-
-    private void openBrowserApp() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage("com.familymdm.browser");
-        if (launch != null) {
-            startActivity(launch);
-        } else {
-            toast("The Browser app isn't installed on this phone yet.");
-        }
     }
 
     // ---------- enrollment ----------
@@ -476,13 +467,11 @@ public class MainActivity extends Activity {
 
     // ---------- code-protected actions ----------
     private void promptCode(final String type) {
-        final EditText input = Ui.field(this, "One-time code or master code");
+        final EditText input = Ui.field(this, "Code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
-                .setTitle(type.equals("install") ? "Install code" : type.equals("freebrowse") ? "Browse code" : "Removal code")
-                .setMessage(type.equals("freebrowse")
-                        ? "Type the one-time code from the administrator, or the master code (which opens any site for 60 minutes with no code needed)."
-                        : "Type the one-time code from the administrator, or the master code.")
+                .setTitle("Enter code")
+                .setMessage("Ask the administrator for a code to " + (type.equals("install") ? "install this." : type.equals("freebrowse") ? "browse freely for a while." : "remove this."))
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("OK", (d, w) -> redeem(type, input.getText().toString().trim()))
@@ -490,10 +479,10 @@ public class MainActivity extends Activity {
     }
 
     private void promptMaster() {
-        final EditText input = Ui.field(this, "Master code");
+        final EditText input = Ui.field(this, "Code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
-                .setTitle("Master code")
+                .setTitle("Enter code")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("OK", (d, w) -> {
@@ -531,7 +520,7 @@ public class MainActivity extends Activity {
                 Agent.addEvent(this, "local", "Master code used instead of a one-time " + type + " code");
                 p.edit().putInt("redeemFails", 0).apply();
             } else if (standalone) {
-                error = failedTry(p, now, "Wrong master code.");
+                error = failedTry(p, now, "Wrong code.");
             } else {
                 try {
                     JSONObject body = new JSONObject();
