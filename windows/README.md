@@ -104,7 +104,13 @@ repeating here.
    it, and whether a *non*-allowed program still can't.
 2. **Whether default-outbound-block actually blocks everything** for a program not on the allowed
    list, including anything that tries to make a lower-level/raw connection rather than going
-   through normal Windows networking APIs.
+   through normal Windows networking APIs. **Confirmed broken on a real machine with Avast Free
+   Antivirus installed**: `FirewallManager` only ever talks to Windows' own native firewall
+   (`HNetCfg.FwPolicy2`); a third-party security suite that installs its own firewall and takes
+   over packet filtering from Windows' (Avast's "Firewall" component does this, separate from its
+   antivirus scanning) makes every change here a no-op, since that suite's firewall never sees
+   these rules at all. Not yet fixed -- the practical workaround for now is turning that
+   third-party firewall off and relying on Windows' own, which LockGuard actually controls.
 3. **The self-uninstall script** in `Worker.BeginUninstall()` (a short detached PowerShell script
    that waits for the service to stop, then deletes it and the data folder). This needs an actual
    end-to-end test: click "Remove LockGuard entirely" in Setup, confirm the service is gone
