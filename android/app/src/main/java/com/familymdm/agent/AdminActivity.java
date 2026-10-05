@@ -170,6 +170,7 @@ public class AdminActivity extends Activity {
                 Agent.addEvent(this, "local", "Master code on phone: paused home screen mode");
                 Kiosk.clear(this);
                 Kiosk.syncPreferredActivities(this, false, Agent.prefs(this).getBoolean("prefBrowser", false));
+                Kiosk.announceChange(this);
                 try {
                     stopLockTask();
                 } catch (Exception ignored) {
