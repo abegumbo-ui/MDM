@@ -57,12 +57,14 @@ test("enroll, sync, apply policy, queue a command", async () => {
   let sync = await (await post("/agent/sync", { packages, info: { deviceOwner: true } }, auth)).json();
   assert.deepEqual(sync.policy.hide, [], "nothing is hidden until you opt in");
 
-  await req("/api/config", { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } }) });
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  const devId = devices[0].id;
+  await req(`/api/devices/${devId}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } }) });
   sync = await (await post("/agent/sync", { packages }, auth)).json();
   assert.deepEqual(sync.policy.hide, ["com.android.chrome"]);
   assert.ok(sync.policy.show.includes("com.google.android.apps.maps"));
 
-  const devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
   assert.equal(devices.length, 1);
   assert.equal(devices[0].name, "CAT S22 Flip");
   assert.equal(devices[0].packages.length, 3);
@@ -100,13 +102,13 @@ test("standalone Browser: connects directly to the dashboard with its own code, 
   assert.equal((await post("/browser/enroll", { code })).status, 403, "one-time: the same code cannot be used twice");
 
   const auth = { authorization: `Bearer ${token}` };
-  await put(cookie, "/api/config", { sites: { a: { type: "domain", url: "khanacademy.org" }, b: { type: "domain", url: "chromebooks.com" } } });
-  const sync = await (await post("/browser/sync", {}, auth)).json();
-  assert.equal(sync.sites.length, 2, "a standalone browser gets the same global allowlist as agent-managed devices");
-
-  const browsers = await (await req("/api/browsers", { headers: { cookie } })).json();
+  let browsers = await (await req("/api/browsers", { headers: { cookie } })).json();
   assert.equal(browsers.length, 1);
   assert.equal(browsers[0].info.model, "Pixel");
+  await put(cookie, `/api/browsers/${browsers[0].id}/config`, { sites: { a: { type: "domain", url: "khanacademy.org" }, b: { type: "domain", url: "chromebooks.com" } } });
+  const sync = await (await post("/browser/sync", {}, auth)).json();
+  assert.equal(sync.sites.length, 2, "a standalone browser's sites are its own, set on its own page");
+  browsers = await (await req("/api/browsers", { headers: { cookie } })).json();
 
   await post("/browser/sync", { siteRequests: [{ url: "https://bad.example/" }] }, auth);
   let list = await (await req("/api/browsers", { headers: { cookie } })).json();
@@ -169,6 +171,71 @@ test("freebrowse code: carries a chosen duration through to the redeem reply", a
   assert.equal(clamped.minutes, 240, "an out-of-range duration is clamped, not rejected");
 });
 
+test("a code generated for one device cannot be redeemed by a different device", async () => {
+  const cookie = await login();
+  const { auth: authA, id: idA } = await enrolledDevice(cookie);
+  const { auth: authB } = await enrolledDevice(cookie);
+
+  const { code } = await (await post("/api/codes", { type: "install", deviceId: idA }, { cookie })).json();
+  assert.equal((await post("/agent/redeem", { type: "install", code }, authB)).status, 403, "wrong device, even with a valid code");
+  assert.equal((await post("/agent/redeem", { type: "install", code }, authA)).status, 200, "the right device still works");
+
+  // Generated with no deviceId (e.g. from the global flow): any device can redeem it, as before.
+  const { code: openCode } = await (await post("/api/codes", { type: "install" }, { cookie })).json();
+  assert.equal((await post("/agent/redeem", { type: "install", code: openCode }, authB)).status, 200);
+});
+
+test("per-device config: seeded once from any pre-existing global config, then fully independent", async () => {
+  const cookie = await login();
+  await env.STATE.put("config", JSON.stringify({ sites: { a: { type: "domain", url: "oldsite.example" } }, approveNew: true }));
+
+  const { auth: auth1, id: id1 } = await enrolledDevice(cookie);
+  let sync = await (await post("/agent/sync", {}, auth1)).json();
+  assert.equal(sync.policy.sites[0].host, "oldsite.example", "a brand-new device starts from whatever the old global config held");
+  assert.equal(sync.policy.approveNew, true);
+
+  // Change device 1 and enroll a second device afterward: it must NOT see device 1's changes,
+  // only the still-unchanged legacy snapshot (each device seeds independently, once).
+  await put(cookie, `/api/devices/${id1}/config`, { sites: { b: { type: "domain", url: "newsite.example" } } });
+  const { auth: auth2 } = await enrolledDevice(cookie);
+  const sync2 = await (await post("/agent/sync", {}, auth2)).json();
+  assert.equal(sync2.policy.sites[0].host, "oldsite.example", "device 2 seeds from the original legacy config, not device 1's edits");
+  sync = await (await post("/agent/sync", {}, auth1)).json();
+  assert.equal(sync.policy.sites[0].host, "newsite.example", "device 1 kept its own change");
+  await env.STATE.delete("config"); // tests share one KV store; don't leak the legacy key into later tests
+});
+
+test("clone settings from one device (or browser) into another", async () => {
+  const cookie = await login();
+  const { id: source } = await enrolledDevice(cookie);
+  await put(cookie, `/api/devices/${source}/config`, { sites: { a: { type: "domain", url: "khanacademy.org" } }, approveNew: true });
+
+  const { auth: targetAuth, id: target } = await enrolledDevice(cookie);
+  let sync = await (await post("/agent/sync", {}, targetAuth)).json();
+  assert.equal(sync.policy.sites.length, 0, "a fresh device starts with nothing of its own");
+
+  assert.equal((await post(`/api/devices/${target}/clone-from`, { sourceId: "deadbeef" }, { cookie })).status, 404);
+  assert.equal((await post(`/api/devices/${target}/clone-from`, { sourceId: source }, { cookie })).status, 200);
+  sync = await (await post("/agent/sync", {}, targetAuth)).json();
+  assert.equal(sync.policy.sites[0].host, "khanacademy.org");
+  assert.equal(sync.policy.approveNew, true);
+
+  // A browser can only ever receive sites, never app rules or restrictions.
+  const { token } = await (await post("/browser/register", { info: {} })).json();
+  const browserAuth = { authorization: `Bearer ${token}` };
+  const browserId = token.split(".")[0];
+  assert.equal((await post(`/api/browsers/${browserId}/clone-from`, { sourceId: source }, { cookie })).status, 200);
+  const bsync = await (await post("/browser/sync", {}, browserAuth)).json();
+  assert.equal(bsync.sites[0].host, "khanacademy.org");
+
+  // And a device can clone a browser's sites back, browser-to-device.
+  const { auth: target2Auth, id: target2 } = await enrolledDevice(cookie);
+  assert.equal((await post(`/api/devices/${target2}/clone-from`, { sourceId: browserId, browser: true }, { cookie })).status, 200);
+  const sync2 = await (await post("/agent/sync", {}, target2Auth)).json();
+  assert.equal(sync2.policy.sites[0].host, "khanacademy.org");
+  assert.equal(sync2.policy.approveNew, false, "cloning from a browser never carries app rules, since it has none");
+});
+
 test("icons are stored once and served to the admin only", async () => {
   const cookie = await login();
   const { auth } = await enrolledDevice(cookie);
@@ -215,7 +282,7 @@ test("approval mode holds apps installed after it was switched on until approved
   const { auth, id } = await enrolledDevice(cookie);
   const pk = (p) => ({ p, l: p, s: false, h: false });
   await post("/agent/sync", { packages: [pk("com.old.app")] }, auth); // baseline
-  await put(cookie, "/api/config", { approveNew: true });
+  await put(cookie, `/api/devices/${id}/config`, { approveNew: true });
 
   let sync = await (await post("/agent/sync", { packages: [pk("com.old.app"), pk("com.new.app")] }, auth)).json();
   assert.deepEqual(sync.policy.hide, ["com.new.app"]);
@@ -223,7 +290,7 @@ test("approval mode holds apps installed after it was switched on until approved
   assert.ok(sync.policy.show.includes("com.old.app"));
 
   // Approve from the dashboard (config says allow)
-  await put(cookie, "/api/config", { approveNew: true, apps: { "com.new.app": { mode: "allow" } } });
+  await put(cookie, `/api/devices/${id}/config`, { approveNew: true, apps: { "com.new.app": { mode: "allow" } } });
   sync = await (await post("/agent/sync", { packages: [pk("com.old.app"), pk("com.new.app")] }, auth)).json();
   assert.deepEqual(sync.policy.hide, []);
   assert.deepEqual(sync.policy.pending, []);
@@ -235,7 +302,7 @@ test("overrides made on the phone win by revision and can be cleared from the da
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);
   const pk = (p) => ({ p, l: p, s: false, h: false });
-  await put(cookie, "/api/config", { blockUnlisted: true });
+  await put(cookie, `/api/devices/${id}/config`, { blockUnlisted: true });
   let sync = await (await post("/agent/sync", { packages: [pk("a.b")], overrides: { "a.b": "allow" }, overridesRev: 100 }, auth)).json();
   assert.deepEqual(sync.policy.hide, [], "phone-side allow beats hide-unlisted");
   assert.equal(sync.overridesRev, 100);
@@ -260,16 +327,19 @@ test("phone log events are stored and shown", async () => {
   assert.equal(dev.events[1].m.length, 200);
 });
 
-test("master code: only a hash is accepted; it reaches the phone in sync", async () => {
+test("master code: only a hash is accepted; it reaches the phone in sync; it's per device", async () => {
   const cookie = await login();
-  const { auth } = await enrolledDevice(cookie);
-  assert.equal((await put(cookie, "/api/master", { salt: "nothex", hash: "x" })).status, 400);
+  const { auth, id } = await enrolledDevice(cookie);
+  const { id: id2 } = await enrolledDevice(cookie);
+  assert.equal((await put(cookie, `/api/devices/${id}/master`, { salt: "nothex", hash: "x" })).status, 400);
   const salt = "ab".repeat(16), hash = "cd".repeat(32);
-  assert.equal((await put(cookie, "/api/master", { salt, hash })).status, 200);
-  assert.equal((await (await req("/api/state", { headers: { cookie } })).json()).masterSet, true);
+  assert.equal((await put(cookie, `/api/devices/${id}/master`, { salt, hash })).status, 200);
+  const devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).masterSet, true);
+  assert.equal(devices.find((d) => d.id === id2).masterSet, false, "a master code set on one device doesn't appear on another");
   let sync = await (await post("/agent/sync", {}, auth)).json();
   assert.deepEqual(sync.master, { salt, hash, iterations: 100000 });
-  assert.equal((await put(cookie, "/api/master", undefined, "DELETE")).status, 200);
+  assert.equal((await put(cookie, `/api/devices/${id}/master`, undefined, "DELETE")).status, 200);
   sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.master, null);
 });
@@ -455,13 +525,13 @@ test("a PIN the administrator sets can be shown on the dashboard once the phone 
 
 test("home-screen mode: phones learn which custom icons to download and can fetch them", async () => {
   const cookie = await login();
-  const { auth } = await enrolledDevice(cookie);
+  const { auth, id } = await enrolledDevice(cookie);
   const custom = PNG(120); custom[9] = 5;
   await req("/api/icon/com.x.app", { method: "PUT", headers: { cookie }, body: custom });
 
   let sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.policy.customIcons, undefined, "only sent when home-screen mode is on");
-  await put(cookie, "/api/config", { homeScreen: true });
+  await put(cookie, `/api/devices/${id}/config`, { homeScreen: true });
   sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.policy.homeScreen, true);
   assert.ok(sync.policy.customIcons["com.x.app"] > 0);
@@ -511,11 +581,14 @@ test("messages from the phone: free text, reach the dashboard, dismissable", asy
   assert.deepEqual(dev.messages.map((m) => m.msg), ["Second message"]);
 });
 
-test("approving a site adds it to the policy sent to every device", async () => {
+test("approving a site adds it to that device's own policy, not any other device's", async () => {
   const cookie = await login();
-  const { auth } = await enrolledDevice(cookie);
-  await put(cookie, "/api/config", { sites: { a: { type: "domain", url: "khanacademy.org" } } });
+  const { auth, id } = await enrolledDevice(cookie);
+  const { auth: auth2 } = await enrolledDevice(cookie);
+  await put(cookie, `/api/devices/${id}/config`, { sites: { a: { type: "domain", url: "khanacademy.org" } } });
   const sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.policy.sites.length, 1);
   assert.equal(sync.policy.sites[0].host, "khanacademy.org");
+  const sync2 = await (await post("/agent/sync", {}, auth2)).json();
+  assert.equal(sync2.policy.sites.length, 0, "a site added to one device's own page doesn't leak to a different device");
 });

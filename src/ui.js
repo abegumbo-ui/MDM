@@ -165,9 +165,11 @@ function ask(title,fields,okLabel,note){
 
 /* ---------- data ---------- */
 async function load(){
- state=await call('GET','/api/state');devices=await call('GET','/api/devices');browsers=await call('GET','/api/browsers');render();
+ state=await call('GET','/api/state');devices=await call('GET','/api/devices');browsers=await call('GET','/api/browsers');
+ for(const b of browsers)b.isBrowser=true;
+ render();
  call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
-async function saveConfig(msg){await call('PUT','/api/config',state.config);snack(msg||'Saved. Phones update within about a minute.')}
+async function saveConfigFor(d,msg){await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about a minute.')}
 
 /* ---------- shell ---------- */
 // Everything is sandboxed to its own thing: the top bar only ever says "Devices". Apps and Sites
@@ -325,6 +327,21 @@ function renderDeviceDetail(m,d){
  appBox.append(ar,h('div',{class:'mute small',style:'margin-top:8px'},'Uploads are kept for a week and limited to 24 MB. For bigger apps use a link, or let the person install from the Play Store with approval mode (Settings).'));
  ct.append(appBox);
 
+ const codeBox=h('div',{class:'card'},h('h2',null,'Codes for this phone'),
+  h('div',{class:'mute'},'Locked to this phone — giving the code to a different phone does nothing. Valid 1 hour, one use.'));
+ const genCode=async function(type,minutes){
+  const r=await call('POST','/api/codes',{type:type,deviceId:d.id,minutes:minutes});
+  out.textContent='';out.append(h('div',{class:'code'},r.code),
+   h('div',{class:'mute small'},type==='freebrowse'?'Opens any site on this phone\'s Browser for '+r.minutes+' minutes.':'Type on this phone: '+(type==='install'?'Install an app.':'Remove agent.')))};
+ const out=h('div',{style:'margin-top:10px'});
+ codeBox.append(h('div',{class:'row',style:'margin-top:8px'},
+  btn('Install code','',function(){genCode('install')}),
+  btn('Removal code','outline',function(){genCode('uninstall')}),
+  btn('Browse-freely code','outline',async function(){
+   const v=await ask('Browse freely for how long?',[{key:'minutes',label:'Duration',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours']],value:'60'}],'Generate');
+   if(!v)return;genCode('freebrowse',parseInt(v.minutes,10))})),out);
+ ct.append(codeBox);
+
  const devBox=h('div',{class:'card'},h('h2',null,'Phone'));const dr=h('div',{class:'row',style:'margin-top:8px'});
  cmd(dr,'Sync now','sync');cmd(dr,'Reboot','reboot');
  if(needsUpdate(d))cmd(dr,'Update agent to build '+latest.versionCode,'updateAgent',{});else cmd(dr,'Update agent','updateAgent',{},null,'outline');
@@ -338,7 +355,7 @@ function renderDeviceDetail(m,d){
  devBox.append(dd);ct.append(devBox);
 
  // ----- Apps on this phone -----
- const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Change Allow / Block on the App rules tab (it applies to every phone, not just this one). Phone-installed apps can be uninstalled here.'));
+ const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Change Allow / Block on this phone\'s own App rules box above. Phone-installed apps can be uninstalled here.'));
  const want=new Set(d.applied.hide);
  for(const a of d.packages){
   const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy',style:'width:36px;height:36px;border-radius:9px;flex:none'});img.onerror=function(){img.replaceWith(h('div',{style:'width:36px;height:36px;border-radius:9px;background:var(--surface-3);flex:none'}))};
@@ -367,58 +384,58 @@ function renderDeviceDetail(m,d){
    if(!v||!v.ssid)return;await queue('Add Wi-Fi','addWifi',{ssid:v.ssid,password:v.password})})));
  nw.append(wl);
 
- // ----- App rules & Sites: the same shared editors as every device/Browser sees, just reached
- // from inside this one instead of a global tab -----
- const arules=h('section');renderApps(arules);
- const st=h('section');renderSites(st);
+ // ----- App rules, Sites, Settings: this device's own, independent of every other device -----
+ const arules=h('section');renderApps(arules,d);
+ const st=h('section');renderSites(st,d);
+ const se=h('section');renderDeviceSettings(se,d);
 
  // ----- boxes: every section visible at once, side by side where there's room -----
- const parts=[['Overview',ov],['Controls',ct],['On this phone',ap],['App rules',arules],['Sites',st],['Log',lg],['Network',nw]];
+ const parts=[['Overview',ov],['Controls',ct],['On this phone',ap],['App rules',arules],['Sites',st],['Settings',se],['Log',lg],['Network',nw]];
  const grid=h('div',{class:'boxes'});
  parts.forEach(function(p){const box=h('div',{class:'box'},h('h3',null,p[0]));box.append(p[1]);grid.append(box)});
  m.append(grid);
 }
 
 /* ---------- apps ---------- */
-function allApps(){
+function allApps(dv){
  const seen=new Map();
  for(const d of devices)for(const a of d.packages){
   const o=seen.get(a.p)||{p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:0};if(a.h)o.hiddenOn++;seen.set(a.p,o)}
- for(const p in state.config.apps)if(!seen.has(p))seen.set(p,{p:p,l:state.config.apps[p].label||p,s:false,prot:false,hiddenOn:0});
+ for(const p in dv.config.apps)if(!seen.has(p))seen.set(p,{p:p,l:dv.config.apps[p].label||p,s:false,prot:false,hiddenOn:0});
  return [...seen.values()].sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)})}
-function cur(pkg){const c=state.config.apps[pkg];return c?{mode:c.mode,schedule:c.schedule||null}:{mode:'',schedule:null}}
-function renderApps(m){
+function cur(dv,pkg){const c=dv.config.apps[pkg];return c?{mode:c.mode,schedule:c.schedule||null}:{mode:'',schedule:null}}
+function renderApps(m,dv){
  const pend=new Map();
- for(const d of devices)for(const p of d.applied.pending||[]){const a=d.packages.find(function(x){return x.p===p});pend.set(p,(a&&a.l)||p)}
+ for(const p of dv.applied.pending||[]){const a=dv.packages.find(function(x){return x.p===p});pend.set(p,(a&&a.l)||p)}
  if(pend.size){
   const pc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Waiting for your approval ('+pend.size+')'),h('div',{class:'mute'},'New apps stay hidden on the phone until you approve them.'));
   for(const [pkg,label] of pend){
    const img=h('img',{src:'/api/icon/'+pkg,alt:'',style:'width:40px;height:40px;border-radius:10px'});img.onerror=function(){img.replaceWith(h('div',{class:'ph',style:'width:40px;height:40px;border-radius:10px;background:var(--surface-3)'}))};
    pc.append(h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},label),h('div',{class:'mute small mono'},pkg),
     h('div',{class:'row',style:'margin-top:8px'},
-     btn('Approve','',async function(){state.config.apps[pkg]={mode:'allow',label:label};await saveConfig('Approved '+label+'. It appears on the phone within about a minute.');render()}),
-     btn('Block','danger',async function(){state.config.apps[pkg]={mode:'block',label:label};await saveConfig('Blocked '+label+'.');render()})))))}
+     btn('Approve','',async function(){dv.config.apps[pkg]={mode:'allow',label:label};await saveConfigFor(dv,'Approved '+label+'. It appears on the phone within about a minute.');render()}),
+     btn('Block','danger',async function(){dv.config.apps[pkg]={mode:'block',label:label};await saveConfigFor(dv,'Blocked '+label+'.');render()})))))}
   m.append(pc)}
  const top=h('div',{class:'card'});
  top.append(h('div',{class:'setting'},h('div',{class:'grow'},h('h2',null,'Hide apps that aren\'t allowed'),
   h('div',{class:'mute'},'Block switches an app off completely, as if it were uninstalled for the person (in Home screen mode, Block just means the app can\'t be opened and keeps running in the background). Icon… changes how an app looks on this dashboard, and on the phone\'s home screen when Home screen mode is on. Apps that depend on it stop working too, which is why core parts are protected. When this is on, every launcher app that isn\'t set to Allow is hidden. Protected system parts are never hidden. Allow the apps you need (phone, messages, maps…) first.')),
-  sw(state.config.blockUnlisted,async function(on){
+  sw(dv.config.blockUnlisted,async function(on){
    if(on&&!confirm('Hide every app that is not set to Allow? Make sure phone, messages and maps are allowed first.')){render();return}
-   state.config.blockUnlisted=on;try{await saveConfig(on?'Hiding unlisted apps.':'Unlisted apps stay visible.')}catch(e){snack(e.message,1)}render()})));
+   dv.config.blockUnlisted=on;try{await saveConfigFor(dv,on?'Hiding unlisted apps.':'Unlisted apps stay visible.')}catch(e){snack(e.message,1)}render()})));
  const add=h('input',{type:'text',placeholder:'Add by package name, e.g. com.google.android.apps.maps',class:'grow'});
  top.append(h('div',{class:'row',style:'margin-top:8px'},add,btn('Add','tonal',async function(){
-  const v=add.value.trim();if(!v)return;state.config.apps[v]={mode:'allow'};await saveConfig('Added '+v);render()})));
+  const v=add.value.trim();if(!v)return;dv.config.apps[v]={mode:'allow'};await saveConfigFor(dv,'Added '+v);render()})));
  const q=h('input',{type:'text',placeholder:'Search apps',value:search,style:'width:100%;margin-top:8px'});
  q.oninput=function(){search=q.value;const pos=q.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search apps"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
  top.append(q);m.append(top);
 
  const list=h('div',{class:'card'});
- const apps=allApps().filter(function(a){const s=search.toLowerCase();return !s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s)});
+ const apps=allApps(dv).filter(function(a){const s=search.toLowerCase();return !s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s)});
  if(!apps.length)list.append(h('div',{class:'mute'},devices.length?'No apps match.':'Apps appear here after a phone checks in.'));
- for(const a of apps)list.append(appRow(a));
+ for(const a of apps)list.append(appRow(a,dv));
  m.append(list)}
-function appRow(a){
- const saved=cur(a.p);const d=draft[a.p]||(draft[a.p]={mode:saved.mode,schedule:saved.schedule});
+function appRow(a,dv){
+ const saved=cur(dv,a.p);const d=draft[a.p]||(draft[a.p]={mode:saved.mode,schedule:saved.schedule});
  const dirty=function(){return JSON.stringify(d)!==JSON.stringify({mode:saved.mode,schedule:saved.schedule})};
  const row=h('div',{class:'app'});
  const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy'});img.onerror=function(){img.replaceWith(h('div',{class:'ph'}))};
@@ -427,12 +444,12 @@ function appRow(a){
  if(a.s)tags.append(h('span',{class:'chip'},'system app · cannot be uninstalled, use Block to switch it off'));else tags.append(h('span',{class:'chip ok'},'can be uninstalled'));
  if(a.prot)tags.append(h('span',{class:'chip'},'protected'));
  if(a.hiddenOn)tags.append(h('span',{class:'chip warn'},'hidden on '+a.hiddenOn));
- if(!saved.mode&&state.config.blockUnlisted&&!a.prot)tags.append(h('span',{class:'chip bad'},'will be hidden (default)'));
+ if(!saved.mode&&dv.config.blockUnlisted&&!a.prot)tags.append(h('span',{class:'chip bad'},'will be hidden (default)'));
  body.append(h('div',{style:'font-weight:500'},a.l||a.p),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p),tags);
 
  const saveBtn=btn('Save','',async function(){
-  if(d.mode)state.config.apps[a.p]={mode:d.mode,label:a.l,schedule:d.schedule||undefined};else delete state.config.apps[a.p];
-  await saveConfig('Saved '+(a.l||a.p)+'. The phone applies it within about a minute.');delete draft[a.p];render()});
+  if(d.mode)dv.config.apps[a.p]={mode:d.mode,label:a.l,schedule:d.schedule||undefined};else delete dv.config.apps[a.p];
+  await saveConfigFor(dv,'Saved '+(a.l||a.p)+'. The phone applies it within about a minute.');delete draft[a.p];render()});
  saveBtn.disabled=!dirty();
  const refresh=function(){saveBtn.disabled=!dirty()};
  const seg=h('div',{class:'seg'});
@@ -475,38 +492,33 @@ function appRow(a){
  row.append(img,body);return row}
 
 /* ---------- sites (browser allowlist) ---------- */
-function allRequests(){
- const out=[];
- for(const d of devices)for(const r of d.siteRequests||[])out.push({path:'/api/devices/'+d.id+'/site-requests',deviceName:d.name,url:r.url,at:r.at});
- for(const b of browsers)for(const r of b.siteRequests||[])out.push({path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name+' (standalone Browser)',url:r.url,at:r.at});
- return out.sort(function(a,b){return b.at-a.at})}
 function hostOfUrl(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.replace(/^www\./,'')}catch(e){return u}}
-function renderRequestsCard(m,reqs){
+function renderRequestsCard(m,reqs,dv){
  if(!reqs.length)return;
  const rc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Site requests ('+reqs.length+')'),
-  h('div',{class:'mute'},'Pages people tried to open that weren\'t on the allowlist.'));
+  h('div',{class:'mute'},'Pages tried on this device that weren\'t on its allowlist.'));
  for(const r of reqs){
   const dismiss=async function(){await call('DELETE',r.path+'?url='+encodeURIComponent(r.url));load()};
   rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500;word-break:break-all'},r.url),
    h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),
    h('div',{class:'row',style:'margin-top:8px'},
     btn('Allow this page only','',async function(){
-     await addSite({type:'exact',url:r.url,label:hostOfUrl(r.url)});await dismiss()}),
+     await addSite(dv,{type:'exact',url:r.url,label:hostOfUrl(r.url)});await dismiss()}),
     btn('Allow whole site ('+hostOfUrl(r.url)+')','',async function(){
-     await addSite({type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}),
+     await addSite(dv,{type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}),
     btn('Dismiss','outline',dismiss)))))}
  m.append(rc)}
-function renderSitesEditor(m){
+function renderSitesEditor(m,dv){
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
-  h('div',{class:'mute'},'Shared by every agent-managed phone and every connected Browser. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
+  h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
  const type=h('select',null,new Option('Whole site','domain'),new Option('Exact page only','exact'));
  top.append(h('div',{class:'row',style:'margin-top:8px'},url,type,btn('Add','tonal',async function(){
-  if(!url.value.trim())return;await addSite({type:type.value,url:url.value.trim(),label:hostOfUrl(url.value.trim())});url.value=''})));
+  if(!url.value.trim())return;await addSite(dv,{type:type.value,url:url.value.trim(),label:hostOfUrl(url.value.trim())});url.value=''})));
  m.append(top);
 
  const list=h('div',{class:'card'});
- const sites=state.config.sites||{};
+ const sites=dv.config.sites||{};
  const keys=Object.keys(sites);
  if(!keys.length)list.append(h('div',{class:'mute'},'No sites allowed yet. Add one above, or approve a request.'));
  for(const key of keys){
@@ -518,35 +530,40 @@ function renderSitesEditor(m){
     s.blockImages?h('span',{class:'chip warn'},'images blocked'):null,
     s.installable===false?h('span',{class:'chip'},'no home-screen shortcut'):null)));
   const col=h('div',{style:'display:flex;flex-direction:column;gap:6px;align-items:flex-end'});
-  col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.blockImages?true:false,onchange:async function(e){s.blockImages=e.target.checked;await saveConfig('Saved.')}}),'Block images'));
-  col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.installable===false?false:true,onchange:async function(e){s.installable=e.target.checked;await saveConfig('Saved.')}}),'Allow home-screen shortcut'));
-  col.append(btn('Remove','danger',async function(){if(!confirm('Remove '+(s.label||s.url)+' from the allowlist?'))return;delete state.config.sites[key];await saveConfig('Removed.')}));
+  col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.blockImages?true:false,onchange:async function(e){s.blockImages=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Block images'));
+  col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.installable===false?false:true,onchange:async function(e){s.installable=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Allow home-screen shortcut'));
+  col.append(btn('Remove','danger',async function(){if(!confirm('Remove '+(s.label||s.url)+' from the allowlist?'))return;delete dv.config.sites[key];await saveConfigFor(dv,'Removed.')}));
   row.append(col);list.append(row)}
  m.append(list);
 }
-function renderSites(m){
+function renderSites(m,dv){
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
-  h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the App rules tab (inside any device) so it can\'t be opened directly.')),
-  sw(state.config.restrictBrowsing,async function(on){state.config.restrictBrowsing=on;try{await saveConfig(on?'This is now the only browser. Phones apply it within about a minute.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
- renderRequestsCard(m,allRequests());
-
- if(browsers.length){
-  const bc=h('div',{class:'card'},h('h2',null,'Standalone browsers ('+browsers.length+')'),
-   h('div',{class:'mute'},'The separate Browser app, connected straight to this dashboard with no agent/MDM on that device. Tap one to see its own requests. They share the allowed-sites list below.'));
-  for(const b of browsers){
-   const row=h('div',{class:'app',style:'cursor:pointer'});
-   row.onclick=function(){location.hash='browser/'+b.id};
-   row.append(h('div',{class:'grow'},h('div',{style:'font-weight:500'},b.name),h('div',{class:'mute small'},'Last check-in '+ago(b.lastSeen))),h('div',{class:'mute',style:'font-size:22px'},'›'));
-   bc.append(row)}
-  m.append(bc)}
-
- renderSitesEditor(m);
+  h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the App rules box so it can\'t be opened directly.')),
+  sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it within about a minute.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
+ renderRequestsCard(m,(dv.siteRequests||[]).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at}}),dv);
+ renderCloneCard(m,dv);
+ renderSitesEditor(m,dv);
 }
-async function addSite(entry){
+async function addSite(dv,entry){
  const key=(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
- state.config.sites=state.config.sites||{};
- state.config.sites[key]={type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true};
- await saveConfig('Added '+(entry.label||entry.url)+'. Phones pick it up within about a minute.');
+ dv.config.sites=dv.config.sites||{};
+ dv.config.sites[key]={type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true};
+ await saveConfigFor(dv,'Added '+(entry.label||entry.url)+'. Phones pick it up within about a minute.');
+}
+/** Copies another device's (or browser's) whole config -- or just its sites, into a browser -- over this one's. */
+function renderCloneCard(m,dv){
+ const card=h('div',{class:'card'},h('h2',null,'Clone settings'),
+  h('div',{class:'mute'},dv.isBrowser?'Copy another phone\'s or browser\'s allowed sites into this browser, replacing its own.':'Copy another phone\'s or browser\'s settings into this one, replacing everything here: apps, sites, and every Settings toggle below (a browser only has sites to give).'));
+ const options=[...devices.filter(function(x){return x.id!==dv.id}).map(function(x){return [x.id,x.name]}),
+  ...browsers.filter(function(x){return x.id!==dv.id}).map(function(x){return [x.id+'|browser',x.name+' (Browser)']})];
+ if(!options.length){card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No other device or browser to clone from yet.'));m.append(card);return}
+ const sel=h('select',{style:'width:100%;margin-top:8px'},...options.map(function(o){return new Option(o[1],o[0])}));
+ card.append(sel,h('div',{style:'margin-top:8px'},btn('Clone from this','outline',async function(){
+  if(!confirm('Replace this '+(dv.isBrowser?'browser\'s sites':'device\'s settings')+' with a copy of the selected one\'s? This cannot be undone.'))return;
+  const [rawId,kind]=sel.value.split('|');
+  await call('POST',(dv.isBrowser?'/api/browsers/':'/api/devices/')+dv.id+'/clone-from',{sourceId:rawId,browser:kind==='browser'});
+  snack('Cloned. Phones pick up the change within about a minute.');load()})));
+ m.append(card);
 }
 function renderBrowserDetail(m,b){
  const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
@@ -560,27 +577,22 @@ function renderBrowserDetail(m,b){
   btn('Disconnect','danger',async function(){if(!confirm('Disconnect '+b.name+'? It goes back to needing to connect again, and allows nothing until then.'))return;await call('DELETE','/api/browsers/'+b.id);location.hash='devices'})));
  m.append(controls);
 
- renderRequestsCard(m,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}));
- renderSitesEditor(m);
+ renderRequestsCard(m,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b);
+ renderCloneCard(m,b);
+ renderSitesEditor(m,b);
 }
 
 /* ---------- codes ---------- */
 const CODE_INFO={
  enroll:['Enrollment code','Connects a new phone to this dashboard. Used in the adb command or typed into the agent app. Valid 1 hour, one use.'],
- install:['Install-app code','Give this to the person using the phone. In the agent app they tap "Install an app", type the code, and pick an APK file. No "unknown sources" setting needed. One use.'],
- uninstall:['Removal code','Lets the person remove the agent from inside the app. This ends all management of the phone. One use.'],
- browser:['Browser connect code','Connects a standalone Browser app directly to this dashboard — no agent, no device owner, nothing else installed. Until it\'s connected (or set up on its own with a master code), that Browser allows nothing at all. Valid 1 hour, one use.'],
- freebrowse:['Browse code','Lets Browser (with the agent on that phone) open ANY site for a chosen time, like a timed Play Store window for app installs. Every new site visited during that time is then held in Site requests for your approval, exactly like a newly installed app. One use.']};
+ browser:['Browser connect code','Connects a standalone Browser app directly to this dashboard — no agent, no device owner, nothing else installed. Until it\'s connected (or set up on its own with a master code), that Browser allows nothing at all. Valid 1 hour, one use.']};
 function renderCodes(m){
- for(const type of ['enroll','install','uninstall','browser','freebrowse']){
+ m.append(h('div',{class:'card'},h('div',{class:'mute'},'Install, removal, and "browse freely" codes are generated from inside each phone\'s own page now, so they only ever work on that one phone. These two can\'t be tied to a phone — an enrollment code is how a phone gets an identity in the first place, and a Browser connect code is for a device with no agent at all.')));
+ for(const type of ['enroll','browser']){
   const card=h('div',{class:'card'},h('h2',null,CODE_INFO[type][0]),h('div',{class:'mute'},CODE_INFO[type][1]));
   const out=h('div');
   card.append(h('div',{style:'margin-top:10px'},btn('Generate new code','',async function(){
-   let minutes;
-   if(type==='freebrowse'){
-    const v=await ask('Browse freely for how long?',[{key:'minutes',label:'Duration',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours']],value:'60'}],'Generate');
-    if(!v)return;minutes=parseInt(v.minutes,10)}
-   const r=await call('POST','/api/codes',{type:type,minutes:minutes});out.textContent='';
+   const r=await call('POST','/api/codes',{type:type});out.textContent='';
    out.append(h('div',{class:'code'},r.code),h('div',{class:'mute small'},'Valid for 1 hour. Shown once; generate another any time.'));
    if(type==='enroll'){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'On your computer, with the phone connected and USB debugging on:'),
@@ -590,9 +602,7 @@ function renderCodes(m){
    if(type==='browser'){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'In the Browser app (no agent needed), tap "Connect to a dashboard" and enter:'),
      h('pre',{class:'cmd'},'Dashboard address: '+r.server+'\nCode: '+r.code),
-     h('div',{class:'mute small'},'Get mdm-browser.apk from GitHub → Releases → "Latest agent build", same place as the agent. It shows up under Sites → Standalone browsers once connected.'))}
-   if(type==='freebrowse'){
-    out.append(h('div',{class:'mute',style:'margin-top:8px'},'On the phone, in the agent app\'s Browser card, tap "Browse freely for a while" and type this code. It opens any site for '+r.minutes+' minutes.'))}
+     h('div',{class:'mute small'},'Get mdm-browser.apk from GitHub → Releases → "Latest agent build", same place as the agent. It shows up on the Devices list once connected.'))}
   })),out);m.append(card);
   if(type==='enroll'){
    const qrCard=h('div',{class:'card'},h('h2',null,'Set up with a QR code (no computer)'),
@@ -620,21 +630,34 @@ function renderCodes(m){
 }
 
 /* ---------- settings ---------- */
+/** The only things left that aren't a specific phone's own: branding shown on every phone. */
 function renderSettings(m){
+ const logoCard=h('div',{class:'card'},h('h2',null,'Logo on the phones'),
+  h('div',{class:'mute'},'Shown on the timed-lock screen and at the top of the agent app, on every phone. A square or wide PNG/JPG works; it is shrunk automatically.'));
+ const prev=h('img',{src:'/api/logo?v='+(iconVer.__logo||0),alt:'',style:'max-height:80px;max-width:100%;margin-top:10px;border-radius:8px;display:block'});prev.onerror=function(){prev.replaceWith(h('div',{class:'mute small',style:'margin-top:10px'},'No logo set.'))};
+ logoCard.append(prev,h('div',{class:'row',style:'margin-top:10px'},
+  btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up within about a minute.');render()}),
+  btn('Remove logo','outline',async function(){await call('DELETE','/api/logo');iconVer.__logo=Date.now();snack('Logo removed.');render()})));
+ m.append(logoCard);
+ m.append(h('div',{class:'card'},h('h2',null,'Everything else moved'),
+  h('div',{class:'mute'},'New-apps approval, Factory Reset Protection, Home screen mode, auto-update, Wi-Fi reporting, the master code, and every restriction switch are now each phone\'s own — open a phone and look for its Settings box.')));
+}
+/** Everything that used to be shared by every phone, now that specific phone's own. */
+function renderDeviceSettings(m,dv){
  const appr=h('div',{class:'card'},h('h2',null,'New apps'));
  appr.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Hold newly installed apps until I approve them'),
-  h('div',{class:'mute'},'Lets the person keep the Play Store: anything they install afterwards stays hidden (it cannot be opened) until you approve it on the App rules tab (inside any device). Apps already on the phone when you switch this on are treated as approved.')),
-  sw(state.config.approveNew,async function(on){state.config.approveNew=on;try{await saveConfig(on?'New apps will wait for your approval.':'New apps are no longer held.')}catch(e){snack(e.message,1)}})));
+  h('div',{class:'mute'},'Lets the person keep the Play Store: anything they install afterwards stays hidden (it cannot be opened) until you approve it on the App rules box above. Apps already on the phone when you switch this on are treated as approved.')),
+  sw(dv.config.approveNew,async function(on){dv.config.approveNew=on;try{await saveConfigFor(dv,on?'New apps will wait for your approval.':'New apps are no longer held.')}catch(e){snack(e.message,1)}})));
  m.append(appr);
  const frp=h('div',{class:'card'},h('h2',null,'Factory Reset Protection'),
-  h('div',{class:'mute'},'If someone resets the phone from recovery mode, setup will demand the Google account(s) you enter here, so the phone is useless to them. No account has to be signed in on the phone. Needs Android 11 or newer. For this to hold, the phone\'s bootloader must be locked (each phone\'s Overview page shows a Reset protection check).'));
- const ids=h('input',{type:'text',placeholder:'Google account ID (about 21 digits)',value:(state.config.frpAccounts||[]).join(', '),style:'width:100%;margin-top:8px'});
+  h('div',{class:'mute'},'If someone resets this phone from recovery mode, setup will demand the Google account(s) you enter here, so the phone is useless to them. No account has to be signed in on the phone. Needs Android 11 or newer. For this to hold, the phone\'s bootloader must be locked (the Overview box shows a Reset protection check).'));
+ const ids=h('input',{type:'text',placeholder:'Google account ID (about 21 digits)',value:(dv.config.frpAccounts||[]).join(', '),style:'width:100%;margin-top:8px'});
  frp.append(ids,h('div',{class:'row',style:'margin-top:8px'},
   btn('Save','',async function(){
    const list=ids.value.split(/[ ,\n]+/).filter(Boolean);
    if(list.some(function(x){return !/^(people\/)?[0-9]{15,25}$/.test(x)})){snack('That is not a Google account ID. It is a number of about 21 digits (see the steps below), not an email address.',1);return}
-   state.config.frpAccounts=list;await saveConfig('Saved. Phones apply it within about a minute.');await load()}),
-  btn('Turn off','outline',async function(){state.config.frpAccounts=[];await saveConfig('Reset protection removed.');await load()})));
+   dv.config.frpAccounts=list;await saveConfigFor(dv,'Saved. The phone applies it within about a minute.');await load()}),
+  btn('Turn off','outline',async function(){dv.config.frpAccounts=[];await saveConfigFor(dv,'Reset protection removed.');await load()})));
  frp.append(h('div',{class:'mute small',style:'margin-top:10px'},'How to get your Google account ID:'),
   h('ol',{class:'mute small',style:'margin:4px 0 0 18px;padding:0'},
    h('li',null,'Open ',h('a',{href:'https://developers.google.com/people/api/rest/v1/people/get',target:'_blank',rel:'noopener'},'the Google People API page'),' and click "Try it".'),
@@ -643,47 +666,40 @@ function renderSettings(m){
   h('div',{class:'mute small',style:'margin-top:8px'},'Keep that Google account safe: whoever can sign in to it can set the phone up again after a reset.'));
  m.append(frp);
  m.append(h('div',{class:'card'},h('h2',null,'Home screen mode'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
-  h('div',{class:'mute'},'The agent becomes the phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. Other apps are NOT switched off: they keep running in the background (Maps keeps using Google Play services), they just can\'t be opened. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode, and turning it off here gives the phone back its normal home screen.')),
-  sw(state.config.homeScreen,async function(on){
-   if(on&&!confirm('Turn on Home screen mode? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the App rules tab (inside any device), because only those will appear.')){render();return}
-   state.config.homeScreen=on;try{await saveConfig(on?'Home screen mode on. Phones switch within about a minute.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()}))));
- const logoCard=h('div',{class:'card'},h('h2',null,'Logo on the phones'),
-  h('div',{class:'mute'},'Shown on the timed-lock screen and at the top of the agent app. A square or wide PNG/JPG works; it is shrunk automatically.'));
- const prev=h('img',{src:'/api/logo?v='+(iconVer.__logo||0),alt:'',style:'max-height:80px;max-width:100%;margin-top:10px;border-radius:8px;display:block'});prev.onerror=function(){prev.replaceWith(h('div',{class:'mute small',style:'margin-top:10px'},'No logo set.'))};
- logoCard.append(prev,h('div',{class:'row',style:'margin-top:10px'},
-  btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up within about a minute.');render()}),
-  btn('Remove logo','outline',async function(){await call('DELETE','/api/logo');iconVer.__logo=Date.now();snack('Logo removed.');render()})));
- m.append(logoCard);
+  h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. Other apps are NOT switched off: they keep running in the background (Maps keeps using Google Play services), they just can\'t be opened. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from the dashboard. The master code on the phone (Administrator) can pause this mode, and turning it off here gives the phone back its normal home screen.')),
+  sw(dv.config.homeScreen,async function(on){
+   if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the App rules box above, because only those will appear.')){render();return}
+   dv.config.homeScreen=on;try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches within about a minute.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()}))));
  m.append(h('div',{class:'card'},h('h2',null,'Agent updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Update the agent automatically'),
-  h('div',{class:'mute'},'Phones check GitHub for a newer build every 6 hours and install it themselves. You can always update one phone yourself from its Controls page, or from the phone\'s admin panel.')),
-  sw(state.config.autoUpdate,async function(on){state.config.autoUpdate=on;try{await saveConfig('Saved.')}catch(e){snack(e.message,1)}}))));
+  h('div',{class:'mute'},'The phone checks GitHub for a newer build every 6 hours and installs it itself. You can always update it yourself from the Controls box, or from the phone\'s admin panel.')),
+  sw(dv.config.autoUpdate,async function(on){dv.config.autoUpdate=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('h2',null,'Phone info'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Show which Wi-Fi the phone is on'),
   h('div',{class:'mute'},'Android only reveals the network name when its Location setting is on, so this switch turns that on for the phone. The dashboard shows the network name and signal, never where the phone is. Battery level is always shown.')),
-  sw(state.config.reportWifi,async function(on){state.config.reportWifi=on;try{await saveConfig('Saved.')}catch(e){snack(e.message,1)}}))));
+  sw(dv.config.reportWifi,async function(on){dv.config.reportWifi=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));
  const mc=h('div',{class:'card'},h('h2',null,'Master code'),
-  h('div',{class:'mute'},'Works on the phone with no internet (Agent → Administrator): lock, set PIN, install APKs, show/hide apps, release, erase. The phone only stores a scrambled version. Status: '+(state.masterSet?'set':'not set')+'.'));
+  h('div',{class:'mute'},'Works on this phone with no internet (Agent → Administrator): lock, set PIN, install APKs, show/hide apps, release, erase. The phone only stores a scrambled version. Status: '+(dv.masterSet?'set':'not set')+'.'));
  const code=h('input',{type:'password',placeholder:'New master code (6+ characters, letters/numbers/symbols)',style:'width:100%;margin-top:8px'});
  mc.append(code,h('div',{class:'row',style:'margin-top:8px'},
-  btn(state.masterSet?'Change master code':'Set master code','',async function(){
+  btn(dv.masterSet?'Change master code':'Set master code','',async function(){
    const v=code.value;if(!/^[\x20-\x7e]{6,64}$/.test(v)){snack('Use 6 to 64 normal keyboard characters.',1);return}
    const salt=crypto.getRandomValues(new Uint8Array(16));
    const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(v),'PBKDF2',false,['deriveBits']);
    const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:salt,iterations:state.masterIterations},key,256));
    const hex=function(a){return [...a].map(function(b){return b.toString(16).padStart(2,'0')}).join('')};
-   await call('PUT','/api/master',{salt:hex(salt),hash:hex(bits)});code.value='';state.masterSet=true;snack('Master code saved. Phones receive it at their next check-in.');render()}),
-  state.masterSet?btn('Remove','outline',async function(){if(!confirm('Remove the master code? The on-phone admin panel stops working.'))return;await call('DELETE','/api/master');state.masterSet=false;snack('Master code removed.');render()}):null));
+   await call('PUT','/api/devices/'+dv.id+'/master',{salt:hex(salt),hash:hex(bits)});code.value='';dv.masterSet=true;snack('Master code saved. The phone receives it at its next check-in.');render()}),
+  dv.masterSet?btn('Remove','outline',async function(){if(!confirm('Remove this phone\'s master code? Its on-phone admin panel stops working.'))return;await call('DELETE','/api/devices/'+dv.id+'/master');dv.masterSet=false;snack('Master code removed.');render()}):null));
  m.append(mc);
- const card=h('div',{class:'card'},h('h2',null,'Restrictions'),h('div',{class:'mute'},'Each switch saves immediately. Phones pick changes up within about a minute.'));
+ const card=h('div',{class:'card'},h('h2',null,'Restrictions'),h('div',{class:'mute'},'Each switch saves immediately. The phone picks changes up within about a minute.'));
  for(const k in state.restrictions){
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},state.restrictions[k].label),
-   sw(state.config.restrictions[k],async function(on){state.config.restrictions[k]=on;try{await saveConfig('Saved.')}catch(e){snack(e.message,1)}})))}
+   sw(dv.config.restrictions[k],async function(on){dv.config.restrictions[k]=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}})))}
  m.append(card,h('div',{class:'card'},h('h2',null,'Good to know'),
-  h('div',{class:'mute'},'Blocking Developer options also turns off USB debugging, so adb stops working. If you need to get back in, send "Release device" from the Devices tab (or use recovery mode).')));
+  h('div',{class:'mute'},'Blocking Developer options also turns off USB debugging, so adb stops working. If you need to get back in, send "Release device" from the Controls box (or use recovery mode).')));
 }
 
 load().catch(function(e){snack(e.message,1);document.getElementById('main').textContent='Could not load: '+e.message});
 setInterval(function(){if(document.hidden)return;
  call('GET','/api/devices').then(function(d){devices=d;if(tab==='devices')render()}).catch(function(){});
- call('GET','/api/browsers').then(function(b){browsers=b;if(tab==='sites')render()}).catch(function(){});
+ call('GET','/api/browsers').then(function(b){for(const x of b)x.isBrowser=true;browsers=b;if(tab==='devices')render()}).catch(function(){});
 },60000);
 </script></body></html>`;

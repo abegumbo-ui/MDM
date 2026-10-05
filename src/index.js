@@ -70,7 +70,17 @@ async function sessionCookie(env) {
 // ---- KV state ----
 const getJSON = async (env, key, dflt) => (await env.STATE.get(key, "json")) ?? dflt;
 const putJSON = (env, key, val, opts) => env.STATE.put(key, JSON.stringify(val), opts);
-const loadConfig = async (env) => normalizeConfig(await getJSON(env, "config", null));
+// Every device (and every standalone Browser) now carries its own independent config -- apps,
+// sites, and every Settings toggle -- instead of one shared global policy. A device that has
+// never had its own config yet is seeded once from the old global "config" key (if one exists),
+// so existing devices keep working exactly as before and simply start diverging from there.
+async function configOf(env, d) {
+  if (d.config) return { cfg: normalizeConfig(d.config), seeded: false };
+  const legacy = await getJSON(env, "config", null);
+  const cfg = normalizeConfig(legacy || {});
+  d.config = cfg;
+  return { cfg, seeded: true };
+}
 
 async function listDevices(env) {
   const out = [];
@@ -105,8 +115,8 @@ const publicDevice = (d) => ({
 });
 
 // Browser devices: a standalone Browser app connected straight to this dashboard, with no agent/MDM
-// at all. They share the same global "sites" allowlist as agent-managed devices, but have no app
-// policy, restrictions, or device-owner features of their own.
+// at all. Each has its own "sites" allowlist, same as any agent-managed device, but no app policy,
+// restrictions, or device-owner features of their own.
 async function listBrowserDevices(env) {
   const out = [];
   let cursor;
@@ -244,30 +254,64 @@ async function adminApi(request, env, url) {
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
   if (path === "/api/state" && method === "GET") {
-    return json({ config: await loadConfig(env), restrictions: RESTRICTIONS, origin: url.origin, masterSet: !!(await env.STATE.get("master")), masterIterations: MASTER_ITERATIONS });
+    return json({ restrictions: RESTRICTIONS, origin: url.origin, masterIterations: MASTER_ITERATIONS });
   }
-  if (path === "/api/config" && method === "PUT") {
-    const before = await loadConfig(env);
-    const next = normalizeConfig(body);
-    await putJSON(env, "config", next);
-    if (next.approveNew && !before.approveNew) {
-      // Turning approval mode on: everything installed right now counts as already approved.
-      for (const d of await listDevices(env)) {
-        d.known = (d.packages || []).map((p) => p.p);
-        await putJSON(env, `device:${d.id}`, d);
-      }
+  const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from)$/.exec(path);
+  if (devConfig) {
+    const d = await getJSON(env, `device:${devConfig[1]}`, null);
+    if (!d) return json({ error: "Unknown device" }, 404);
+    const key = `device:${devConfig[1]}`;
+    if (devConfig[2] === "config" && method === "PUT") {
+      const { cfg: before } = await configOf(env, d);
+      const next = normalizeConfig(body);
+      if (next.approveNew && !before.approveNew) d.known = (d.packages || []).map((p) => p.p); // everything installed now counts as already approved
+      d.config = next;
+      await putJSON(env, key, d);
+      return json({ ok: true });
     }
-    return json({ ok: true });
+    if (devConfig[2] === "master" && method === "PUT") {
+      // The browser derives the hash (PBKDF2), so the code itself never reaches the server.
+      if (!/^[0-9a-f]{32}$/.test(body.salt || "") || !/^[0-9a-f]{64}$/.test(body.hash || "")) return json({ error: "Invalid master code data" }, 400);
+      d.master = { salt: body.salt, hash: body.hash, iterations: MASTER_ITERATIONS };
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (devConfig[2] === "master" && method === "DELETE") {
+      d.master = null;
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (devConfig[2] === "clone-from" && method === "POST") {
+      const src = body.browser
+        ? await getJSON(env, `browserDevice:${body.sourceId}`, null)
+        : await getJSON(env, `device:${body.sourceId}`, null);
+      if (!src) return json({ error: "Unknown source" }, 404);
+      const { cfg: srcCfg } = await configOf(env, src);
+      d.config = normalizeConfig(body.browser ? { sites: srcCfg.sites } : srcCfg);
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
   }
-  if (path === "/api/master" && method === "PUT") {
-    // The browser derives the hash (PBKDF2), so the code itself never reaches the server.
-    if (!/^[0-9a-f]{32}$/.test(body.salt || "") || !/^[0-9a-f]{64}$/.test(body.hash || "")) return json({ error: "Invalid master code data" }, 400);
-    await putJSON(env, "master", { salt: body.salt, hash: body.hash, iterations: MASTER_ITERATIONS });
-    return json({ ok: true });
-  }
-  if (path === "/api/master" && method === "DELETE") {
-    await env.STATE.delete("master");
-    return json({ ok: true });
+  const brConfig = /^\/api\/browsers\/([0-9a-f]+)\/(config|clone-from)$/.exec(path);
+  if (brConfig) {
+    const key = `browserDevice:${brConfig[1]}`;
+    const d = await getJSON(env, key, null);
+    if (!d) return json({ error: "Unknown browser" }, 404);
+    if (brConfig[2] === "config" && method === "PUT") {
+      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing });
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (brConfig[2] === "clone-from" && method === "POST") {
+      const src = body.browser
+        ? await getJSON(env, `browserDevice:${body.sourceId}`, null)
+        : await getJSON(env, `device:${body.sourceId}`, null);
+      if (!src) return json({ error: "Unknown source" }, 404);
+      const { cfg: srcCfg } = await configOf(env, src);
+      d.config = normalizeConfig({ sites: srcCfg.sites });
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
   }
   if (path === "/api/codes" && method === "POST") {
     if (!CODE_TYPES.has(body.type)) return json({ error: "Unknown code type" }, 400);
@@ -276,6 +320,12 @@ async function adminApi(request, env, url) {
     if (body.type === "freebrowse") {
       const minutes = Number.isInteger(body.minutes) ? Math.min(Math.max(body.minutes, 5), MAX_FREEBROWSE_MINUTES) : 60;
       value.minutes = minutes;
+    }
+    // Generated from inside one device's own page: only that device can redeem it, so handing the
+    // code to a different device (or a sibling's phone) does nothing. Enroll codes can't work this
+    // way -- a device has no identity yet before it enrolls -- so those stay usable by whoever is first.
+    if (["install", "uninstall", "freebrowse"].includes(body.type) && /^[0-9a-f]{1,32}$/.test(body.deviceId || "")) {
+      value.deviceId = body.deviceId;
     }
     await putJSON(env, `code:${body.type}:${code}`, value, { expirationTtl: 3600 });
     const reply = { code, type: body.type, server: url.origin, expiresInSeconds: 3600, minutes: value.minutes };
@@ -295,17 +345,27 @@ async function adminApi(request, env, url) {
   }
   if (path === "/api/devices" && method === "GET") {
     const devices = await listDevices(env);
-    const config = await loadConfig(env);
     return json(
-      devices.map((d) => ({
-        ...publicDevice(d),
-        packages: (d.packages || []).map((p) => ({ ...p, protected: isProtected(p.p) })),
-        applied: buildAgentPolicy(config, (d.packages || []).map((p) => p.p), { known: d.known, overrides: d.overrides }),
+      await Promise.all(devices.map(async (d) => {
+        const { cfg } = await configOf(env, d);
+        return {
+          ...publicDevice(d),
+          config: cfg,
+          masterSet: !!d.master,
+          packages: (d.packages || []).map((p) => ({ ...p, protected: isProtected(p.p) })),
+          applied: buildAgentPolicy(cfg, (d.packages || []).map((p) => p.p), { known: d.known, overrides: d.overrides }),
+        };
       })),
     );
   }
   if (path === "/api/browsers" && method === "GET") {
-    return json((await listBrowserDevices(env)).map(publicBrowserDevice));
+    const browsers = await listBrowserDevices(env);
+    return json(
+      await Promise.all(browsers.map(async (d) => {
+        const { cfg } = await configOf(env, d);
+        return { ...publicBrowserDevice(d), config: cfg };
+      })),
+    );
   }
   const bdev = /^\/api\/browsers\/([0-9a-f]+)(?:\/(site-requests))?$/.exec(path);
   if (bdev) {
@@ -471,7 +531,7 @@ async function agentApi(request, env, url) {
       const stored = ["install", "uninstall", "freebrowse"].includes(type) && /^[0-9A-F]{8}$/.test(code)
         ? await getJSON(env, `code:${type}:${code}`, null)
         : null;
-      if (!stored) return json({ error: "Invalid or expired code" }, 403);
+      if (!stored || (stored.deviceId && stored.deviceId !== d.id)) return json({ error: "Invalid or expired code" }, 403);
       await env.STATE.delete(`code:${type}:${code}`);
       d.results = [...(d.results || []), { id: randomHex(6), type: `code:${type}`, ok: true, msg: "one-time code used on the phone", at: Date.now() }].slice(-30);
       await putJSON(env, key, d);
@@ -510,7 +570,8 @@ async function agentApi(request, env, url) {
       d.results = [...(d.results || []), ...body.results.slice(0, 20).map((r) => ({ ...r, at: now }))].slice(-30);
       dirty = true;
     }
-    const config = await loadConfig(env);
+    const { cfg: config, seeded } = await configOf(env, d);
+    if (seeded) dirty = true;
     const reported = (d.packages || []).map((p) => p.p);
     if (!Array.isArray(d.known)) {
       if (reported.length) {
@@ -583,7 +644,7 @@ async function agentApi(request, env, url) {
 
     const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
-    const master = await getJSON(env, "master", null);
+    const master = d.master || null;
     const logoRev = Number(await env.STATE.get("logoRev")) || 0;
     return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, master, logoRev });
   }
@@ -610,8 +671,9 @@ async function browserApi(request, env, url) {
     // nothing typed on either end. It shows up on the dashboard immediately as "New Browser"
     // (plus a short id so more than one is tellable apart) for the admin to rename and manage.
     // There is deliberately no gate here beyond knowing the dashboard's own address: a rogue
-    // registration can only ever reach what's already on the global Sites allowlist, and it's
-    // always visible (and removable) under Sites -> Standalone browsers.
+    // registration starts with its own, separate sites list (empty, or whatever the admin clones
+    // into it), reaches nothing until something is added, and is always visible and removable
+    // from the Devices list.
     const { id, secret } = await createBrowserDevice(env, body.info, "New Browser");
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
@@ -641,8 +703,9 @@ async function browserApi(request, env, url) {
         dirty = true;
       }
     }
+    const { cfg: config, seeded } = await configOf(env, d);
+    if (seeded) dirty = true;
     if (dirty) await putJSON(env, key, d);
-    const config = await loadConfig(env);
     return json({ sites: normalizeSites(config.sites), restrictBrowsing: config.restrictBrowsing, pollSeconds: POLL_SECONDS });
   }
   return json({ error: "Not found" }, 404);
