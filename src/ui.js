@@ -482,12 +482,6 @@ function appRow(a,dv){
  schedBtn.onclick=function(){open[a.p]=!open[a.p];render()};
  if(d.mode!=='block')ctl.append(schedBtn);
  ctl.append(saveBtn);
-
- ctl.append(btn('Icon…','outline',async function(){
-  const blob=await pickImage(96,true);if(!blob)return;
-  await putImage('/api/icon/'+a.p,blob);iconVer[a.p]=Date.now();snack('Icon changed on the dashboard.');render()}));
- ctl.append(btn('Reset icon','outline',async function(){
-  await call('DELETE','/api/icon/'+a.p);iconVer[a.p]=Date.now();snack('Icon reset.');render()}));
  body.append(ctl);
 
  if(open[a.p]&&d.mode!=='block'){
