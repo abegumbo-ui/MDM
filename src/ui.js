@@ -208,7 +208,8 @@ function pendingApps(d){const want=new Set(d.applied.hide);return d.packages.fil
 function pendingCount(d){return pendingApps(d).length}
 function chipsFor(d,full){
  const c=h('div',{style:'margin-top:6px'});
- c.append(h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},isOnline(d)?'Online':'Offline'));
+ if(d.syncPaused)c.append(h('span',{class:'chip warn'},'⏸️ Not connected (paused on the phone)'));
+ else c.append(h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},isOnline(d)?'Online':'Offline'));
  const bat=d.info.battery;
  if(bat)c.append(h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},'🔋 '+bat.pct+'%'+(bat.charging?' ⚡':'')));
  const wf=d.info.wifi;
@@ -277,7 +278,9 @@ function renderDeviceDetail(m,d){
    if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}await queue(label,type,a)}))};
 
  // ----- Overview -----
- const ov=h('section');const info=h('div',{class:'card'},h('h2',null,'Phone'));
+ const ov=h('section');
+ if(d.syncPaused)ov.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Not connected'),h('div',{class:'mute'},'This device is not connected to the dashboard because it was turned off (from this phone\'s own Admin screen, to save battery). It keeps enforcing whatever it had last. It reconnects only when someone turns it back on there — nothing here can reach it in the meantime.')));
+ const info=h('div',{class:'card'},h('h2',null,'Phone'));
  info.append(kv('Recovery code',d.fallbackCode||'not seen yet (needs a check-in on a current build)'),
   kv('Android',d.info.android||'?'),kv('Agent build',(d.info.versionCode||'?')+(latest?' (latest '+latest.versionCode+')':'')),
   kv('Last check-in',ago(d.lastSeen)),kv('Battery',d.info.battery?d.info.battery.pct+'%'+(d.info.battery.charging?' (charging)':''):'unknown'),

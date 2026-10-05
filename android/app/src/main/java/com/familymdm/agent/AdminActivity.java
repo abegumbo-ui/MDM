@@ -206,6 +206,47 @@ public class AdminActivity extends Activity {
             });
         }
 
+        if (!Agent.standalone(this)) {
+            LinearLayout syncCard = Ui.card(this, root);
+            syncCard.addView(Ui.titleText(this, "Dashboard connection"));
+            boolean syncPaused = Agent.syncPaused(this);
+            syncCard.addView(Ui.body(this, syncPaused
+                    ? "Paused: this phone stopped checking in with the dashboard to save battery. The settings it already had keep being enforced. The dashboard shows it as not connected, on purpose."
+                    : "On: this phone checks in with the dashboard regularly.", true));
+            if (syncPaused) {
+                action(syncCard, "Resume dashboard connection", Ui.FILLED, v -> {
+                    if (!unlocked()) return;
+                    Agent.prefs(this).edit().putBoolean("syncPaused", false).apply();
+                    Agent.addEvent(this, "local", "Master code on phone: resumed the dashboard connection");
+                    AgentService.requestSync();
+                    build();
+                    toast("Resuming. Checking in with the dashboard now.");
+                });
+            } else {
+                action(syncCard, "Pause dashboard connection", Ui.OUTLINED, v -> {
+                    if (!unlocked()) return;
+                    toast("Pausing...");
+                    new Thread(() -> {
+                        // One last call so the dashboard knows this was paused on purpose,
+                        // before this phone stops checking in at all.
+                        try {
+                            JSONObject body = new JSONObject();
+                            body.put("syncPaused", true);
+                            Api.post(Agent.prefs(this).getString("server", "") + "/agent/sync", body,
+                                    Agent.prefs(this).getString("token", ""));
+                        } catch (Exception ignored) {
+                        }
+                        Agent.prefs(this).edit().putBoolean("syncPaused", true).apply();
+                        Agent.addEvent(this, "local", "Master code on phone: paused the dashboard connection");
+                        runOnUiThread(() -> {
+                            build();
+                            toast("Paused. This phone won't check in again until you resume it here.");
+                        });
+                    }).start();
+                });
+            }
+        }
+
         LinearLayout net = Ui.card(this, root);
         net.addView(Ui.titleText(this, "Wi-Fi"));
         action(net, "Add a Wi-Fi network…", Ui.TONAL, v -> askWifi());

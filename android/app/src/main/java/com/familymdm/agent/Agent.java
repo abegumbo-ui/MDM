@@ -72,6 +72,16 @@ final class Agent {
         return prefs(c).getBoolean("standalone", false);
     }
 
+    /**
+     * Battery saving: an enrolled device that has stopped checking in with the dashboard, on
+     * purpose, until someone turns it back on from this phone's own Admin screen. Unlike
+     * standalone(), this phone still has a dashboard and a token -- it is just not using them
+     * right now. The last policy it received keeps being enforced locally in the meantime.
+     */
+    static boolean syncPaused(Context c) {
+        return prefs(c).getBoolean("syncPaused", false);
+    }
+
     static boolean enrolled(Context c) {
         return prefs(c).getString("token", null) != null;
     }
