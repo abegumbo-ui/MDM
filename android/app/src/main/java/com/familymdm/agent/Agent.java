@@ -181,6 +181,39 @@ final class Agent {
         }
     }
 
+    // ---------- free-text messages to the administrator (bug reports, questions, anything), reported on the next sync ----------
+
+    static synchronized void addMessage(Context c, String text) {
+        try {
+            JSONArray arr = new JSONArray(prefs(c).getString("messages", "[]"));
+            JSONObject m = new JSONObject();
+            m.put("msg", text);
+            arr.put(m);
+            JSONArray keep = new JSONArray();
+            for (int i = Math.max(0, arr.length() - 10); i < arr.length(); i++) keep.put(arr.get(i));
+            prefs(c).edit().putString("messages", keep.toString()).apply();
+        } catch (JSONException ignored) {
+        }
+    }
+
+    static synchronized JSONArray peekMessages(Context c) {
+        try {
+            return new JSONArray(prefs(c).getString("messages", "[]"));
+        } catch (JSONException e) {
+            return new JSONArray();
+        }
+    }
+
+    static synchronized void dropMessages(Context c, int count) {
+        try {
+            JSONArray arr = new JSONArray(prefs(c).getString("messages", "[]"));
+            JSONArray rest = new JSONArray();
+            for (int i = count; i < arr.length(); i++) rest.put(arr.get(i));
+            prefs(c).edit().putString("messages", rest.toString()).apply();
+        } catch (JSONException ignored) {
+        }
+    }
+
     // ---------- overrides made on the phone with the master code ----------
 
     static synchronized JSONObject getOverrides(Context c) {

@@ -43,6 +43,12 @@ Every new site it lands on during that window is silently queued in **Sites → 
 Set it in the dashboard under **Settings → Master code**. On the phone, open **MDM Agent → Administrator (master code)**. The panel can: lock, set or remove the screen PIN, reboot, install an APK, allow or block apps, release the phone, remove the agent, or erase it. The phone stores only a salted PBKDF2 hash, checks the code itself, and locks out for 15 minutes after 5 wrong tries. App changes made there sync to the dashboard (shown as "N app change(s) made on the phone"; clear them with **Clear phone-side changes**).
 If you forget it, set a new one in the dashboard; the phone picks it up at its next check-in.
 
+## App lock (opt-in, set on the phone)
+Administrator (master code) → **App lock** → **Turn on app lock**. From then on, opening MDM Agent itself needs the phone's fingerprint, face, or PIN/pattern/password (whatever the phone's own screen lock uses — there's no separate biometric setup, it reuses Android's). It re-locks whenever the app was actually closed (process killed, phone rebooted, swiped away), not on every little navigation inside it. Needs a screen lock already set on the phone, or there'd be nothing to confirm against — the toggle checks for that and won't turn on otherwise. This only gates MDM Agent's own screen; it doesn't touch Home screen mode's launcher (which has to stay reachable) and it's a per-phone setting, not something the dashboard controls.
+
+## Message the administrator
+On the phone: **MDM Agent → Message the administrator → Send a message**. No code, free text — a bug report, a question, anything. It shows up on the dashboard under that phone's own **Overview**, with a Dismiss button once you've read it. Offline (no dashboard connected), it's saved to the phone's own log instead, since there's nowhere to send it.
+
 ## Seeing or removing the screen lock
 - A PIN you set from the dashboard (or the phone's admin panel) is shown on the phone's **Overview → PIN you set → Show**.
 - **Nobody can read a PIN or pattern the person chose themselves.** Android stores only a scrambled form. What you can do is **Remove screen lock** (works for any PIN, pattern or password) or replace it with **Set PIN**. For that, **PIN control** (Overview) must say *Ready*. If it doesn't: open the agent app → Administrator → **Activate PIN control**, and confirm the current lock once on the phone.

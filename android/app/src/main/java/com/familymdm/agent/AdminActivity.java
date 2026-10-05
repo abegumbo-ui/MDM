@@ -136,6 +136,32 @@ public class AdminActivity extends Activity {
             });
         }
 
+        LinearLayout appLockCard = Ui.card(this, root);
+        appLockCard.addView(Ui.titleText(this, "App lock"));
+        boolean appLockOn = Agent.prefs(this).getBoolean("appLock", false);
+        appLockCard.addView(Ui.body(this, appLockOn
+                ? "On: opening MDM Agent needs your fingerprint, face, or device PIN."
+                : "Off: anyone who opens this app can see it with no extra check.", true));
+        if (appLockOn) {
+            action(appLockCard, "Turn off app lock", Ui.OUTLINED, v -> {
+                Agent.prefs(this).edit().putBoolean("appLock", false).apply();
+                Agent.addEvent(this, "local", "Master code on phone: turned off app lock");
+                build();
+            });
+        } else {
+            action(appLockCard, "Turn on app lock", Ui.TONAL, v -> {
+                KeyguardManager km = getSystemService(KeyguardManager.class);
+                if (!km.isDeviceSecure()) {
+                    toast("Set a screen lock (PIN, pattern, or password) on this phone first, in Android Settings — otherwise there'd be nothing to confirm against.");
+                    return;
+                }
+                Agent.prefs(this).edit().putBoolean("appLock", true).apply();
+                Agent.addEvent(this, "local", "Master code on phone: turned on app lock");
+                toast("App lock on. It applies the next time MDM Agent is opened.");
+                build();
+            });
+        }
+
         LinearLayout net = Ui.card(this, root);
         net.addView(Ui.titleText(this, "Wi-Fi"));
         action(net, "Add a Wi-Fi network…", Ui.TONAL, v -> askWifi());

@@ -101,6 +101,7 @@ const publicDevice = (d) => ({
   appCode: d.appCode || null,
   adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
   siteRequests: d.siteRequests || [],
+  messages: d.messages || [],
 });
 
 // Browser devices: a standalone Browser app connected straight to this dashboard, with no agent/MDM
@@ -324,7 +325,7 @@ async function adminApi(request, env, url) {
       return json({ ok: true });
     }
   }
-  const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command|site-requests))?$/.exec(path);
+  const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command|site-requests|messages))?$/.exec(path);
   if (dev) {
     const key = `device:${dev[1]}`;
     const d = await getJSON(env, key, null);
@@ -336,6 +337,12 @@ async function adminApi(request, env, url) {
     if (method === "DELETE" && dev[2] === "site-requests") {
       const requestUrl = url.searchParams.get("url");
       d.siteRequests = (d.siteRequests || []).filter((r) => r.url !== requestUrl);
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (method === "DELETE" && dev[2] === "messages") {
+      const msgId = url.searchParams.get("id");
+      d.messages = (d.messages || []).filter((m) => m.id !== msgId);
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -535,6 +542,18 @@ async function agentApi(request, env, url) {
         .map((url) => ({ url, at: now }));
       if (added.length) {
         d.siteRequests = [...existing, ...added].slice(-30);
+        dirty = true;
+      }
+    }
+    if (Array.isArray(body.messages) && body.messages.length) {
+      // Free-text messages from the phone (bug reports, questions, anything) for the administrator to read.
+      const added = body.messages
+        .slice(0, 10)
+        .map((m) => String((m && m.msg) || "").trim().slice(0, 1000))
+        .filter(Boolean)
+        .map((msg) => ({ id: randomHex(6), msg, at: now }));
+      if (added.length) {
+        d.messages = [...(d.messages || []), ...added].slice(-20);
         dirty = true;
       }
     }

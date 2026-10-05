@@ -463,6 +463,25 @@ test("blocked-site requests: reported by the phone, deduplicated, shown to the a
   assert.deepEqual(dev.siteRequests.map((r) => r.url), ["https://other.example/"]);
 });
 
+test("messages from the phone: free text, reach the dashboard, dismissable", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+
+  await post("/agent/sync", { messages: [{ msg: "The lock screen won't turn off" }, { msg: "  " }] }, auth);
+  let dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.messages.length, 1, "a blank message is dropped");
+  assert.equal(dev.messages[0].msg, "The lock screen won't turn off");
+  assert.ok(dev.messages[0].id);
+
+  await post("/agent/sync", { messages: [{ msg: "Second message" }] }, auth);
+  dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.messages.length, 2, "messages accumulate across syncs, unlike site requests they are not deduplicated by text");
+
+  await req(`/api/devices/${id}/messages?id=${dev.messages[0].id}`, { method: "DELETE", headers: { cookie } });
+  dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.deepEqual(dev.messages.map((m) => m.msg), ["Second message"]);
+});
+
 test("approving a site adds it to the policy sent to every device", async () => {
   const cookie = await login();
   const { auth } = await enrolledDevice(cookie);
