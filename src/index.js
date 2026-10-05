@@ -173,7 +173,10 @@ async function latestAgent(env) {
   const repo = env.GITHUB_REPO || DEFAULT_REPO;
   const base = `https://github.com/${repo}/releases/download/latest`;
   try {
-    const r = await fetch(`${base}/version.json`, { cf: { cacheTtl: 300, cacheEverything: true } });
+    // Cache a real answer for a while, but never a failure -- a brief 404 mid-release (or any other
+    // hiccup) used to get cached for the full 5 minutes right along with a real one, turning a
+    // few-second gap into "could not find the latest build" for anyone who asked during it.
+    const r = await fetch(`${base}/version.json`, { cf: { cacheTtlByStatus: { "200-299": 300, "300-599": 0 } } });
     if (!r.ok) return null;
     const v = await r.json();
     if (!Number.isInteger(v.versionCode)) return null;
