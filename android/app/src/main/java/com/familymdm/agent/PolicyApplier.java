@@ -457,8 +457,13 @@ final class PolicyApplier {
             b.putLong("browseUntil", browseUntil);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
+            errorCleared(c, "browserConfig");
         } catch (Exception e) {
+            // Silent before: a persistent failure here looked exactly like nothing happening at
+            // all, from the phone opening the Browser app straight to its own "connect me"
+            // screen as if this agent didn't exist -- same shape of bug as the stuck Block above.
             Log.w(TAG, "browser config push failed: " + e);
+            errorOnce(c, "browserConfig", "Could not hand the site list to the Browser app: " + e.getMessage());
         }
     }
 
