@@ -40,7 +40,8 @@ final class PolicyApplier {
     private static final Set<String> ALLOWED_RESTRICTIONS = new HashSet<>(Arrays.asList(
             "no_factory_reset", "no_safe_boot", "no_uninstall_apps", "no_control_apps",
             "no_modify_accounts", "no_add_user", "no_install_unknown_sources",
-            "no_install_apps", "no_debugging_features", "no_config_credentials"));
+            "no_install_apps", "no_debugging_features", "no_config_credentials",
+            "no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering"));
 
     // Restrictions that would also stop the agent's own installs, updates and uninstalls.
     private static final Set<String> INSTALL_RELATED = new HashSet<>(Arrays.asList(
@@ -146,6 +147,7 @@ final class PolicyApplier {
         applyFrp(c, dpm, admin, policy.optJSONArray("frpAccounts"));
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
         applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
+        applyAccessibilityLock(c, dpm, admin, policy.optBoolean("blockAccessibility", false));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
@@ -473,6 +475,22 @@ final class PolicyApplier {
             errorCleared(c, "updatefreeze");
         } catch (Exception e) {
             errorOnce(c, "updatefreeze", "Could not change the update freeze: " + e.getMessage());
+        }
+    }
+
+    /**
+     * A sideloaded app can ask the person to grant it an accessibility service, then use that
+     * service's reach (reading the screen, performing clicks) to get around normal app controls --
+     * a known MDM bypass. Setting an empty permitted list turns off every accessibility service on
+     * the phone, this agent's controls included; it is only meant for phones where nobody needs one.
+     */
+    private static void applyAccessibilityLock(Context c, DevicePolicyManager dpm, ComponentName admin, boolean wanted) {
+        try {
+            dpm.setPermittedAccessibilityServices(admin, wanted ? new ArrayList<String>() : null);
+            Agent.prefs(c).edit().putBoolean("accessibilityLockSet", wanted).apply();
+            errorCleared(c, "a11y");
+        } catch (Exception e) {
+            errorOnce(c, "a11y", "Could not change the accessibility-service lock: " + e.getMessage());
         }
     }
 
