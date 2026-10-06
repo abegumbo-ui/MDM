@@ -239,7 +239,15 @@ async function latestAgent(env) {
     if (!r.ok) return null;
     const v = await r.json();
     if (!Number.isInteger(v.versionCode)) return null;
-    return { versionCode: v.versionCode, apkUrl: `${base}/mdm-agent.apk`, sha256: v.sha256 || null };
+    return {
+      versionCode: v.versionCode,
+      apkUrl: `${base}/mdm-agent.apk`,
+      sha256: v.sha256 || null,
+      // The "enroll" build (fewer permissions, see android/app/build.gradle): only for a brand-new
+      // phone's first install. It self-updates to the full build above right after enrolling.
+      enrollApkUrl: `${base}/mdm-agent-enroll.apk`,
+      enrollSha256: v.enrollSha256 || null,
+    };
   } catch {
     return null;
   }
@@ -395,7 +403,14 @@ async function adminApi(request, env, url) {
     const reply = { code, type: body.type, server: url.origin, expiresInSeconds: 3600, minutes: value.minutes };
     if (body.type === "enroll") {
       const latest = await latestAgent(env);
-      if (latest && latest.sha256) {
+      // The "enroll" build (fewer permissions -- see android/app/build.gradle) is what a brand-new
+      // phone should install; it self-updates to the full build right after becoming device owner.
+      // Fall back to the full build if an enroll checksum isn't published yet (e.g. right after this
+      // feature first ships, before a build has run), so enrollment never just breaks.
+      if (latest && latest.enrollSha256) {
+        reply.apkUrl = latest.enrollApkUrl;
+        reply.sha256 = latest.enrollSha256;
+      } else if (latest && latest.sha256) {
         reply.apkUrl = latest.apkUrl;
         reply.sha256 = latest.sha256;
       }
