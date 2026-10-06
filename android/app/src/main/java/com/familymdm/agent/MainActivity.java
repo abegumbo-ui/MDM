@@ -180,6 +180,26 @@ public class MainActivity extends Activity {
         if (server != null) serverField.setText(server);
         if (code != null) codeField.setText(code);
         if (server != null && code != null && !Agent.enrolled(this)) enroll();
+        askBatteryExemptionOnce();
+    }
+
+    /**
+     * Without this, Android's own battery management can throttle the background sync loop to
+     * minutes instead of ~15 seconds once the screen's been off a while -- the "Allow background
+     * activity" button lower on this screen does the same thing, but only if someone finds it and
+     * taps it themselves. This asks once, automatically, the first time the app is opened (the
+     * system still shows its own one-tap confirmation; that part can't be skipped).
+     */
+    private void askBatteryExemptionOnce() {
+        if (Agent.prefs(this).getBoolean("askedBattery", false)) return;
+        Agent.prefs(this).edit().putBoolean("askedBattery", true).apply();
+        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+            try {
+                startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     @Override
