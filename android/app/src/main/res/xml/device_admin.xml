@@ -5,7 +5,7 @@
         <wipe-data />
     </uses-policies>
     <!-- Lets another device-owner app (e.g. Alliance Shield X's own "Transfer Owner" feature) hand
-         device-owner status to this app via DevicePolicyManager.transferOwnership() -- unlike
+         device-owner status to this app via DevicePolicyManager.transferOwnership(); unlike
          set-device-owner, a transfer works even after the device's one-time provisioning window has
          closed, since Android treats it as an explicit owner-to-owner handoff, not fresh provisioning. -->
     <support-transfer-ownership />
