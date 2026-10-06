@@ -7,7 +7,7 @@
   comment and android/README.md for the full story.
 
   QUERY_ALL_PACKAGES (see every installed app) and the two location permissions aren't needed to
-  enroll or to self-update -- only REQUEST_INSTALL_PACKAGES/REQUEST_DELETE_PACKAGES are, and those
+  enroll or to self-update; only REQUEST_INSTALL_PACKAGES/REQUEST_DELETE_PACKAGES are, and those
   stay in every flavor. The "full" build (which this immediately self-updates to once it's device
   owner) still declares all three.
 -->
