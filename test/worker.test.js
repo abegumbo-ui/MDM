@@ -228,21 +228,23 @@ test("a code generated for one device cannot be redeemed by a different device",
   assert.equal((await post("/agent/redeem", { type: "install", code: openCode }, authB)).status, 200);
 });
 
-test("per-device config: seeded once from any pre-existing global config, then fully independent", async () => {
+test("per-device config: a brand-new device always starts clean, never from another device's rules", async () => {
   const cookie = await login();
+  // Even if an old global "config" key is still sitting in KV from before per-device config
+  // existed, a brand-new device must never inherit it -- or any other device's rules, for that
+  // matter. A rule set for one phone (e.g. because of something only relevant there) must not
+  // show up as a starting default on an unrelated phone.
   await env.STATE.put("config", JSON.stringify({ sites: { a: { type: "domain", url: "oldsite.example" } }, approveNew: true }));
 
   const { auth: auth1, id: id1 } = await enrolledDevice(cookie);
   let sync = await (await post("/agent/sync", {}, auth1)).json();
-  assert.equal(sync.policy.sites[0].host, "oldsite.example", "a brand-new device starts from whatever the old global config held");
-  assert.equal(sync.policy.approveNew, true);
+  assert.equal(sync.policy.sites.length, 0, "a brand-new device starts with nothing, ignoring any leftover legacy global config");
+  assert.equal(sync.policy.approveNew, false);
 
-  // Change device 1 and enroll a second device afterward: it must NOT see device 1's changes,
-  // only the still-unchanged legacy snapshot (each device seeds independently, once).
   await put(cookie, `/api/devices/${id1}/config`, { sites: { b: { type: "domain", url: "newsite.example" } } });
   const { auth: auth2 } = await enrolledDevice(cookie);
   const sync2 = await (await post("/agent/sync", {}, auth2)).json();
-  assert.equal(sync2.policy.sites[0].host, "oldsite.example", "device 2 seeds from the original legacy config, not device 1's edits");
+  assert.equal(sync2.policy.sites.length, 0, "device 2 starts clean too, not from device 1's edits");
   sync = await (await post("/agent/sync", {}, auth1)).json();
   assert.equal(sync.policy.sites[0].host, "newsite.example", "device 1 kept its own change");
   await env.STATE.delete("config"); // tests share one KV store; don't leak the legacy key into later tests
