@@ -456,15 +456,15 @@ final class PolicyApplier {
         try {
             if (wanted) {
                 java.time.MonthDay cursor = java.time.MonthDay.now();
-                List<android.app.admin.SystemUpdatePolicy.FreezePeriod> periods = new ArrayList<>();
+                List<android.app.admin.FreezePeriod> periods = new ArrayList<>();
                 for (int i = 0; i < 3; i++) {
                     java.time.MonthDay start = cursor;
                     java.time.MonthDay end = addDays(start, 89);
-                    periods.add(new android.app.admin.SystemUpdatePolicy.FreezePeriod(start, end));
+                    periods.add(new android.app.admin.FreezePeriod(start, end));
                     cursor = addDays(end, 60);
                 }
                 android.app.admin.SystemUpdatePolicy sup = android.app.admin.SystemUpdatePolicy.createPostponeInstallPolicy();
-                sup.setFreezePeriods(periods);
+                sup = sup.setFreezePeriods(periods);
                 dpm.setSystemUpdatePolicy(admin, sup);
                 Agent.addEvent(c, "restriction", "Scheduled the densest update freeze Android allows");
             } else {
