@@ -22,6 +22,27 @@ android {
         resValue "string", "default_server", (System.getenv("DASHBOARD_URL") ?: "")
     }
 
+    // Two outputs from the same source, same applicationId, same signing key:
+    //  - "full" is the normal, every-feature build. This is what already-enrolled phones self-update to.
+    //  - "enroll" is only for the very first install. It's missing the permissions (QUERY_ALL_PACKAGES,
+    //    the two location permissions) that make a sideloaded device-owner app look most like spyware to
+    //    Google Play Protect's heuristics -- see android/README.md. Once it's device owner, it self-updates
+    //    to "full" immediately (Updater.java), which silently re-grants those permissions with no prompt
+    //    (the same dpm.setPermissionGrantState() call PolicyApplier already uses for the Wi-Fi name).
+    //    "enroll" is given a lower versionCode than this same run's "full" build on purpose, so that
+    //    self-update check (a strict "newer build available?" > comparison) actually fires right away.
+    flavorDimensions "variant"
+    productFlavors {
+        full {
+            dimension "variant"
+            versionCode buildNumber
+        }
+        enroll {
+            dimension "variant"
+            versionCode Math.max(buildNumber - 1, 1)
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

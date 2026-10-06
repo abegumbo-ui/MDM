@@ -647,8 +647,8 @@ function renderCodes(m){
    out.append(h('div',{class:'code'},r.code),h('div',{class:'mute small'},'Valid for 1 hour. Shown once; generate another any time.'));
    if(type==='enroll'){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'On your computer, with the phone connected and USB debugging on:'),
-     h('pre',{class:'cmd'},'adb install mdm-agent.apk\nadb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver\nadb shell am start -n com.familymdm.agent/.MainActivity --es code '+r.code),
-     h('div',{class:'mute small'},'Get mdm-agent.apk from GitHub → Releases → "Latest agent build". If this build has the dashboard address baked in, that\'s all you need to type — otherwise tap "Use a different dashboard" on the phone once and enter '+r.server+'. No Google account needed for either command.'),
+     h('pre',{class:'cmd'},'adb install mdm-agent-enroll.apk\nadb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver\nadb shell am start -n com.familymdm.agent/.MainActivity --es code '+r.code),
+     h('div',{class:'mute small'},'Get mdm-agent-enroll.apk from GitHub → Releases → "Latest agent build" (it\'s the same app with a couple of permissions it doesn\'t need yet left out, so it looks less suspicious to Play Protect on a first install — it switches itself to the full build right after enrolling). If this build has the dashboard address baked in, that\'s all you need to type — otherwise tap "Use a different dashboard" on the phone once and enter '+r.server+'. No Google account needed for either command.'),
      h('div',{class:'mute small',style:'margin-top:8px'},'Prefer no computer at all? Use the QR code below instead — scan it on a brand-new or freshly reset phone, nothing to type.'))}
    if(type==='browser'){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'In the Browser app (no agent needed), tap "Connect to a dashboard" and enter:'),

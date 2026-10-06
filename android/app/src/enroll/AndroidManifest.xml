@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Merged on top of src/main/AndroidManifest.xml for the "enroll" flavor only. Removes the
+  permissions most likely to make a sideloaded device-owner app look like spyware to Google Play
+  Protect's heuristics at the one moment that can actually abort zero-touch provisioning: the
+  interactive install during QR/adb enrollment. See android/app/build.gradle's productFlavors
+  comment and android/README.md for the full story.
+
+  QUERY_ALL_PACKAGES (see every installed app) and the two location permissions aren't needed to
+  enroll or to self-update; only REQUEST_INSTALL_PACKAGES/REQUEST_DELETE_PACKAGES are, and those
+  stay in every flavor. The "full" build (which this immediately self-updates to once it's device
+  owner) still declares all three.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
+</manifest>
