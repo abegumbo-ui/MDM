@@ -28,19 +28,20 @@ android {
     }
 
     // The SAME key the agent app is signed with (not a copy of the file — this points at
-    // ../app/debug.keystore). Both apps must share a signer for the signature-level permission
+    // ../app/release.keystore). Both apps must share a signer for the signature-level permission
     // that lets them talk to each other to be granted automatically, with no prompt.
     signingConfigs {
-        debug {
-            storeFile file('../app/debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
+        release {
+            storeFile file('../app/release.keystore')
+            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "unset"
+            keyAlias 'mdmagentrelease'
+            keyPassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "unset"
         }
     }
 
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
         }
     }

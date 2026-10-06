@@ -27,20 +27,28 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    // A fixed signing key (committed on purpose) so every build installs as an update over the last one.
-    // This key is only for sideloading onto your own phones; don't reuse it for anything public.
+    // A fixed signing key (committed on purpose) so every build installs as an update over the last
+    // one. This key is only for sideloading onto your own phones; don't reuse it for anything
+    // public. A dedicated key instead of the SDK's generic debug.keystore (androiddebugkey /
+    // "android" / "android" -- the exact same key every Android Studio install generates by
+    // default) -- that shared, well-known key is itself one of the things Google Play Protect's
+    // heuristics weigh when deciding whether to flag a sideloaded app.
     signingConfigs {
-        debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
+        release {
+            storeFile file('release.keystore')
+            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "unset"
+            keyAlias 'mdmagentrelease'
+            keyPassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "unset"
         }
     }
 
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
+            // debuggable defaults to false for the release build type (unlike debug, where
+            // Gradle sets it true automatically) -- that flag is the other thing Play Protect
+            // and the Play Console both flag a sideloaded app for.
         }
     }
 }
