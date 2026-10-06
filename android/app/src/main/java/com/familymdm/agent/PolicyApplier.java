@@ -40,7 +40,8 @@ final class PolicyApplier {
     private static final Set<String> ALLOWED_RESTRICTIONS = new HashSet<>(Arrays.asList(
             "no_factory_reset", "no_safe_boot", "no_uninstall_apps", "no_control_apps",
             "no_modify_accounts", "no_add_user", "no_install_unknown_sources",
-            "no_install_apps", "no_debugging_features", "no_config_credentials"));
+            "no_install_apps", "no_debugging_features", "no_config_credentials",
+            "no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering"));
 
     // Restrictions that would also stop the agent's own installs, updates and uninstalls.
     private static final Set<String> INSTALL_RELATED = new HashSet<>(Arrays.asList(
@@ -145,6 +146,8 @@ final class PolicyApplier {
         protectSelf(c, dpm, admin);
         applyFrp(c, dpm, admin, policy.optJSONArray("frpAccounts"));
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
+        applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
+        applyAccessibilityLock(c, dpm, admin, policy.optBoolean("blockAccessibility", false));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
@@ -433,6 +436,67 @@ final class PolicyApplier {
         } catch (Exception e) {
             errorOnce(c, "wifiname", "Could not enable Wi-Fi name reporting: " + e.getMessage());
         }
+    }
+
+    /**
+     * There is no Android API for a true permanent freeze of system updates: setSystemUpdatePolicy
+     * caps any single freeze at 90 days and forces a 60-day gap before the next one (and Android
+     * tracks freezes already applied, so repeatedly resetting the start date to "today" to dodge
+     * that limit gets rejected). This instead lays down the densest schedule the OS allows, anchored
+     * to whenever this was first turned on, and lets Android's own month/day recurrence repeat it
+     * every year from then on -- set once, not reapplied on every sync.
+     */
+    private static void applyUpdateFreeze(Context c, DevicePolicyManager dpm, ComponentName admin, boolean wanted) {
+        boolean applied = Agent.prefs(c).getBoolean("updateFreezeSet", false);
+        if (wanted == applied) return;
+        if (Build.VERSION.SDK_INT < 28) {
+            errorOnce(c, "updatefreeze", "Freezing system updates needs Android 9 or newer; this phone cannot do it.");
+            return;
+        }
+        try {
+            if (wanted) {
+                java.time.MonthDay cursor = java.time.MonthDay.now();
+                List<android.app.admin.FreezePeriod> periods = new ArrayList<>();
+                for (int i = 0; i < 3; i++) {
+                    java.time.MonthDay start = cursor;
+                    java.time.MonthDay end = addDays(start, 89);
+                    periods.add(new android.app.admin.FreezePeriod(start, end));
+                    cursor = addDays(end, 60);
+                }
+                android.app.admin.SystemUpdatePolicy sup = android.app.admin.SystemUpdatePolicy.createPostponeInstallPolicy();
+                sup = sup.setFreezePeriods(periods);
+                dpm.setSystemUpdatePolicy(admin, sup);
+                Agent.addEvent(c, "restriction", "Scheduled the densest update freeze Android allows");
+            } else {
+                dpm.setSystemUpdatePolicy(admin, null);
+                Agent.addEvent(c, "restriction", "Removed the update freeze; the phone can update normally again");
+            }
+            Agent.prefs(c).edit().putBoolean("updateFreezeSet", wanted).apply();
+            errorCleared(c, "updatefreeze");
+        } catch (Exception e) {
+            errorOnce(c, "updatefreeze", "Could not change the update freeze: " + e.getMessage());
+        }
+    }
+
+    /**
+     * A sideloaded app can ask the person to grant it an accessibility service, then use that
+     * service's reach (reading the screen, performing clicks) to get around normal app controls --
+     * a known MDM bypass. Setting an empty permitted list turns off every accessibility service on
+     * the phone, this agent's controls included; it is only meant for phones where nobody needs one.
+     */
+    private static void applyAccessibilityLock(Context c, DevicePolicyManager dpm, ComponentName admin, boolean wanted) {
+        try {
+            dpm.setPermittedAccessibilityServices(admin, wanted ? new ArrayList<String>() : null);
+            Agent.prefs(c).edit().putBoolean("accessibilityLockSet", wanted).apply();
+            errorCleared(c, "a11y");
+        } catch (Exception e) {
+            errorOnce(c, "a11y", "Could not change the accessibility-service lock: " + e.getMessage());
+        }
+    }
+
+    /** Adds days to a MonthDay via a leap year (so Feb 29 is always a valid intermediate date). */
+    private static java.time.MonthDay addDays(java.time.MonthDay md, int days) {
+        return java.time.MonthDay.from(java.time.LocalDate.of(2024, md.getMonthValue(), md.getDayOfMonth()).plusDays(days));
     }
 
     /**

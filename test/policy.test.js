@@ -16,6 +16,27 @@ test("hides unlisted unprotected apps, shows protected and allowed ones", () => 
   assert.ok(p.show.includes("com.motorola.launcher3"));
 });
 
+test("freezeUpdates defaults off and passes through when set", () => {
+  assert.equal(buildAgentPolicy({}, []).freezeUpdates, false);
+  assert.equal(buildAgentPolicy({ freezeUpdates: true }, []).freezeUpdates, true);
+});
+
+test("blockAccessibility defaults off and passes through when set", () => {
+  assert.equal(buildAgentPolicy({}, []).blockAccessibility, false);
+  assert.equal(buildAgentPolicy({ blockAccessibility: true }, []).blockAccessibility, true);
+});
+
+test("new location/network restrictions default off, and turn on only when asked", () => {
+  const off = buildAgentPolicy({}, []);
+  for (const key of ["no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering"]) {
+    assert.ok(!off.restrictions.includes(key), key + " should default off");
+  }
+  const on = buildAgentPolicy({ restrictions: { locationConfigDisabled: true, tetheringDisabled: true } }, []);
+  assert.ok(on.restrictions.includes("no_config_location"));
+  assert.ok(on.restrictions.includes("no_config_tethering"));
+  assert.ok(!on.restrictions.includes("no_airplane_mode"));
+});
+
 test("explicit block overrides protection", () => {
   const p = buildAgentPolicy({ apps: { "com.android.settings": { mode: "block" } } }, ["com.android.settings"]);
   assert.deepEqual(p.hide, ["com.android.settings"]);
