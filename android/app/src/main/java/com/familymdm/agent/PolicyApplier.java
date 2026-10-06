@@ -145,6 +145,7 @@ final class PolicyApplier {
         protectSelf(c, dpm, admin);
         applyFrp(c, dpm, admin, policy.optJSONArray("frpAccounts"));
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
+        applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
@@ -433,6 +434,51 @@ final class PolicyApplier {
         } catch (Exception e) {
             errorOnce(c, "wifiname", "Could not enable Wi-Fi name reporting: " + e.getMessage());
         }
+    }
+
+    /**
+     * There is no Android API for a true permanent freeze of system updates: setSystemUpdatePolicy
+     * caps any single freeze at 90 days and forces a 60-day gap before the next one (and Android
+     * tracks freezes already applied, so repeatedly resetting the start date to "today" to dodge
+     * that limit gets rejected). This instead lays down the densest schedule the OS allows, anchored
+     * to whenever this was first turned on, and lets Android's own month/day recurrence repeat it
+     * every year from then on -- set once, not reapplied on every sync.
+     */
+    private static void applyUpdateFreeze(Context c, DevicePolicyManager dpm, ComponentName admin, boolean wanted) {
+        boolean applied = Agent.prefs(c).getBoolean("updateFreezeSet", false);
+        if (wanted == applied) return;
+        if (Build.VERSION.SDK_INT < 28) {
+            errorOnce(c, "updatefreeze", "Freezing system updates needs Android 9 or newer; this phone cannot do it.");
+            return;
+        }
+        try {
+            if (wanted) {
+                java.time.MonthDay cursor = java.time.MonthDay.now();
+                List<android.app.admin.SystemUpdatePolicy.FreezePeriod> periods = new ArrayList<>();
+                for (int i = 0; i < 3; i++) {
+                    java.time.MonthDay start = cursor;
+                    java.time.MonthDay end = addDays(start, 89);
+                    periods.add(new android.app.admin.SystemUpdatePolicy.FreezePeriod(start, end));
+                    cursor = addDays(end, 60);
+                }
+                android.app.admin.SystemUpdatePolicy sup = android.app.admin.SystemUpdatePolicy.createPostponeInstallPolicy();
+                sup.setFreezePeriods(periods);
+                dpm.setSystemUpdatePolicy(admin, sup);
+                Agent.addEvent(c, "restriction", "Scheduled the densest update freeze Android allows");
+            } else {
+                dpm.setSystemUpdatePolicy(admin, null);
+                Agent.addEvent(c, "restriction", "Removed the update freeze; the phone can update normally again");
+            }
+            Agent.prefs(c).edit().putBoolean("updateFreezeSet", wanted).apply();
+            errorCleared(c, "updatefreeze");
+        } catch (Exception e) {
+            errorOnce(c, "updatefreeze", "Could not change the update freeze: " + e.getMessage());
+        }
+    }
+
+    /** Adds days to a MonthDay via a leap year (so Feb 29 is always a valid intermediate date). */
+    private static java.time.MonthDay addDays(java.time.MonthDay md, int days) {
+        return java.time.MonthDay.from(java.time.LocalDate.of(2024, md.getMonthValue(), md.getDayOfMonth()).plusDays(days));
     }
 
     /**

@@ -187,6 +187,9 @@ export function normalizeConfig(input) {
     reportWifi: c.reportWifi !== false, autoUpdate: c.autoUpdate === true, homeScreen,
     // Makes the agent's own browser the phone's only handler for web links (so Chrome etc. stop opening them).
     restrictBrowsing: c.restrictBrowsing === true, frpAccounts,
+    // Android caps any single freeze at 90 days and forces a 60-day gap before the next one --
+    // there's no API for a true permanent block. This is the closest legal approximation.
+    freezeUpdates: c.freezeUpdates === true,
     sites, restrictions };
 }
 
@@ -243,7 +246,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }

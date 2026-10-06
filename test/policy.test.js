@@ -16,6 +16,11 @@ test("hides unlisted unprotected apps, shows protected and allowed ones", () => 
   assert.ok(p.show.includes("com.motorola.launcher3"));
 });
 
+test("freezeUpdates defaults off and passes through when set", () => {
+  assert.equal(buildAgentPolicy({}, []).freezeUpdates, false);
+  assert.equal(buildAgentPolicy({ freezeUpdates: true }, []).freezeUpdates, true);
+});
+
 test("explicit block overrides protection", () => {
   const p = buildAgentPolicy({ apps: { "com.android.settings": { mode: "block" } } }, ["com.android.settings"]);
   assert.deepEqual(p.hide, ["com.android.settings"]);
