@@ -41,6 +41,12 @@ public class AdminReceiver extends DeviceAdminReceiver {
         }
     }
 
+    /** Fired when another device-owner app hands this app device-owner status via transferOwnership(). */
+    @Override
+    public void onTransferOwnershipComplete(Context context, PersistableBundle bundle) {
+        startMain(context);
+    }
+
     private void startMain(Context context) {
         context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }
