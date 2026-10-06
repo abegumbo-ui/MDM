@@ -70,14 +70,13 @@ async function sessionCookie(env) {
 // ---- KV state ----
 const getJSON = async (env, key, dflt) => (await env.STATE.get(key, "json")) ?? dflt;
 const putJSON = (env, key, val, opts) => env.STATE.put(key, JSON.stringify(val), opts);
-// Every device (and every standalone Browser) now carries its own independent config -- apps,
-// sites, and every Settings toggle -- instead of one shared global policy. A device that has
-// never had its own config yet is seeded once from the old global "config" key (if one exists),
-// so existing devices keep working exactly as before and simply start diverging from there.
+// Every device (and every standalone Browser) carries its own independent config -- apps, sites,
+// and every Settings toggle. A brand-new device starts from a clean, empty config, never from
+// another device's rules -- app rules set for one phone (e.g. because of something only relevant
+// there, like a sideloaded tool) must never show up as a starting default on an unrelated phone.
 async function configOf(env, d) {
   if (d.config) return { cfg: normalizeConfig(d.config), seeded: false };
-  const legacy = await getJSON(env, "config", null);
-  const cfg = normalizeConfig(legacy || {});
+  const cfg = normalizeConfig({});
   d.config = cfg;
   return { cfg, seeded: true };
 }

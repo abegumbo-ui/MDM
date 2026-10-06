@@ -373,14 +373,8 @@ function renderDeviceDetail(m,d){
  devBox.append(dd);ct.append(devBox);
 
  // ----- Apps on this phone -----
- const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Change Allow / Block on this phone\'s own App rules box above. Phone-installed apps can be uninstalled here.'));
- const want=new Set(d.applied.hide);
- for(const a of d.packages){
-  const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy',style:'width:36px;height:36px;border-radius:9px;flex:none'});img.onerror=function(){img.replaceWith(h('div',{style:'width:36px;height:36px;border-radius:9px;background:var(--surface-3);flex:none'}))};
-  const row=h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p),
-   h('div',null,h('span',{class:'chip '+(a.h?'warn':'ok')},a.h?'Blocked':'Allowed'),a.s?h('span',{class:'chip'},'system'):null,a.protected?h('span',{class:'chip'},'protected'):null,want.has(a.p)!==a.h?h('span',{class:'chip warn'},'changing…'):null)));
-  if(!a.s)row.append(btn('Uninstall','danger',async function(){if(!confirm('Uninstall '+(a.l||a.p)+' from this phone?'))return;await queue('Uninstall '+(a.l||a.p),'uninstall',{packageName:a.p})}));
-  al.append(row)}
+ const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
+ for(const a of d.packages)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},d));
  if(!d.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
  ap.append(al);
 
