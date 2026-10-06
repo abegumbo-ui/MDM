@@ -77,17 +77,22 @@ final class Telemetry {
             }
         }
         o.put("transport", transport);
+        // ACCESS_WIFI_STATE isn't declared in the "enroll" build flavor (see android/app/build.gradle),
+        // so this throws SecurityException there until the self-update to "full" lands.
         if ("wifi".equals(transport)) {
-            WifiManager wm = (WifiManager) c.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            WifiInfo wi = wm == null ? null : wm.getConnectionInfo();
-            if (wi != null) {
-                String ssid = wi.getSSID();
-                if (ssid != null && ssid.length() >= 2 && ssid.startsWith("\"") && ssid.endsWith("\"")) {
-                    ssid = ssid.substring(1, ssid.length() - 1);
+            try {
+                WifiManager wm = (WifiManager) c.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                WifiInfo wi = wm == null ? null : wm.getConnectionInfo();
+                if (wi != null) {
+                    String ssid = wi.getSSID();
+                    if (ssid != null && ssid.length() >= 2 && ssid.startsWith("\"") && ssid.endsWith("\"")) {
+                        ssid = ssid.substring(1, ssid.length() - 1);
+                    }
+                    if (ssid != null && !"<unknown ssid>".equals(ssid) && !ssid.isEmpty()) o.put("ssid", ssid);
+                    int rssi = wi.getRssi();
+                    if (rssi > -127) o.put("rssi", rssi);
                 }
-                if (ssid != null && !"<unknown ssid>".equals(ssid) && !ssid.isEmpty()) o.put("ssid", ssid);
-                int rssi = wi.getRssi();
-                if (rssi > -127) o.put("rssi", rssi);
+            } catch (SecurityException ignored) {
             }
         }
         return o;

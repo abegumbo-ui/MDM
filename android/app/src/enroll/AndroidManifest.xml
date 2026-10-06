@@ -1,15 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Merged on top of src/main/AndroidManifest.xml for the "enroll" flavor only. Removes the
-  permissions most likely to make a sideloaded device-owner app look like spyware to Google Play
-  Protect's heuristics at the one moment that can actually abort zero-touch provisioning: the
-  interactive install during QR/adb enrollment. See android/app/build.gradle's productFlavors
-  comment and android/README.md for the full story.
+  Merged on top of src/main/AndroidManifest.xml for the "enroll" flavor only. Keeps only the
+  permissions the enrollment bootstrap itself actually needs: reach the dashboard, become device
+  owner, download and silently install the full build. Removes everything else, even
+  permissions that aren't part of Google's known-sensitive set. See android/app/build.gradle's
+  productFlavors comment and android/README.md for the full story.
 
-  QUERY_ALL_PACKAGES (see every installed app) and the two location permissions aren't needed to
-  enroll or to self-update; only REQUEST_INSTALL_PACKAGES/REQUEST_DELETE_PACKAGES are, and those
-  stay in every flavor. The "full" build (which this immediately self-updates to once it's device
-  owner) still declares all three.
+  What stays, and why:
+    INTERNET, ACCESS_NETWORK_STATE  - talk to the dashboard at all.
+    RECEIVE_BOOT_COMPLETED          - resume if the phone reboots before the self-update lands.
+    FOREGROUND_SERVICE              - AgentService calls startForeground() on first launch; without
+                                       this permission it crashes immediately instead of enrolling.
+    REQUEST_INSTALL_PACKAGES,
+    REQUEST_DELETE_PACKAGES         - required for the self-update install itself.
+
+  Everything else (QUERY_ALL_PACKAGES, both location permissions, the Wi-Fi permissions, battery-
+  optimization exemption) is a "full" build feature with nothing to do with enrolling, so it's
+  removed here too and picked back up the same way: self-update to "full" right after provisioning,
+  silently re-granted via dpm.setPermissionGrantState() with no prompt.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
@@ -17,4 +25,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" tools:node="remove" />
 </manifest>
