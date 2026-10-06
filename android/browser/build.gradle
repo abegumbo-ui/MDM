@@ -45,6 +45,11 @@ android {
             minifyEnabled false
         }
     }
+
+    lint {
+        // See android/app/build.gradle's matching block for why.
+        checkReleaseBuilds false
+    }
 }
 
 dependencies {
