@@ -96,6 +96,29 @@ final class PolicyApplier {
         return arr;
     }
 
+    /**
+     * System apps with no launcher icon (e.g. a lock-screen component bundled with the phone) --
+     * these never show up in {@link #collectPackages}, which only reports what's launchable (plus
+     * whatever this agent has already hidden). Fetched on demand, not on every sync: a full system
+     * app list can run to a few hundred entries, and nobody needs it refreshed every 15 seconds.
+     */
+    static JSONArray collectSystemPackages(Context c) throws JSONException {
+        PackageManager pm = c.getPackageManager();
+        DevicePolicyManager dpm = Agent.dpm(c);
+        ComponentName admin = Agent.admin(c);
+        Set<String> launcher = new HashSet<>();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) launcher.add(ri.activityInfo.packageName);
+        JSONArray arr = new JSONArray();
+        for (android.content.pm.ApplicationInfo ai : pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+            if (launcher.contains(ai.packageName)) continue;
+            if ((ai.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0) continue;
+            boolean hidden = dpm.isApplicationHidden(admin, ai.packageName);
+            arr.put(entry(ai.packageName, ai.loadLabel(pm).toString(), true, hidden));
+        }
+        return arr;
+    }
+
     private static String label(PackageManager pm, ResolveInfo ri) {
         String pkg = ri.activityInfo.packageName;
         String cached = LABELS.get(pkg);
