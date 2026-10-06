@@ -200,7 +200,7 @@ function render(){
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
-const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result'};
+const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps'};
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
@@ -312,7 +312,7 @@ function renderDeviceDetail(m,d){
  const acts=h('div',{class:'card'},h('h2',null,'Activity'));
  if(d.pending)acts.append(h('div',{class:'act'},'⏳ '+d.pending+' command(s) waiting for the phone\'s next check-in'));
  for(const c of d.inflight)acts.append(h('div',{class:'act'},'⏳ '+(NAMES[c.type]||c.type)+' — sent '+ago(c.at)+', waiting for the phone to confirm'));
- for(const r of d.results.slice().reverse().slice(0,6))acts.append(h('div',{class:'act'},(r.ok?'✅ ':'❌ ')+(NAMES[r.type]||r.type)+(r.msg?' — '+r.msg:'')+' · '+ago(r.at)));
+ for(const r of d.results.slice().reverse().slice(0,6).filter(function(r){return r.type!=='listSystemApps'}))acts.append(h('div',{class:'act'},(r.ok?'✅ ':'❌ ')+(NAMES[r.type]||r.type)+(r.msg?' — '+r.msg:'')+' · '+ago(r.at)));
  if(acts.children.length===1)acts.append(h('div',{class:'mute'},'No activity yet.'));
  ov.append(acts);
 
@@ -378,6 +378,22 @@ function renderDeviceDetail(m,d){
  if(!d.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
  ap.append(al);
 
+ // ----- System apps (hidden from the launcher, e.g. a lock-screen component) -----
+ const sa=h('section');const sal=h('div',{class:'card'},h('h2',null,'System apps'),
+  h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "On this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
+ sal.append(h('div',{style:'margin-top:8px'},btn('Scan for hidden system apps','tonal',async function(){
+  await call('POST','/api/devices/'+d.id+'/command',{type:'listSystemApps',args:{}});
+  snack('Scanning. The phone reports back at its next check-in (within about 15 seconds) -- tap Refresh after a moment.');load()})));
+ const lastScan=d.results.slice().reverse().find(function(r){return r.type==='listSystemApps'});
+ if(!lastScan)sal.append(h('div',{class:'mute small',style:'margin-top:8px'},'Not scanned yet.'));
+ else if(!lastScan.ok)sal.append(h('div',{class:'mute small',style:'margin-top:8px'},'Last scan failed: '+lastScan.msg));
+ else{
+  let sysApps=[];try{sysApps=JSON.parse(lastScan.msg)}catch(e){}
+  sal.append(h('div',{class:'mute small',style:'margin-top:8px'},sysApps.length+' found, as of '+ago(lastScan.at)+'.'));
+  for(const a of sysApps)sal.append(appRow({p:a.p,l:a.l,s:true,prot:false,hiddenOn:a.h?1:0},d,{triple:true}));
+  if(!sysApps.length)sal.append(h('div',{class:'mute'},'No hidden system apps found.'))}
+ sa.append(sal);
+
  // ----- Log -----
  const lg=h('section');const ll=h('div',{class:'card'},h('h2',null,'Phone log'),h('div',{class:'mute'},'What the phone itself did and noticed.'));
  if(!d.events.length)ll.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing logged yet.'));
@@ -402,7 +418,7 @@ function renderDeviceDetail(m,d){
  const se=h('section');renderDeviceSettings(se,d);
 
  // ----- pager -----
- const parts=[['Overview',ov],['Controls',ct],['On this phone',ap],['App rules',arules],['Sites',st],['Settings',se],['Log',lg],['Network',nw]];
+ const parts=[['Overview',ov],['Controls',ct],['On this phone',ap],['App rules',arules],['System apps',sa],['Sites',st],['Settings',se],['Log',lg],['Network',nw]];
  const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
  parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){deviceTab=i;pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
  pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));deviceTab=i;[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
@@ -450,7 +466,8 @@ function renderApps(m,dv){
  if(!apps.length)list.append(h('div',{class:'mute'},devices.length?'No apps match.':'Apps appear here after a phone checks in.'));
  for(const a of apps)list.append(appRow(a,dv));
  m.append(list)}
-function appRow(a,dv){
+function appRow(a,dv,opts){
+ opts=opts||{};
  const saved=cur(dv,a.p);const d=draft[a.p]||(draft[a.p]={mode:saved.mode,schedule:saved.schedule});
  const dirty=function(){return JSON.stringify(d)!==JSON.stringify({mode:saved.mode,schedule:saved.schedule})};
  const row=h('div',{class:'app'});
@@ -466,6 +483,11 @@ function appRow(a,dv){
  body.append(h('div',{style:'font-weight:500'},a.l||a.p),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p),tags);
 
  const saveBtn=btn('Save','',async function(){
+  if(opts.triple&&d.mode&&d.mode!=='allow'){
+   const name=a.l||a.p;
+   if(!confirm('"'+name+'" is a hidden system app with no icon of its own -- it may be something the phone itself depends on. Blocking or hiding it can break a part of the phone (a crash, a broken Settings screen, even an unusable phone). Keep going?'))return;
+   if(!confirm('Second check: if this breaks something, undoing it may need "Release device" or a factory reset. Still want to do this?'))return;
+   if(!confirm('Final check: block "'+name+'" on '+dv.name+' now?'))return;}
   if(d.mode)dv.config.apps[a.p]={mode:d.mode,label:a.l,schedule:d.schedule||undefined};else delete dv.config.apps[a.p];
   await saveConfigFor(dv,'Saved '+(a.l||a.p)+'. The phone applies it within about 15 seconds.');delete draft[a.p];render()});
  saveBtn.disabled=!dirty();

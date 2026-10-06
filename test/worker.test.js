@@ -85,6 +85,27 @@ async function enrolledDevice(cookie) {
   return { auth: { authorization: `Bearer ${token}` }, id: token.split(".")[0] };
 }
 
+test("listSystemApps: queued like any other command, its result (the phone's JSON list) round-trips to the dashboard", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+
+  const cmd = await post(`/api/devices/${id}/command`, { type: "listSystemApps" }, { cookie });
+  assert.equal(cmd.status, 200);
+
+  let sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.commands.length, 1);
+  assert.equal(sync.commands[0].type, "listSystemApps");
+
+  const found = JSON.stringify([{ p: "com.android.keyguard", l: "Lock screen", s: true, h: false }]);
+  await post("/agent/sync", { results: [{ id: sync.commands[0].id, type: "listSystemApps", ok: true, msg: found }] }, auth);
+
+  const devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  const device = devices.find((x) => x.id === id);
+  const result = device.results.find((r) => r.type === "listSystemApps");
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(result.msg), [{ p: "com.android.keyguard", l: "Lock screen", s: true, h: false }]);
+});
+
 async function enrolledBrowser(cookie) {
   const { code } = await (await post("/api/codes", { type: "browser" }, { cookie })).json();
   const { token } = await (await post("/browser/enroll", { code, info: { model: "Y" } })).json();

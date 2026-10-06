@@ -381,6 +381,9 @@ public class AgentService extends Service {
                     break;
                 case "sync":
                     break;
+                case "listSystemApps":
+                    msg = PolicyApplier.collectSystemPackages(this).toString();
+                    break;
                 default:
                     ok = false;
                     msg = "unknown command";
