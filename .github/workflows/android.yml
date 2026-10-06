@@ -29,14 +29,29 @@ jobs:
           javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SitePolicyCheck.java
           java -cp json.jar:out com.familymdm.agent.LocalPolicyCheck
           java -cp json.jar:out com.familymdm.agent.sitepolicy.SitePolicyCheck
-      - name: Build debug APKs (agent + browser)
+      - name: Restore the release signing key
+        # Not committed to the repo -- RELEASE_KEYSTORE_B64 is the keystore file, base64-encoded,
+        # stored as a GitHub Actions secret. See android/README.md for how to generate/set it.
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_B64" ]; then
+            echo "::error::RELEASE_KEYSTORE_B64 secret is not set -- see android/README.md"
+            exit 1
+          fi
+          echo "$RELEASE_KEYSTORE_B64" | base64 -d > android/app/release.keystore
+      - name: Build release APKs (agent + browser)
+        # "Release" build type here just means Gradle's normal release settings (debuggable=false,
+        # our own dedicated signing key) -- these still aren't Play Store builds, just sideloaded
+        # ones signed with something other than the SDK's generic, well-known debug.keystore.
         env:
           DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
-        run: gradle -p android :app:assembleDebug :browser:assembleDebug --no-daemon --stacktrace
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+        run: gradle -p android :app:assembleRelease :browser:assembleRelease --no-daemon --stacktrace
       - name: Name the APKs and describe this build
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk mdm-agent.apk
-          cp android/browser/build/outputs/apk/debug/browser-debug.apk mdm-browser.apk
+          cp android/app/build/outputs/apk/release/app-release.apk mdm-agent.apk
+          cp android/browser/build/outputs/apk/release/browser-release.apk mdm-browser.apk
           # URL-safe base64 of the raw SHA-256 digest, no padding -- exactly the format Android's
           # QR-code device-owner provisioning expects for EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM.
           AGENT_SHA256=$(openssl dgst -binary -sha256 mdm-agent.apk | openssl base64 | tr '+/' '-_' | tr -d '=')
@@ -59,7 +74,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent and browser (debug-signed)." --target "$GITHUB_SHA"
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent and browser." --target "$GITHUB_SHA"
           gh release upload latest mdm-agent.apk mdm-browser.apk version.json --clobber
           # Fixes the flag on every run too, in case an earlier run created this release as a
           # prerelease (this session's own gh token can't edit an already-published release, so
@@ -76,5 +91,5 @@ jobs:
         run: |
           gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-browser.apk version.json \
             --title "Agent + Browser build ${{ github.run_number }}" \
-            --notes "Android agent and browser, build ${{ github.run_number }} (debug-signed). Commit: ${{ github.sha }}" \
+            --notes "Android agent and browser, build ${{ github.run_number }}. Commit: ${{ github.sha }}" \
             --target "$GITHUB_SHA"
