@@ -25,11 +25,18 @@ import java.util.Set;
  * doc for the same wall, hit from the other direction); staying inside this app's own screens
  * sidesteps that entirely, since this app is the one lock-task already allows.
  *
- * BLUETOOTH_CONNECT/BLUETOOTH_SCAN (API 31+) are ordinary runtime permissions -- unlike Usage
- * access, which is a special app-op permission with no such guarantee, setPermissionGrantState()
- * is Android's documented, reliable way for a device owner to grant these without a prompt.
+ * BLUETOOTH_CONNECT/BLUETOOTH_SCAN (API 31+) are ordinary runtime permissions, and
+ * setPermissionGrantState() is tried first since it's the documented, reliable way for a device
+ * owner to grant one without a prompt -- but Android 12 moved these specifically into the
+ * "sensors" permission group, and DevicePolicyManager.canAdminGrantSensorsPermissions() can come
+ * back false on some enrollments (fully-managed personal-use devices, in particular), where a
+ * device owner is deliberately not allowed to silently grant them at all. When that happens the
+ * silent grant simply doesn't take, with nothing to catch -- so this still falls back to asking
+ * directly, right here, rather than leaving the phone stuck needing a Settings screen that Home
+ * screen mode has no way to reach.
  */
 public class BluetoothActivity extends Activity {
+    private static final int REQUEST_BT_PERMISSIONS = 1;
     private LinearLayout root;
     private LinearLayout foundBox;
     private android.widget.Button scanButton;
@@ -75,6 +82,12 @@ public class BluetoothActivity extends Activity {
         registerReceiver(receiver, f);
         receiverRegistered = true;
         build();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_BT_PERMISSIONS) build();
     }
 
     @Override
@@ -124,8 +137,10 @@ public class BluetoothActivity extends Activity {
             return;
         }
         if (!hasConnectPermission() || !hasScanPermission()) {
-            root.addView(Ui.body(this, "Bluetooth permission isn't granted yet. Leave this screen and come back "
-                    + "in a moment, or ask the administrator to grant \"Nearby devices\" for MDM Agent by hand.", true));
+            root.addView(Ui.body(this, "This phone needs you to allow Bluetooth (\"Nearby devices\") for MDM Agent.", true));
+            Ui.add(root, Ui.button(this, "Allow Bluetooth", Ui.FILLED, v -> requestPermissions(
+                    new String[]{android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_SCAN},
+                    REQUEST_BT_PERMISSIONS)), 8);
             return;
         }
         boolean on;
