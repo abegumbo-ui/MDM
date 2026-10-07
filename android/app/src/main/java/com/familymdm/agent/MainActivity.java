@@ -24,6 +24,11 @@ import java.util.Date;
  */
 public class MainActivity extends Activity {
     private static final int PICK_MESSAGE_PHOTO = 1;
+    private static final int REQUEST_CODE_ENTRY = 2;
+    private static final int REQUEST_APP_PIN = 3;
+    private static final int REQUEST_MASTER_BYPASS = 4;
+    // Which CodeRedeem type REQUEST_CODE_ENTRY's result is for -- set right before launching it.
+    private String pendingCodeType;
 
     // Cleared the instant this screen loses focus (onPause), so leaving this app for any reason at
     // all -- the home button, switching apps, even a system picker launched from here -- demands
@@ -254,6 +259,47 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_CODE_ENTRY) {
+            if (resultCode == RESULT_OK && data != null) {
+                String code = data.getStringExtra(CodeEntryActivity.EXTRA_CODE);
+                CodeRedeem.redeem(this, pendingCodeType, code == null ? "" : code.trim(), err -> {
+                    if (err != null) toast(err); else removeAgent();
+                });
+            }
+            return;
+        }
+        if (requestCode == REQUEST_APP_PIN) {
+            if (resultCode == RESULT_OK && data != null) {
+                String err = AppPin.check(this, data.getStringExtra(CodeEntryActivity.EXTRA_CODE));
+                if (err != null) {
+                    toast(err);
+                } else {
+                    appLockPassed = true;
+                    suppressNextLockReset = true;
+                    recreate();
+                }
+            }
+            return;
+        }
+        if (requestCode == REQUEST_MASTER_BYPASS) {
+            if (resultCode == RESULT_OK && data != null) {
+                final String code = data.getStringExtra(CodeEntryActivity.EXTRA_CODE);
+                new Thread(() -> {
+                    final String err = Master.check(this, code);
+                    runOnUiThread(() -> {
+                        if (err != null) {
+                            toast(err);
+                        } else {
+                            Agent.addEvent(this, "local", "Administrator code used to bypass the app PIN");
+                            appLockPassed = true;
+                            suppressNextLockReset = true;
+                            recreate();
+                        }
+                    });
+                }).start();
+            }
+            return;
+        }
         if (requestCode != PICK_MESSAGE_PHOTO || resultCode != RESULT_OK || data == null || data.getData() == null) return;
         final String text = pendingMessageText == null ? "" : pendingMessageText;
         pendingMessageText = null;
@@ -291,49 +337,17 @@ public class MainActivity extends Activity {
     }
 
     private void promptAppPin() {
-        final EditText input = Ui.field(this, "App PIN");
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        Ui.alertDialog(this)
-                .setTitle("Unlock MDM Agent")
-                .setView(input)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Unlock", (d, w) -> {
-                    String err = AppPin.check(this, input.getText().toString());
-                    if (err != null) {
-                        toast(err);
-                    } else {
-                        appLockPassed = true;
-                        suppressNextLockReset = true;
-                        recreate();
-                    }
-                })
-                .show();
+        startActivityForResult(new Intent(this, CodeEntryActivity.class)
+                .putExtra(CodeEntryActivity.EXTRA_TITLE, "Unlock MDM Agent")
+                .putExtra(CodeEntryActivity.EXTRA_SUBTITLE, "Enter the app PIN to continue.")
+                .putExtra(CodeEntryActivity.EXTRA_BUTTON, "Unlock"), REQUEST_APP_PIN);
     }
 
     private void promptMasterBypass() {
-        final EditText input = Ui.field(this, "Administrator (master) code");
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        Ui.alertDialog(this)
-                .setTitle("Administrator")
-                .setView(input)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Unlock", (d, w) -> {
-                    final String code = input.getText().toString();
-                    new Thread(() -> {
-                        final String err = Master.check(this, code);
-                        runOnUiThread(() -> {
-                            if (err != null) {
-                                toast(err);
-                            } else {
-                                Agent.addEvent(this, "local", "Administrator code used to bypass the app PIN");
-                                appLockPassed = true;
-                                suppressNextLockReset = true;
-                                recreate();
-                            }
-                        });
-                    }).start();
-                })
-                .show();
+        startActivityForResult(new Intent(this, CodeEntryActivity.class)
+                .putExtra(CodeEntryActivity.EXTRA_TITLE, "Administrator")
+                .putExtra(CodeEntryActivity.EXTRA_SUBTITLE, "Enter the master code to continue.")
+                .putExtra(CodeEntryActivity.EXTRA_BUTTON, "Unlock"), REQUEST_MASTER_BYPASS);
     }
 
     private void refresh() {
@@ -543,17 +557,11 @@ public class MainActivity extends Activity {
 
     // ---------- code-protected actions ----------
     private void promptCode(final String type) {
-        final EditText input = Ui.field(this, "Code");
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        Ui.alertDialog(this)
-                .setTitle("Enter code")
-                .setMessage("Ask the administrator for a code to remove this.")
-                .setView(input)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("OK", (d, w) -> CodeRedeem.redeem(this, type, input.getText().toString().trim(), err -> {
-                    if (err != null) toast(err); else removeAgent();
-                }))
-                .show();
+        pendingCodeType = type;
+        startActivityForResult(new Intent(this, CodeEntryActivity.class)
+                .putExtra(CodeEntryActivity.EXTRA_TITLE, "Enter Code")
+                .putExtra(CodeEntryActivity.EXTRA_SUBTITLE, "Ask the administrator for a code to remove this.")
+                .putExtra(CodeEntryActivity.EXTRA_BUTTON, "Submit"), REQUEST_CODE_ENTRY);
     }
 
 

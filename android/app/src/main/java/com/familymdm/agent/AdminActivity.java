@@ -41,9 +41,12 @@ public class AdminActivity extends Activity {
     // Administrator home: whether the "Overview" card is expanded below its row.
     private boolean showingOverview;
     // Shared by both apps pickers above (never shown at once, since only one section renders at a
-    // time) -- the apps list and search text backing whichever picker is currently expanded.
+    // time) -- the apps list and search text backing whichever picker is currently expanded, and
+    // whether it was opened from the Home screen mode section (where Block offers to Hard Block
+    // too) or the regular Apps section (where Block is just the one plain action).
     private JSONArray appsPickerPackages;
     private String appsPickerQuery = "";
+    private boolean appsPickerKioskContext;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -368,7 +371,7 @@ public class AdminActivity extends Activity {
         LinearLayout appsPickerHolder = new LinearLayout(this);
         appsPickerHolder.setOrientation(LinearLayout.VERTICAL);
         Ui.add(root, appsPickerHolder, 8);
-        if (showingAppsPicker) showAppsPicker(appsPickerHolder);
+        if (showingAppsPicker) showAppsPicker(appsPickerHolder, false);
     }
 
     private void buildBrowserSection(LinearLayout root) {
@@ -478,7 +481,7 @@ public class AdminActivity extends Activity {
         LinearLayout appsPickerHolder = new LinearLayout(this);
         appsPickerHolder.setOrientation(LinearLayout.VERTICAL);
         Ui.add(root, appsPickerHolder, 8);
-        if (showingKioskAllowedPicker) showAppsPicker(appsPickerHolder);
+        if (showingKioskAllowedPicker) showAppsPicker(appsPickerHolder, true);
     }
 
     private void buildAppLockSection(LinearLayout root) {
@@ -1137,20 +1140,23 @@ public class AdminActivity extends Activity {
 
     private void promptWipe() {
         final EditText input = Ui.field(this, "Type ERASE to confirm");
-        Ui.alertDialog(this)
+        LinearLayout box = form(input);
+        android.app.AlertDialog dialog = Ui.alertDialog(this)
                 .setTitle("Erase everything?")
                 .setMessage("This factory-resets the phone and cannot be undone.")
-                .setView(form(input))
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Erase", (d, w) -> {
-                    if (unlocked() && input.getText().toString().trim().equals("ERASE")) {
-                        Agent.addEvent(this, "local", "Master code on phone: erasing the device");
-                        Agent.dpm(this).wipeData(0);
-                    } else {
-                        toast("Not erased. You must type ERASE.");
-                    }
-                })
-                .show();
+                .setView(box)
+                .create();
+        Ui.add(box, Ui.button(this, "Erase", Ui.DANGER, v -> {
+            if (unlocked() && input.getText().toString().trim().equals("ERASE")) {
+                dialog.dismiss();
+                Agent.addEvent(this, "local", "Master code on phone: erasing the device");
+                Agent.dpm(this).wipeData(0);
+            } else {
+                toast("Not erased. You must type ERASE.");
+            }
+        }), 16);
+        Ui.add(box, Ui.button(this, "Cancel", Ui.OUTLINED, v -> dialog.dismiss()), 8);
+        dialog.show();
     }
 
     private void release(boolean uninstall) {
@@ -1172,7 +1178,8 @@ public class AdminActivity extends Activity {
     // Shared by both the Apps section's "Show / Hide Apps" and the Home screen mode section's
     // "Allowed Apps" -- same underlying override list (PolicyApplier feeds it into Kiosk's own
     // allowed set too), just two different doors into it.
-    private void showAppsPicker(LinearLayout box) {
+    private void showAppsPicker(LinearLayout box, boolean kioskContext) {
+        appsPickerKioskContext = kioskContext;
         try {
             appsPickerPackages = PolicyApplier.collectPackages(this);
         } catch (Exception e) {
@@ -1202,13 +1209,24 @@ public class AdminActivity extends Activity {
         renderAppsGrid(gridHolder);
     }
 
+    /** Three separate buckets -- Allowed, Blocked, Scheduled -- instead of one flat list with the
+     * state buried in each tile's own small label underneath. */
     private void renderAppsGrid(LinearLayout gridHolder) {
         gridHolder.removeAllViews();
-        android.widget.GridLayout grid = Ui.tileGrid(this);
         android.content.pm.PackageManager pm = getPackageManager();
         JSONObject overrides = Agent.getOverrides(this);
         java.util.Set<String> hardBlocked = WholeAppBlocklist.list(this);
+        JSONObject schedules = null;
+        try {
+            schedules = new JSONObject(Agent.prefs(this).getString("policy", "{}")).optJSONObject("schedules");
+        } catch (Exception ignored) {
+        }
         String needle = appsPickerQuery.trim().toLowerCase();
+
+        android.widget.GridLayout allowedGrid = Ui.tileGrid(this);
+        android.widget.GridLayout blockedGrid = Ui.tileGrid(this);
+        android.widget.GridLayout scheduledGrid = Ui.tileGrid(this);
+
         for (int i = 0; i < appsPickerPackages.length(); i++) {
             JSONObject a = appsPickerPackages.optJSONObject(i);
             if (a == null) continue;
@@ -1216,13 +1234,29 @@ public class AdminActivity extends Activity {
             if (pkg.equals(getPackageName())) continue; // never offer to allow/block the agent itself here
             final String label = a.optString("l", pkg);
             if (!needle.isEmpty() && !label.toLowerCase().contains(needle) && !pkg.toLowerCase().contains(needle)) continue;
+
             String state = a.optBoolean("h") ? "hidden" : "allowed";
             if (overrides.has(pkg)) state = overrides.optString(pkg).equals("block") ? "blocked" : "allowed";
             if (hardBlocked.contains(pkg)) state = "hard blocked";
-            Ui.addTile(grid, Ui.appTile(this, label + "\n(" + state + ")", appIcon(pm, pkg), 72,
-                    v -> promptAppMode(gridHolder, pkg, label)));
+            boolean scheduled = schedules != null && schedules.has(pkg);
+            final String finalState = state;
+
+            android.widget.GridLayout target = scheduled ? scheduledGrid
+                    : (state.equals("blocked") || state.equals("hard blocked") || state.equals("hidden")) ? blockedGrid
+                    : allowedGrid;
+            Ui.addTile(target, Ui.appTile(this, label + "\n(" + state + ")", appIcon(pm, pkg), 72,
+                    v -> promptAppMode(gridHolder, pkg, label, finalState)));
         }
-        Ui.add(gridHolder, grid, 0);
+
+        addAppsBucket(gridHolder, "Allowed Apps", allowedGrid);
+        addAppsBucket(gridHolder, "Blocked Apps", blockedGrid);
+        addAppsBucket(gridHolder, "Scheduled Apps", scheduledGrid);
+    }
+
+    private void addAppsBucket(LinearLayout gridHolder, String title, android.widget.GridLayout grid) {
+        if (grid.getChildCount() == 0) return;
+        Ui.add(gridHolder, Ui.titleText(this, title), 12);
+        Ui.add(gridHolder, grid, 4);
     }
 
     /** pm.getApplicationIcon() alone throws for an app this agent has hidden (setApplicationHidden) --
@@ -1244,8 +1278,9 @@ public class AdminActivity extends Activity {
 
     /** A row-tile list, like the Lock section's own, instead of a plain AlertDialog item list --
      * besides looking consistent, this sidesteps the OEM's own (unthemed) list-item text color
-     * that a plain setItems() list used instead of this app's own colors. */
-    private void promptAppMode(LinearLayout gridHolder, String pkg, String label) {
+     * that a plain setItems() list used instead of this app's own colors. Allow is left out when
+     * the app is already allowed -- re-offering the state it's already in was just confusing. */
+    private void promptAppMode(LinearLayout gridHolder, String pkg, String label, String state) {
         if (!unlocked()) return;
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -1256,45 +1291,59 @@ public class AdminActivity extends Activity {
                 .setTitle(label)
                 .setMessage(pkg)
                 .setView(box)
-                .setNegativeButton("Cancel", null)
                 .create();
 
-        Ui.add(box, Ui.rowTile(this, "Allow", R.drawable.ic_apps_tile, v -> {
-            dialog.dismiss();
-            setApp(gridHolder, pkg, "allow");
-        }), 0);
+        boolean alreadyAllowed = state.equals("allowed");
+        if (!alreadyAllowed) {
+            Ui.add(box, Ui.rowTile(this, "Allow", R.drawable.ic_apps_tile, v -> {
+                dialog.dismiss();
+                setApp(gridHolder, pkg, "allow");
+            }), 0);
+        }
         Ui.add(box, Ui.rowTile(this, "Block", R.drawable.ic_remove_tile, v -> {
             dialog.dismiss();
-            promptBlockKind(gridHolder, pkg, label);
-        }), 8);
+            // The plain (soft) block always happens -- still installed, can keep running in the
+            // background. Home screen mode is the only context where going further (hiding the
+            // whole app so it can't run at all) is worth asking about separately.
+            setApp(gridHolder, pkg, "block");
+            if (appsPickerKioskContext) promptHardBlockUpgrade(gridHolder, pkg, label);
+        }), alreadyAllowed ? 0 : 8);
         Ui.add(box, Ui.rowTile(this, "Schedule", R.drawable.ic_schedule_tile, v -> {
             dialog.dismiss();
             promptSchedule(gridHolder, pkg, label);
         }), 8);
+        Ui.add(box, Ui.button(this, "Cancel", Ui.OUTLINED, v -> dialog.dismiss()), 16);
 
         dialog.show();
     }
 
-    /** The whole point of Home screen mode is that an app not allowed on it can still run in the
-     * background (Maps keeps using Google Play services) -- a soft block (the regular override)
-     * keeps that. A hard block is the same OS-level hide as "Block whole app": it can't run at all. */
-    private void promptBlockKind(LinearLayout gridHolder, String pkg, String label) {
-        if (!unlocked()) return;
-        Ui.alertDialog(this)
-                .setTitle("Block \"" + label + "\"")
-                .setMessage("Soft block: stays installed and can keep running in the background (e.g. during "
-                        + "Home screen mode) -- just can't be opened or shown as allowed.\n\n"
-                        + "Hard block: the whole app is hidden at the Android level -- it can't open or run at "
-                        + "all until it's paused or removed from Blocking > Block Whole Apps.")
-                .setNegativeButton("Cancel", null)
-                .setNeutralButton("Soft Block", (d, w) -> setApp(gridHolder, pkg, "block"))
-                .setPositiveButton("Hard Block", (d, w) -> {
-                    WholeAppBlocklist.add(this, pkg);
-                    Agent.addEvent(this, "local", "Master code on phone: blocked the whole app \"" + pkg + "\" (hard block, from the apps picker)");
-                    toast("\"" + label + "\" is hidden now.");
-                    renderAppsGrid(gridHolder);
-                })
-                .show();
+    /** Only reached from Home screen mode's "Allowed Apps" picker, right after the plain block
+     * above already applied -- offers to go one step further: the same OS-level hide as "Block
+     * whole app", so it can't run at all instead of just staying out of Home screen mode. */
+    private void promptHardBlockUpgrade(LinearLayout gridHolder, String pkg, String label) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int sidePad = Ui.dp(this, 4);
+        box.setPadding(sidePad, Ui.dp(this, 8), sidePad, 0);
+
+        android.app.AlertDialog dialog = Ui.alertDialog(this)
+                .setTitle("Hard block \"" + label + "\" too?")
+                .setMessage("It's already blocked from Home screen mode and can still run in the background, like "
+                        + "any other not-allowed app. Hard Block goes further: hides the whole app at the Android "
+                        + "level so it can't run at all, until it's paused or removed from Blocking > Block Whole Apps.")
+                .setView(box)
+                .create();
+
+        Ui.add(box, Ui.rowTile(this, "Hard Block", R.drawable.ic_remove_tile, v -> {
+            dialog.dismiss();
+            WholeAppBlocklist.add(this, pkg);
+            Agent.addEvent(this, "local", "Master code on phone: blocked the whole app \"" + pkg + "\" (hard block, from the apps picker)");
+            toast("\"" + label + "\" is hidden now.");
+            renderAppsGrid(gridHolder);
+        }), 0);
+        Ui.add(box, Ui.button(this, "Cancel", Ui.OUTLINED, v -> dialog.dismiss()), 16);
+
+        dialog.show();
     }
 
     private boolean validTime(String s) {
@@ -1315,43 +1364,46 @@ public class AdminActivity extends Activity {
         if (!unlocked()) return;
         final EditText from = Ui.field(this, "Allowed from (HH:MM, 24h)");
         final EditText to = Ui.field(this, "Allowed until (HH:MM, 24h)");
-        Ui.alertDialog(this)
+        LinearLayout box = form(from, to);
+        android.app.AlertDialog dialog = Ui.alertDialog(this)
                 .setTitle("Schedule \"" + label + "\"")
-                .setMessage("Only allowed to open during this window, every day. Outside it, this behaves the same as a soft block.")
-                .setView(form(from, to))
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Save", (d, w) -> {
-                    String f = from.getText().toString().trim();
-                    String t = to.getText().toString().trim();
-                    if (!validTime(f) || !validTime(t)) {
-                        toast("Use HH:MM, 24-hour, for both times.");
-                        return;
-                    }
-                    try {
-                        JSONObject policy = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
-                        JSONObject schedules = policy.optJSONObject("schedules");
-                        if (schedules == null) {
-                            schedules = new JSONObject();
-                            policy.put("schedules", schedules);
-                        }
-                        JSONObject sched = new JSONObject();
-                        sched.put("from", f);
-                        sched.put("to", t);
-                        JSONArray days = new JSONArray();
-                        for (int day = 0; day < 7; day++) days.put(day);
-                        sched.put("days", days);
-                        schedules.put(pkg, sched);
-                        Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
-                        Agent.addEvent(this, "local", "Master code on phone: scheduled \"" + pkg + "\" for " + f + "-" + t + " every day");
-                        PolicyApplier.applyStored(this);
-                        AgentService.requestSync();
-                        toast("Scheduled. Allowed " + f + "-" + t + " every day.");
-                        renderAppsGrid(gridHolder);
-                    } catch (Exception e) {
-                        toast("Could not save the schedule: " + e.getMessage());
-                    }
-                })
-                .show();
+                .setMessage("Only allowed to open during this window, every day. Outside it, this behaves the same as a plain block.")
+                .setView(box)
+                .create();
+        Ui.add(box, Ui.button(this, "Save", Ui.FILLED, v -> {
+            String f = from.getText().toString().trim();
+            String t = to.getText().toString().trim();
+            if (!validTime(f) || !validTime(t)) {
+                toast("Use HH:MM, 24-hour, for both times.");
+                return;
+            }
+            try {
+                JSONObject policy = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
+                JSONObject schedules = policy.optJSONObject("schedules");
+                if (schedules == null) {
+                    schedules = new JSONObject();
+                    policy.put("schedules", schedules);
+                }
+                JSONObject sched = new JSONObject();
+                sched.put("from", f);
+                sched.put("to", t);
+                JSONArray days = new JSONArray();
+                for (int day = 0; day < 7; day++) days.put(day);
+                sched.put("days", days);
+                schedules.put(pkg, sched);
+                Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+                Agent.addEvent(this, "local", "Master code on phone: scheduled \"" + pkg + "\" for " + f + "-" + t + " every day");
+                PolicyApplier.applyStored(this);
+                AgentService.requestSync();
+                toast("Scheduled. Allowed " + f + "-" + t + " every day.");
+                dialog.dismiss();
+                renderAppsGrid(gridHolder);
+            } catch (Exception e) {
+                toast("Could not save the schedule: " + e.getMessage());
+            }
+        }), 16);
+        Ui.add(box, Ui.button(this, "Cancel", Ui.OUTLINED, v -> dialog.dismiss()), 8);
+        dialog.show();
     }
 
     private void setApp(LinearLayout gridHolder, String pkg, String mode) {
