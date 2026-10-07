@@ -148,6 +148,7 @@ final class PolicyApplier {
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
         applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
         applyAccessibilityLock(c, dpm, admin, policy.optBoolean("blockAccessibility", false));
+        SettingsWatchdog.setBlocked(new HashSet<>(strings(policy.optJSONArray("blockedSettings"))));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");

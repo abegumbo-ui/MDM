@@ -60,6 +60,39 @@ export const RESTRICTIONS = {
 
 export const DEFAULT_RESTRICTIONS = Object.fromEntries(Object.entries(RESTRICTIONS).map(([k, v]) => [k, v.on]));
 
+// The 22 Settings categories the on-device watchdog can recognize and kick the person out of
+// (see android SettingsWatchdog.java). Matching which Settings screen is open happens on the
+// phone itself, by Android component name -- not something this server can see -- so these keys
+// just say which categories the dashboard is willing to block; the phone does the matching.
+export const SETTINGS_CATEGORIES = {
+  google: "Google",
+  network: "Network and internet",
+  connected: "Connected devices",
+  apps: "Apps",
+  notifications: "Notifications",
+  sound: "Sound and vibration",
+  modes: "Modes",
+  personalize: "Personalize",
+  display: "Display",
+  homeLock: "Home and lock screen",
+  gesture: "Gesture",
+  storage: "Storage",
+  battery: "Battery",
+  system: "System",
+  systemUpdates: "System updates",
+  aboutPhone: "About phone",
+  passwords: "Passwords, passkeys and accounts",
+  security: "Security and privacy",
+  location: "Location",
+  digitalWellbeing: "Digital wellbeing and parental controls",
+  safety: "Safety and emergency",
+  accessibility: "Accessibility",
+};
+
+// Blocked by default, for every category -- matches what was asked for: nobody should be able to
+// get into any of these unless an administrator explicitly allows that one.
+export const DEFAULT_BLOCKED_SETTINGS = Object.keys(SETTINGS_CATEGORIES);
+
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // ---- browser allowlist ----
@@ -198,6 +231,9 @@ export function normalizeConfig(input) {
     // around app controls. While this is on, no app's accessibility service runs at all --
     // including ones used for real accessibility needs, so only turn it on if nobody here needs one.
     blockAccessibility: c.blockAccessibility === true,
+    // Undefined means "never touched" -> every category blocked by default. An explicit [] means
+    // the administrator chose to allow everything, and is kept as that choice.
+    blockedSettings: (Array.isArray(c.blockedSettings) ? c.blockedSettings : DEFAULT_BLOCKED_SETTINGS).filter((k) => SETTINGS_CATEGORIES[k]),
     sites, restrictions };
 }
 
@@ -254,7 +290,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, blockedSettings: cfg.blockedSettings, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
