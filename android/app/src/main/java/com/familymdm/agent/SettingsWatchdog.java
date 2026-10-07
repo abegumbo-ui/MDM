@@ -10,6 +10,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -39,7 +40,9 @@ final class SettingsWatchdog {
     private static BroadcastReceiver screenReceiver;
     private static volatile boolean screenOn = true;
     private static volatile Set<String> blocked = new HashSet<>();
+    private static volatile Map<String, String[]> extraPatterns = new HashMap<>();
     private static long lastEventTime;
+    private static final long LEARN_TIMEOUT_MS = 3 * 60 * 1000;
 
     // category key -> lowercase fragments of a Settings activity's class name known to open it.
     // A screen matches if any fragment is contained in its (lowercased) class name.
@@ -78,6 +81,25 @@ final class SettingsWatchdog {
     /** Called from PolicyApplier.apply() with the category keys the dashboard wants kicked out of. */
     static void setBlocked(Set<String> categories) {
         blocked = new HashSet<>(categories);
+    }
+
+    /** Called from PolicyApplier.apply() with extra per-category fragments learned on this phone. */
+    static void setExtraPatterns(Map<String, String[]> patterns) {
+        extraPatterns = new HashMap<>(patterns);
+    }
+
+    /**
+     * Arms a one-shot capture: the next settings-ish screen that comes to the foreground (matched
+     * or not) is reported back as a candidate for this category, tagged with the queued command's
+     * id so the result reaches the same place any other command's result would. Expires on its own
+     * if nothing opens in time, so a forgotten "Learn" tap doesn't leave this armed forever.
+     */
+    static void startLearn(Context c, String category, String commandId) {
+        Agent.prefs(c).edit()
+                .putString("learnCategory", category)
+                .putString("learnCommandId", commandId)
+                .putLong("learnExpiresAt", System.currentTimeMillis() + LEARN_TIMEOUT_MS)
+                .apply();
     }
 
     static synchronized void start(Context c) {
@@ -169,7 +191,12 @@ final class SettingsWatchdog {
 
     private static void check(Context c) {
         long now = System.currentTimeMillis();
-        if (blocked.isEmpty()) {
+        String learnCategory = Agent.prefs(c).getString("learnCategory", null);
+        long learnExpires = Agent.prefs(c).getLong("learnExpiresAt", 0);
+        boolean learning = learnCategory != null && now < learnExpires;
+        if (learnCategory != null && !learning) finishLearn(c, null); // armed, but nothing opened in time
+
+        if (blocked.isEmpty() && !learning) {
             lastEventTime = now;
             return;
         }
@@ -198,17 +225,14 @@ final class SettingsWatchdog {
                 || pkg.startsWith("com.google.android.apps.wellbeing") || pkg.equals("com.google.android.gms");
         if (!settingsish) return;
 
-        String lower = cls.toLowerCase();
-        String matched = null;
-        for (Map.Entry<String, String[]> entry : CATEGORIES.entrySet()) {
-            for (String frag : entry.getValue()) {
-                if (lower.contains(frag)) {
-                    matched = entry.getKey();
-                    break;
-                }
-            }
-            if (matched != null) break;
+        if (learning) {
+            finishLearn(c, pkg + "/" + cls);
+            return;
         }
+
+        String lower = cls.toLowerCase();
+        String matched = firstMatch(lower, CATEGORIES);
+        if (matched == null) matched = firstMatch(lower, extraPatterns);
         if (matched == null) {
             // Unrecognized Settings screen -- logged at most once every 10 minutes per class, so the
             // map above can be refined for this phone without flooding the log over one visit.
@@ -224,5 +248,33 @@ final class SettingsWatchdog {
             Kiosk.startHome(c);
             Agent.addEvent(c, "restriction", "Blocked Settings category \"" + matched + "\" was opened -- sent back to the home screen");
         }
+    }
+
+    private static String firstMatch(String lowerClassName, Map<String, String[]> table) {
+        for (Map.Entry<String, String[]> entry : table.entrySet()) {
+            for (String frag : entry.getValue()) {
+                if (lowerClassName.contains(frag)) return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /** Ends a "Learn" capture -- component is the pkg/cls seen, or null if the window expired first. */
+    private static void finishLearn(Context c, String component) {
+        String category = Agent.prefs(c).getString("learnCategory", null);
+        String commandId = Agent.prefs(c).getString("learnCommandId", null);
+        Agent.prefs(c).edit().remove("learnCategory").remove("learnCommandId").remove("learnExpiresAt").apply();
+        if (category == null) return;
+        String msg;
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("category", category);
+            if (component != null) o.put("component", component);
+            msg = o.toString();
+        } catch (Exception ex) {
+            msg = component;
+        }
+        if (commandId != null) Agent.addResult(c, commandId, "learnSettings", component != null, msg);
+        Agent.addEvent(c, "watchdog", "Learn \"" + category + "\": " + (component != null ? "saw " + component : "nothing opened in time"));
     }
 }

@@ -262,6 +262,17 @@ export function normalizeFrpAccounts(list) {
   return [...new Set(ids)].slice(0, 3);
 }
 
+/** Per-category extra match fragments learned on a specific phone; see watchdogPatterns above. */
+export function normalizeWatchdogPatterns(input) {
+  const out = {};
+  for (const [k, arr] of Object.entries(input && typeof input === "object" ? input : {})) {
+    if (!SETTINGS_CATEGORIES[k]) continue;
+    const frags = [...new Set((Array.isArray(arr) ? arr : []).map((s) => String(s).toLowerCase().trim()).filter((s) => s && s.length <= 100))].slice(0, 20);
+    if (frags.length) out[k] = frags;
+  }
+  return out;
+}
+
 export function normalizeConfig(input) {
   const c = input || {};
   const frpAccounts = normalizeFrpAccounts(c.frpAccounts);
@@ -308,6 +319,9 @@ export function normalizeConfig(input) {
     // Undefined means "never touched" -> every category blocked by default. An explicit [] means
     // the administrator chose to allow everything, and is kept as that choice.
     blockedSettings: (Array.isArray(c.blockedSettings) ? c.blockedSettings : DEFAULT_BLOCKED_SETTINGS).filter((k) => SETTINGS_CATEGORIES[k]),
+    // Extra per-category match fragments learned on this specific phone (see "Learn" in the
+    // dashboard), layered on top of the agent's built-in guesses rather than replacing them.
+    watchdogPatterns: normalizeWatchdogPatterns(c.watchdogPatterns),
     sites, restrictions };
 }
 
@@ -364,7 +378,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, blockedSettings: cfg.blockedSettings, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, blockedSettings: cfg.blockedSettings, watchdogPatterns: cfg.watchdogPatterns, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
