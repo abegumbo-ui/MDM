@@ -89,10 +89,42 @@ final class SettingsWatchdog {
     }
 
     /**
-     * Arms a one-shot capture: the next settings-ish screen that comes to the foreground (matched
-     * or not) is reported back as a candidate for this category, tagged with the queued command's
-     * id so the result reaches the same place any other command's result would. Expires on its own
-     * if nothing opens in time, so a forgotten "Learn" tap doesn't leave this armed forever.
+     * What's already on screen, right now -- for the normal case: already sitting on the target
+     * Settings screen, then pressing Learn. Looks back 15 minutes for the most recent settings-ish
+     * screen instead of only forward from this moment, since the person got there before this
+     * command ever arrived; a transition that already happened is still a transition. Returns
+     * "pkg/cls", or null if nothing settings-ish is recent enough to be the answer.
+     */
+    static String captureNow(Context c) {
+        try {
+            UsageStatsManager usm = (UsageStatsManager) c.getSystemService(Context.USAGE_STATS_SERVICE);
+            if (usm == null) return null;
+            long now = System.currentTimeMillis();
+            UsageEvents events = usm.queryEvents(now - 15 * 60 * 1000, now);
+            String pkg = null, cls = null;
+            UsageEvents.Event e = new UsageEvents.Event();
+            while (events.hasNextEvent()) {
+                events.getNextEvent(e);
+                if (e.getEventType() == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                    pkg = e.getPackageName();
+                    cls = e.getClassName();
+                }
+            }
+            if (pkg == null || cls == null) return null;
+            boolean settingsish = pkg.equals("com.android.settings") || pkg.toLowerCase().contains("settings")
+                    || pkg.startsWith("com.google.android.apps.wellbeing") || pkg.equals("com.google.android.gms");
+            return settingsish ? pkg + "/" + cls : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Fallback for the other order: Learn pressed first, then the person navigates. Arms a one-shot
+     * capture -- the next settings-ish screen that comes to the foreground is reported back as a
+     * candidate for this category, tagged with the queued command's id so the result reaches the
+     * same place any other command's result would. Expires on its own if nothing opens in time, so
+     * a forgotten "Learn" tap doesn't leave this armed forever.
      */
     static void startLearn(Context c, String category, String commandId) {
         Agent.prefs(c).edit()
