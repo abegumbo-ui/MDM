@@ -29,7 +29,10 @@
         <item name="android:buttonBarNeutralButtonStyle">@style/AppAlertDialogButton</item>
     </style>
 
-    <style name="AppAlertDialogButton" parent="android:Widget.DeviceDefault.Button.Borderless.Alert">
+    <!-- No parent: AAPT rejected the first attempt at borrowing a named framework button style
+         (android:Widget.DeviceDefault.Button.Borderless.Alert isn't a real public resource). All
+         this needs is the text color override, which doesn't require inheriting anything. -->
+    <style name="AppAlertDialogButton">
         <item name="android:textColor">@color/m3_primary</item>
     </style>
 </resources>
