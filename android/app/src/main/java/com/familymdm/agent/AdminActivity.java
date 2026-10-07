@@ -984,32 +984,30 @@ public class AdminActivity extends Activity {
             for (int i = 0; i < pk.length(); i++) {
                 final JSONObject a = pk.getJSONObject(i);
                 final String pkg = a.getString("p");
+                final String label = a.optString("l", pkg);
                 LinearLayout row = Ui.card(this, appsBox);
                 String state = a.optBoolean("h") ? "hidden" : "visible";
                 if (overrides.has(pkg)) state += ", set here: " + overrides.optString(pkg);
-                row.addView(Ui.titleText(this, a.optString("l", pkg)));
+                row.addView(Ui.titleText(this, label));
                 row.addView(Ui.body(this, pkg + " · " + state, true));
-                LinearLayout buttons = new LinearLayout(this);
-                buttons.setOrientation(LinearLayout.HORIZONTAL);
-                android.widget.Button allow = Ui.button(this, "Allow", Ui.TONAL, v -> {
-                    if (unlocked()) setApp(pkg, "allow");
-                });
-                android.widget.Button block = Ui.button(this, "Block", Ui.DANGER, v -> {
-                    if (unlocked()) setApp(pkg, "block");
-                });
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroupWrap(), 1f);
-                lp.rightMargin = Ui.dp(this, 8);
-                buttons.addView(allow, lp);
-                buttons.addView(block, new LinearLayout.LayoutParams(0, ViewGroupWrap(), 1f));
-                Ui.add(row, buttons, 8);
+                row.setClickable(true);
+                row.setFocusable(true);
+                row.setOnClickListener(v -> promptAppMode(pkg, label));
             }
         } catch (Exception e) {
             toast("Could not list apps: " + e.getMessage());
         }
     }
 
-    private static int ViewGroupWrap() {
-        return android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+    private void promptAppMode(String pkg, String label) {
+        if (!unlocked()) return;
+        new AlertDialog.Builder(this)
+                .setTitle(label)
+                .setMessage(pkg)
+                .setNegativeButton("Cancel", null)
+                .setNeutralButton("Allow", (d, w) -> setApp(pkg, "allow"))
+                .setPositiveButton("Block", (d, w) -> setApp(pkg, "block"))
+                .show();
     }
 
     private void setApp(String pkg, String mode) {
