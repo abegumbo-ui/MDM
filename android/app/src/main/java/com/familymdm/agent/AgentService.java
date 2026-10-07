@@ -386,6 +386,9 @@ public class AgentService extends Service {
                 case "listSystemApps":
                     msg = PolicyApplier.collectSystemPackages(this).toString();
                     break;
+                case "locate":
+                    msg = Actions.locate(this);
+                    break;
                 default:
                     ok = false;
                     msg = "unknown command";

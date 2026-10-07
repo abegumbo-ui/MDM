@@ -25,6 +25,49 @@ final class Actions {
     }
 
     /**
+     * One on-demand fix, not continuous tracking -- there is no background location loop anywhere
+     * in this app, only this single request, made the moment "Find now" is queued from the
+     * dashboard. Permission is already silently granted as a side effect of "Report Wi-Fi name"
+     * (PolicyApplier.enableWifiName), on by default, so this almost never needs anything new
+     * granted; if it somehow isn't, this fails with a clear message instead of guessing.
+     */
+    static String locate(Context c) throws Exception {
+        if (c.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            throw new Exception("location permission is not granted on this phone");
+        }
+        android.location.LocationManager lm = (android.location.LocationManager) c.getSystemService(Context.LOCATION_SERVICE);
+        if (lm == null || !lm.isLocationEnabled()) throw new Exception("Location is turned off on this phone");
+
+        String provider = lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+                ? android.location.LocationManager.GPS_PROVIDER
+                : android.location.LocationManager.NETWORK_PROVIDER;
+        final java.util.concurrent.ArrayBlockingQueue<android.location.Location> queue = new java.util.concurrent.ArrayBlockingQueue<>(1);
+        android.location.LocationListener listener = new android.location.LocationListener() {
+            @Override
+            public void onLocationChanged(android.location.Location location) {
+                queue.offer(location);
+            }
+        };
+        android.location.Location fix;
+        try {
+            lm.requestSingleUpdate(provider, listener, android.os.Looper.getMainLooper());
+            fix = queue.poll(20, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            lm.removeUpdates(listener);
+        }
+        if (fix == null) fix = lm.getLastKnownLocation(provider); // a fresh fix timed out -- settle for the last one
+        if (fix == null) throw new Exception("could not get a location fix (no signal, or none ever recorded)");
+
+        org.json.JSONObject out = new org.json.JSONObject();
+        out.put("lat", fix.getLatitude());
+        out.put("lon", fix.getLongitude());
+        out.put("accuracy", fix.getAccuracy());
+        out.put("at", fix.getTime());
+        return out.toString();
+    }
+
+    /**
      * Locks the screen. With minutes > 0 it is a timed lock: a full-screen message and countdown that
      * nothing can be opened over (emergency calls stay possible) until time is up or it is unlocked.
      * The message is also shown on the lock screen itself.

@@ -21,7 +21,7 @@ async function cachedLogoRev(env) {
   logoRevCacheAt = now;
   return logoRevCache;
 }
-const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps"]);
+const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_IMAGE_BYTES = 200 * 1024;

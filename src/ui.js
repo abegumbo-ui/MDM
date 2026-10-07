@@ -200,7 +200,7 @@ function render(){
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
-const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps'};
+const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location'};
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒',watchdog:'👀'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
@@ -312,7 +312,7 @@ function renderDeviceDetail(m,d){
  const acts=h('div',{class:'card'},h('h2',null,'Activity'));
  if(d.pending)acts.append(h('div',{class:'act'},'⏳ '+d.pending+' command(s) waiting for the phone\'s next check-in'));
  for(const c of d.inflight)acts.append(h('div',{class:'act'},'⏳ '+(NAMES[c.type]||c.type)+' — sent '+ago(c.at)+', waiting for the phone to confirm'));
- for(const r of d.results.slice().reverse().slice(0,6).filter(function(r){return r.type!=='listSystemApps'}))acts.append(h('div',{class:'act'},(r.ok?'✅ ':'❌ ')+(NAMES[r.type]||r.type)+(r.msg?' — '+r.msg:'')+' · '+ago(r.at)));
+ for(const r of d.results.slice().reverse().slice(0,6).filter(function(r){return r.type!=='listSystemApps'&&r.type!=='locate'}))acts.append(h('div',{class:'act'},(r.ok?'✅ ':'❌ ')+(NAMES[r.type]||r.type)+(r.msg?' — '+r.msg:'')+' · '+ago(r.at)));
  if(acts.children.length===1)acts.append(h('div',{class:'mute'},'No activity yet.'));
  ov.append(acts);
 
@@ -371,6 +371,24 @@ function renderDeviceDetail(m,d){
  cmd(dd,'Wipe','wipe',null,'ERASE this device completely?','danger');
  dd.append(btn('Delete device','outline',async function(){if(!confirm('Delete this device from the dashboard? The phone stays managed; use Release first if you want to actually free the phone.'))return;await call('DELETE','/api/devices/'+d.id);location.hash='devices'}));
  devBox.append(dd);ct.append(devBox);
+
+ // ----- Location (on demand -- a single fix per tap, never continuous tracking) -----
+ const loc=h('section');const locCard=h('div',{class:'card'},h('h2',null,'Location'),
+  h('div',{class:'mute'},'One fix at a time, only when you ask -- nothing here tracks the phone continuously or stores a history of where it\'s been.'));
+ locCard.append(h('div',{style:'margin-top:8px'},btn('Find now','tonal',async function(){
+  await call('POST','/api/devices/'+d.id+'/command',{type:'locate',args:{}});
+  snack('Asked the phone to find itself. It reports back at its next check-in (within about 15 seconds) -- tap Refresh after a moment.');load()})));
+ const lastFix=d.results.slice().reverse().find(function(r){return r.type==='locate'});
+ if(!lastFix)locCard.append(h('div',{class:'mute small',style:'margin-top:8px'},'Not found yet.'));
+ else if(!lastFix.ok)locCard.append(h('div',{class:'mute small',style:'margin-top:8px'},'Last attempt failed: '+lastFix.msg));
+ else{
+  let fix=null;try{fix=JSON.parse(lastFix.msg)}catch(e){}
+  if(fix)locCard.append(h('div',{style:'margin-top:8px'},
+   h('div',null,fix.lat.toFixed(6)+', '+fix.lon.toFixed(6)+' (accurate to about '+Math.round(fix.accuracy)+'m)'),
+   h('div',{class:'mute small'},'As of '+ago(lastFix.at)+'.'),
+   h('a',{href:'https://maps.google.com/?q='+fix.lat+','+fix.lon,target:'_blank',rel:'noopener',style:'display:inline-block;margin-top:4px'},'Open in Google Maps ↗')));
+  else locCard.append(h('div',{class:'mute small',style:'margin-top:8px'},'Could not read the last result.'))}
+ loc.append(locCard);
 
  // ----- Apps on this phone -----
  const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
@@ -431,7 +449,7 @@ function renderDeviceDetail(m,d){
  const se=h('section');renderDeviceSettings(se,d);
 
  // ----- pager -----
- const parts=[['Overview',ov],['Controls',ct],['On this phone',ap],['App rules',arules],['System apps',sa],['Sites',st],['Settings',se],['Log',lg],['Network',nw]];
+ const parts=[['Overview',ov],['Controls',ct],['Location',loc],['On this phone',ap],['App rules',arules],['System apps',sa],['Sites',st],['Settings',se],['Log',lg],['Network',nw]];
  const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
  parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){deviceTab=i;pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
  pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));deviceTab=i;[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};

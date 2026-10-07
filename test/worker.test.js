@@ -361,6 +361,26 @@ test("command arguments are validated", async () => {
   assert.equal((await cmd("release", { uninstall: true })).status, 200);
 });
 
+test("locate: queued like any other command, and its result round-trips to the dashboard", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  assert.equal((await post(`/api/devices/${id}/command`, { type: "locate" }, { cookie })).status, 200);
+
+  const sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.commands.length, 1);
+  assert.equal(sync.commands[0].type, "locate");
+
+  await post(
+    "/agent/sync",
+    { results: [{ id: sync.commands[0].id, type: "locate", ok: true, msg: JSON.stringify({ lat: 40.7128, lon: -74.006, accuracy: 12.5, at: Date.now() }) }] },
+    auth
+  );
+  const dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  const result = dev.results.find((r) => r.type === "locate");
+  assert.ok(result.ok);
+  assert.equal(JSON.parse(result.msg).lat, 40.7128);
+});
+
 const put = (cookie, path, body, method = "PUT") =>
   req(path, { method, headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 

@@ -174,6 +174,13 @@ from here instead. Turning it back off also has to happen from here, so only use
 you expect to stay able to reach the dashboard. Has no effect on a standalone (no-dashboard) phone,
 since that phone has no other way to be managed at all.
 
+## Location (optional)
+A phone's own **Location** tab has a **Find now** button: one on-demand GPS fix, nothing
+continuous and no history kept anywhere -- it only ever happens when you tap that button. The
+result (coordinates, accuracy, a link to open it in Google Maps) shows up after the phone's next
+check-in. Permission is already granted silently as a side effect of **Report Wi-Fi name** (on by
+default in Settings), so this almost never needs anything turned on first.
+
 ## Hide the app icon (optional)
 **Settings → App icon → Hide the app icon** removes the agent's own icon from the launcher and app
 drawer. Nothing else changes -- device-owner status, every restriction, Home screen mode, all of it
