@@ -82,22 +82,34 @@ final class SettingsWatchdog {
 
     static synchronized void start(Context c) {
         if (thread != null) return;
-        Context app = c.getApplicationContext();
-        thread = new HandlerThread("mdm-settings-watchdog");
-        thread.start();
-        handler = new Handler(thread.getLooper());
-        lastEventTime = System.currentTimeMillis();
-        screenReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context ctx, Intent intent) {
-                screenOn = Intent.ACTION_SCREEN_ON.equals(intent.getAction());
-                if (screenOn) lastEventTime = System.currentTimeMillis();
-            }
-        };
-        IntentFilter f = new IntentFilter(Intent.ACTION_SCREEN_ON);
-        f.addAction(Intent.ACTION_SCREEN_OFF);
-        app.registerReceiver(screenReceiver, f);
-        handler.post(new Poller(app));
+        // A failure anywhere in here must never crash the whole agent service over a watchdog
+        // problem -- and silently doing nothing would look identical to everything simply being
+        // allowed, with nothing in the log to tell the two apart. So: catch everything, and leave
+        // a one-time confirmation either way.
+        try {
+            Context app = c.getApplicationContext();
+            thread = new HandlerThread("mdm-settings-watchdog");
+            thread.start();
+            handler = new Handler(thread.getLooper());
+            lastEventTime = System.currentTimeMillis();
+            screenReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context ctx, Intent intent) {
+                    screenOn = Intent.ACTION_SCREEN_ON.equals(intent.getAction());
+                    if (screenOn) lastEventTime = System.currentTimeMillis();
+                }
+            };
+            IntentFilter f = new IntentFilter(Intent.ACTION_SCREEN_ON);
+            f.addAction(Intent.ACTION_SCREEN_OFF);
+            app.registerReceiver(screenReceiver, f);
+            handler.post(new Poller(app));
+            Agent.addEvent(c, "watchdog", "Settings watchdog started");
+        } catch (Exception e) {
+            thread = null;
+            handler = null;
+            screenReceiver = null;
+            Agent.addEvent(c, "error", "Settings watchdog could not start: " + e);
+        }
     }
 
     static synchronized void stop(Context c) {
@@ -135,6 +147,7 @@ final class SettingsWatchdog {
                         + "it may need to be granted by hand under Settings > Apps > Special access > Usage access.");
             } catch (Exception e) {
                 Log.w(TAG, "settings watchdog check failed: " + e);
+                reportError(c, "Settings watchdog check failed: " + e);
             }
             if (handler != null) handler.postDelayed(this, POLL_MS);
         }
@@ -161,7 +174,10 @@ final class SettingsWatchdog {
             return;
         }
         UsageStatsManager usm = (UsageStatsManager) c.getSystemService(Context.USAGE_STATS_SERVICE);
-        if (usm == null) return;
+        if (usm == null) {
+            reportError(c, "Settings watchdog: this phone has no usage-stats service, so it cannot work here.");
+            return;
+        }
         UsageEvents events = usm.queryEvents(lastEventTime, now);
         lastEventTime = now;
         String pkg = null, cls = null;
@@ -174,7 +190,13 @@ final class SettingsWatchdog {
             }
         }
         if (pkg == null || cls == null) return;
-        if (!pkg.equals("com.android.settings") && !pkg.startsWith("com.google.android.apps.wellbeing") && !pkg.equals("com.google.android.gms")) return;
+        // Loosely "settings-shaped", not an exact match to "com.android.settings" -- an OEM could
+        // ship its own Settings package under a different name, and silently dropping every event
+        // whose package isn't exactly right would hide that possibility completely, same as the
+        // category match below already does for an unrecognized screen within a recognized package.
+        boolean settingsish = pkg.equals("com.android.settings") || pkg.toLowerCase().contains("settings")
+                || pkg.startsWith("com.google.android.apps.wellbeing") || pkg.equals("com.google.android.gms");
+        if (!settingsish) return;
 
         String lower = cls.toLowerCase();
         String matched = null;
@@ -190,11 +212,11 @@ final class SettingsWatchdog {
         if (matched == null) {
             // Unrecognized Settings screen -- logged at most once every 10 minutes per class, so the
             // map above can be refined for this phone without flooding the log over one visit.
-            String key = "seenSettings:" + cls;
+            String key = "seenSettings:" + pkg + "/" + cls;
             long seen = Agent.prefs(c).getLong(key, 0);
             if (now - seen > 10 * 60 * 1000) {
                 Agent.prefs(c).edit().putLong(key, now).apply();
-                Agent.addEvent(c, "watchdog", "Settings screen opened, not in any blocked category: " + cls);
+                Agent.addEvent(c, "watchdog", "Settings screen opened, not in any blocked category: " + pkg + "/" + cls);
             }
             return;
         }
