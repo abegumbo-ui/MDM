@@ -1,5 +1,7 @@
 plugins {
     id 'com.android.application' version '8.5.2' apply false
-    // Only :app uses this (PlayUpdates.kt, for the real Play Store protocol library -- see SETUP.md).
-    id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
+    // Only :app uses this (PlayUpdates.kt, for the real Play Store protocol library -- see
+    // SETUP.md). Has to be at least 2.1.0: gplayapi 3.4.8 itself is compiled with Kotlin 2.1
+    // metadata, and an older compiler can't read that, whatever this app's own code looks like.
+    id 'org.jetbrains.kotlin.android' version '2.1.0' apply false
 }
