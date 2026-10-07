@@ -368,3 +368,43 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
+
+const SIMPLE_CONFIG_FIELDS = [
+  ["blockUnlisted", "Hide unlisted apps"],
+  ["approveNew", "Hold new apps for approval"],
+  ["homeScreen", "Home screen mode"],
+  ["restrictBrowsing", "Restrict browsing to the agent's browser"],
+  ["freezeUpdates", "Freeze system updates"],
+  ["blockAccessibility", "Block accessibility services"],
+  ["reportWifi", "Report Wi-Fi name"],
+  ["autoUpdate", "Auto-update the agent"],
+];
+
+/**
+ * A plain-English list of what a config PUT actually changed, for a dashboard-side log separate
+ * from the phone's own self-reported one -- so "I turned this on" and "the phone applied it" can
+ * be compared side by side instead of taking it on faith that a save reached the phone at all.
+ */
+export function summarizeConfigChange(before, after) {
+  const lines = [];
+  for (const [k, v] of Object.entries(RESTRICTIONS)) {
+    if (!!before.restrictions[k] !== !!after.restrictions[k]) lines.push(v.label + ": " + (after.restrictions[k] ? "on" : "off"));
+  }
+  const beforeBS = new Set(before.blockedSettings || []);
+  const afterBS = new Set(after.blockedSettings || []);
+  for (const k of afterBS) if (!beforeBS.has(k)) lines.push("Settings watchdog: " + (SETTINGS_CATEGORIES[k] || k) + " blocked");
+  for (const k of beforeBS) if (!afterBS.has(k)) lines.push("Settings watchdog: " + (SETTINGS_CATEGORIES[k] || k) + " allowed");
+  for (const [field, label] of SIMPLE_CONFIG_FIELDS) {
+    if (!!before[field] !== !!after[field]) lines.push(label + ": " + (after[field] ? "on" : "off"));
+  }
+  const beforeApps = before.apps || {};
+  const afterApps = after.apps || {};
+  for (const pkg of new Set([...Object.keys(beforeApps), ...Object.keys(afterApps)])) {
+    const b = beforeApps[pkg]?.mode;
+    const a = afterApps[pkg]?.mode;
+    if (b !== a) lines.push((afterApps[pkg]?.label || beforeApps[pkg]?.label || pkg) + ": " + (a || "default"));
+  }
+  if (JSON.stringify(before.frpAccounts) !== JSON.stringify(after.frpAccounts)) lines.push("Factory Reset Protection accounts changed");
+  if (JSON.stringify(Object.keys(before.sites || {})) !== JSON.stringify(Object.keys(after.sites || {}))) lines.push("Sites list changed");
+  return lines;
+}
