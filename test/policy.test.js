@@ -41,14 +41,16 @@ test("blockedSettings: every category is blocked by default, and an explicit lis
   assert.deepEqual(ignoresJunk.blockedSettings, ["network"]);
 });
 
-test("new location/network restrictions default off, and turn on only when asked", () => {
+test("new location/network/VPN restrictions default off, and turn on only when asked", () => {
   const off = buildAgentPolicy({}, []);
-  for (const key of ["no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering"]) {
+  for (const key of ["no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering", "no_config_vpn", "no_config_private_dns"]) {
     assert.ok(!off.restrictions.includes(key), key + " should default off");
   }
-  const on = buildAgentPolicy({ restrictions: { locationConfigDisabled: true, tetheringDisabled: true } }, []);
+  const on = buildAgentPolicy({ restrictions: { locationConfigDisabled: true, tetheringDisabled: true, vpnConfigDisabled: true, privateDnsDisabled: true } }, []);
   assert.ok(on.restrictions.includes("no_config_location"));
   assert.ok(on.restrictions.includes("no_config_tethering"));
+  assert.ok(on.restrictions.includes("no_config_vpn"));
+  assert.ok(on.restrictions.includes("no_config_private_dns"));
   assert.ok(!on.restrictions.includes("no_airplane_mode"));
 });
 

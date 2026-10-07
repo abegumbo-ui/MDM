@@ -108,7 +108,7 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <script>
 const DAYS=['S','M','T','W','T','F','S'];
 let deviceTab=0,lastOpenId=null; // which pager page a device's detail view is on, kept across re-renders (e.g. typing in a search box)
-let state=null,devices=[],browsers=[],windevices=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='';
+let state=null,devices=[],browsers=[],windevices=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
 function route(){const x=(location.hash||'#devices').slice(1);
  if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null;openWinId=null}
  else if(x.indexOf('browser/')===0){tab='devices';openBrowserId=x.slice(8);openId=null;openWinId=null}
@@ -390,8 +390,13 @@ function renderDeviceDetail(m,d){
  else{
   let sysApps=[];try{sysApps=JSON.parse(lastScan.msg)}catch(e){}
   sal.append(h('div',{class:'mute small',style:'margin-top:8px'},sysApps.length+' found, as of '+ago(lastScan.at)+'.'));
-  for(const a of sysApps)sal.append(appRow({p:a.p,l:a.l,s:true,prot:false,hiddenOn:a.h?1:0},d,{triple:true}));
-  if(!sysApps.length)sal.append(h('div',{class:'mute'},'No hidden system apps found.'))}
+  const sq=h('input',{type:'text',placeholder:'Search system apps',value:sysAppSearch,style:'width:100%;margin-top:8px'});
+  sq.oninput=function(){sysAppSearch=sq.value;const pos=sq.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search system apps"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
+  sal.append(sq);
+  const shown=sysApps.filter(function(a){const s=sysAppSearch.toLowerCase();return !s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s)});
+  for(const a of shown)sal.append(appRow({p:a.p,l:a.l,s:true,prot:false,hiddenOn:a.h?1:0},d,{triple:true}));
+  if(!sysApps.length)sal.append(h('div',{class:'mute'},'No hidden system apps found.'));
+  else if(!shown.length)sal.append(h('div',{class:'mute'},'No system apps match.'))}
  sa.append(sal);
 
  // ----- Log -----
