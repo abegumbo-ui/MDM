@@ -48,6 +48,7 @@ public class AgentService extends Service {
         if (before != 0 && before != build) Agent.addEvent(this, "update", "Agent updated: build " + before + " to build " + build);
         Agent.prefs(this).edit().putInt("knownBuild", build).apply();
         if (packageReceiver == null) registerPackageReceiver();
+        AppBlocklist.start(this);
         if (thread == null || !thread.isAlive()) {
             running = true;
             thread = new Thread(this::loop, "mdm-agent");
@@ -61,6 +62,7 @@ public class AgentService extends Service {
     public void onDestroy() {
         running = false;
         if (instance == this) instance = null;
+        AppBlocklist.stop(this);
         if (packageReceiver != null) {
             try {
                 unregisterReceiver(packageReceiver);
