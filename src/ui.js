@@ -378,7 +378,8 @@ function renderDeviceDetail(m,d){
  devBox.append(dd);ct.append(devBox);
 
  // ----- Location (on demand -- a single fix per tap, never continuous tracking) -----
- const loc=h('section');const locCard=h('div',{class:'card'},h('h2',null,'Location'),
+ // Folded into Controls below instead of its own tab -- one card doesn't need a whole tab to itself.
+ const locCard=h('div',{class:'card'},h('h2',null,'Location'),
   h('div',{class:'mute'},'One fix at a time, only when you ask -- nothing here tracks the phone continuously or stores a history of where it\'s been.'));
  locCard.append(h('div',{style:'margin-top:8px'},btn('Find now','tonal',async function(){
   await call('POST','/api/devices/'+d.id+'/command',{type:'locate',args:{}});
@@ -393,16 +394,16 @@ function renderDeviceDetail(m,d){
    h('div',{class:'mute small'},'As of '+ago(lastFix.at)+'.'),
    h('a',{href:'https://maps.google.com/?q='+fix.lat+','+fix.lon,target:'_blank',rel:'noopener',style:'display:inline-block;margin-top:4px'},'Open in Google Maps ↗')));
   else locCard.append(h('div',{class:'mute small',style:'margin-top:8px'},'Could not read the last result.'))}
- loc.append(locCard);
+ ct.append(locCard);
 
  // ----- Apps on this phone -----
- const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
+ // Folded into the Apps tab below (with App rules and System apps) instead of its own tab.
+ const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
  for(const a of d.packages)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},d));
  if(!d.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
- ap.append(al);
 
  // ----- System apps (hidden from the launcher, e.g. a lock-screen component) -----
- const sa=h('section');const sal=h('div',{class:'card'},h('h2',null,'System apps'),
+ const sal=h('div',{class:'card'},h('h2',null,'System apps'),
   h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "On this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
  sal.append(h('div',{style:'margin-top:8px'},btn('Scan for hidden system apps','tonal',async function(){
   await call('POST','/api/devices/'+d.id+'/command',{type:'listSystemApps',args:{}});
@@ -420,7 +421,6 @@ function renderDeviceDetail(m,d){
   for(const a of shown)sal.append(appRow({p:a.p,l:a.l,s:true,prot:false,hiddenOn:a.h?1:0},d,{triple:true}));
   if(!sysApps.length)sal.append(h('div',{class:'mute'},'No hidden system apps found.'));
   else if(!shown.length)sal.append(h('div',{class:'mute'},'No system apps match.'))}
- sa.append(sal);
 
  // ----- Log -----
  const lg=h('section');
@@ -436,8 +436,8 @@ function renderDeviceDetail(m,d){
  for(const e of d.events.slice().reverse())ll.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
  lg.append(ll);
 
- // ----- Network -----
- const nw=h('section');const wl=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
+ // ----- Network (folded into the Settings tab below instead of its own tab) -----
+ const wl=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
  wl.append(kv('Now',d.info.wifi?(d.info.wifi.transport==='wifi'?(d.info.wifi.ssid||'(name hidden: Location is off)'):d.info.wifi.transport==='mobile'?'Mobile data':'No connection'):'unknown'));
  for(const n of d.wifiNetworks){const pw=h('span',{class:'mono'},n.password?'••••••••':'(open)');
   const show=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');show.onclick=function(){pw.textContent=n.password||'(open)'};
@@ -446,15 +446,17 @@ function renderDeviceDetail(m,d){
  wl.append(h('div',{style:'margin-top:8px'},btn('Add Wi-Fi network…','',async function(){
    const v=await ask('Add a Wi-Fi network',[{key:'ssid',label:'Network name',max:32},{key:'password',label:'Password (leave empty for an open network)',max:63}],'Add to phone');
    if(!v||!v.ssid)return;await queue('Add Wi-Fi','addWifi',{ssid:v.ssid,password:v.password})})));
- nw.append(wl);
 
  // ----- App rules, Sites, Settings: this device's own, independent of every other device -----
- const arules=h('section');renderApps(arules,d);
+ // Apps on this phone and System apps join App rules here; Wi-Fi joins Settings; Location joined
+ // Controls above -- ten tabs down to six, same reasoning as the phone's own Apps/Settings hubs:
+ // real overlap between several of them and no grouping was the actual "hard to find" complaint.
+ const arules=h('section');renderApps(arules,d);arules.append(al,sal);
  const st=h('section');renderSites(st,d);
- const se=h('section');renderDeviceSettings(se,d);
+ const se=h('section');renderDeviceSettings(se,d);se.append(wl);
 
  // ----- pager -----
- const parts=[['Overview',ov],['Controls',ct],['Location',loc],['On this phone',ap],['App rules',arules],['System apps',sa],['Sites',st],['Settings',se],['Log',lg],['Network',nw]];
+ const parts=[['Overview',ov],['Controls',ct],['Apps',arules],['Browsing',st],['Settings',se],['Log',lg]];
  const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
  parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){setDeviceTab(i);pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
  pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));setDeviceTab(i);[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
