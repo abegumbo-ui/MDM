@@ -3,7 +3,6 @@ package com.familymdm.agent;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -17,6 +16,7 @@ import java.io.InputStream;
  */
 public class UserActivity extends Activity {
     private static final int PICK_APK = 1;
+    private static final int REQUEST_CODE_ENTRY = 2;
     private static final long PICK_WINDOW_MS = 5 * 60 * 1000;
 
     @Override
@@ -42,24 +42,12 @@ public class UserActivity extends Activity {
     }
 
     private void promptInstallCode() {
-        final EditText input = Ui.field(this, "Code");
-        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        Ui.alertDialog(this)
-                .setTitle("Enter code")
-                .setMessage(Agent.standalone(this)
+        startActivityForResult(new Intent(this, CodeEntryActivity.class)
+                .putExtra(CodeEntryActivity.EXTRA_TITLE, "Install an App")
+                .putExtra(CodeEntryActivity.EXTRA_SUBTITLE, Agent.standalone(this)
                         ? "Enter the code, then pick the APK file from this phone."
                         : "Ask the administrator for a code to install this, then pick the APK file from this phone.")
-                .setView(input)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("OK", (d, w) -> CodeRedeem.redeem(this, "install", input.getText().toString().trim(), err -> {
-                    if (err != null) {
-                        toast(err);
-                    } else {
-                        Agent.prefs(this).edit().putLong("installUntil", System.currentTimeMillis() + PICK_WINDOW_MS).apply();
-                        pickApk();
-                    }
-                }))
-                .show();
+                .putExtra(CodeEntryActivity.EXTRA_BUTTON, "Submit"), REQUEST_CODE_ENTRY);
     }
 
     private void pickApk() {
@@ -77,6 +65,20 @@ public class UserActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_CODE_ENTRY) {
+            if (resultCode == RESULT_OK && data != null) {
+                String code = data.getStringExtra(CodeEntryActivity.EXTRA_CODE);
+                CodeRedeem.redeem(this, "install", code == null ? "" : code.trim(), err -> {
+                    if (err != null) {
+                        toast(err);
+                    } else {
+                        Agent.prefs(this).edit().putLong("installUntil", System.currentTimeMillis() + PICK_WINDOW_MS).apply();
+                        pickApk();
+                    }
+                });
+            }
+            return;
+        }
         if (requestCode != PICK_APK || resultCode != RESULT_OK || data == null || data.getData() == null) return;
         if (System.currentTimeMillis() > Agent.prefs(this).getLong("installUntil", 0)) {
             toast("The install code window has expired. Ask for a new code.");
