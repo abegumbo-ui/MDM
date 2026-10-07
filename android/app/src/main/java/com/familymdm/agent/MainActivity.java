@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
         QUICK_SETTINGS.put("network", Settings.ACTION_WIRELESS_SETTINGS);
         QUICK_SETTINGS.put("connected", Settings.ACTION_BLUETOOTH_SETTINGS);
         QUICK_SETTINGS.put("apps", Settings.ACTION_APPLICATION_SETTINGS);
-        QUICK_SETTINGS.put("notifications", Settings.ACTION_NOTIFICATION_SETTINGS);
+        QUICK_SETTINGS.put("notifications", Settings.ACTION_ALL_APPS_NOTIFICATION_SETTINGS);
         QUICK_SETTINGS.put("sound", Settings.ACTION_SOUND_SETTINGS);
         QUICK_SETTINGS.put("display", Settings.ACTION_DISPLAY_SETTINGS);
         QUICK_SETTINGS.put("storage", Settings.ACTION_INTERNAL_STORAGE_SETTINGS);
