@@ -506,7 +506,36 @@ public class AdminActivity extends Activity {
 
     private void promptAddBlockedComponent() {
         if (!unlocked()) return;
-        final EditText input = Ui.field(this, "package/ClassName");
+        final java.util.List<String> suggestions = new java.util.ArrayList<>(AppBlocklist.seen(this));
+        java.util.Collections.sort(suggestions);
+        final android.widget.AutoCompleteTextView input = Ui.autoCompleteField(this, "package/ClassName");
+        input.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, suggestions) {
+            @Override
+            public android.widget.Filter getFilter() {
+                return new android.widget.Filter() {
+                    @Override
+                    protected FilterResults performFiltering(CharSequence constraint) {
+                        java.util.List<String> matches = new java.util.ArrayList<>();
+                        String needle = constraint == null ? "" : constraint.toString().toLowerCase();
+                        for (String s : suggestions) {
+                            if (needle.isEmpty() || s.toLowerCase().contains(needle)) matches.add(s);
+                        }
+                        FilterResults results = new FilterResults();
+                        results.values = matches;
+                        results.count = matches.size();
+                        return results;
+                    }
+
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    protected void publishResults(CharSequence constraint, FilterResults results) {
+                        clear();
+                        if (results.values != null) addAll((java.util.List<String>) results.values);
+                        notifyDataSetChanged();
+                    }
+                };
+            }
+        });
         new AlertDialog.Builder(this)
                 .setTitle("Add app/screen to block")
                 .setMessage("The exact component, written as package/ClassName -- for example:\n\n"

@@ -28,6 +28,7 @@ public class BlockAccessibilityService extends AccessibilityService {
         CharSequence cls = event.getClassName();
         if (pkg == null || cls == null) return;
         String component = pkg + "/" + cls;
+        AppBlocklist.recordSeen(this, component);
         if (AppBlocklist.list(this).contains(component) && !AppBlocklist.isPaused(this, component)) {
             performGlobalAction(GLOBAL_ACTION_BACK);
             Agent.addEvent(this, "restriction", "Blocked app/screen opened (" + component + ") -- backed out instantly");

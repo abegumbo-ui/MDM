@@ -27,6 +27,12 @@ final class AppBlocklist {
     // them -- lets you temporarily walk into a blocked screen yourself (to test something) without
     // deleting and re-adding it afterward.
     private static final String PAUSED_KEY = "blockedComponentsPaused";
+    // Every "pkg/ClassName" ever seen in the foreground on this phone, capped so it can't grow
+    // forever -- feeds the autocomplete in "Add App" so typing doesn't need the exact string typed
+    // out by hand (a real source of the typos that caused double-bounces: a near-miss component
+    // string that *almost* matched would never match at all, silently).
+    private static final String SEEN_KEY = "seenComponents";
+    private static final int SEEN_CAP = 400;
     private static final long POLL_MS = 800;
 
     private static HandlerThread thread;
@@ -67,6 +73,17 @@ final class AppBlocklist {
         Set<String> set = pausedList(c);
         if (paused) set.add(component); else set.remove(component);
         Agent.putSet(c, PAUSED_KEY, set);
+    }
+
+    static Set<String> seen(Context c) {
+        return Agent.getSet(c, SEEN_KEY);
+    }
+
+    static void recordSeen(Context c, String component) {
+        Set<String> set = seen(c);
+        if (set.contains(component) || set.size() >= SEEN_CAP) return;
+        set.add(component);
+        Agent.putSet(c, SEEN_KEY, set);
     }
 
     static synchronized void start(Context c) {
@@ -129,13 +146,11 @@ final class AppBlocklist {
 
     private static void check(Context c) {
         long now = System.currentTimeMillis();
-        Set<String> blocked = list(c);
-        if (blocked.isEmpty()) {
+        UsageStatsManager usm = (UsageStatsManager) c.getSystemService(Context.USAGE_STATS_SERVICE);
+        if (usm == null) {
             lastEventTime = now;
             return;
         }
-        UsageStatsManager usm = (UsageStatsManager) c.getSystemService(Context.USAGE_STATS_SERVICE);
-        if (usm == null) return;
         UsageEvents events = usm.queryEvents(lastEventTime, now);
         lastEventTime = now;
         String pkg = null, cls = null;
@@ -149,6 +164,8 @@ final class AppBlocklist {
         }
         if (pkg == null || cls == null) return;
         String component = pkg + "/" + cls;
+        recordSeen(c, component);
+        Set<String> blocked = list(c);
         if (blocked.contains(component) && !pausedList(c).contains(component)) {
             // Tried bouncing to Settings' own homepage (Settings.ACTION_SETTINGS) instead of the
             // device home screen, but Android silently drops an arbitrary activity launch from a
