@@ -4,7 +4,8 @@ import android.content.Context
 import android.content.pm.PackageInfo
 import android.os.Build
 import com.aurora.gplayapi.data.models.AuthData
-import com.aurora.gplayapi.data.models.PlayFile
+// gplayapi's own download-file model -- aliased since java.io.File is also used throughout this file.
+import com.aurora.gplayapi.data.models.File as PlayFile
 import com.aurora.gplayapi.helpers.AppDetailsHelper
 import com.aurora.gplayapi.helpers.AuthHelper
 import com.aurora.gplayapi.helpers.PurchaseHelper
@@ -89,10 +90,10 @@ object PlayUpdates {
                     null
                 }
                 val files = PurchaseHelper(authData).purchase(
-                    app.packageName, app.versionCode, app.offerType,
-                    installedVersionCode = installedVersion,
+                    app.packageName, app.versionCode.toInt(), app.offerType,
+                    installedVersionCode = installedVersion?.toInt(),
                 )
-                val apkFiles = files.filter { it.type == PlayFile.Type.BASE || it.type == PlayFile.Type.SPLIT }
+                val apkFiles = files.filter { it.type == PlayFile.FileType.BASE || it.type == PlayFile.FileType.SPLIT }
                 if (apkFiles.isEmpty()) throw Exception("Google did not return an APK for $pkg")
                 val dir = File(context.cacheDir, "play-update-$pkg")
                 dir.deleteRecursively()
