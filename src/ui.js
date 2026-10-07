@@ -1,20 +1,15 @@
 // Dashboard pages. Material 3 styling with plain CSS and vanilla JS (no build step, no libraries).
 
 const STYLE = String.raw`
+/* Same dark red theme as the phone app itself (see android/app/src/main/res/values/colors.xml) --
+   one fixed theme, not light/dark depending on the system, same as the app only ever has the one. */
 :root{
-  --primary:#6750a4;--on-primary:#fff;--primary-container:#eaddff;--on-primary-container:#21005d;
-  --secondary-container:#e8def8;--on-secondary-container:#1d192b;
-  --surface:#fef7ff;--surface-1:#f7f2fa;--surface-2:#f3edf7;--surface-3:#ece6f0;
-  --on-surface:#1d1b20;--on-surface-variant:#49454f;--outline:#79747e;--outline-variant:#cac4d0;
-  --error:#b3261e;--error-container:#f9dedc;--ok:#146c2e;--ok-container:#d8f5df;--warn:#8a5100;--warn-container:#ffe9c7;
+  --primary:#C62828;--on-primary:#fff;--primary-container:#3A0A0A;--on-primary-container:#FFCDD2;
+  --secondary-container:#262626;--on-secondary-container:#fff;
+  --surface:#0D0D0D;--surface-1:#171717;--surface-2:#1c1c1c;--surface-3:#222222;
+  --on-surface:#fff;--on-surface-variant:#B0B0B0;--outline:#3A3A3A;--outline-variant:#2A2A2A;
+  --error:#FF5252;--error-container:#4a1515;--ok:#7fd99a;--ok-container:#0f3d1c;--warn:#ffb95c;--warn-container:#4a2f00;
 }
-@media(prefers-color-scheme:dark){:root{
-  --primary:#d0bcff;--on-primary:#381e72;--primary-container:#4f378b;--on-primary-container:#eaddff;
-  --secondary-container:#4a4458;--on-secondary-container:#e8def8;
-  --surface:#141218;--surface-1:#1d1b20;--surface-2:#211f26;--surface-3:#2b2930;
-  --on-surface:#e6e0e9;--on-surface-variant:#cac4d0;--outline:#938f99;--outline-variant:#49454f;
-  --error:#f2b8b5;--error-container:#8c1d18;--ok:#7fd99a;--ok-container:#0f3d1c;--warn:#ffb95c;--warn-container:#4a2f00;
-}}
 *{box-sizing:border-box}
 html{background:var(--surface)}
 body{margin:0;background:var(--surface);color:var(--on-surface);font:14px/1.5 Roboto,system-ui,sans-serif;overscroll-behavior-y:none}
@@ -88,7 +83,7 @@ pre.cmd{background:var(--surface-3);border-radius:12px;padding:12px;white-space:
 `;
 
 export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>MDM Login</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0D0D0D"><title>MDM Login</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
 <style>${STYLE}</style></head>
 <body><div class="login"><div class="card"><h2 style="font-size:22px;margin-bottom:12px">MDM Dashboard</h2>
@@ -96,7 +91,7 @@ export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><
 <button class="btn">Sign in</button></div>${error ? `<p class="mute" style="color:var(--error)">${error}</p>` : ""}</form></div></div></body></html>`;
 
 export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>MDM Dashboard</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0D0D0D"><title>MDM Dashboard</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>${STYLE}</style></head>
