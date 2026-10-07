@@ -107,7 +107,12 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <div id="snack"></div>
 <script>
 const DAYS=['S','M','T','W','T','F','S'];
-let deviceTab=0,lastOpenId=null; // which pager page a device's detail view is on, kept across re-renders (e.g. typing in a search box)
+// Which pager page a device's detail view is on, kept across re-renders (e.g. typing in a search
+// box) -- and in sessionStorage too, because a phone browser backgrounded for a minute or so often
+// throws this whole tab away and reloads it fresh when you switch back, which looked like "it just
+// goes back to Overview on its own" with nothing actually wrong.
+let deviceTab=parseInt(sessionStorage.getItem('deviceTab')||'0',10)||0,lastOpenId=sessionStorage.getItem('lastOpenId')||null;
+function setDeviceTab(i){deviceTab=i;try{sessionStorage.setItem('deviceTab',i)}catch(e){}}
 let state=null,devices=[],browsers=[],windevices=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
 function route(){const x=(location.hash||'#devices').slice(1);
  if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null;openWinId=null}
@@ -274,7 +279,7 @@ function resetCard(d){
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No phone protection is unbreakable. This checks the known ways around a reset: resetting from Settings, Safe Mode, USB debugging, an unlocked bootloader, an old system, and simply setting the phone up again.'));
  return card}
 function renderDeviceDetail(m,d){
- if(d.id!==lastOpenId){lastOpenId=d.id;deviceTab=0}
+ if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceTab(0)}
  const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
  m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
  m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico dev',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;padding:0'},'📱'),
@@ -451,8 +456,8 @@ function renderDeviceDetail(m,d){
  // ----- pager -----
  const parts=[['Overview',ov],['Controls',ct],['Location',loc],['On this phone',ap],['App rules',arules],['System apps',sa],['Sites',st],['Settings',se],['Log',lg],['Network',nw]];
  const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
- parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){deviceTab=i;pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
- pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));deviceTab=i;[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
+ parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){setDeviceTab(i);pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
+ pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));setDeviceTab(i);[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
  m.append(tabsRow,pager,h('div',{class:'mute small',style:'margin-top:8px;text-align:center'},'Swipe sideways or tap a tab'));
  // A re-render (e.g. typing in a search box inside a pager page) rebuilds this whole pager from
  // scratch, which would otherwise always snap back to the first tab — jump straight back instead.
