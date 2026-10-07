@@ -284,8 +284,30 @@ final class SettingsWatchdog {
                 .apply();
     }
 
+    /**
+     * A device owner is often assumed to get Usage access automatically, with no prompt -- that
+     * turns out not to be reliable across OEMs (confirmed against public docs: PACKAGE_USAGE_STATS
+     * is a "special" app-op permission, not a normal runtime one, and nothing guarantees a device
+     * owner gets it for free). setPermissionGrantState() is the one API a device owner has for
+     * trying to grant it anyway; some Android/OEM combinations honor it, some silently don't. Either
+     * way this can't hurt -- if it's ignored, the phone still needs it granted by hand under
+     * Settings > Apps > Special access > Usage access, same as it always did.
+     */
+    private static void tryGrantUsageAccess(Context c) {
+        try {
+            android.app.admin.DevicePolicyManager dpm = Agent.dpm(c);
+            android.content.ComponentName admin = Agent.admin(c);
+            if (dpm != null && admin != null && dpm.isDeviceOwnerApp(c.getPackageName())) {
+                dpm.setPermissionGrantState(admin, c.getPackageName(), "android.permission.PACKAGE_USAGE_STATS",
+                        android.app.admin.DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     static synchronized void start(Context c) {
         if (thread != null) return;
+        tryGrantUsageAccess(c);
         // A failure anywhere in here must never crash the whole agent service over a watchdog
         // problem -- and silently doing nothing would look identical to everything simply being
         // allowed, with nothing in the log to tell the two apart. So: catch everything, and leave
