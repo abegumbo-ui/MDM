@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS, SETTINGS_CATEGORIES } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -325,7 +325,7 @@ async function adminApi(request, env, url) {
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
   if (path === "/api/state" && method === "GET") {
-    return json({ restrictions: RESTRICTIONS, origin: url.origin, masterIterations: MASTER_ITERATIONS });
+    return json({ restrictions: RESTRICTIONS, settingsCategories: SETTINGS_CATEGORIES, origin: url.origin, masterIterations: MASTER_ITERATIONS });
   }
   const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from)$/.exec(path);
   if (devConfig) {

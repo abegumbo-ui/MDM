@@ -26,6 +26,21 @@ test("blockAccessibility defaults off and passes through when set", () => {
   assert.equal(buildAgentPolicy({ blockAccessibility: true }, []).blockAccessibility, true);
 });
 
+test("blockedSettings: every category is blocked by default, and an explicit list is honored", () => {
+  const fresh = buildAgentPolicy({}, []);
+  assert.equal(fresh.blockedSettings.length, 22);
+  assert.ok(fresh.blockedSettings.includes("accessibility"));
+
+  const narrowed = buildAgentPolicy({ blockedSettings: ["network", "location"] }, []);
+  assert.deepEqual(narrowed.blockedSettings, ["network", "location"]);
+
+  const allowedEverything = buildAgentPolicy({ blockedSettings: [] }, []);
+  assert.deepEqual(allowedEverything.blockedSettings, []);
+
+  const ignoresJunk = buildAgentPolicy({ blockedSettings: ["network", "not-a-real-category"] }, []);
+  assert.deepEqual(ignoresJunk.blockedSettings, ["network"]);
+});
+
 test("new location/network restrictions default off, and turn on only when asked", () => {
   const off = buildAgentPolicy({}, []);
   for (const key of ["no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering"]) {
