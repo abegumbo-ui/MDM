@@ -1081,6 +1081,40 @@ public class AdminActivity extends Activity {
     }
 
     private void buildDeviceSection(LinearLayout root) {
+        boolean hidden;
+        try {
+            hidden = new JSONObject(Agent.prefs(this).getString("policy", "{}")).optBoolean("hideAppIcon", false);
+        } catch (Exception e) {
+            hidden = false;
+        }
+        LinearLayout icon = Ui.card(this, root);
+        icon.addView(Ui.titleText(this, "App icon"));
+        icon.addView(Ui.body(this, hidden
+                ? "Hidden. Dial *#*#636#*#* on this phone to bring it back, or turn it back on here or from the dashboard."
+                : "Visible, like any other app. Hiding it doesn't stop anything -- this phone keeps syncing with the dashboard and applying policy exactly the same either way.", true));
+        action(icon, hidden ? "Show app icon" : "Hide app icon", hidden ? Ui.OUTLINED : Ui.TONAL, v -> {
+            if (!unlocked()) return;
+            try {
+                String stored = Agent.prefs(this).getString("policy", "{}");
+                JSONObject policy = new JSONObject(stored);
+                boolean newValue = !hidden;
+                policy.put("hideAppIcon", newValue);
+                long rev = System.currentTimeMillis();
+                Agent.prefs(this).edit()
+                        .putString("policy", policy.toString())
+                        .putLong("hideAppIconRev", rev)
+                        .putBoolean("hideAppIconValue", newValue)
+                        .apply();
+                Agent.addEvent(this, "local", "Master code on phone: " + (newValue ? "hid" : "showed") + " the app icon");
+                PolicyApplier.applyStored(this);
+                AgentService.requestSync();
+                build();
+                toast(newValue ? "Hidden. Dial *#*#636#*#* to bring it back." : "Visible again.");
+            } catch (Exception e) {
+                toast("Could not change it: " + e.getMessage());
+            }
+        });
+
         LinearLayout device = Ui.card(this, root);
         device.addView(Ui.titleText(this, "Device"));
         action(device, "Reboot", Ui.TONAL, v -> confirm("Reboot the phone?", () -> run(() -> {

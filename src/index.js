@@ -828,6 +828,13 @@ async function agentApi(request, env, url) {
       d.homeScreenRev = Number(body.homeScreenRev);
       dirty = true;
     }
+    if (Number(body.hideAppIconRev) > (d.hideAppIconRev || 0)) {
+      // Same mirroring again, for the app icon's own hide/show toggle.
+      config.hideAppIcon = !!body.hideAppIconValue;
+      d.config = config;
+      d.hideAppIconRev = Number(body.hideAppIconRev);
+      dirty = true;
+    }
     if (typeof body.appCode === "string") {
       // The code the person chose to open the phone app; the administrator can see it on the dashboard.
       const code = body.appCode.slice(0, 32) || null;

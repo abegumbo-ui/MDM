@@ -227,6 +227,11 @@ public class AgentService extends Service {
             body.put("homeScreenRev", hsRev);
             body.put("homeScreenValue", Agent.prefs(this).getBoolean("homeScreenValue", false));
         }
+        long hiaRev = Agent.prefs(this).getLong("hideAppIconRev", 0);
+        if (hiaRev > 0) {
+            body.put("hideAppIconRev", hiaRev);
+            body.put("hideAppIconValue", Agent.prefs(this).getBoolean("hideAppIconValue", false));
+        }
         List<String> iconsSent = new ArrayList<>();
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);
