@@ -338,6 +338,22 @@ public class AdminActivity extends Activity {
         }
         action(blockCard, "Add App", Ui.TONAL, v -> promptAddBlockedComponent());
 
+        LinearLayout accessCard = Ui.card(this, root);
+        accessCard.addView(Ui.titleText(this, "Accessibility service"));
+        boolean accessOn = Agent.accessibilityServiceOn(this);
+        accessCard.addView(Ui.body(this, "Backs out of a blocked screen (above) instantly, and doesn't "
+                + "leave it sitting in recents the way the plain bounce does. "
+                + (accessOn ? "Currently on. To stop it being turned off from Settings without going through "
+                + "here, add Settings' own Accessibility screen to the blocked list above (same \"Add App\" "
+                + "flow), then use its Pause button whenever you need to get in and change something yourself."
+                : "Currently off -- turn it on under Settings > Accessibility, then come back here."), true));
+        if (!accessOn) {
+            action(accessCard, "Open Accessibility settings", Ui.OUTLINED, v -> {
+                startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            });
+        }
+
         if (!Agent.standalone(this)) {
             LinearLayout syncCard = Ui.card(this, root);
             syncCard.addView(Ui.titleText(this, "Dashboard connection"));

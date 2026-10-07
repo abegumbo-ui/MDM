@@ -53,6 +53,17 @@ final class Agent {
     }
 
     /**
+     * Whether this phone's accessibility service (BlockAccessibilityService) is currently turned
+     * on -- read the same way Settings itself does, from the system list of enabled services, not
+     * from anything this app stores, since enabling it always happens outside this app.
+     */
+    static boolean accessibilityServiceOn(Context c) {
+        String enabled = android.provider.Settings.Secure.getString(
+                c.getContentResolver(), android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        return enabled != null && enabled.contains(c.getPackageName() + "/.BlockAccessibilityService");
+    }
+
+    /**
      * This phone's own recovery code: generated once on first use, kept forever after that (works
      * with no internet, ever, even with no master code set). Different per phone, and only ever
      * known once this phone has reported it -- unlike a code baked into every build, it's not

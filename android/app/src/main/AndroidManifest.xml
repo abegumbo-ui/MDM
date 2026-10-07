@@ -129,5 +129,21 @@
         <service
             android:name=".AgentService"
             android:exported="false" />
+
+        <!-- Instant, recents-safe version of the blocklist bounce; see BlockAccessibilityService's
+             own doc comment for why this exists alongside the UsageStatsManager polling in
+             AppBlocklist rather than replacing it (it needs a manual one-time grant, so the poller
+             stays as a fallback for whenever this hasn't been turned on). -->
+        <service
+            android:name=".BlockAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
     </application>
 </manifest>
