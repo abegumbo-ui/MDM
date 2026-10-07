@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import worker from "../src/index.js";
 
 const kv = new Map();
+let getCalls = 0;
 const env = {
   ADMIN_PASSWORD: "correct horse",
   STATE: {
-    get: async (k, t) => (kv.has(k) ? (t === "json" ? JSON.parse(kv.get(k)) : kv.get(k)) : null), // arrayBuffer values are stored as-is
+    get: async (k, t) => {
+      getCalls++;
+      return kv.has(k) ? (t === "json" ? JSON.parse(kv.get(k)) : kv.get(k)) : null; // arrayBuffer values are stored as-is
+    },
     put: async (k, v) => void kv.set(k, v),
     delete: async (k) => void kv.delete(k),
     list: async ({ prefix }) => ({ keys: [...kv.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }),
@@ -766,4 +770,23 @@ test("approving a site adds it to that device's own policy, not any other device
   assert.equal(sync.policy.sites[0].host, "khanacademy.org");
   const sync2 = await (await post("/agent/sync", {}, auth2)).json();
   assert.equal(sync2.policy.sites.length, 0, "a site added to one device's own page doesn't leak to a different device");
+});
+
+test("GET /api/devices caches briefly (saves KV reads on the dashboard's own auto-refresh) but a change on the device shows up immediately, not after the cache expires", async () => {
+  const cookie = await login();
+  const { id } = await enrolledDevice(cookie);
+  const mine = (list) => list.find((d) => d.id === id);
+
+  const first = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.ok(mine(first));
+  const callsAfterFirst = getCalls;
+
+  const second = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.ok(mine(second));
+  assert.equal(getCalls, callsAfterFirst, "a second read moments later should be served from cache, not hit KV again");
+
+  assert.equal((await post(`/api/devices/${id}/command`, { type: "lock" }, { cookie })).status, 200);
+  const afterChange = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(mine(afterChange).pending, 1, "the queued command shows up right away -- the write busted the cache instead of leaving it stale");
+  assert.ok(getCalls > callsAfterFirst, "the post-write read should have gone back to KV instead of reusing the stale cache");
 });
