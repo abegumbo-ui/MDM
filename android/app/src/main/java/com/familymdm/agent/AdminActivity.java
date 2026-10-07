@@ -309,6 +309,29 @@ public class AdminActivity extends Activity {
             }
         }
 
+        // Plain list, nothing fancy: exact components to watch for and bounce away from the
+        // instant they're in the foreground. Never touches a dashboard -- stored on this phone
+        // only. Whatever is typed in has to be the full "package/ClassName" component (the part
+        // after the slash is a fully-qualified class name, same as UsageEvents reports it).
+        LinearLayout blockCard = Ui.card(this, root);
+        blockCard.addView(Ui.titleText(this, "Blocked apps/screens"));
+        for (String comp : AppBlocklist.list(this)) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            TextView t = Ui.body(this, comp, false);
+            t.setTextSize(12);
+            t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(t);
+            row.addView(Ui.button(this, "Remove", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                AppBlocklist.remove(this, comp);
+                build();
+            }));
+            Ui.add(blockCard, row, 4);
+        }
+        action(blockCard, "Add App", Ui.TONAL, v -> promptAddBlockedComponent());
+
         if (!Agent.standalone(this)) {
             LinearLayout syncCard = Ui.card(this, root);
             syncCard.addView(Ui.titleText(this, "Dashboard connection"));
@@ -455,6 +478,28 @@ public class AdminActivity extends Activity {
                         Agent.addEvent(this, "local", "Master code on phone: started free browsing for " + mins + " minutes");
                         toast("Browser can open any site for " + mins + " minutes.");
                     }
+                })
+                .show();
+    }
+
+    private void promptAddBlockedComponent() {
+        if (!unlocked()) return;
+        final EditText input = Ui.field(this, "package/ClassName");
+        new AlertDialog.Builder(this)
+                .setTitle("Add app/screen to block")
+                .setMessage("The exact component, written as package/ClassName -- for example:\n\n"
+                        + "com.google.android.gms/com.google.android.gms.googlesettings.ui.GoogleSettingsActivity")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Add", (d, w) -> {
+                    String v = input.getText().toString().trim();
+                    if (!v.contains("/")) {
+                        toast("Needs a package and class name, separated by /");
+                        return;
+                    }
+                    AppBlocklist.add(this, v);
+                    Agent.addEvent(this, "local", "Master code on phone: added \"" + v + "\" to the blocked list");
+                    build();
                 })
                 .show();
     }

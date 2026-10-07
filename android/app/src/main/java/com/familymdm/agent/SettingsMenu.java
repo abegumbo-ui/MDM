@@ -180,7 +180,7 @@ final class SettingsMenu {
      * it's ignored, the phone still needs it granted by hand under Settings > Apps > Special access
      * > Usage access.
      */
-    private static void tryGrantUsageAccess(Context c) {
+    static void tryGrantUsageAccess(Context c) {
         try {
             android.app.admin.DevicePolicyManager dpm = Agent.dpm(c);
             android.content.ComponentName admin = Agent.admin(c);
