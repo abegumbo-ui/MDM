@@ -39,6 +39,13 @@ public class AdminActivity extends Activity {
     private String settingsMenuSub;
     // Blocking section: null = pick "Block Apps/Screens" or "Block Whole Apps"; otherwise which.
     private String blockingSub;
+    // Apps hub: null = pick Regular Apps / Home Screen Mode / Blocking; otherwise which one is open
+    // -- three top-level tiles that used to be three separate ones, merged into one the same way
+    // the dashboard's own "App rules" groups what used to be scattered across several places.
+    private String appsSub;
+    // Settings hub: null = pick Settings Menu / Permissions / Network / Updates / Device; otherwise
+    // which one is open -- same idea as appsSub, for the "phone configuration" tiles.
+    private String settingsHubSub;
     // Administrator home: whether the "Overview" card is expanded below its row.
     private boolean showingOverview;
     // Shared by both apps pickers above (never shown at once, since only one section renders at a
@@ -76,8 +83,16 @@ public class AdminActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (settingsMenuSub != null || blockingSub != null) {
+            // Innermost: a sub-section's own further nested picker (e.g. Settings Menu's own
+            // "Icon setup" vs "Categories"). Pop just that, stay on the same sub-section.
             settingsMenuSub = null;
             blockingSub = null;
+            build();
+        } else if (appsSub != null || settingsHubSub != null) {
+            // Middle: which sub-section is open inside the Apps or Settings hub. Pop back to that
+            // hub's own picker row, stay on the Administrator home's "Apps"/"Settings" tile.
+            appsSub = null;
+            settingsHubSub = null;
             build();
         } else if (currentSection != null) {
             currentSection = null;
@@ -95,6 +110,8 @@ public class AdminActivity extends Activity {
         showingKioskAllowedPicker = false;
         settingsMenuSub = null;
         blockingSub = null;
+        appsSub = null;
+        settingsHubSub = null;
     }
 
     private boolean inSection(String name) {
@@ -181,19 +198,17 @@ public class AdminActivity extends Activity {
         return b;
     }
 
+    // Six top-level tiles instead of the twelve this used to be -- Apps and Settings are now hubs,
+    // each a picker in front of several sub-sections that used to each be their own top-level tile
+    // (see buildAppsHub/buildSettingsHub), the same way the dashboard groups its own per-device
+    // page into a handful of tabs instead of one tile per toggle.
     private static final java.util.Map<String, String> SECTION_TITLES = new java.util.LinkedHashMap<>();
     static {
         SECTION_TITLES.put("lock", "Lock");
         SECTION_TITLES.put("apps", "Apps");
-        SECTION_TITLES.put("updates", "Updates");
         SECTION_TITLES.put("browser", "Browser");
-        SECTION_TITLES.put("kiosk", "Home screen mode");
         SECTION_TITLES.put("applock", "App lock");
-        SECTION_TITLES.put("settingsmenu", "Settings menu");
-        SECTION_TITLES.put("blocking", "Blocking");
-        SECTION_TITLES.put("permissions", "Permissions");
-        SECTION_TITLES.put("network", "Network");
-        SECTION_TITLES.put("device", "Device");
+        SECTION_TITLES.put("settings", "Settings");
         SECTION_TITLES.put("messages", "Messages");
     }
 
@@ -230,15 +245,9 @@ public class AdminActivity extends Activity {
             android.widget.GridLayout grid = Ui.tileGrid(this);
             Ui.addTile(grid, Ui.tile(this, "Lock", R.drawable.ic_lock_tile, 96, v -> openSection("lock")));
             Ui.addTile(grid, Ui.tile(this, "Apps", R.drawable.ic_apps_tile, 96, v -> openSection("apps")));
-            Ui.addTile(grid, Ui.tile(this, "Updates", R.drawable.ic_update_tile, 96, v -> openSection("updates")));
             Ui.addTile(grid, Ui.tile(this, "Browser", R.drawable.ic_browser_tile, 96, v -> openSection("browser")));
-            Ui.addTile(grid, Ui.tile(this, "Home screen\nmode", R.drawable.ic_home_tile, 96, v -> openSection("kiosk")));
             Ui.addTile(grid, Ui.tile(this, "App lock", R.drawable.ic_lock_tile, 96, v -> openSection("applock")));
-            Ui.addTile(grid, Ui.tile(this, "Settings\nmenu", R.drawable.ic_apps_tile, 96, v -> openSection("settingsmenu")));
-            Ui.addTile(grid, Ui.tile(this, "Blocking", R.drawable.ic_shield, 96, v -> openSection("blocking")));
-            Ui.addTile(grid, Ui.tile(this, "Permissions", R.drawable.ic_permissions_tile, 96, v -> openSection("permissions")));
-            Ui.addTile(grid, Ui.tile(this, "Network", R.drawable.ic_wifi_tile, 96, v -> openSection("network")));
-            Ui.addTile(grid, Ui.tile(this, "Device", R.drawable.ic_device_tile, 96, v -> openSection("device")));
+            Ui.addTile(grid, Ui.tile(this, "Settings", R.drawable.ic_permissions_tile, 96, v -> openSection("settings")));
             Ui.addTile(grid, Ui.tile(this, "Messages", R.drawable.ic_message_tile, 96, v -> openSection("messages")));
             Ui.add(root, grid, 16);
             return;
@@ -248,17 +257,44 @@ public class AdminActivity extends Activity {
 
         if (inSection("messages")) buildMessagesSection(root);
         if (inSection("lock")) buildLockSection(root);
-        if (inSection("apps")) buildAppsSection(root);
-        if (inSection("updates")) buildUpdatesSection(root);
+        if (inSection("apps")) buildAppsHub(root);
         if (inSection("browser")) buildBrowserSection(root);
-        if (inSection("kiosk")) buildKioskSection(root);
         if (inSection("applock")) buildAppLockSection(root);
-        if (inSection("settingsmenu")) buildSettingsMenuSection(root);
-        if (inSection("blocking")) buildBlockingSection(root);
-        if (inSection("permissions")) buildPermissionsSection(root);
-        if (inSection("network")) buildNetworkSection(root);
-        if (inSection("device")) buildDeviceSection(root);
+        if (inSection("settings")) buildSettingsHub(root);
         if (inSection("lock")) refreshStatus();
+    }
+
+    /** Picks which of what used to be three separate top-level tiles (Apps, Home screen mode,
+     * Blocking) to show -- every section underneath is completely unchanged, just reached from
+     * one level deeper now. */
+    private void buildAppsHub(LinearLayout root) {
+        if (appsSub == null) {
+            Ui.add(root, Ui.rowTile(this, "Regular Apps", R.drawable.ic_apps_tile, v -> { appsSub = "regular"; build(); }), 0);
+            Ui.add(root, Ui.rowTile(this, "Home Screen Mode", R.drawable.ic_home_tile, v -> { appsSub = "kiosk"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "Blocking", R.drawable.ic_shield, v -> { appsSub = "blocking"; build(); }), 8);
+            return;
+        }
+        if ("regular".equals(appsSub)) buildAppsSection(root);
+        else if ("kiosk".equals(appsSub)) buildKioskSection(root);
+        else if ("blocking".equals(appsSub)) buildBlockingSection(root);
+    }
+
+    /** Same idea as buildAppsHub, for the five "phone configuration" tiles that used to each be
+     * their own top-level tile. */
+    private void buildSettingsHub(LinearLayout root) {
+        if (settingsHubSub == null) {
+            Ui.add(root, Ui.rowTile(this, "Settings Menu", R.drawable.ic_apps_tile, v -> { settingsHubSub = "menu"; build(); }), 0);
+            Ui.add(root, Ui.rowTile(this, "Permissions", R.drawable.ic_permissions_tile, v -> { settingsHubSub = "permissions"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "Network", R.drawable.ic_wifi_tile, v -> { settingsHubSub = "network"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "Updates", R.drawable.ic_update_tile, v -> { settingsHubSub = "updates"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "Device", R.drawable.ic_device_tile, v -> { settingsHubSub = "device"; build(); }), 8);
+            return;
+        }
+        if ("menu".equals(settingsHubSub)) buildSettingsMenuSection(root);
+        else if ("permissions".equals(settingsHubSub)) buildPermissionsSection(root);
+        else if ("network".equals(settingsHubSub)) buildNetworkSection(root);
+        else if ("updates".equals(settingsHubSub)) buildUpdatesSection(root);
+        else if ("device".equals(settingsHubSub)) buildDeviceSection(root);
     }
 
     /** Everything the dashboard's own device card shows, in one place -- entirely from data this
