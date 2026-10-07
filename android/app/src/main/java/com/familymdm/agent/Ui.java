@@ -165,6 +165,103 @@ final class Ui {
         return e;
     }
 
+    /** A red rounded-square icon tile with a label underneath, laid out in a grid -- see tileGrid(). */
+    static LinearLayout tile(Context c, String label, int iconRes, int squareSizeDp, View.OnClickListener l) {
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        t.setClickable(true);
+        t.setFocusable(true);
+        android.util.TypedValue outValue = new android.util.TypedValue();
+        c.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
+        t.setBackgroundResource(outValue.resourceId);
+
+        LinearLayout square = new LinearLayout(c);
+        square.setGravity(android.view.Gravity.CENTER);
+        square.setBackground(shape(color(c, R.color.m3_primary), dp(c, 20), 0, 0));
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(0xFFFFFFFF);
+        int iconSize = dp(c, (int) (squareSizeDp * 0.42));
+        square.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
+        int squareSize = dp(c, squareSizeDp);
+        t.addView(square, new LinearLayout.LayoutParams(squareSize, squareSize));
+
+        TextView name = body(c, label, false);
+        name.setGravity(android.view.Gravity.CENTER);
+        name.setTextSize(13);
+        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(squareSize, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nameLp.topMargin = dp(c, 8);
+        t.addView(name, nameLp);
+
+        t.setOnClickListener(l);
+        return t;
+    }
+
+    /** A full-width row with a small red icon square on the left and a label next to it -- for a
+     * list of distinct actions (different urgency/danger levels) where a uniform grid of same-size
+     * tiles would flatten that distinction. */
+    static LinearLayout rowTile(Context c, String label, int iconRes, View.OnClickListener l) {
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.HORIZONTAL);
+        t.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        t.setClickable(true);
+        t.setFocusable(true);
+        int pad = dp(c, 12);
+        t.setPadding(pad, pad, pad, pad);
+        t.setBackground(shape(color(c, R.color.m3_surface_container), dp(c, 14), 0, 0));
+
+        LinearLayout square = new LinearLayout(c);
+        square.setGravity(android.view.Gravity.CENTER);
+        square.setBackground(shape(color(c, R.color.m3_primary), dp(c, 12), 0, 0));
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(0xFFFFFFFF);
+        int iconSize = dp(c, 22);
+        square.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
+        int squareSize = dp(c, 44);
+        t.addView(square, new LinearLayout.LayoutParams(squareSize, squareSize));
+
+        TextView name = body(c, label, false);
+        name.setTextSize(15);
+        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        nameLp.leftMargin = dp(c, 14);
+        t.addView(name, nameLp);
+
+        t.setOnClickListener(l);
+        return t;
+    }
+
+    /** A 2-column grid of tile()s, sized to fill the screen width with even spacing. */
+    static android.widget.GridLayout tileGrid(Context c) {
+        android.widget.GridLayout g = new android.widget.GridLayout(c);
+        g.setColumnCount(2);
+        return g;
+    }
+
+    /** Adds a tile to a tileGrid(), centered in its half of the row. */
+    static void addTile(android.widget.GridLayout grid, View tile) {
+        android.widget.GridLayout.LayoutParams lp = new android.widget.GridLayout.LayoutParams();
+        lp.width = 0;
+        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        lp.columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f);
+        lp.topMargin = dp(grid.getContext(), 20);
+        lp.bottomMargin = dp(grid.getContext(), 4);
+        grid.addView(tile, lp);
+    }
+
+    /** A bold title strip across the top of a screen, like a section banner. */
+    static TextView banner(Context c, String text) {
+        TextView t = new TextView(c);
+        t.setText(text);
+        t.setTextSize(22);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setTextColor(color(c, R.color.m3_on_surface));
+        t.setPadding(dp(c, 16), dp(c, 18), dp(c, 16), dp(c, 18));
+        t.setBackground(shape(color(c, R.color.m3_surface_container), 0, 0, 0));
+        return t;
+    }
+
     /** Same look as field(), but narrows a dropdown of suggestions as you type instead of a plain box. */
     static android.widget.AutoCompleteTextView autoCompleteField(Context c, String hint) {
         android.widget.AutoCompleteTextView e = new android.widget.AutoCompleteTextView(c);

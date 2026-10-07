@@ -30,6 +30,8 @@ public class AdminActivity extends Activity {
     private LinearLayout root;
     private LinearLayout appsBox;
     private TextView status;
+    // null = the tile-grid Administrator home; otherwise which section's cards build() renders.
+    private String currentSection;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,6 +48,20 @@ public class AdminActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
         build();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (currentSection != null) {
+            currentSection = null;
+            build();
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    private boolean inSection(String name) {
+        return name.equals(currentSection);
     }
 
     @Override
@@ -128,37 +144,138 @@ public class AdminActivity extends Activity {
         return b;
     }
 
+    private static final java.util.Map<String, String> SECTION_TITLES = new java.util.LinkedHashMap<>();
+    static {
+        SECTION_TITLES.put("lock", "Lock");
+        SECTION_TITLES.put("apps", "Apps");
+        SECTION_TITLES.put("browser", "Browser");
+        SECTION_TITLES.put("kiosk", "Home screen mode");
+        SECTION_TITLES.put("applock", "App lock");
+        SECTION_TITLES.put("settingsmenu", "Settings menu");
+        SECTION_TITLES.put("blocking", "Blocking");
+        SECTION_TITLES.put("network", "Network");
+        SECTION_TITLES.put("device", "Device");
+        SECTION_TITLES.put("messages", "Messages");
+    }
+
+    private void openSection(String name) {
+        currentSection = name;
+        build();
+    }
+
     private void build() {
         root.removeAllViews();
-        root.addView(Ui.headline(this, "Administrator"));
-        LinearLayout statusCard = Ui.card(this, root);
+        Ui.add(root, Ui.banner(this, currentSection == null ? "Administrator" : SECTION_TITLES.get(currentSection)), 0);
+
+        if (currentSection == null) {
+            LinearLayout statusCard = Ui.card(this, root);
+            statusCard.addView(Ui.body(this, "This phone's own recovery code: " + Agent.fallbackCode(this)
+                    + ". Works here and anywhere else a code is asked for, with no internet, even with no master code set.", true));
+            if (Agent.standalone(this)) {
+                action(statusCard, "Phone settings (apps, restrictions, schedules, reset protection)", Ui.FILLED,
+                        v -> startActivity(new Intent(this, LocalSettingsActivity.class)));
+            } else {
+                action(statusCard, "Sync with dashboard now", Ui.TONAL, v -> {
+                    AgentService.requestSync();
+                    toast("Checking in...");
+                });
+            }
+
+            android.widget.GridLayout grid = Ui.tileGrid(this);
+            Ui.addTile(grid, Ui.tile(this, "Lock", R.drawable.ic_lock_tile, 96, v -> openSection("lock")));
+            Ui.addTile(grid, Ui.tile(this, "Apps", R.drawable.ic_apps_tile, 96, v -> openSection("apps")));
+            Ui.addTile(grid, Ui.tile(this, "Browser", R.drawable.ic_apps_tile, 96, v -> openSection("browser")));
+            Ui.addTile(grid, Ui.tile(this, "Home screen\nmode", R.drawable.ic_home_tile, 96, v -> openSection("kiosk")));
+            Ui.addTile(grid, Ui.tile(this, "App lock", R.drawable.ic_lock_tile, 96, v -> openSection("applock")));
+            Ui.addTile(grid, Ui.tile(this, "Settings\nmenu", R.drawable.ic_apps_tile, 96, v -> openSection("settingsmenu")));
+            Ui.addTile(grid, Ui.tile(this, "Blocking", R.drawable.ic_shield, 96, v -> openSection("blocking")));
+            Ui.addTile(grid, Ui.tile(this, "Network", R.drawable.ic_wifi_tile, 96, v -> openSection("network")));
+            Ui.addTile(grid, Ui.tile(this, "Device", R.drawable.ic_device_tile, 96, v -> openSection("device")));
+            Ui.addTile(grid, Ui.tile(this, "Messages", R.drawable.ic_message_tile, 96, v -> openSection("messages")));
+            Ui.add(root, grid, 16);
+            return;
+        }
+
+        Ui.add(root, Ui.button(this, "< Back", Ui.OUTLINED, v -> onBackPressed()), 0);
+
+        if (inSection("messages")) buildMessagesSection(root);
+        if (inSection("lock")) buildLockSection(root);
+        if (inSection("apps")) buildAppsSection(root);
+        if (inSection("browser")) buildBrowserSection(root);
+        if (inSection("kiosk")) buildKioskSection(root);
+        if (inSection("applock")) buildAppLockSection(root);
+        if (inSection("settingsmenu")) buildSettingsMenuSection(root);
+        if (inSection("blocking")) buildBlockingSection(root);
+        if (inSection("network")) buildNetworkSection(root);
+        if (inSection("device")) buildDeviceSection(root);
+        if (inSection("lock")) refreshStatus();
+    }
+
+    private void buildMessagesSection(LinearLayout root) {
+        LinearLayout messagesCard = Ui.card(this, root);
+        messagesCard.addView(Ui.titleText(this, "Messages"));
+        JSONArray adminMessages = AdminMessages.list(this);
+        if (adminMessages.length() == 0) {
+            messagesCard.addView(Ui.body(this, "Nothing sent from \"Message the Administrator\" yet.", true));
+        }
+        for (int i = adminMessages.length() - 1; i >= 0; i--) {
+            JSONObject m = adminMessages.optJSONObject(i);
+            if (m == null) continue;
+            final int index = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            long at = m.optLong("at", 0);
+            TextView when = Ui.body(this, at == 0 ? "" : java.text.DateFormat.getDateTimeInstance(
+                    java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(new java.util.Date(at)), true);
+            when.setTextSize(11);
+            row.addView(when);
+            String text = m.optString("text", "");
+            row.addView(Ui.body(this, text.isEmpty() ? "(no text)" : text, false));
+            String photo = m.isNull("photo") ? null : m.optString("photo", null);
+            if (photo != null) {
+                android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(photo);
+                if (bmp != null) {
+                    android.widget.ImageView iv = new android.widget.ImageView(this);
+                    iv.setImageBitmap(bmp);
+                    iv.setAdjustViewBounds(true);
+                    iv.setMaxHeight(Ui.dp(this, 160));
+                    iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                    Ui.add(row, iv, 8);
+                }
+            }
+            row.addView(Ui.button(this, "Delete", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                AdminMessages.removeAt(this, index);
+                build();
+            }));
+            Ui.add(messagesCard, row, 12);
+        }
+    }
+
+    private void buildLockSection(LinearLayout root) {
         status = Ui.body(this, "", false);
-        statusCard.addView(status);
-        statusCard.addView(Ui.body(this, "This phone's own recovery code: " + Agent.fallbackCode(this)
-                + ". Works here and anywhere else a code is asked for, with no internet, even with no master code set.", true));
-        if (Agent.standalone(this)) {
-            action(statusCard, "Phone settings (apps, restrictions, schedules, reset protection)", Ui.FILLED,
-                    v -> startActivity(new Intent(this, LocalSettingsActivity.class)));
-        } else {
-            action(statusCard, "Sync with dashboard now", Ui.TONAL, v -> {
-                AgentService.requestSync();
-                toast("Checking in...");
-            });
-        }
+        LinearLayout statusBox = Ui.card(this, root);
+        statusBox.addView(status);
 
-        LinearLayout lock = Ui.card(this, root);
-        lock.addView(Ui.titleText(this, "Lock"));
-        action(lock, "Lock now", Ui.FILLED, v -> run(() -> Actions.lock(this, 0, "")));
-        action(lock, "Lock with a message and time…", Ui.TONAL, v -> askLock());
+        Ui.add(root, Ui.rowTile(this, "Lock Now", R.drawable.ic_lock_tile,
+                v -> { if (unlocked()) run(() -> Actions.lock(this, 0, "")); }), 12);
+        Ui.add(root, Ui.rowTile(this, "Lock With a Message and Time", R.drawable.ic_lock_tile,
+                v -> { if (unlocked()) askLock(); }), 8);
         if (Agent.prefs(this).getLong("lockUntil", 0) > System.currentTimeMillis()) {
-            action(lock, "Unlock now", Ui.OUTLINED, v -> run(() -> Actions.unlock(this)));
+            Ui.add(root, Ui.rowTile(this, "Unlock Now", R.drawable.ic_lock_tile,
+                    v -> { if (unlocked()) run(() -> Actions.unlock(this)); }), 8);
         }
-        action(lock, "Set screen lock PIN", Ui.TONAL, v -> askPin());
-        action(lock, "Remove screen lock", Ui.OUTLINED, v -> run(() -> Actions.clearPin(this)));
+        Ui.add(root, Ui.rowTile(this, "Set Lock PIN", R.drawable.ic_lock_tile,
+                v -> { if (unlocked()) askPin(); }), 8);
+        Ui.add(root, Ui.rowTile(this, "Remove Lock Screen", R.drawable.ic_remove_tile,
+                v -> { if (unlocked()) run(() -> Actions.clearPin(this)); }), 8);
         if (Actions.hasScreenLock(this) && !Actions.pinControlActive(this)) {
-            action(lock, "Activate PIN control (confirm current lock once)", Ui.OUTLINED, v -> activatePinControl());
+            Ui.add(root, Ui.rowTile(this, "Activate PIN Control", R.drawable.ic_lock_tile,
+                    v -> { if (unlocked()) activatePinControl(); }), 8);
         }
+    }
 
+    private void buildAppsSection(LinearLayout root) {
         LinearLayout apps = Ui.card(this, root);
         apps.addView(Ui.titleText(this, "Apps"));
         action(apps, "Install an APK file", Ui.FILLED, v -> pickApk());
@@ -166,7 +283,9 @@ public class AdminActivity extends Activity {
         appsBox = new LinearLayout(this);
         appsBox.setOrientation(LinearLayout.VERTICAL);
         Ui.add(apps, appsBox, 0);
+    }
 
+    private void buildBrowserSection(LinearLayout root) {
         LinearLayout browser = Ui.card(this, root);
         browser.addView(Ui.titleText(this, "Browser"));
         boolean browserInstalled = isPackageInstalled("com.familymdm.browser");
@@ -197,7 +316,9 @@ public class AdminActivity extends Activity {
             });
             action(browser, "Browse freely for a while…", Ui.OUTLINED, v -> askFreebrowse());
         }
+    }
 
+    private void buildKioskSection(LinearLayout root) {
         LinearLayout home = Ui.card(this, root);
         home.addView(Ui.titleText(this, "Home screen mode"));
         JSONArray storedAllowed = null;
@@ -256,7 +377,9 @@ public class AdminActivity extends Activity {
                 toast("Paused. The phone works normally until you resume it.");
             });
         }
+    }
 
+    private void buildAppLockSection(LinearLayout root) {
         LinearLayout appLockCard = Ui.card(this, root);
         appLockCard.addView(Ui.titleText(this, "App lock"));
         boolean appLockOn = Agent.prefs(this).getBoolean("appLock", false);
@@ -274,7 +397,9 @@ public class AdminActivity extends Activity {
         } else {
             action(appLockCard, "Turn on app lock", Ui.TONAL, v -> promptNewAppPin(true));
         }
+    }
 
+    private void buildSettingsMenuSection(LinearLayout root) {
         LinearLayout menuCard = Ui.card(this, root);
         menuCard.addView(Ui.titleText(this, "Settings menu icon setup"));
         menuCard.addView(Ui.body(this, "The \"Settings\" icon this phone shows has no Android-wide link for a few "
@@ -332,7 +457,9 @@ public class AdminActivity extends Activity {
             }));
             Ui.add(categoriesCard, row, 4);
         }
+    }
 
+    private void buildBlockingSection(LinearLayout root) {
         // Plain list, nothing fancy: exact components to watch for and bounce away from the
         // instant they're in the foreground. Never touches a dashboard -- stored on this phone
         // only. Whatever is typed in has to be the full "package/ClassName" component (the part
@@ -413,7 +540,9 @@ public class AdminActivity extends Activity {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             });
         }
+    }
 
+    private void buildNetworkSection(LinearLayout root) {
         if (!Agent.standalone(this)) {
             LinearLayout syncCard = Ui.card(this, root);
             syncCard.addView(Ui.titleText(this, "Dashboard connection"));
@@ -458,7 +587,9 @@ public class AdminActivity extends Activity {
         LinearLayout net = Ui.card(this, root);
         net.addView(Ui.titleText(this, "Wi-Fi"));
         action(net, "Add a Wi-Fi network…", Ui.TONAL, v -> askWifi());
+    }
 
+    private void buildDeviceSection(LinearLayout root) {
         LinearLayout device = Ui.card(this, root);
         device.addView(Ui.titleText(this, "Device"));
         action(device, "Reboot", Ui.TONAL, v -> confirm("Reboot the phone?", () -> run(() -> {
@@ -470,7 +601,6 @@ public class AdminActivity extends Activity {
         action(device, "Stop managing and remove this app", Ui.OUTLINED, v -> confirm(
                 "Release this phone and uninstall the agent?", () -> release(true)));
         action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
-        refreshStatus();
     }
 
     private void refreshStatus() {
@@ -860,32 +990,30 @@ public class AdminActivity extends Activity {
             for (int i = 0; i < pk.length(); i++) {
                 final JSONObject a = pk.getJSONObject(i);
                 final String pkg = a.getString("p");
+                final String label = a.optString("l", pkg);
                 LinearLayout row = Ui.card(this, appsBox);
                 String state = a.optBoolean("h") ? "hidden" : "visible";
                 if (overrides.has(pkg)) state += ", set here: " + overrides.optString(pkg);
-                row.addView(Ui.titleText(this, a.optString("l", pkg)));
+                row.addView(Ui.titleText(this, label));
                 row.addView(Ui.body(this, pkg + " · " + state, true));
-                LinearLayout buttons = new LinearLayout(this);
-                buttons.setOrientation(LinearLayout.HORIZONTAL);
-                android.widget.Button allow = Ui.button(this, "Allow", Ui.TONAL, v -> {
-                    if (unlocked()) setApp(pkg, "allow");
-                });
-                android.widget.Button block = Ui.button(this, "Block", Ui.DANGER, v -> {
-                    if (unlocked()) setApp(pkg, "block");
-                });
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroupWrap(), 1f);
-                lp.rightMargin = Ui.dp(this, 8);
-                buttons.addView(allow, lp);
-                buttons.addView(block, new LinearLayout.LayoutParams(0, ViewGroupWrap(), 1f));
-                Ui.add(row, buttons, 8);
+                row.setClickable(true);
+                row.setFocusable(true);
+                row.setOnClickListener(v -> promptAppMode(pkg, label));
             }
         } catch (Exception e) {
             toast("Could not list apps: " + e.getMessage());
         }
     }
 
-    private static int ViewGroupWrap() {
-        return android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+    private void promptAppMode(String pkg, String label) {
+        if (!unlocked()) return;
+        new AlertDialog.Builder(this)
+                .setTitle(label)
+                .setMessage(pkg)
+                .setNegativeButton("Cancel", null)
+                .setNeutralButton("Allow", (d, w) -> setApp(pkg, "allow"))
+                .setPositiveButton("Block", (d, w) -> setApp(pkg, "block"))
+                .show();
     }
 
     private void setApp(String pkg, String mode) {
