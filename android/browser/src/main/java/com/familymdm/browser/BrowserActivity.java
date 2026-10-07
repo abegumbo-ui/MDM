@@ -32,7 +32,6 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -70,6 +69,11 @@ public class BrowserActivity extends Activity {
     private final List<Tab> tabs = new ArrayList<>();
     private int currentIndex = -1;
     private volatile boolean syncing;
+    // A session-only toggle from the shortcut menu (not persisted, like Chrome's own "Desktop site"
+    // switch) -- applies to every tab, current and future, until turned off again.
+    private boolean desktopMode;
+    private static final String DESKTOP_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
     private LinearLayout tabStrip;
     private FrameLayout contentHost;
@@ -237,39 +241,87 @@ public class BrowserActivity extends Activity {
         return new android.graphics.drawable.BitmapDrawable(getResources(), bmp);
     }
 
+    /** A proper full list, themed to match the rest of this project, instead of a bare native
+     * PopupMenu (unthemed on this app's end -- no res/values existed here at all before this). */
     private void showMenu(View anchor) {
-        Tab t = current();
-        Mode mode = mode();
-        PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add("New tab");
-        if (tabs.size() > 1) menu.getMenu().add("Close this tab");
-        if (t != null && canAddToHomeScreen(t)) menu.getMenu().add("Add to Home Screen");
-        if (mode != Mode.UNCONFIGURED) menu.getMenu().add("Allowed sites");
-        if (mode == Mode.OFFLINE) menu.getMenu().add("Manage sites (master code)");
-        if (mode == Mode.UNCONFIGURED) menu.getMenu().add("Set up Browser");
-        if (mode == Mode.ONLINE || mode == Mode.OFFLINE) menu.getMenu().add("Disconnect this setup");
+        final Tab t = current();
+        final Mode mode = mode();
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        AlertDialog dialog = alertDialog().setView(box).create();
+
         if (mode == Mode.AGENT && browseWindowActive()) {
             RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
             Bundle b = rm == null ? null : rm.getApplicationRestrictions();
             long until = b == null ? 0 : b.getLong("browseUntil", 0);
-            menu.getMenu().add("Free browsing until " + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(until)));
+            TextView notice = body("Free browsing until " + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(until)));
+            notice.setPadding(0, dp(4), 0, dp(12));
+            box.addView(notice);
         }
-        menu.setOnMenuItemClickListener(item -> {
-            String s = item.getTitle().toString();
-            if (s.equals("New tab")) showTab(newTab(HOME_URL));
-            else if (s.equals("Close this tab")) closeTab(currentIndex);
-            else if (s.equals("Add to Home Screen")) addToHomeScreen();
-            else if (s.equals("Allowed sites")) showAllowedSitesDialog();
-            else if (s.equals("Manage sites (master code)")) promptMasterThenManageSites();
-            else if (s.equals("Set up Browser")) promptWhitelistMode(current(), null);
-            else if (s.equals("Disconnect this setup")) disconnectSetup();
-            return true;
-        });
-        menu.show();
+
+        menuRow(box, "New tab", v -> { dialog.dismiss(); showTab(newTab(HOME_URL)); });
+        if (tabs.size() > 1) menuRow(box, "Close this tab", v -> { dialog.dismiss(); closeTab(currentIndex); });
+        if (t != null && canAddToHomeScreen(t)) menuRow(box, "Add to Home Screen", v -> { dialog.dismiss(); addToHomeScreen(); });
+        menuCheckRow(box, "Desktop Mode", desktopMode, (btn, on) -> setDesktopMode(on));
+        menuRow(box, "Clear Cache", v -> { dialog.dismiss(); clearBrowserCache(); });
+        if (mode != Mode.UNCONFIGURED) menuRow(box, "Allowed sites", v -> { dialog.dismiss(); showAllowedSitesDialog(); });
+        if (mode == Mode.ONLINE) menuRow(box, "Sync now", v -> { dialog.dismiss(); maybeSyncOnline(true); toast("Syncing..."); });
+        if (mode == Mode.OFFLINE) menuRow(box, "Manage sites (master code)", v -> { dialog.dismiss(); promptMasterThenManageSites(); });
+        if (mode == Mode.UNCONFIGURED) menuRow(box, "Set up Browser", v -> { dialog.dismiss(); promptWhitelistMode(current(), null); });
+        if (mode == Mode.ONLINE || mode == Mode.OFFLINE) menuRow(box, "Disconnect this setup", v -> { dialog.dismiss(); disconnectSetup(); });
+        menuRow(box, "Exit", v -> { dialog.dismiss(); finish(); });
+
+        dialog.show();
+    }
+
+    private void menuRow(LinearLayout box, String label, View.OnClickListener onClick) {
+        TextView row = new TextView(this);
+        row.setText(label);
+        row.setTextSize(16);
+        row.setTextColor(Color.parseColor("#FFFFFF"));
+        row.setPadding(dp(4), dp(14), dp(4), dp(14));
+        row.setOnClickListener(onClick);
+        box.addView(row);
+    }
+
+    private void menuCheckRow(LinearLayout box, String label, boolean checked, android.widget.CompoundButton.OnCheckedChangeListener onChange) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(4), dp(10), dp(4), dp(10));
+        TextView label2 = new TextView(this);
+        label2.setText(label);
+        label2.setTextSize(16);
+        label2.setTextColor(Color.parseColor("#FFFFFF"));
+        row.addView(label2, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        android.widget.CheckBox box2 = new android.widget.CheckBox(this);
+        box2.setButtonTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.m3_primary)));
+        box2.setChecked(checked);
+        box2.setOnCheckedChangeListener(onChange);
+        row.addView(box2);
+        row.setOnClickListener(v -> box2.setChecked(!box2.isChecked())); // whole row tappable, not just the box
+        box.addView(row);
+    }
+
+    /** Every dialog in this app goes through this instead of a bare AlertDialog.Builder -- see the
+     * comment on AppAlertDialogTheme (themes.xml) for why that has to be passed explicitly. */
+    private AlertDialog.Builder alertDialog() {
+        return new AlertDialog.Builder(this, R.style.AppAlertDialogTheme);
+    }
+
+    private void setDesktopMode(boolean on) {
+        desktopMode = on;
+        for (Tab t : tabs) t.webView.getSettings().setUserAgentString(on ? DESKTOP_UA : null);
+        if (current() != null && current().webView.getUrl() != null) current().webView.reload();
+    }
+
+    private void clearBrowserCache() {
+        for (Tab t : tabs) t.webView.clearCache(true);
+        toast("Cache cleared.");
     }
 
     private void disconnectSetup() {
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Disconnect this setup?")
                 .setMessage("Browser goes back to allowing nothing until it's connected to a dashboard again or set up on its own.")
                 .setNegativeButton("Cancel", null)
@@ -417,6 +469,7 @@ public class BrowserActivity extends Activity {
     private void setupWebView(final Tab t) {
         t.webView.getSettings().setJavaScriptEnabled(true);
         t.webView.getSettings().setDomStorageEnabled(true);
+        if (desktopMode) t.webView.getSettings().setUserAgentString(DESKTOP_UA);
         t.webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -645,7 +698,7 @@ public class BrowserActivity extends Activity {
         t.webView.setVisibility(View.GONE);
         if (t.homeView != null) t.homeView.setVisibility(View.GONE);
         String host = SitePolicy.hostOf(url);
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Not on the allowed list")
                 .setMessage((host != null ? "\"" + host + "\"" : "This page") + " isn't allowed yet. Ask the administrator for access?")
                 .setNegativeButton("Not now", (d, w) -> load(t, HOME_URL))
@@ -672,7 +725,7 @@ public class BrowserActivity extends Activity {
     private void promptAgentMasterThenApprove(final Tab t, final String url, final String type) {
         final EditText input = field("Master code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Master code")
                 .setView(pad(input))
                 .setNegativeButton("Cancel", null)
@@ -704,7 +757,7 @@ public class BrowserActivity extends Activity {
     private void promptLocalMasterThenApprove(final Tab t, final String url, final String type) {
         final EditText input = field("Master code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Master code")
                 .setView(pad(input))
                 .setNegativeButton("Cancel", null)
@@ -738,7 +791,7 @@ public class BrowserActivity extends Activity {
     private void promptMasterThenManageSites() {
         final EditText input = field("Master code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Master code")
                 .setView(pad(input))
                 .setNegativeButton("Cancel", null)
@@ -758,12 +811,12 @@ public class BrowserActivity extends Activity {
             if (s != null) labels.add(("domain".equals(s.optString("type")) ? "Whole site: " : "Exact page: ") + s.optString("url"));
         }
         labels.add("＋ Add a site…");
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Local sites")
                 .setItems(labels.toArray(new String[0]), (d, which) -> {
                     if (which == labels.size() - 1) promptAddLocalSite();
                     else {
-                        new AlertDialog.Builder(this)
+                        alertDialog()
                                 .setMessage("Remove this site from the local allowlist?")
                                 .setNegativeButton("Cancel", null)
                                 .setPositiveButton("Remove", (d2, w2) -> {
@@ -779,7 +832,7 @@ public class BrowserActivity extends Activity {
 
     private void promptAddLocalSite() {
         final EditText input = field("Site or link, e.g. khanacademy.org");
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Add a site")
                 .setView(pad(input))
                 .setNegativeButton("Cancel", null)
@@ -817,7 +870,7 @@ public class BrowserActivity extends Activity {
             toast("No sites are allowed yet.");
             return;
         }
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Allowed sites")
                 .setItems(labels, (d, which) -> load(current(), sites.get(which).url))
                 .setNegativeButton("Close", null)
@@ -882,7 +935,7 @@ public class BrowserActivity extends Activity {
 
     /** The primary path: no code, nothing typed — this device just connects itself. */
     private void promptWhitelistMode(final Tab t, final String pendingUrl) {
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Not connected to MDM")
                 .setMessage("Use this in whitelist mode? Every new site you visit will be sent to the administrator for approval; nothing opens until it's approved.")
                 .setNegativeButton("Not now", null)
@@ -898,7 +951,7 @@ public class BrowserActivity extends Activity {
             return;
         }
         final EditText serverField = field("Dashboard address (https://...)");
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Dashboard address")
                 .setMessage("This copy of Browser doesn't have a dashboard address built in. Enter yours once — no code needed.")
                 .setView(pad(serverField))
@@ -938,7 +991,7 @@ public class BrowserActivity extends Activity {
     }
 
     private void showAdvancedSetupDialog(final Tab t, final String pendingUrl) {
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Advanced setup")
                 .setItems(new String[]{"Connect to a specific dashboard (needs a code)", "Set up fully offline (master code)"}, (d, which) -> {
                     if (which == 0) showSetupDialog(t, pendingUrl);
@@ -956,7 +1009,7 @@ public class BrowserActivity extends Activity {
         box.setPadding(dp(20), dp(8), dp(20), 0);
         box.addView(serverField);
         add(box, codeField);
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Connect to a dashboard")
                 .setView(box)
                 .setNegativeButton("Cancel", null)
@@ -1003,7 +1056,7 @@ public class BrowserActivity extends Activity {
         box.setPadding(dp(20), dp(8), dp(20), 0);
         box.addView(one);
         add(box, two);
-        new AlertDialog.Builder(this)
+        alertDialog()
                 .setTitle("Set up on its own")
                 .setMessage("This code is the only way to add or remove sites. Nothing is allowed until you add sites with it.")
                 .setView(box)
