@@ -36,13 +36,30 @@ import java.util.Set;
 final class PolicyApplier {
     private static final String TAG = "MdmAgent";
 
-    // Only these restriction keys are ever applied, whatever the server sends.
+    // Only these restriction keys are ever applied, whatever the server sends. Every string here
+    // is a real android.os.UserManager.DISALLOW_* value, checked directly against current AOSP
+    // source -- not guessed from the naming pattern (that's how the Private DNS one went wrong once).
     private static final Set<String> ALLOWED_RESTRICTIONS = new HashSet<>(Arrays.asList(
             "no_factory_reset", "no_safe_boot", "no_uninstall_apps", "no_control_apps",
             "no_modify_accounts", "no_add_user", "no_install_unknown_sources",
             "no_install_apps", "no_debugging_features", "no_config_credentials",
             "no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering",
-            "no_config_vpn", "disallow_config_private_dns"));
+            "no_config_vpn", "disallow_config_private_dns",
+            "no_config_wifi", "no_change_wifi_state", "no_wifi_tethering", "no_sharing_admin_configured_wifi",
+            "no_wifi_direct", "no_add_wifi_config", "no_config_locale", "no_share_location",
+            "no_config_brightness", "no_ambient_display", "no_config_screen_timeout", "no_config_bluetooth",
+            "no_bluetooth", "no_bluetooth_sharing", "no_usb_file_transfer", "no_remove_user",
+            "no_remove_managed_profile", "no_config_date_time", "no_network_reset", "no_add_managed_profile",
+            "no_add_clone_profile", "no_add_private_profile", "no_config_cell_broadcasts", "no_physical_media",
+            "no_unmute_microphone", "no_adjust_volume", "no_outgoing_calls", "no_sms", "no_fun",
+            "no_create_windows", "no_system_error_dialogs", "no_cross_profile_copy_paste", "no_outgoing_beam",
+            "no_wallpaper", "no_set_wallpaper", "no_record_audio", "no_run_in_background", "no_camera",
+            "disallow_unmute_device", "no_data_roaming", "no_set_user_icon", "no_oem_unlock",
+            "no_unified_password", "no_autofill", "no_content_capture", "no_content_suggestions",
+            "no_user_switch", "no_sharing_into_profile", "no_printing", "disallow_microphone_toggle",
+            "disallow_camera_toggle", "disallow_biometric", "disallow_config_default_apps", "no_cellular_2g",
+            "no_ultra_wideband_radio", "no_near_field_communication_radio", "no_change_near_field_communication_radio",
+            "no_thread_network", "no_sim_globally", "no_assist_content", "no_install_unknown_sources_globally"));
 
     // Restrictions that would also stop the agent's own installs, updates and uninstalls.
     private static final Set<String> INSTALL_RELATED = new HashSet<>(Arrays.asList(
