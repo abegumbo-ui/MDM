@@ -1,7 +1,6 @@
 package com.familymdm.agent;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -96,7 +95,7 @@ public class MainActivity extends Activity {
         Ui.add(ownerBox, adbCommand, 8);
         ownerBox.addView(Ui.body(this, "It should print \"Success\". This screen updates by itself.", true));
         Ui.add(ownerBox, Ui.button(this, "Skip for now (preview only)", Ui.OUTLINED, v -> {
-            new AlertDialog.Builder(this)
+            Ui.alertDialog(this)
                     .setTitle("Skip step 1?")
                     .setMessage("Only for trying out the screens on a phone you're not setting up for real. Without device owner, nothing is actually hidden, locked, or restricted — every switch here will look like it works but won't enforce anything. Do step 1 for real use.")
                     .setNegativeButton("Cancel", null)
@@ -224,7 +223,7 @@ public class MainActivity extends Activity {
 
     private void promptMessage() {
         final EditText input = Ui.field(this, "Message");
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Message the Administrator")
                 .setMessage("Saved on this phone for the administrator to read -- not sent anywhere online.")
                 .setView(input)
@@ -261,7 +260,7 @@ public class MainActivity extends Activity {
         try (java.io.InputStream in = getContentResolver().openInputStream(data.getData())) {
             if (in == null) throw new Exception("could not open the photo");
             final String path = AdminMessages.savePhoto(this, in);
-            new AlertDialog.Builder(this)
+            Ui.alertDialog(this)
                     .setTitle("Send with photo?")
                     .setMessage((text.isEmpty() ? "(no text)" : text) + "\n\nA photo is attached. Saved on this phone for the administrator to read -- not sent anywhere online.")
                     .setNegativeButton("Cancel", null)
@@ -294,7 +293,7 @@ public class MainActivity extends Activity {
     private void promptAppPin() {
         final EditText input = Ui.field(this, "App PIN");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Unlock MDM Agent")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
@@ -314,7 +313,7 @@ public class MainActivity extends Activity {
     private void promptMasterBypass() {
         final EditText input = Ui.field(this, "Administrator (master) code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Administrator")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
@@ -386,7 +385,7 @@ public class MainActivity extends Activity {
         box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
         Ui.add(box, one, 8);
         Ui.add(box, two, 8);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Choose a master code")
                 .setMessage("This code opens every setting and every code prompt on this phone, even with no internet. "
                         + "There is no dashboard to reset it, so write it down. If you lose it while reset protection is on, wiping the phone will not get you out either.")
@@ -426,7 +425,7 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0);
         Ui.add(box, id, 8);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Factory Reset Protection")
                 .setMessage("After a factory reset from recovery mode, setup will demand this Google account, so the phone is useless to anyone else. "
                         + "No account has to be signed in on the phone (Android 11 or newer; keep the bootloader locked).\n\n"
@@ -546,7 +545,7 @@ public class MainActivity extends Activity {
     private void promptCode(final String type) {
         final EditText input = Ui.field(this, "Code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Enter code")
                 .setMessage("Ask the administrator for a code to remove this.")
                 .setView(input)

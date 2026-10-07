@@ -11,9 +11,12 @@
     </style>
 
     <!-- Every plain AlertDialog (code prompts, confirmations, "Allow/Block" popups, etc.) is built
-         with `new AlertDialog.Builder(this)`, which otherwise falls back to the OEM's own light,
-         blue-accented dialog style regardless of this app's own dark/red theme. Forcing it here,
-         once, keeps every one of those dialogs on the same look without touching each call site. -->
+         through Ui.alertDialog(), which passes this explicitly as the Builder's theme resource
+         instead of relying on the android:alertDialogTheme attribute lookup, which alone turned out
+         not to be enough on at least one real device (Motorola): the window background and text
+         picked it up, but the button text stayed the OEM's own blue, which is why the button styles
+         below also pin their text color directly instead of trusting colorAccent to cascade down
+         to them. -->
     <style name="AppAlertDialogTheme" parent="android:Theme.DeviceDefault.Dialog.Alert">
         <item name="android:windowBackground">@color/m3_surface_container</item>
         <item name="android:colorBackground">@color/m3_surface_container</item>
@@ -21,5 +24,12 @@
         <item name="android:textColorPrimary">@color/m3_on_surface</item>
         <item name="android:textColorSecondary">@color/m3_on_surface_variant</item>
         <item name="android:colorAccent">@color/m3_primary</item>
+        <item name="android:buttonBarPositiveButtonStyle">@style/AppAlertDialogButton</item>
+        <item name="android:buttonBarNegativeButtonStyle">@style/AppAlertDialogButton</item>
+        <item name="android:buttonBarNeutralButtonStyle">@style/AppAlertDialogButton</item>
+    </style>
+
+    <style name="AppAlertDialogButton" parent="android:Widget.DeviceDefault.Button.Borderless.Alert">
+        <item name="android:textColor">@color/m3_primary</item>
     </style>
 </resources>

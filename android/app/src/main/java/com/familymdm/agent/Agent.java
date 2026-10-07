@@ -63,6 +63,19 @@ final class Agent {
         return enabled != null && enabled.contains(c.getPackageName() + "/.BlockAccessibilityService");
     }
 
+    /** Whether "Usage access" (PACKAGE_USAGE_STATS) is actually granted right now -- it's a special
+     * app-op permission, not a normal runtime one, so the only reliable check is AppOpsManager. */
+    static boolean usageAccessOn(Context c) {
+        try {
+            android.app.AppOpsManager aom = (android.app.AppOpsManager) c.getSystemService(Context.APP_OPS_SERVICE);
+            int mode = aom.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    android.os.Process.myUid(), c.getPackageName());
+            return mode == android.app.AppOpsManager.MODE_ALLOWED;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /**
      * This phone's own recovery code: generated once on first use, kept forever after that (works
      * with no internet, ever, even with no master code set). Different per phone, and only ever

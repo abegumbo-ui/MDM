@@ -26,6 +26,14 @@ final class Ui {
 
     private Ui() {}
 
+    /** Every AlertDialog in the app should be built from this instead of `new AlertDialog.Builder(c)`
+     * directly -- passing the theme resource explicitly, rather than relying on the activity theme's
+     * android:alertDialogTheme attribute being picked up, is what actually gets the dark/red look on
+     * every device (see AppAlertDialogTheme's own comment in themes.xml for why). */
+    static android.app.AlertDialog.Builder alertDialog(Context c) {
+        return new android.app.AlertDialog.Builder(c, R.style.AppAlertDialogTheme);
+    }
+
     static int dp(Context c, int v) {
         return (int) (v * c.getResources().getDisplayMetrics().density + 0.5f);
     }
