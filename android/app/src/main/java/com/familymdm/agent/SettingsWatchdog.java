@@ -10,9 +10,17 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -40,9 +48,10 @@ final class SettingsWatchdog {
     private static BroadcastReceiver screenReceiver;
     private static volatile boolean screenOn = true;
     private static volatile Set<String> blocked = new HashSet<>();
-    private static volatile Map<String, String[]> extraPatterns = new HashMap<>();
+    private static volatile Map<String, String[]> serverPatterns = new HashMap<>();
     private static long lastEventTime;
     private static final long LEARN_TIMEOUT_MS = 3 * 60 * 1000;
+    private static final String LOCAL_PATTERNS_PREF = "localWatchdogPatterns";
 
     // category key -> lowercase fragments of a Settings activity's class name known to open it.
     // A screen matches if any fragment is contained in its (lowercased) class name.
@@ -72,10 +81,43 @@ final class SettingsWatchdog {
         CATEGORIES.put("accessibility", new String[]{"accessibilitysettings"});
     }
 
+    // Display labels, matching SETTINGS_CATEGORIES in src/policy.js -- used by AdminActivity's
+    // own local "Learn" card, which has no dashboard to ask for labels.
+    private static final Map<String, String> LABELS = new LinkedHashMap<>();
+    static {
+        LABELS.put("google", "Google");
+        LABELS.put("network", "Network and internet");
+        LABELS.put("connected", "Connected devices");
+        LABELS.put("apps", "Apps");
+        LABELS.put("notifications", "Notifications");
+        LABELS.put("sound", "Sound and vibration");
+        LABELS.put("modes", "Modes");
+        LABELS.put("personalize", "Personalize");
+        LABELS.put("display", "Display");
+        LABELS.put("homeLock", "Home and lock screen");
+        LABELS.put("gesture", "Gesture");
+        LABELS.put("storage", "Storage");
+        LABELS.put("battery", "Battery");
+        LABELS.put("system", "System");
+        LABELS.put("systemUpdates", "System updates");
+        LABELS.put("aboutPhone", "About phone");
+        LABELS.put("passwords", "Passwords, passkeys and accounts");
+        LABELS.put("security", "Security and privacy");
+        LABELS.put("location", "Location");
+        LABELS.put("digitalWellbeing", "Digital wellbeing and parental controls");
+        LABELS.put("safety", "Safety and emergency");
+        LABELS.put("accessibility", "Accessibility");
+    }
+
     private SettingsWatchdog() {}
 
     static Set<String> categoryKeys() {
         return CATEGORIES.keySet();
+    }
+
+    static String label(String category) {
+        String l = LABELS.get(category);
+        return l != null ? l : category;
     }
 
     /** Called from PolicyApplier.apply() with the category keys the dashboard wants kicked out of. */
@@ -83,9 +125,84 @@ final class SettingsWatchdog {
         blocked = new HashSet<>(categories);
     }
 
-    /** Called from PolicyApplier.apply() with extra per-category fragments learned on this phone. */
+    /** Called from PolicyApplier.apply() with extra per-category fragments the dashboard knows about. */
     static void setExtraPatterns(Map<String, String[]> patterns) {
-        extraPatterns = new HashMap<>(patterns);
+        serverPatterns = new HashMap<>(patterns);
+    }
+
+    /** Fragments learned right here on the phone (via AdminActivity's own Learn card), per category. */
+    static Map<String, String[]> localPatterns(Context c) {
+        Map<String, String[]> out = new HashMap<>();
+        try {
+            String stored = Agent.prefs(c).getString(LOCAL_PATTERNS_PREF, null);
+            if (stored == null) return out;
+            JSONObject o = new JSONObject(stored);
+            Iterator<String> keys = o.keys();
+            while (keys.hasNext()) {
+                String k = keys.next();
+                JSONArray arr = o.optJSONArray(k);
+                if (arr == null) continue;
+                String[] frags = new String[arr.length()];
+                for (int i = 0; i < arr.length(); i++) frags[i] = arr.optString(i);
+                out.put(k, frags);
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /**
+     * Server-provided and locally-learned fragments, unioned per category -- never one replacing
+     * the other. Re-read fresh every call (SharedPreferences keeps its backing XML in memory, so
+     * this is cheap) rather than cached, so a pattern learned locally is never clobbered by the
+     * next policy sync overwriting a stale in-memory copy.
+     */
+    private static Map<String, String[]> mergedPatterns(Context c) {
+        Map<String, String[]> merged = new HashMap<>(serverPatterns);
+        for (Map.Entry<String, String[]> e : localPatterns(c).entrySet()) {
+            String[] serverFrags = merged.get(e.getKey());
+            if (serverFrags == null) {
+                merged.put(e.getKey(), e.getValue());
+            } else {
+                Set<String> union = new LinkedHashSet<>(Arrays.asList(serverFrags));
+                union.addAll(Arrays.asList(e.getValue()));
+                merged.put(e.getKey(), union.toArray(new String[0]));
+            }
+        }
+        return merged;
+    }
+
+    /** Learns a fragment for `category` from a captured "pkg/cls" component, on this phone only. */
+    static void addLocalPattern(Context c, String category, String fragment) {
+        if (category == null || fragment == null) return;
+        String frag = fragment.toLowerCase().trim();
+        if (frag.isEmpty() || frag.length() > 100) return;
+        try {
+            JSONObject o;
+            String stored = Agent.prefs(c).getString(LOCAL_PATTERNS_PREF, null);
+            o = stored != null ? new JSONObject(stored) : new JSONObject();
+            JSONArray existing = o.optJSONArray(category);
+            Set<String> frags = new LinkedHashSet<>();
+            if (existing != null) for (int i = 0; i < existing.length(); i++) frags.add(existing.optString(i));
+            frags.add(frag);
+            List<String> capped = new ArrayList<>(frags);
+            if (capped.size() > 20) capped = capped.subList(capped.size() - 20, capped.size());
+            o.put(category, new JSONArray(capped));
+            Agent.prefs(c).edit().putString(LOCAL_PATTERNS_PREF, o.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Clears every locally-learned fragment for one category (not the server-provided ones). */
+    static void clearLocalPatterns(Context c, String category) {
+        try {
+            String stored = Agent.prefs(c).getString(LOCAL_PATTERNS_PREF, null);
+            if (stored == null) return;
+            JSONObject o = new JSONObject(stored);
+            o.remove(category);
+            Agent.prefs(c).edit().putString(LOCAL_PATTERNS_PREF, o.toString()).apply();
+        } catch (Exception ignored) {
+        }
     }
 
     /**
@@ -293,7 +410,7 @@ final class SettingsWatchdog {
 
         String lower = cls.toLowerCase();
         String matched = firstMatch(lower, CATEGORIES);
-        if (matched == null) matched = firstMatch(lower, extraPatterns);
+        if (matched == null) matched = firstMatch(lower, mergedPatterns(c));
         if (matched == null) {
             // Unrecognized Settings screen -- logged at most once every 10 minutes per class, so the
             // map above can be refined for this phone without flooding the log over one visit.
