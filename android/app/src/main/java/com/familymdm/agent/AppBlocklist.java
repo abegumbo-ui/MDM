@@ -129,8 +129,13 @@ final class AppBlocklist {
         }
         if (pkg == null || cls == null) return;
         if (blocked.contains(pkg + "/" + cls)) {
-            Kiosk.startHome(c);
-            Agent.addEvent(c, "restriction", "Blocked app/screen opened (" + pkg + "/" + cls + ") -- sent back to the home screen");
+            // Back to Settings' own homepage, not all the way out to the device home screen --
+            // this is meant to bounce out of one blocked screen inside Settings, not out of
+            // Settings itself.
+            Intent settingsHome = new Intent(android.provider.Settings.ACTION_SETTINGS);
+            settingsHome.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(settingsHome);
+            Agent.addEvent(c, "restriction", "Blocked app/screen opened (" + pkg + "/" + cls + ") -- sent back to the Settings home screen");
         }
     }
 }
