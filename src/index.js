@@ -276,6 +276,48 @@ async function setIconRev(env, pkg, rev) {
   await env.STATE.put("iconIndex", JSON.stringify(index));
 }
 
+/**
+ * Mints a short-lived (~50 minute) Google Play Store auth token from the long-lived master token
+ * for one dedicated Google account, set up once via tools/get-play-token.py and stored only as
+ * Cloudflare secrets (PLAY_EMAIL, PLAY_ANDROID_ID, PLAY_MASTER_TOKEN) -- never on a phone. Lets the
+ * agent keep a small allow-listed set of apps (Waze, Google Maps, Android Auto, Play services --
+ * whatever it actually takes to run them) self-updating through the real Play Store protocol,
+ * while every other install/update stays blocked. Same token-refresh exchange gpsoauth/gplayapi/
+ * Aurora Store's own "dispenser" all use against Google's own endpoint -- this just runs it from
+ * the Worker instead of trusting someone else's dispenser server.
+ */
+async function playToken(env) {
+  if (!env.PLAY_EMAIL || !env.PLAY_ANDROID_ID || !env.PLAY_MASTER_TOKEN) {
+    return { error: "Play Store updates are not set up on this dashboard -- see tools/get-play-token.py" };
+  }
+  const body = new URLSearchParams({
+    accountType: "HOSTED_OR_GOOGLE",
+    Email: env.PLAY_EMAIL,
+    has_permission: "1",
+    EncryptedPasswd: env.PLAY_MASTER_TOKEN,
+    service: "androidmarket",
+    source: "android",
+    androidId: env.PLAY_ANDROID_ID,
+    app: "com.android.vending",
+    client_sig: "61ed377e85d386a8dfee6b864bd85b0bcfcfb67e",
+    device_country: "us",
+    operatorCountry: "us",
+    lang: "en",
+    sdk_version: "30",
+  });
+  const res = await fetch("https://android.clients.google.com/auth", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "GoogleAuth/1.4" },
+    body: body.toString(),
+  });
+  const text = await res.text();
+  const fields = Object.fromEntries(
+    text.split("\n").filter((l) => l.includes("=")).map((l) => { const i = l.indexOf("="); return [l.slice(0, i), l.slice(i + 1)]; })
+  );
+  if (!fields.Auth) return { error: "Google did not return a token (" + (fields.Error || res.status) + ")" };
+  return { auth: fields.Auth, email: env.PLAY_EMAIL, androidId: env.PLAY_ANDROID_ID };
+}
+
 /** Finds the device a bearer token belongs to, or null. */
 async function authDevice(request, env) {
   const m = /^Bearer ([0-9a-f]+)\.([0-9a-f]+)$/.exec(request.headers.get("authorization") || "");
@@ -655,12 +697,21 @@ async function agentApi(request, env, url) {
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
 
-  if (url.pathname === "/agent/sync" || url.pathname === "/agent/redeem" || url.pathname === "/agent/update") {
+  if (
+    url.pathname === "/agent/sync" ||
+    url.pathname === "/agent/redeem" ||
+    url.pathname === "/agent/update" ||
+    url.pathname === "/agent/play-token"
+  ) {
     const auth = await authDevice(request, env);
     if (!auth) return json({ error: "Unauthorized" }, 401);
     const { key, d } = auth;
 
     if (url.pathname === "/agent/update") return json({ latest: await latestAgent(env) });
+    if (url.pathname === "/agent/play-token") {
+      const result = await playToken(env);
+      return json(result, result.error ? 503 : 200);
+    }
 
     if (url.pathname === "/agent/redeem") {
       // One-time codes unlock features inside the phone app (install an APK, remove the agent,

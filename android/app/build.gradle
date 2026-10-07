@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 // Each GitHub build gets a higher version, so a newer build always counts as an update.
@@ -48,6 +49,10 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     // A fixed signing key (committed on purpose) so every build installs as an update over the last
     // one. This key is only for sideloading onto your own phones; don't reuse it for anything
     // public. A dedicated key instead of the SDK's generic debug.keystore (androiddebugkey /
@@ -83,4 +88,7 @@ android {
 
 dependencies {
     implementation project(':sitepolicy')
+    // The real Play Store protocol, for PlayUpdates.kt -- see SETUP.md's "Keeping a few apps
+    // updated" section. Same open-source library Aurora Store itself is built on.
+    implementation 'com.auroraoss:gplayapi:3.4.8'
 }
