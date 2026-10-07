@@ -146,6 +146,45 @@ public class AdminActivity extends Activity {
             });
         }
 
+        LinearLayout messagesCard = Ui.card(this, root);
+        messagesCard.addView(Ui.titleText(this, "Messages"));
+        JSONArray adminMessages = AdminMessages.list(this);
+        if (adminMessages.length() == 0) {
+            messagesCard.addView(Ui.body(this, "Nothing sent from \"Message the Administrator\" yet.", true));
+        }
+        for (int i = adminMessages.length() - 1; i >= 0; i--) {
+            JSONObject m = adminMessages.optJSONObject(i);
+            if (m == null) continue;
+            final int index = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            long at = m.optLong("at", 0);
+            TextView when = Ui.body(this, at == 0 ? "" : java.text.DateFormat.getDateTimeInstance(
+                    java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(new java.util.Date(at)), true);
+            when.setTextSize(11);
+            row.addView(when);
+            String text = m.optString("text", "");
+            row.addView(Ui.body(this, text.isEmpty() ? "(no text)" : text, false));
+            String photo = m.isNull("photo") ? null : m.optString("photo", null);
+            if (photo != null) {
+                android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(photo);
+                if (bmp != null) {
+                    android.widget.ImageView iv = new android.widget.ImageView(this);
+                    iv.setImageBitmap(bmp);
+                    iv.setAdjustViewBounds(true);
+                    iv.setMaxHeight(Ui.dp(this, 160));
+                    iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                    Ui.add(row, iv, 8);
+                }
+            }
+            row.addView(Ui.button(this, "Delete", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                AdminMessages.removeAt(this, index);
+                build();
+            }));
+            Ui.add(messagesCard, row, 12);
+        }
+
         LinearLayout lock = Ui.card(this, root);
         lock.addView(Ui.titleText(this, "Lock"));
         action(lock, "Lock now", Ui.FILLED, v -> run(() -> Actions.lock(this, 0, "")));
