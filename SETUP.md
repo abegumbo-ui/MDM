@@ -167,6 +167,21 @@ Wherever the agent app asks for a code, that phone's own **master code** is acce
 - **Automatically:** **Settings → Agent updates**. Phones check every 6 hours.
 Updates come from the "Latest agent build" release in this repo (the repo is public, so no token is needed).
 
+## Only control from the dashboard (optional)
+**Settings → Only control from the dashboard** disables the phone's own master-code Administrator
+panel entirely -- entering the code there does nothing while this is on. Every change has to come
+from here instead. Turning it back off also has to happen from here, so only use this on a phone
+you expect to stay able to reach the dashboard. Has no effect on a standalone (no-dashboard) phone,
+since that phone has no other way to be managed at all.
+
+## Hide the app icon (optional)
+**Settings → App icon → Hide the app icon** removes the agent's own icon from the launcher and app
+drawer. Nothing else changes -- device-owner status, every restriction, Home screen mode, all of it
+keeps working exactly the same; the app just can't be opened (or seen) the normal way anymore.
+Two ways back, so this is never a one-way door even if the phone has no internet at the time:
+turn the setting back off from the dashboard, or dial **\*#\*#636#\*#\*** right on the phone's own
+dialer app (a few phone brands' own dialer apps don't support this standard Android feature).
+
 ## Keeping a few apps updated, even while installs are blocked (optional)
 Blocking app installs/updates (the default, and what Home screen mode and the standalone Lockdown
 app both force on) normally freezes everything, including apps you still need -- e.g. Waze or

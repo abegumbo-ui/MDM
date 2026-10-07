@@ -208,7 +208,15 @@ public class HomeActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = Ui.dp(this, 24);
-        root.addView(Ui.button(this, "Administrator", Ui.OUTLINED, v -> startActivity(new Intent(this, MainActivity.class))), lp);
+        root.addView(Ui.button(this, "Administrator", Ui.OUTLINED, v -> {
+            // MainActivity's own launcher component can be disabled right now (hideAppIcon), in
+            // which case starting it throws instead of just not finding anything to show.
+            try {
+                startActivity(new Intent(this, MainActivity.class));
+            } catch (Exception e) {
+                Toast.makeText(this, "The app icon is hidden right now -- dial *#*#636#*#* to bring it back.", Toast.LENGTH_LONG).show();
+            }
+        }), lp);
     }
 
     private LinearLayout tile(String label, final String pkg, int width) {

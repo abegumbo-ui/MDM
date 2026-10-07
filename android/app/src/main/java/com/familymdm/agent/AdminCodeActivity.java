@@ -58,6 +58,10 @@ public class AdminCodeActivity extends Activity {
     }
 
     private void submit() {
+        if (Agent.phoneAdminLocked(this)) {
+            Toast.makeText(this, "This phone is managed from the dashboard only -- the code isn't accepted here.", Toast.LENGTH_LONG).show();
+            return;
+        }
         final String code = input.getText().toString();
         submit.setEnabled(false);
         new Thread(() -> {

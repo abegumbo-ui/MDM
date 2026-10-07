@@ -48,6 +48,11 @@ public class AdminReceiver extends DeviceAdminReceiver {
     }
 
     private void startMain(Context context) {
-        context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception ignored) {
+            // Can only happen if hideAppIcon somehow got applied before this phone's very first
+            // policy sync -- not a real scenario, but cheap to not crash over either way.
+        }
     }
 }
