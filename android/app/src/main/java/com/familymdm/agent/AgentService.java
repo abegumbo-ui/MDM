@@ -386,6 +386,14 @@ public class AgentService extends Service {
                 case "listSystemApps":
                     msg = PolicyApplier.collectSystemPackages(this).toString();
                     break;
+                case "checkNow":
+                    try {
+                        msg = SettingsWatchdog.debugCurrentForeground(this);
+                    } catch (SecurityException se) {
+                        ok = false;
+                        msg = "No usage-access permission: " + se.getMessage();
+                    }
+                    break;
                 case "learnSettings": {
                     // Normal case: already on the target screen, Learn pressed after -- answer
                     // right away with this result, same sync cycle as any other command.

@@ -149,6 +149,21 @@ test("learnSettings: rejects an unknown category, queues a valid one, and its de
   assert.deepEqual(JSON.parse(result.msg), { category: "network", component: "com.android.settings/.Settings$NetworkDashboardActivity" });
 });
 
+test("checkNow: a plain diagnostic command, no args needed, round-trips like any other", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+
+  assert.equal((await post(`/api/devices/${id}/command`, { type: "checkNow" }, { cookie })).status, 200);
+  const sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.commands.length, 1);
+  assert.equal(sync.commands[0].type, "checkNow");
+
+  await post("/agent/sync", { results: [{ id: sync.commands[0].id, type: "checkNow", ok: true, msg: "Last foreground app seen: com.android.settings/.Settings" }] }, auth);
+  const devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  const device = devices.find((x) => x.id === id);
+  assert.equal(device.results.find((r) => r.type === "checkNow").msg, "Last foreground app seen: com.android.settings/.Settings");
+});
+
 async function enrolledBrowser(cookie) {
   const { code } = await (await post("/api/codes", { type: "browser" }, { cookie })).json();
   const { token } = await (await post("/browser/enroll", { code, info: { model: "Y" } })).json();
