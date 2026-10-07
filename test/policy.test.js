@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, normalizeWatchdogPatterns, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
+import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -38,40 +38,6 @@ test("restrictions: every android.os.UserManager.DISALLOW_* key is listed, and e
   }
 });
 
-test("normalizeWatchdogPatterns: keeps only known categories, dedups, and caps length", () => {
-  assert.deepEqual(normalizeWatchdogPatterns(null), {});
-  const out = normalizeWatchdogPatterns({
-    network: ["WifiSettingsActivity", "wifisettingsactivity", " datausage "],
-    "not-a-real-category": ["whatever"],
-  });
-  assert.deepEqual(out, { network: ["wifisettingsactivity", "datausage"] });
-
-  const tooMany = normalizeWatchdogPatterns({ google: Array.from({ length: 30 }, (_, i) => "frag" + i) });
-  assert.equal(tooMany.google.length, 20);
-});
-
-test("watchdogPatterns round-trips through buildAgentPolicy", () => {
-  const learned = { network: ["networksettingsalias"] };
-  const p = buildAgentPolicy({ watchdogPatterns: learned }, []);
-  assert.deepEqual(p.watchdogPatterns, learned);
-  assert.deepEqual(buildAgentPolicy({}, []).watchdogPatterns, {});
-});
-
-test("blockedSettings: every category is blocked by default, and an explicit list is honored", () => {
-  const fresh = buildAgentPolicy({}, []);
-  assert.equal(fresh.blockedSettings.length, 22);
-  assert.ok(fresh.blockedSettings.includes("accessibility"));
-
-  const narrowed = buildAgentPolicy({ blockedSettings: ["network", "location"] }, []);
-  assert.deepEqual(narrowed.blockedSettings, ["network", "location"]);
-
-  const allowedEverything = buildAgentPolicy({ blockedSettings: [] }, []);
-  assert.deepEqual(allowedEverything.blockedSettings, []);
-
-  const ignoresJunk = buildAgentPolicy({ blockedSettings: ["network", "not-a-real-category"] }, []);
-  assert.deepEqual(ignoresJunk.blockedSettings, ["network"]);
-});
-
 test("new location/network/VPN restrictions default off, and turn on only when asked", () => {
   const off = buildAgentPolicy({}, []);
   for (const key of ["no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering", "no_config_vpn", "disallow_config_private_dns"]) {
@@ -89,9 +55,6 @@ test("summarizeConfigChange: reports what actually changed, in plain English, an
   const before = normalizeConfig({});
   const afterRestriction = normalizeConfig({ restrictions: { cameraDisabled: true } });
   assert.deepEqual(summarizeConfigChange(before, afterRestriction), ["Disable the camera entirely: on"]);
-
-  const afterSettings = normalizeConfig({ blockedSettings: before.blockedSettings.filter((k) => k !== "google") });
-  assert.deepEqual(summarizeConfigChange(before, afterSettings), ["Settings watchdog: Google allowed"]);
 
   const afterApp = normalizeConfig({ apps: { "com.example.app": { mode: "block", label: "Example" } } });
   assert.deepEqual(summarizeConfigChange(before, afterApp), ["Example: block"]);

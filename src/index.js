@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS, SETTINGS_CATEGORIES, summarizeConfigChange } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -6,7 +6,7 @@ const POLL_SECONDS = 15; // how often an online phone checks in (it already jump
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
-const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "learnSettings", "checkNow"]);
+const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_IMAGE_BYTES = 200 * 1024;
@@ -326,7 +326,7 @@ async function adminApi(request, env, url) {
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
   if (path === "/api/state" && method === "GET") {
-    return json({ restrictions: RESTRICTIONS, settingsCategories: SETTINGS_CATEGORIES, origin: url.origin, masterIterations: MASTER_ITERATIONS });
+    return json({ restrictions: RESTRICTIONS, origin: url.origin, masterIterations: MASTER_ITERATIONS });
   }
   const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from)$/.exec(path);
   if (devConfig) {
@@ -529,10 +529,6 @@ async function adminApi(request, env, url) {
         args.password = pass;
         // The dashboard remembers networks you add, so you can look the password up later.
         d.wifiNetworks = [...(d.wifiNetworks || []).filter((n) => n.ssid !== ssid), { ssid, password: pass, at: Date.now() }].slice(-20);
-      }
-      if (body.type === "learnSettings") {
-        if (!SETTINGS_CATEGORIES[given.category]) return json({ error: "Unknown Settings category" }, 400);
-        args.category = given.category;
       }
       if (body.type === "setPin") {
         if (!/^\d{4,16}$/.test(given.pin || "")) return json({ error: "PIN must be 4 to 16 digits" }, 400);

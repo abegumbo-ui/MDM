@@ -196,33 +196,9 @@ public class HomeActivity extends Activity {
         int width = (getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3;
         for (String[] a : shown) grid.addView(tile(a[0], a[1], width));
 
-        // Home screen mode has no way to open just a couple of screens of the real Settings app
-        // (lock-task mode only allows or blocks a whole app, never part of one -- see
-        // SettingsWatchdog's class doc for the same wall from the blocking side). These two work
-        // around it by never opening Settings at all: a real system Wi-Fi panel (a public API
-        // built for exactly this -- it overlays the calling app and closes back into it) and a
-        // small Bluetooth screen built directly against BluetoothAdapter.
-        LinearLayout quick = new LinearLayout(this);
-        quick.setOrientation(LinearLayout.HORIZONTAL);
-        android.widget.Button wifiButton = Ui.button(this, "Wi-Fi", Ui.TONAL, v -> {
-            try {
-                startActivity(new Intent(android.provider.Settings.Panel.ACTION_WIFI));
-            } catch (Exception e) {
-                Toast.makeText(this, "Could not open Wi-Fi.", Toast.LENGTH_SHORT).show();
-            }
-        });
-        quick.addView(wifiButton, new LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
-        android.widget.Button btButton = Ui.button(this, "Bluetooth", Ui.TONAL, v -> startActivity(new Intent(this, BluetoothActivity.class)));
-        LinearLayout.LayoutParams btLp = new LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        btLp.leftMargin = Ui.dp(this, 12);
-        quick.addView(btButton, btLp);
-        Ui.add(root, quick, 16);
-
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dp(this, 12);
+        lp.topMargin = Ui.dp(this, 24);
         root.addView(Ui.button(this, "Administrator", Ui.OUTLINED, v -> startActivity(new Intent(this, MainActivity.class))), lp);
     }
 
