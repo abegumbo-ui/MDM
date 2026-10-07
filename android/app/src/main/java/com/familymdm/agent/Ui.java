@@ -166,6 +166,11 @@ final class Ui {
         EditText e = new EditText(c);
         e.setHint(hint);
         e.setSingleLine(true);
+        // Without this, a single-line EditText falls back to the platform's default text size
+        // (~18sp) -- fine for a short hint, but a longer one ("Message shown on the phone
+        // (optional)") just gets cut off hard against the field's right edge with no ellipsis,
+        // looking broken rather than merely small.
+        e.setTextSize(15);
         e.setTextColor(color(c, R.color.m3_on_surface));
         e.setHintTextColor(color(c, R.color.m3_on_surface_variant));
         e.setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 12));
@@ -315,6 +320,7 @@ final class Ui {
         android.widget.AutoCompleteTextView e = new android.widget.AutoCompleteTextView(c);
         e.setHint(hint);
         e.setSingleLine(true);
+        e.setTextSize(15);
         e.setTextColor(color(c, R.color.m3_on_surface));
         e.setHintTextColor(color(c, R.color.m3_on_surface_variant));
         e.setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 12));

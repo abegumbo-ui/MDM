@@ -27,6 +27,16 @@
         <item name="android:buttonBarPositiveButtonStyle">@style/AppAlertDialogButton</item>
         <item name="android:buttonBarNegativeButtonStyle">@style/AppAlertDialogButton</item>
         <item name="android:buttonBarNeutralButtonStyle">@style/AppAlertDialogButton</item>
+        <item name="android:windowTitleStyle">@style/AppAlertDialogTitle</item>
+        <!-- Covers setMultiChoiceItems()/setSingleChoiceItems()/setItems() list rows, which
+             otherwise use the OEM's own (blue) list-item text color independent of everything
+             else above. -->
+        <item name="android:textColorAlertDialogListItem">@color/m3_on_surface</item>
+    </style>
+
+    <!-- No parent, same reasoning as AppAlertDialogButton below. -->
+    <style name="AppAlertDialogTitle">
+        <item name="android:textColor">@color/m3_on_surface</item>
     </style>
 
     <!-- No parent: AAPT rejected the first attempt at borrowing a named framework button style
