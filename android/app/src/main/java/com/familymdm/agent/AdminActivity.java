@@ -38,6 +38,8 @@ public class AdminActivity extends Activity {
     private String settingsMenuSub;
     // Blocking section: null = pick "Block Apps/Screens" or "Block Whole Apps"; otherwise which.
     private String blockingSub;
+    // Administrator home: whether the "Overview" card is expanded below its row.
+    private boolean showingOverview;
     // Shared by both apps pickers above (never shown at once, since only one section renders at a
     // time) -- the apps list and search text backing whichever picker is currently expanded.
     private JSONArray appsPickerPackages;
@@ -197,6 +199,12 @@ public class AdminActivity extends Activity {
         Ui.add(root, Ui.banner(this, currentSection == null ? "Administrator" : SECTION_TITLES.get(currentSection)), 0);
 
         if (currentSection == null) {
+            Ui.add(root, Ui.rowTile(this, "Overview", R.drawable.ic_device_tile, v -> {
+                showingOverview = !showingOverview;
+                build();
+            }), 0);
+            if (showingOverview) buildOverviewCard(root);
+
             LinearLayout statusCard = Ui.card(this, root);
             statusCard.addView(Ui.body(this, "This phone's own recovery code: " + Agent.fallbackCode(this)
                     + ". Works here and anywhere else a code is asked for, with no internet, even with no master code set.", true));
@@ -240,6 +248,38 @@ public class AdminActivity extends Activity {
         if (inSection("network")) buildNetworkSection(root);
         if (inSection("device")) buildDeviceSection(root);
         if (inSection("lock")) refreshStatus();
+    }
+
+    /** Everything the dashboard's own device card shows, in one place -- entirely from data this
+     * phone already has locally, so it works offline too. */
+    private void buildOverviewCard(LinearLayout root) {
+        LinearLayout overview = Ui.card(this, root);
+        overview.addView(Ui.titleText(this, "Overview"));
+        StringBuilder sb = new StringBuilder();
+        sb.append("Device owner: ").append(Agent.isOwner(this) ? "yes" : "no").append('\n');
+        sb.append("Mode: ").append(Agent.standalone(this) ? "offline (this phone only)" : "online (dashboard)").append('\n');
+        if (!Agent.standalone(this)) {
+            long last = Agent.prefs(this).getLong("lastSync", 0);
+            sb.append("Last check-in: ").append(last == 0 ? "not yet"
+                    : java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(last))).append('\n');
+        }
+        sb.append("Agent build: ").append(Updater.currentBuild(this)).append('\n');
+        sb.append("Android: ").append(android.os.Build.VERSION.RELEASE)
+                .append(" (SDK ").append(android.os.Build.VERSION.SDK_INT).append(")\n");
+        sb.append("Device: ").append(android.os.Build.MANUFACTURER).append(' ').append(android.os.Build.MODEL).append('\n');
+        try {
+            JSONObject battery = Telemetry.battery(this);
+            if (battery != null) {
+                sb.append("Battery: ").append(battery.optInt("pct", -1)).append('%');
+                if (battery.optBoolean("charging")) sb.append(" (charging)");
+                sb.append('\n');
+            }
+        } catch (Exception ignored) {
+        }
+        sb.append("Home screen mode: ").append(Kiosk.active(this) ? "on" : "off").append('\n');
+        sb.append("App lock: ").append(Agent.prefs(this).getBoolean("appLock", false) ? "on" : "off").append('\n');
+        sb.append("Recovery code: ").append(Agent.fallbackCode(this));
+        overview.addView(Ui.body(this, sb.toString(), true));
     }
 
     private void buildMessagesSection(LinearLayout root) {
@@ -633,8 +673,20 @@ public class AdminActivity extends Activity {
                 : "Currently off -- turn it on under Settings > Accessibility, then come back here."), true));
         if (!accessOn) {
             action(accessCard, "Open Accessibility settings", Ui.OUTLINED, v -> {
-                startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Exception e) {
+                    // Some OEM builds don't resolve the specific Accessibility screen -- the plain
+                    // Settings app always exists, so fall back to that rather than doing nothing.
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                        toast("Opened Settings -- go to Accessibility from there.");
+                    } catch (Exception e2) {
+                        toast("Could not open Settings on this phone.");
+                    }
+                }
             });
         }
 
@@ -1190,27 +1242,37 @@ public class AdminActivity extends Activity {
         }
     }
 
+    /** A row-tile list, like the Lock section's own, instead of a plain AlertDialog item list --
+     * besides looking consistent, this sidesteps the OEM's own (unthemed) list-item text color
+     * that a plain setItems() list used instead of this app's own colors. */
     private void promptAppMode(LinearLayout gridHolder, String pkg, String label) {
         if (!unlocked()) return;
-        final String[] options = {"Allow", "Block", "Schedule", "Cancel"};
-        Ui.alertDialog(this)
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int sidePad = Ui.dp(this, 4);
+        box.setPadding(sidePad, Ui.dp(this, 8), sidePad, 0);
+
+        android.app.AlertDialog dialog = Ui.alertDialog(this)
                 .setTitle(label)
                 .setMessage(pkg)
-                .setItems(options, (d, which) -> {
-                    switch (which) {
-                        case 0:
-                            setApp(gridHolder, pkg, "allow");
-                            break;
-                        case 1:
-                            promptBlockKind(gridHolder, pkg, label);
-                            break;
-                        case 2:
-                            promptSchedule(gridHolder, pkg, label);
-                            break;
-                        default: // Cancel
-                    }
-                })
-                .show();
+                .setView(box)
+                .setNegativeButton("Cancel", null)
+                .create();
+
+        Ui.add(box, Ui.rowTile(this, "Allow", R.drawable.ic_apps_tile, v -> {
+            dialog.dismiss();
+            setApp(gridHolder, pkg, "allow");
+        }), 0);
+        Ui.add(box, Ui.rowTile(this, "Block", R.drawable.ic_remove_tile, v -> {
+            dialog.dismiss();
+            promptBlockKind(gridHolder, pkg, label);
+        }), 8);
+        Ui.add(box, Ui.rowTile(this, "Schedule", R.drawable.ic_schedule_tile, v -> {
+            dialog.dismiss();
+            promptSchedule(gridHolder, pkg, label);
+        }), 8);
+
+        dialog.show();
     }
 
     /** The whole point of Home screen mode is that an app not allowed on it can still run in the
