@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS, SETTINGS_CATEGORIES } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS, SETTINGS_CATEGORIES, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -113,6 +113,7 @@ const publicDevice = (d) => ({
   adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
   siteRequests: d.siteRequests || [],
   messages: d.messages || [],
+  pushLog: (d.pushLog || []).slice(-30),
 });
 
 // Browser devices: a standalone Browser app connected straight to this dashboard, with no agent/MDM
@@ -337,6 +338,8 @@ async function adminApi(request, env, url) {
       const next = normalizeConfig(body);
       if (next.approveNew && !before.approveNew) d.known = (d.packages || []).map((p) => p.p); // everything installed now counts as already approved
       d.config = next;
+      const changes = summarizeConfigChange(before, next);
+      if (changes.length) d.pushLog = [...(d.pushLog || []), { at: Date.now(), changes }].slice(-30);
       await putJSON(env, key, d);
       return json({ ok: true });
     }

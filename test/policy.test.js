@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed } from "../src/policy.js";
+import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -64,6 +64,20 @@ test("new location/network/VPN restrictions default off, and turn on only when a
   assert.ok(on.restrictions.includes("no_config_vpn"));
   assert.ok(on.restrictions.includes("disallow_config_private_dns"));
   assert.ok(!on.restrictions.includes("no_airplane_mode"));
+});
+
+test("summarizeConfigChange: reports what actually changed, in plain English, and nothing when nothing did", () => {
+  const before = normalizeConfig({});
+  const afterRestriction = normalizeConfig({ restrictions: { cameraDisabled: true } });
+  assert.deepEqual(summarizeConfigChange(before, afterRestriction), ["Disable the camera entirely: on"]);
+
+  const afterSettings = normalizeConfig({ blockedSettings: before.blockedSettings.filter((k) => k !== "google") });
+  assert.deepEqual(summarizeConfigChange(before, afterSettings), ["Settings watchdog: Google allowed"]);
+
+  const afterApp = normalizeConfig({ apps: { "com.example.app": { mode: "block", label: "Example" } } });
+  assert.deepEqual(summarizeConfigChange(before, afterApp), ["Example: block"]);
+
+  assert.deepEqual(summarizeConfigChange(before, normalizeConfig({})), [], "an identical save reports no changes");
 });
 
 test("explicit block overrides protection", () => {

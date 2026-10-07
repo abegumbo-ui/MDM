@@ -400,7 +400,15 @@ function renderDeviceDetail(m,d){
  sa.append(sal);
 
  // ----- Log -----
- const lg=h('section');const ll=h('div',{class:'card'},h('h2',null,'Phone log'),h('div',{class:'mute'},'What the phone itself did and noticed.'));
+ const lg=h('section');
+ const pl=h('div',{class:'card'},h('h2',null,'Dashboard log'),h('div',{class:'mute'},'What was sent from here. Compare against Phone log below to see whether it actually arrived -- it should, within about 15 seconds.'));
+ if(!d.pushLog.length)pl.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing sent yet.'));
+ for(const p of d.pushLog.slice().reverse()){
+  const row=h('div',{class:'act'},'📤 '+ago(p.at));
+  for(const c of p.changes)row.append(h('div',{class:'mute small',style:'margin-left:20px'},c));
+  pl.append(row)}
+ lg.append(pl);
+ const ll=h('div',{class:'card'},h('h2',null,'Phone log'),h('div',{class:'mute'},'What the phone itself did and noticed.'));
  if(!d.events.length)ll.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing logged yet.'));
  for(const e of d.events.slice().reverse())ll.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
  lg.append(ll);
