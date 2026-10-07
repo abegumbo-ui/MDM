@@ -776,6 +776,11 @@ function renderDeviceSettings(m,dv){
   sw(dv.config.phoneAdminLocked,async function(on){
    if(on&&!confirm('Turn off this phone\'s own Administrator panel? You\'ll only be able to turn it back on from this dashboard -- make sure the phone can still reach it.'))return;
    dv.config.phoneAdminLocked=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 15 seconds.')}catch(e){snack(e.message,1)}render()}))));
+ m.append(h('div',{class:'card'},h('h2',null,'App icon'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Hide the app icon'),
+  h('div',{class:'mute'},'Removes the agent\'s icon from the launcher and app drawer. Nothing else changes -- it keeps running and enforcing everything exactly the same. Two ways back: turn this off here again, or dial *#*#636#*#* right on the phone (works even offline; a few phone brands\' own dialer apps don\'t support this standard Android feature).')),
+  sw(dv.config.hideAppIcon,async function(on){
+   if(on&&!confirm('Hide the app icon on this phone? Turn it back on here, or dial *#*#636#*#* on the phone itself.'))return;
+   dv.config.hideAppIcon=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 15 seconds.')}catch(e){snack(e.message,1)}render()}))));
  const mc=h('div',{class:'card'},h('h2',null,'Master code'),
   h('div',{class:'mute'},'Works on this phone with no internet (Agent → Administrator): lock, set PIN, install APKs, show/hide apps, release, erase. The phone only stores a scrambled version. Status: '+(dv.masterSet?'set':'not set')+'.'));
  const code=h('input',{type:'password',placeholder:'New master code (6+ characters, letters/numbers/symbols)',style:'width:100%;margin-top:8px'});

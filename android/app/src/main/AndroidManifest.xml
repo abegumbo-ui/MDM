@@ -113,6 +113,18 @@
             android:name=".InstallReceiver"
             android:exported="false" />
 
+        <!-- Dialing *#*#636#*#* on the phone's own dialer ("MDM" on a keypad) brings the app icon
+             back after "hideAppIcon" hid it, using the standard Android "secret code" mechanism.
+             Exported on purpose: the system dialer sends this broadcast from outside the app. -->
+        <receiver
+            android:name=".SecretCodeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SECRET_CODE" />
+                <data android:scheme="android_secret_code" android:host="636" />
+            </intent-filter>
+        </receiver>
+
         <!-- The separate Browser app reports a blocked page here. -->
         <receiver
             android:name=".SiteRequestReceiver"

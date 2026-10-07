@@ -167,6 +167,10 @@ final class PolicyApplier {
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
         applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
         applyAccessibilityLock(c, dpm, admin, policy.optBoolean("blockAccessibility", false));
+        // Works the same whether the phone has a dashboard or not -- SecretCodeReceiver is the
+        // recovery path either way (dialing *#*#636#*#* brings the icon straight back), with the
+        // dashboard as a second, remote way back for a non-standalone phone.
+        applyHideAppIcon(c, policy.optBoolean("hideAppIcon", false));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
@@ -510,6 +514,29 @@ final class PolicyApplier {
             errorCleared(c, "a11y");
         } catch (Exception e) {
             errorOnce(c, "a11y", "Could not change the accessibility-service lock: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Disables only MainActivity's own launcher component -- never the whole package, never
+     * AdminReceiver -- so the app disappears from the launcher and app drawer while everything
+     * else (device-owner status, the background service, every restriction already applied) keeps
+     * working exactly as before, completely unaffected. The same safety reasoning the standalone
+     * Lockdown app's own "Close Forever" uses, except here it's meant to be reversible: either this
+     * same flag turning back off (from the dashboard, next sync), or dialing the secret code
+     * (SecretCodeReceiver) right on the phone.
+     */
+    private static void applyHideAppIcon(Context c, boolean wanted) {
+        try {
+            PackageManager pm = c.getPackageManager();
+            ComponentName launcher = new ComponentName(c, MainActivity.class);
+            int current = pm.getComponentEnabledSetting(launcher);
+            int target = wanted ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
+            if (current == target) return;
+            pm.setComponentEnabledSetting(launcher, target, PackageManager.DONT_KILL_APP);
+            Agent.addEvent(c, "restriction", wanted ? "The app icon is now hidden (dial *#*#636#*#* to bring it back)" : "The app icon is visible again");
+        } catch (Exception e) {
+            errorOnce(c, "hideicon", "Could not change whether the app icon shows: " + e.getMessage());
         }
     }
 

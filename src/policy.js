@@ -276,6 +276,10 @@ export function normalizeConfig(input) {
     // every change has to come from here instead. Ignored on a standalone (no-dashboard) phone,
     // which has no other way to be managed at all.
     phoneAdminLocked: c.phoneAdminLocked === true,
+    // Hides the agent's own icon from the launcher/app drawer -- device-owner status and every
+    // other restriction keep working exactly the same either way. Dialing *#*#636#*#* on the
+    // phone's own dialer brings it back too, so this isn't a one-way door even offline.
+    hideAppIcon: c.hideAppIcon === true,
     sites, restrictions };
 }
 
@@ -332,7 +336,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
@@ -345,6 +349,7 @@ const SIMPLE_CONFIG_FIELDS = [
   ["freezeUpdates", "Freeze system updates"],
   ["blockAccessibility", "Block accessibility services"],
   ["phoneAdminLocked", "Only control from the dashboard"],
+  ["hideAppIcon", "Hide the app icon"],
   ["reportWifi", "Report Wi-Fi name"],
   ["autoUpdate", "Auto-update the agent"],
 ];
