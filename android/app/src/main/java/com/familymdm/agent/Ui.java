@@ -198,6 +198,46 @@ final class Ui {
         return t;
     }
 
+    /** Like tile(), but shows an app's own icon artwork as-is (no white tint, no red backdrop) so
+     * its real colors don't clash -- for a grid of real installed apps, not a fixed action icon. */
+    static LinearLayout appTile(Context c, String label, Drawable icon, int squareSizeDp, View.OnClickListener l) {
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        t.setClickable(true);
+        t.setFocusable(true);
+        android.util.TypedValue outValue = new android.util.TypedValue();
+        c.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
+        t.setBackgroundResource(outValue.resourceId);
+
+        LinearLayout square = new LinearLayout(c);
+        square.setGravity(android.view.Gravity.CENTER);
+        square.setBackground(shape(color(c, R.color.m3_surface_container_high), dp(c, 18), 0, 0));
+        ImageView iv = new ImageView(c);
+        if (icon != null) {
+            iv.setImageDrawable(icon);
+        } else {
+            iv.setImageResource(R.drawable.ic_apps_tile);
+            iv.setColorFilter(color(c, R.color.m3_on_surface_variant));
+        }
+        int iconSize = dp(c, (int) (squareSizeDp * 0.62));
+        square.addView(iv, new LinearLayout.LayoutParams(iconSize, iconSize));
+        int squareSize = dp(c, squareSizeDp);
+        t.addView(square, new LinearLayout.LayoutParams(squareSize, squareSize));
+
+        TextView name = body(c, label, false);
+        name.setGravity(android.view.Gravity.CENTER);
+        name.setTextSize(12);
+        name.setMaxLines(2);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(squareSize, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nameLp.topMargin = dp(c, 8);
+        t.addView(name, nameLp);
+
+        t.setOnClickListener(l);
+        return t;
+    }
+
     /** A full-width row with a small red icon square on the left and a label next to it -- for a
      * list of distinct actions (different urgency/danger levels) where a uniform grid of same-size
      * tiles would flatten that distinction. */

@@ -6,5 +6,20 @@
         <item name="android:navigationBarColor">@color/m3_surface</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:textColor">@color/m3_on_surface</item>
+        <item name="android:colorAccent">@color/m3_primary</item>
+        <item name="android:alertDialogTheme">@style/AppAlertDialogTheme</item>
+    </style>
+
+    <!-- Every plain AlertDialog (code prompts, confirmations, "Allow/Block" popups, etc.) is built
+         with `new AlertDialog.Builder(this)`, which otherwise falls back to the OEM's own light,
+         blue-accented dialog style regardless of this app's own dark/red theme. Forcing it here,
+         once, keeps every one of those dialogs on the same look without touching each call site. -->
+    <style name="AppAlertDialogTheme" parent="android:Theme.DeviceDefault.Dialog.Alert">
+        <item name="android:windowBackground">@color/m3_surface_container</item>
+        <item name="android:colorBackground">@color/m3_surface_container</item>
+        <item name="android:textColor">@color/m3_on_surface</item>
+        <item name="android:textColorPrimary">@color/m3_on_surface</item>
+        <item name="android:textColorSecondary">@color/m3_on_surface_variant</item>
+        <item name="android:colorAccent">@color/m3_primary</item>
     </style>
 </resources>
