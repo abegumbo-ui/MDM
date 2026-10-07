@@ -14,9 +14,11 @@ import android.view.accessibility.AccessibilityEvent;
  * recents.
  *
  * Has to be turned on by hand under Settings > Accessibility -- Android never lets a device owner
- * silently grant this one, even with full device-owner access. AdminActivity's "Accessibility
- * service" card can lock that whole Settings screen afterward (DISALLOW_CONFIG_ACCESSIBILITY), but
- * only after it's been turned on at least once by hand first.
+ * silently grant this one, even with full device-owner access. There's no real Android API to
+ * freeze that whole Settings screen afterward (an earlier version of this tried
+ * UserManager.DISALLOW_CONFIG_ACCESSIBILITY, which doesn't exist -- caught by CI, not a device);
+ * the practical equivalent is just adding Settings' own Accessibility screen to this same
+ * blocklist, with Pause used whenever it needs to be opened on purpose.
  */
 public class BlockAccessibilityService extends AccessibilityService {
     @Override

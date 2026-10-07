@@ -341,29 +341,16 @@ public class AdminActivity extends Activity {
         LinearLayout accessCard = Ui.card(this, root);
         accessCard.addView(Ui.titleText(this, "Accessibility service"));
         boolean accessOn = Agent.accessibilityServiceOn(this);
-        boolean accessLocked = Agent.accessibilityLocked(this);
         accessCard.addView(Ui.body(this, "Backs out of a blocked screen (above) instantly, and doesn't "
                 + "leave it sitting in recents the way the plain bounce does. "
-                + (accessOn ? "Currently on." : "Currently off -- turn it on under Settings > Accessibility, "
-                + "then come back here."), true));
+                + (accessOn ? "Currently on. To stop it being turned off from Settings without going through "
+                + "here, add Settings' own Accessibility screen to the blocked list above (same \"Add App\" "
+                + "flow), then use its Pause button whenever you need to get in and change something yourself."
+                : "Currently off -- turn it on under Settings > Accessibility, then come back here."), true));
         if (!accessOn) {
             action(accessCard, "Open Accessibility settings", Ui.OUTLINED, v -> {
                 startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            });
-        } else if (accessLocked) {
-            accessCard.addView(Ui.body(this, "Locked: the Accessibility settings screen is frozen on this "
-                    + "phone, so the service can't be turned off except from here.", true));
-            action(accessCard, "Unlock accessibility settings", Ui.OUTLINED, v -> {
-                Agent.setAccessibilityLocked(this, false);
-                Agent.addEvent(this, "local", "Master code on phone: unlocked the Accessibility settings screen");
-                build();
-            });
-        } else {
-            action(accessCard, "Lock accessibility settings", Ui.TONAL, v -> {
-                Agent.setAccessibilityLocked(this, true);
-                Agent.addEvent(this, "local", "Master code on phone: locked the Accessibility settings screen");
-                build();
             });
         }
 

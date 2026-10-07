@@ -63,21 +63,6 @@ final class Agent {
         return enabled != null && enabled.contains(c.getPackageName() + "/.BlockAccessibilityService");
     }
 
-    /** Freezes (or unfreezes) the whole Settings > Accessibility screen so nobody but this app, from the inside, can turn the service back off. */
-    static boolean accessibilityLocked(Context c) {
-        android.os.UserManager um = (android.os.UserManager) c.getSystemService(Context.USER_SERVICE);
-        return um != null && um.hasUserRestriction(android.os.UserManager.DISALLOW_CONFIG_ACCESSIBILITY);
-    }
-
-    static void setAccessibilityLocked(Context c, boolean locked) {
-        android.content.ComponentName admin = admin(c);
-        if (locked) {
-            dpm(c).addUserRestriction(admin, android.os.UserManager.DISALLOW_CONFIG_ACCESSIBILITY);
-        } else {
-            dpm(c).clearUserRestriction(admin, android.os.UserManager.DISALLOW_CONFIG_ACCESSIBILITY);
-        }
-    }
-
     /**
      * This phone's own recovery code: generated once on first use, kept forever after that (works
      * with no internet, ever, even with no master code set). Different per phone, and only ever
