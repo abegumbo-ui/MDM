@@ -18,6 +18,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.InputStream;
+import java.util.Map;
 
 /**
  * Everything the dashboard can do, on the phone itself, unlocked by the master code. Works offline.
@@ -46,6 +47,44 @@ public class AdminActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
         build();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        checkPendingLocalLearn();
+    }
+
+    /**
+     * Picks up where a "Learn" tap left off: it sent the person into Settings and recorded which
+     * category they were after, so coming back here (swipe up / recents, not re-launching this
+     * activity) is what finishes the capture -- no server round trip, no separate dashboard tap.
+     */
+    private void checkPendingLocalLearn() {
+        String category = Agent.prefs(this).getString("pendingLocalLearnCategory", null);
+        if (category == null) return;
+        long expires = Agent.prefs(this).getLong("pendingLocalLearnExpiresAt", 0);
+        if (System.currentTimeMillis() > expires) {
+            Agent.prefs(this).edit().remove("pendingLocalLearnCategory").remove("pendingLocalLearnExpiresAt").apply();
+            return;
+        }
+        String component = SettingsWatchdog.captureNow(this);
+        if (component == null) return; // still waiting -- came back too soon, or never got to a settings-ish screen
+        Agent.prefs(this).edit().remove("pendingLocalLearnCategory").remove("pendingLocalLearnExpiresAt").apply();
+        String label = SettingsWatchdog.label(category);
+        String frag = component.contains("/") ? component.substring(component.lastIndexOf('/') + 1).toLowerCase() : component.toLowerCase();
+        new AlertDialog.Builder(this)
+                .setTitle("Learned \"" + label + "\"?")
+                .setMessage("Right after Settings opened, this is what was on screen:\n\n" + component
+                        + "\n\nAdd it so the watchdog recognizes this screen as \"" + label + "\" from now on?")
+                .setPositiveButton("Add", (d, w) -> {
+                    SettingsWatchdog.addLocalPattern(this, category, frag);
+                    Agent.addEvent(this, "local", "Master code on phone: learned \"" + label + "\" locally (" + frag + ")");
+                    toast("Added. The watchdog recognizes it right away.");
+                    build();
+                })
+                .setNegativeButton("Discard", null)
+                .show();
     }
 
     private boolean unlocked() {
@@ -224,6 +263,48 @@ public class AdminActivity extends Activity {
             });
         } else {
             action(appLockCard, "Turn on app lock", Ui.TONAL, v -> promptNewAppPin(true));
+        }
+
+        LinearLayout swCard = Ui.card(this, root);
+        swCard.addView(Ui.titleText(this, "Settings watchdog"));
+        swCard.addView(Ui.body(this, "Teach it what a Settings screen looks like on this phone, right here: "
+                + "tap Learn, go into that category in Settings, then come straight back to this screen "
+                + "(swipe up to the recent apps and tap back into MDM Agent).", true));
+        Map<String, String[]> localLearned = SettingsWatchdog.localPatterns(this);
+        for (String category : SettingsWatchdog.categoryKeys()) {
+            String label = SettingsWatchdog.label(category);
+            String[] learned = localLearned.get(category);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            TextView rowLabel = Ui.body(this, label, false);
+            rowLabel.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(rowLabel);
+            row.addView(Ui.button(this, "Learn", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                Agent.prefs(this).edit()
+                        .putString("pendingLocalLearnCategory", category)
+                        .putLong("pendingLocalLearnExpiresAt", System.currentTimeMillis() + 10 * 60 * 1000)
+                        .apply();
+                toast("Opening Settings -- go into \"" + label + "\", then come back here.");
+                startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }));
+            Ui.add(swCard, row, 4);
+            if (learned != null && learned.length > 0) {
+                LinearLayout learnedRow = new LinearLayout(this);
+                learnedRow.setOrientation(LinearLayout.HORIZONTAL);
+                learnedRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                TextView learnedText = Ui.body(this, "Learned: " + String.join(", ", learned), true);
+                learnedText.setTextSize(12);
+                learnedText.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                learnedRow.addView(learnedText);
+                learnedRow.addView(Ui.button(this, "Clear", Ui.OUTLINED, v -> {
+                    if (!unlocked()) return;
+                    SettingsWatchdog.clearLocalPatterns(this, category);
+                    build();
+                }));
+                Ui.add(swCard, learnedRow, 8);
+            }
         }
 
         if (!Agent.standalone(this)) {
