@@ -291,6 +291,7 @@ public class AdminActivity extends Activity {
             row.addView(rowLabel);
             row.addView(Ui.button(this, learned != null ? "Re-learn" : "Learn", Ui.OUTLINED,
                     v -> startLocalLearn(category, label)));
+            row.addView(Ui.button(this, "Add", Ui.OUTLINED, v -> promptAddLearnedTarget(category, label)));
             Ui.add(menuCard, row, 4);
             if (learned != null) {
                 LinearLayout learnedRow = new LinearLayout(this);
@@ -337,6 +338,42 @@ public class AdminActivity extends Activity {
             Ui.add(blockCard, row, 4);
         }
         action(blockCard, "Add App", Ui.TONAL, v -> promptAddBlockedComponent());
+
+        // A whole different kind of block from the one above -- an OS-level hide via
+        // setApplicationHidden(), not a reactive bounce. The app just can't launch or run at all
+        // while hidden, instantly, with no flash. Phone-only, same as the component list.
+        LinearLayout wholeAppCard = Ui.card(this, root);
+        wholeAppCard.addView(Ui.titleText(this, "Block whole app"));
+        wholeAppCard.addView(Ui.body(this, "Hides an entire app at the Android level -- it can't open "
+                + "or run at all, not just one screen inside it. Can hide something the phone or other "
+                + "apps depend on, so each one asks to confirm first.", true));
+        android.content.pm.PackageManager wholeAppPm = getPackageManager();
+        for (String pkg : WholeAppBlocklist.list(this)) {
+            boolean paused = WholeAppBlocklist.isPaused(this, pkg);
+            String label = appLabel(wholeAppPm, pkg);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            TextView t = Ui.body(this, label + " (" + pkg + ")" + (paused ? "  (paused)" : ""), false);
+            t.setTextSize(12);
+            t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(t);
+            row.addView(Ui.button(this, paused ? "Resume" : "Pause", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                WholeAppBlocklist.setPaused(this, pkg, !paused);
+                Agent.addEvent(this, "local", "Master code on phone: " + (!paused ? "paused" : "resumed")
+                        + " the whole-app block on \"" + pkg + "\"");
+                build();
+            }));
+            row.addView(Ui.button(this, "Remove", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                WholeAppBlocklist.remove(this, pkg);
+                Agent.addEvent(this, "local", "Master code on phone: removed the whole-app block on \"" + pkg + "\"");
+                build();
+            }));
+            Ui.add(wholeAppCard, row, 4);
+        }
+        action(wholeAppCard, "Add App", Ui.TONAL, v -> promptAddWholeApp());
 
         LinearLayout accessCard = Ui.card(this, root);
         accessCard.addView(Ui.titleText(this, "Accessibility service"));
@@ -504,11 +541,9 @@ public class AdminActivity extends Activity {
                 .show();
     }
 
-    private void promptAddBlockedComponent() {
-        if (!unlocked()) return;
-        final java.util.List<String> suggestions = new java.util.ArrayList<>(AppBlocklist.seen(this));
-        java.util.Collections.sort(suggestions);
-        final android.widget.AutoCompleteTextView input = Ui.autoCompleteField(this, "package/ClassName");
+    /** An AutoCompleteTextView that narrows `suggestions` by substring match anywhere, not just a prefix. */
+    private android.widget.AutoCompleteTextView autoCompleteOver(String hint, final java.util.List<String> suggestions) {
+        final android.widget.AutoCompleteTextView input = Ui.autoCompleteField(this, hint);
         input.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, suggestions) {
             @Override
             public android.widget.Filter getFilter() {
@@ -536,6 +571,22 @@ public class AdminActivity extends Activity {
                 };
             }
         });
+        return input;
+    }
+
+    private String appLabel(android.content.pm.PackageManager pm, String pkg) {
+        try {
+            return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
+        } catch (Exception e) {
+            return pkg;
+        }
+    }
+
+    private void promptAddBlockedComponent() {
+        if (!unlocked()) return;
+        final java.util.List<String> suggestions = new java.util.ArrayList<>(AppBlocklist.seen(this));
+        java.util.Collections.sort(suggestions);
+        final android.widget.AutoCompleteTextView input = autoCompleteOver("package/ClassName", suggestions);
         new AlertDialog.Builder(this)
                 .setTitle("Add app/screen to block")
                 .setMessage("The exact component, written as package/ClassName -- for example:\n\n"
@@ -551,6 +602,100 @@ public class AdminActivity extends Activity {
                     AppBlocklist.add(this, v);
                     Agent.addEvent(this, "local", "Master code on phone: added \"" + v + "\" to the blocked list");
                     build();
+                })
+                .show();
+    }
+
+    private void promptAddWholeApp() {
+        if (!unlocked()) return;
+        final android.content.pm.PackageManager pm = getPackageManager();
+        final java.util.Map<String, String> byDisplay = new java.util.LinkedHashMap<>();
+        for (android.content.pm.ApplicationInfo ai : pm.getInstalledApplications(0)) {
+            if (ai.packageName.equals(getPackageName())) continue;
+            byDisplay.put(appLabel(pm, ai.packageName) + " (" + ai.packageName + ")", ai.packageName);
+        }
+        final java.util.List<String> suggestions = new java.util.ArrayList<>(byDisplay.keySet());
+        java.util.Collections.sort(suggestions);
+        final android.widget.AutoCompleteTextView input = autoCompleteOver("App name or package", suggestions);
+        new AlertDialog.Builder(this)
+                .setTitle("Block a whole app")
+                .setMessage("Pick an installed app from the list, or type its exact package name.")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Next", (d, w) -> {
+                    String typed = input.getText().toString().trim();
+                    String pkg = byDisplay.get(typed);
+                    if (pkg == null) {
+                        for (String p : byDisplay.values()) {
+                            if (p.equalsIgnoreCase(typed)) {
+                                pkg = p;
+                                break;
+                            }
+                        }
+                    }
+                    if (pkg == null) {
+                        toast("Pick a real installed app from the list, or type its exact package name.");
+                        return;
+                    }
+                    final String finalPkg = pkg;
+                    final String label = appLabel(pm, finalPkg);
+                    new AlertDialog.Builder(this)
+                            .setTitle("Block \"" + label + "\" entirely?")
+                            .setMessage("This hides the whole app at the Android level -- it won't open or run "
+                                    + "at all until you Pause or Remove it here. If the phone or other apps "
+                                    + "depend on it, parts of the phone could stop working until then.\n\n" + finalPkg)
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Block it", (d2, w2) -> {
+                                WholeAppBlocklist.add(this, finalPkg);
+                                Agent.addEvent(this, "local", "Master code on phone: blocked the whole app \"" + finalPkg + "\"");
+                                toast("\"" + label + "\" is hidden now.");
+                                build();
+                            })
+                            .show();
+                })
+                .show();
+    }
+
+    private void promptAddLearnedTarget(String category, String label) {
+        if (!unlocked()) return;
+        final java.util.List<String> suggestions = new java.util.ArrayList<>(AppBlocklist.seen(this));
+        java.util.Collections.sort(suggestions);
+        final android.widget.AutoCompleteTextView input = autoCompleteOver("package/ClassName", suggestions);
+        new AlertDialog.Builder(this)
+                .setTitle("Add the link for \"" + label + "\"")
+                .setMessage("The exact component, written as package/ClassName.")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Check", (d, w) -> {
+                    String v = input.getText().toString().trim();
+                    if (!v.contains("/")) {
+                        toast("Needs a package and class name, separated by /");
+                        return;
+                    }
+                    String pkg = v.substring(0, v.indexOf('/'));
+                    String cls = v.substring(v.indexOf('/') + 1);
+                    boolean exists;
+                    try {
+                        getPackageManager().getActivityInfo(new android.content.ComponentName(pkg, cls), 0);
+                        exists = true;
+                    } catch (Exception e) {
+                        exists = false;
+                    }
+                    String msg = (exists
+                            ? "Found it -- this screen exists on this phone.\n\n"
+                            : "Android doesn't recognize this as an existing screen on this phone -- it could "
+                            + "still work if it's just not exported, or it could be wrong.\n\n") + v;
+                    new AlertDialog.Builder(this)
+                            .setTitle(exists ? "Found it" : "Not found")
+                            .setMessage(msg + "\n\nUse it as the link for \"" + label + "\" anyway?")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Save", (d2, w2) -> {
+                                SettingsMenu.setLearnedTarget(this, category, v);
+                                Agent.addEvent(this, "local", "Master code on phone: set the Settings menu link for \"" + label + "\" by hand");
+                                toast("Saved. The Settings menu icon opens straight to it now.");
+                                build();
+                            })
+                            .show();
                 })
                 .show();
     }

@@ -56,7 +56,7 @@
             android:name=".SettingsMenuActivity"
             android:exported="true"
             android:label="Settings"
-            android:icon="@android:drawable/ic_menu_preferences"
+            android:icon="@drawable/ic_settings_modern"
             android:taskAffinity="com.familymdm.agent.settingsmenu">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
