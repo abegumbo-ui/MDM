@@ -198,6 +198,40 @@ final class Ui {
         return t;
     }
 
+    /** A full-width row with a small red icon square on the left and a label next to it -- for a
+     * list of distinct actions (different urgency/danger levels) where a uniform grid of same-size
+     * tiles would flatten that distinction. */
+    static LinearLayout rowTile(Context c, String label, int iconRes, View.OnClickListener l) {
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.HORIZONTAL);
+        t.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        t.setClickable(true);
+        t.setFocusable(true);
+        int pad = dp(c, 12);
+        t.setPadding(pad, pad, pad, pad);
+        t.setBackground(shape(color(c, R.color.m3_surface_container), dp(c, 14), 0, 0));
+
+        LinearLayout square = new LinearLayout(c);
+        square.setGravity(android.view.Gravity.CENTER);
+        square.setBackground(shape(color(c, R.color.m3_primary), dp(c, 12), 0, 0));
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(0xFFFFFFFF);
+        int iconSize = dp(c, 22);
+        square.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
+        int squareSize = dp(c, 44);
+        t.addView(square, new LinearLayout.LayoutParams(squareSize, squareSize));
+
+        TextView name = body(c, label, false);
+        name.setTextSize(15);
+        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        nameLp.leftMargin = dp(c, 14);
+        t.addView(name, nameLp);
+
+        t.setOnClickListener(l);
+        return t;
+    }
+
     /** A 2-column grid of tile()s, sized to fill the screen width with even spacing. */
     static android.widget.GridLayout tileGrid(Context c) {
         android.widget.GridLayout g = new android.widget.GridLayout(c);

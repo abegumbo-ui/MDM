@@ -254,18 +254,24 @@ public class AdminActivity extends Activity {
 
     private void buildLockSection(LinearLayout root) {
         status = Ui.body(this, "", false);
-        LinearLayout lock = Ui.card(this, root);
-        lock.addView(Ui.titleText(this, "Lock"));
-        lock.addView(status);
-        action(lock, "Lock now", Ui.FILLED, v -> run(() -> Actions.lock(this, 0, "")));
-        action(lock, "Lock with a message and time…", Ui.TONAL, v -> askLock());
+        LinearLayout statusBox = Ui.card(this, root);
+        statusBox.addView(status);
+
+        Ui.add(root, Ui.rowTile(this, "Lock Now", R.drawable.ic_lock_tile,
+                v -> { if (unlocked()) run(() -> Actions.lock(this, 0, "")); }), 12);
+        Ui.add(root, Ui.rowTile(this, "Lock With a Message and Time", R.drawable.ic_lock_tile,
+                v -> { if (unlocked()) askLock(); }), 8);
         if (Agent.prefs(this).getLong("lockUntil", 0) > System.currentTimeMillis()) {
-            action(lock, "Unlock now", Ui.OUTLINED, v -> run(() -> Actions.unlock(this)));
+            Ui.add(root, Ui.rowTile(this, "Unlock Now", R.drawable.ic_lock_tile,
+                    v -> { if (unlocked()) run(() -> Actions.unlock(this)); }), 8);
         }
-        action(lock, "Set screen lock PIN", Ui.TONAL, v -> askPin());
-        action(lock, "Remove screen lock", Ui.OUTLINED, v -> run(() -> Actions.clearPin(this)));
+        Ui.add(root, Ui.rowTile(this, "Set Lock PIN", R.drawable.ic_lock_tile,
+                v -> { if (unlocked()) askPin(); }), 8);
+        Ui.add(root, Ui.rowTile(this, "Remove Lock Screen", R.drawable.ic_remove_tile,
+                v -> { if (unlocked()) run(() -> Actions.clearPin(this)); }), 8);
         if (Actions.hasScreenLock(this) && !Actions.pinControlActive(this)) {
-            action(lock, "Activate PIN control (confirm current lock once)", Ui.OUTLINED, v -> activatePinControl());
+            Ui.add(root, Ui.rowTile(this, "Activate PIN Control", R.drawable.ic_lock_tile,
+                    v -> { if (unlocked()) activatePinControl(); }), 8);
         }
     }
 
