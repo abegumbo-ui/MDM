@@ -21,18 +21,25 @@ final class Updater {
         }
     }
 
-    /** {versionCode, apkUrl} of the newest build, or null if it can't be found. */
+    /**
+     * {versionCode, apkUrl} of the newest build, or null if it can't be found. Always tries GitHub
+     * directly first -- the builds are public, so there's never a real need to go through the
+     * dashboard for this, and the main screen now checks automatically on every open. Only falls
+     * back to the dashboard's own /agent/update route if GitHub itself can't be reached and this
+     * phone actually has a dashboard to fall back to.
+     */
     static JSONObject latest(Context c) throws Exception {
-        String server = Agent.prefs(c).getString("server", null);
-        String token = Agent.prefs(c).getString("token", null);
-        if (server == null || token == null) {
-            // Offline mode: ask GitHub directly (the builds are public).
+        try {
             String base = "https://github.com/" + REPO + "/releases/download/latest";
             byte[] raw = Api.getBytes(base + "/version.json", null);
             JSONObject v = new JSONObject(new String(raw, "UTF-8"));
             return new JSONObject().put("versionCode", v.getInt("versionCode")).put("apkUrl", base + "/mdm-agent.apk");
+        } catch (Exception direct) {
+            String server = Agent.prefs(c).getString("server", null);
+            String token = Agent.prefs(c).getString("token", null);
+            if (server == null || token == null) throw direct;
+            return Api.post(server + "/agent/update", new JSONObject(), token).optJSONObject("latest");
         }
-        return Api.post(server + "/agent/update", new JSONObject(), token).optJSONObject("latest");
     }
 
     static String update(Context c, boolean force) throws Exception {
