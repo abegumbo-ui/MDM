@@ -1319,8 +1319,18 @@ public class AdminActivity extends Activity {
             final String label = a.optString("l", pkg);
             if (!needle.isEmpty() && !label.toLowerCase().contains(needle) && !pkg.toLowerCase().contains(needle)) continue;
 
-            String state = a.optBoolean("h") ? "hidden" : "allowed";
-            if (overrides.has(pkg)) state = overrides.optString(pkg).equals("block") ? "blocked" : "allowed";
+            // Outside Home screen mode, "allowed" just means "not blocked" -- true for almost
+            // everything by default, which is correct there (nothing is hidden unless you hide it).
+            // Inside Home screen mode's own "Allowed Apps" picker, that same default was wrong: an
+            // app only ever shows up on the actual kiosk launcher if it's explicitly in the allowed
+            // set, so defaulting everything else to "allowed" here showed apps as allowed that the
+            // real home screen would never display, and vice versa -- exactly the "allowed apps
+            // aren't on the screen, blocked ones are" confusion. Reflect Kiosk's real allowed set
+            // instead, in this context only.
+            String state;
+            if (a.optBoolean("h")) state = "hidden";
+            else if (appsPickerKioskContext) state = Kiosk.allowedNow(this).contains(pkg) ? "allowed" : "blocked";
+            else state = overrides.has(pkg) && overrides.optString(pkg).equals("block") ? "blocked" : "allowed";
             if (hardBlocked.contains(pkg)) state = "hard blocked";
             boolean scheduled = schedules != null && schedules.has(pkg);
             final String finalState = state;
