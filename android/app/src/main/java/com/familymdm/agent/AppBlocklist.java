@@ -23,6 +23,10 @@ import java.util.Set;
  */
 final class AppBlocklist {
     private static final String PREF_KEY = "blockedComponents";
+    // Paused entries stay in the main list (so Remove still works normally) but check() skips
+    // them -- lets you temporarily walk into a blocked screen yourself (to test something) without
+    // deleting and re-adding it afterward.
+    private static final String PAUSED_KEY = "blockedComponentsPaused";
     private static final long POLL_MS = 800;
 
     private static HandlerThread thread;
@@ -47,6 +51,22 @@ final class AppBlocklist {
         Set<String> set = list(c);
         set.remove(component);
         Agent.putSet(c, PREF_KEY, set);
+        Set<String> paused = pausedList(c);
+        if (paused.remove(component)) Agent.putSet(c, PAUSED_KEY, paused);
+    }
+
+    static Set<String> pausedList(Context c) {
+        return Agent.getSet(c, PAUSED_KEY);
+    }
+
+    static boolean isPaused(Context c, String component) {
+        return pausedList(c).contains(component);
+    }
+
+    static void setPaused(Context c, String component, boolean paused) {
+        Set<String> set = pausedList(c);
+        if (paused) set.add(component); else set.remove(component);
+        Agent.putSet(c, PAUSED_KEY, set);
     }
 
     static synchronized void start(Context c) {
@@ -128,14 +148,15 @@ final class AppBlocklist {
             }
         }
         if (pkg == null || cls == null) return;
-        if (blocked.contains(pkg + "/" + cls)) {
-            // Back to Settings' own homepage, not all the way out to the device home screen --
-            // this is meant to bounce out of one blocked screen inside Settings, not out of
-            // Settings itself.
-            Intent settingsHome = new Intent(android.provider.Settings.ACTION_SETTINGS);
-            settingsHome.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            c.startActivity(settingsHome);
-            Agent.addEvent(c, "restriction", "Blocked app/screen opened (" + pkg + "/" + cls + ") -- sent back to the Settings home screen");
+        String component = pkg + "/" + cls;
+        if (blocked.contains(component) && !pausedList(c).contains(component)) {
+            // Tried bouncing to Settings' own homepage (Settings.ACTION_SETTINGS) instead of the
+            // device home screen, but Android silently drops an arbitrary activity launch from a
+            // background context like this poller -- no crash, it just never opens. ACTION_MAIN +
+            // CATEGORY_HOME is specifically exempt from that restriction, which is the only reason
+            // this ever worked at all. Back to the reliable one.
+            Kiosk.startHome(c);
+            Agent.addEvent(c, "restriction", "Blocked app/screen opened (" + component + ") -- sent back to the home screen");
         }
     }
 }
