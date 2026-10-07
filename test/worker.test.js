@@ -428,6 +428,27 @@ test("an override made on the phone becomes the real dashboard setting, not a pe
   assert.deepEqual(sync.policy.hide, ["a.b"]);
 });
 
+test("a restriction flipped on the phone becomes the real dashboard setting, not a permanent shadow state", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  let sync = await (await post("/agent/sync", { restrictionOverrides: { no_camera: true }, restrictionOverridesRev: 100 }, auth)).json();
+  assert.ok(sync.policy.restrictions.includes("no_camera"), "phone-side change takes effect immediately");
+  // Folded straight into config -- not kept around as a second state to re-fight every sync.
+  assert.deepEqual(sync.restrictionOverrides, {});
+  assert.ok(sync.restrictionOverridesRev > 100, "a newer revision, so the phone actually drops its own local copy");
+  let dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.config.restrictions.cameraDisabled, true, "the dashboard now mirrors what happened on the phone");
+
+  // stale revision is ignored
+  sync = await (await post("/agent/sync", { restrictionOverrides: { no_camera: false }, restrictionOverridesRev: 50 }, auth)).json();
+  assert.ok(sync.policy.restrictions.includes("no_camera"));
+
+  // Changing it from the dashboard now actually sticks -- no stale phone-side override left to fight it.
+  await put(cookie, `/api/devices/${id}/config`, { restrictions: { cameraDisabled: false } });
+  sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.ok(!sync.policy.restrictions.includes("no_camera"));
+});
+
 test("phone log events are stored and shown", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);

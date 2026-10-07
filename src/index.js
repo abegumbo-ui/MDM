@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS, summarizeConfigChange } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -802,6 +802,23 @@ async function agentApi(request, env, url) {
       d.overridesRev = Date.now();
       dirty = true;
     }
+    if (body.restrictionOverrides && typeof body.restrictionOverrides === "object" && Number(body.restrictionOverridesRev) > (d.restrictionOverridesRev || 0)) {
+      // Same mirroring as app overrides above: a restriction flipped on the phone's own
+      // Administrator screen becomes the real dashboard setting, not a second state that would
+      // otherwise silently disagree with the dashboard forever.
+      const restrictions = { ...config.restrictions };
+      for (const [key, on] of Object.entries(body.restrictionOverrides)) {
+        const cfgKey = RESTRICTION_BY_KEY[key];
+        if (cfgKey) restrictions[cfgKey] = !!on;
+      }
+      config.restrictions = restrictions;
+      d.config = config;
+      // Strictly newer than what the phone just sent, so its own adoptRestrictionOverrides()
+      // replaces its local copy with this empty one instead of ignoring it as an older echo.
+      d.restrictionOverrides = {};
+      d.restrictionOverridesRev = Date.now();
+      dirty = true;
+    }
     if (Number(body.homeScreenRev) > (d.homeScreenRev || 0)) {
       // Turned on (or off) from the phone's own Admin screen, same mirroring as app overrides
       // above: it becomes the real dashboard setting, not a value that gets silently stomped by
@@ -880,7 +897,7 @@ async function agentApi(request, env, url) {
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
     const master = d.master || null;
     const logoRev = await cachedLogoRev(env);
-    return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, master, logoRev });
+    return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, restrictionOverrides: d.restrictionOverrides || {}, restrictionOverridesRev: d.restrictionOverridesRev || 0, master, logoRev });
   }
   return json({ error: "Not found" }, 404);
 }

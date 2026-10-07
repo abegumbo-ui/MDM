@@ -134,6 +134,11 @@ export const RESTRICTIONS = {
 
 export const DEFAULT_RESTRICTIONS = Object.fromEntries(Object.entries(RESTRICTIONS).map(([k, v]) => [k, v.on]));
 
+// The agent only knows the raw android.os.UserManager.DISALLOW_* key (what it actually passes to
+// dpm.addUserRestriction); this maps back to the friendly config key above, so a restriction
+// flipped on the phone itself can be folded into the same cfg.restrictions the dashboard edits.
+export const RESTRICTION_BY_KEY = Object.fromEntries(Object.entries(RESTRICTIONS).map(([k, v]) => [v.key, k]));
+
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // ---- browser allowlist ----

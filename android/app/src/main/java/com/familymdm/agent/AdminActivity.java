@@ -10,6 +10,7 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -211,7 +212,7 @@ public class AdminActivity extends Activity {
     static {
         SECTION_TITLES.put("lock", "Lock");
         SECTION_TITLES.put("apps", "Apps");
-        SECTION_TITLES.put("browser", "Browser");
+        SECTION_TITLES.put("addons", "Add-ons");
         SECTION_TITLES.put("applock", "App lock");
         SECTION_TITLES.put("settings", "Settings");
         SECTION_TITLES.put("messages", "Messages");
@@ -250,7 +251,7 @@ public class AdminActivity extends Activity {
             android.widget.GridLayout grid = Ui.tileGrid(this);
             Ui.addTile(grid, Ui.tile(this, "Lock", R.drawable.ic_lock_tile, 96, v -> openSection("lock")));
             Ui.addTile(grid, Ui.tile(this, "Apps", R.drawable.ic_apps_tile, 96, v -> openSection("apps")));
-            Ui.addTile(grid, Ui.tile(this, "Browser", R.drawable.ic_browser_tile, 96, v -> openSection("browser")));
+            Ui.addTile(grid, Ui.tile(this, "Add-ons", R.drawable.ic_browser_tile, 96, v -> openSection("addons")));
             Ui.addTile(grid, Ui.tile(this, "App lock", R.drawable.ic_lock_tile, 96, v -> openSection("applock")));
             Ui.addTile(grid, Ui.tile(this, "Settings", R.drawable.ic_permissions_tile, 96, v -> openSection("settings")));
             Ui.addTile(grid, Ui.tile(this, "Messages", R.drawable.ic_message_tile, 96, v -> openSection("messages")));
@@ -263,7 +264,7 @@ public class AdminActivity extends Activity {
         if (inSection("messages")) buildMessagesSection(root);
         if (inSection("lock")) buildLockSection(root);
         if (inSection("apps")) buildAppsHub(root);
-        if (inSection("browser")) buildBrowserSection(root);
+        if (inSection("addons")) buildAddonsSection(root);
         if (inSection("applock")) buildAppLockSection(root);
         if (inSection("settings")) buildSettingsHub(root);
         if (inSection("lock")) refreshStatus();
@@ -590,13 +591,34 @@ public class AdminActivity extends Activity {
         return new java.util.ArrayList<>(set);
     }
 
-    private void buildBrowserSection(LinearLayout root) {
+    /** Things that live inside this same app rather than as their own separate install -- so far
+     * just the Browser add-on, but named "Add-ons" (not "Browser") so more can join it later
+     * without yet another top-level tile. The separate, full-featured standalone Browser app
+     * below is untouched by this -- turning the add-on on or off never installs, removes, or
+     * migrates anything about that separate app; an administrator has to act on each on its own. */
+    private void buildAddonsSection(LinearLayout root) {
+        LinearLayout addon = Ui.card(this, root);
+        addon.addView(Ui.titleText(this, "Browser add-on"));
+        boolean addonOn = BrowserAddon.isEnabled(this);
+        addon.addView(Ui.body(this, addonOn
+                ? "On: its own icon on this phone, right in this app -- nothing extra installed. Opens only the sites you've allowed, same rules as everywhere else here."
+                : "A lighter Browser, built into this app instead of a separate install. Turning it on adds its own icon to this phone.", true));
+        action(addon, addonOn ? "Turn off Browser add-on" : "Turn on Browser add-on", addonOn ? Ui.OUTLINED : Ui.TONAL, v -> {
+            if (!unlocked()) return;
+            BrowserAddon.setEnabled(this, !addonOn);
+            build();
+            toast(addonOn ? "Browser add-on off." : "Browser add-on on. Its icon is on this phone now.");
+        });
+        if (addonOn) {
+            action(addon, "Open Browser add-on", Ui.TONAL, v -> startActivity(new Intent(this, BrowserAddonActivity.class)));
+        }
+
         LinearLayout browser = Ui.card(this, root);
-        browser.addView(Ui.titleText(this, "Browser"));
+        browser.addView(Ui.titleText(this, "Standalone Browser app"));
         boolean browserInstalled = isPackageInstalled("com.familymdm.browser");
         browser.addView(Ui.body(this, browserInstalled
                 ? "Installed. Only opens sites you've allowed; hooks into this phone's site rules on its own."
-                : "A separate app with its own whitelist, so other apps don't need a browser inside them.", true));
+                : "A separate, full-featured app (tabs, desktop mode) with its own whitelist, so other apps don't need a browser inside them.", true));
         action(browser, browserInstalled ? "Reinstall Browser app" : "Install Browser app", Ui.TONAL, v -> {
             toast("Downloading the Browser app...");
             new Thread(() -> {
@@ -959,23 +981,41 @@ public class AdminActivity extends Activity {
     private void buildRestrictionsCard(LinearLayout root) {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Restrictions"));
-        java.util.Set<String> active = new java.util.TreeSet<>(Agent.getSet(this, "restrictions"));
         if (Agent.standalone(this)) {
             card.addView(Ui.body(this, "Set from Overview -> Phone settings -> Restrictions on this phone.", true));
-        } else {
-            card.addView(Ui.body(this, "Set from the dashboard's own Restrictions card. Read-only here -- "
-                    + "this is what's actually active on this phone right now.", true));
+            return;
         }
-        if (active.isEmpty()) {
-            card.addView(Ui.body(this, "None are on right now.", true));
-        } else {
-            StringBuilder sb = new StringBuilder();
-            for (String key : active) {
-                if (sb.length() > 0) sb.append('\n');
-                sb.append(humanizeRestriction(key));
-            }
-            card.addView(Ui.body(this, sb.toString(), false));
+        card.addView(Ui.body(this, "Same restrictions as the dashboard's own Restrictions card. A change here "
+                + "takes effect immediately and reaches the dashboard on the next sync, same as the Apps list.", true));
+        java.util.Set<String> active = Agent.getSet(this, "restrictions");
+        java.util.List<String> keys = PolicyApplier.allRestrictionKeys();
+        java.util.Collections.sort(keys, (a, b) -> humanizeRestriction(a).compareTo(humanizeRestriction(b)));
+        for (String key : keys) {
+            toggle(card, humanizeRestriction(key), active.contains(key), on -> {
+                String err = PolicyApplier.applyRestrictionOverride(this, key, on);
+                if (err != null) toast(err);
+                else AgentService.requestSync();
+                build();
+            });
         }
+    }
+
+    /** A labeled on/off row, same shape as LocalSettingsActivity's own toggle() helper. */
+    private LinearLayout toggle(LinearLayout parent, String label, boolean on, final java.util.function.Consumer<Boolean> change) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        TextView text = Ui.titleText(this, label);
+        text.setTextSize(15);
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        Switch sw = new Switch(this);
+        sw.setChecked(on);
+        sw.setOnCheckedChangeListener((b, checked) -> {
+            if (checked != on && unlocked()) change.accept(checked);
+        });
+        row.addView(sw);
+        Ui.add(parent, row, 0);
+        return row;
     }
 
     /** "no_camera" -> "Block camera"; matches the same key format the dashboard's own Restrictions
