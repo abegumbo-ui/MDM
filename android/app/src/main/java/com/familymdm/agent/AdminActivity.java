@@ -28,10 +28,19 @@ public class AdminActivity extends Activity {
     private static final int CONFIRM_CREDENTIAL = 2;
 
     private LinearLayout root;
-    private LinearLayout appsBox;
     private TextView status;
     // null = the tile-grid Administrator home; otherwise which section's cards build() renders.
     private String currentSection;
+    // Apps section: whether the "Show / Hide Apps" picker is expanded below its row.
+    private boolean showingAppsPicker;
+    // Home screen mode section: whether the "Allowed Apps" picker is expanded below its row.
+    private boolean showingKioskAllowedPicker;
+    // Settings menu section: null = pick "Icon setup" or "Categories"; otherwise which one is open.
+    private String settingsMenuSub;
+    // Shared by both apps pickers above (never shown at once, since only one section renders at a
+    // time) -- the apps list and search text backing whichever picker is currently expanded.
+    private JSONArray appsPickerPackages;
+    private String appsPickerQuery = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,10 +63,19 @@ public class AdminActivity extends Activity {
     public void onBackPressed() {
         if (currentSection != null) {
             currentSection = null;
+            resetSubState();
             build();
         } else {
             super.onBackPressed();
         }
+    }
+
+    /** Clears every section's own nested-navigation state, so leaving a section and coming back to
+     * a different one never shows it still mid-way through something from last time. */
+    private void resetSubState() {
+        showingAppsPicker = false;
+        showingKioskAllowedPicker = false;
+        settingsMenuSub = null;
     }
 
     private boolean inSection(String name) {
@@ -160,6 +178,7 @@ public class AdminActivity extends Activity {
 
     private void openSection(String name) {
         currentSection = name;
+        resetSubState();
         build();
     }
 
@@ -184,7 +203,7 @@ public class AdminActivity extends Activity {
             android.widget.GridLayout grid = Ui.tileGrid(this);
             Ui.addTile(grid, Ui.tile(this, "Lock", R.drawable.ic_lock_tile, 96, v -> openSection("lock")));
             Ui.addTile(grid, Ui.tile(this, "Apps", R.drawable.ic_apps_tile, 96, v -> openSection("apps")));
-            Ui.addTile(grid, Ui.tile(this, "Browser", R.drawable.ic_apps_tile, 96, v -> openSection("browser")));
+            Ui.addTile(grid, Ui.tile(this, "Browser", R.drawable.ic_browser_tile, 96, v -> openSection("browser")));
             Ui.addTile(grid, Ui.tile(this, "Home screen\nmode", R.drawable.ic_home_tile, 96, v -> openSection("kiosk")));
             Ui.addTile(grid, Ui.tile(this, "App lock", R.drawable.ic_lock_tile, 96, v -> openSection("applock")));
             Ui.addTile(grid, Ui.tile(this, "Settings\nmenu", R.drawable.ic_apps_tile, 96, v -> openSection("settingsmenu")));
@@ -276,13 +295,28 @@ public class AdminActivity extends Activity {
     }
 
     private void buildAppsSection(LinearLayout root) {
-        LinearLayout apps = Ui.card(this, root);
-        apps.addView(Ui.titleText(this, "Apps"));
-        action(apps, "Install an APK file", Ui.FILLED, v -> pickApk());
-        if (!Agent.standalone(this)) action(apps, "Show / hide apps", Ui.TONAL, v -> showApps());
-        appsBox = new LinearLayout(this);
-        appsBox.setOrientation(LinearLayout.VERTICAL);
-        Ui.add(apps, appsBox, 0);
+        boolean kioskOn = Kiosk.active(this);
+        if (kioskOn) {
+            LinearLayout note = Ui.card(this, root);
+            note.addView(Ui.body(this, "Home screen mode is on. Apps can only be allowed or blocked from the "
+                    + "\"Allowed Apps\" row in the Home screen mode section while it's on.", true));
+            Ui.add(root, Ui.rowTile(this, "Install an APK File", R.drawable.ic_apps_tile,
+                    v -> { if (unlocked()) pickApk(); }), 16);
+            return;
+        }
+        Ui.add(root, Ui.rowTile(this, "Install an APK File", R.drawable.ic_apps_tile,
+                v -> { if (unlocked()) pickApk(); }), 12);
+        if (!Agent.standalone(this)) {
+            Ui.add(root, Ui.rowTile(this, "Show / Hide Apps", R.drawable.ic_apps_tile, v -> {
+                if (!unlocked()) return;
+                showingAppsPicker = !showingAppsPicker;
+                build();
+            }), 8);
+        }
+        LinearLayout appsPickerHolder = new LinearLayout(this);
+        appsPickerHolder.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(root, appsPickerHolder, 8);
+        if (showingAppsPicker) showAppsPicker(appsPickerHolder);
     }
 
     private void buildBrowserSection(LinearLayout root) {
@@ -328,44 +362,15 @@ public class AdminActivity extends Activity {
         } catch (Exception ignored) {
         }
         boolean canTurnOnHere = storedAllowed != null && storedAllowed.length() > 0;
-        home.addView(Ui.body(this, Kiosk.paused(this) ? "Paused: the phone is working normally."
-                : Kiosk.active(this) ? "On: only allowed apps can be opened."
+        boolean active = Kiosk.active(this);
+        home.addView(Ui.body(this, active ? "On: only allowed apps can be opened."
                 : canTurnOnHere ? "Off."
-                : "Off. Allow some apps first (App rules, from the dashboard or this phone's App rules screen) — otherwise there'd be nothing to open here.", true));
-        if (!Kiosk.active(this) && !Kiosk.paused(this) && canTurnOnHere) {
-            action(home, "Turn on home screen mode", Ui.TONAL, v -> {
+                : "Off. Allow some apps below first (Allowed Apps) — otherwise there'd be nothing to open here.", true));
+        if (active) {
+            action(home, "Turn off home screen mode", Ui.OUTLINED, v -> {
                 if (!unlocked()) return;
-                try {
-                    String stored = Agent.prefs(this).getString("policy", "{}");
-                    JSONObject policy = new JSONObject(stored);
-                    policy.put("homeScreen", true);
-                    Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
-                    long rev = System.currentTimeMillis();
-                    Agent.prefs(this).edit().putLong("homeScreenRev", rev).putBoolean("homeScreenValue", true).apply();
-                    Agent.addEvent(this, "local", "Master code on phone: turned on home screen mode");
-                    PolicyApplier.applyStored(this);
-                    AgentService.requestSync();
-                    build();
-                    toast("Home screen mode on. The phone switches right away.");
-                } catch (Exception e) {
-                    toast("Could not turn it on: " + e.getMessage());
-                }
-            });
-        }
-        if (Kiosk.paused(this)) {
-            action(home, "Resume home screen mode", Ui.FILLED, v -> {
-                Agent.prefs(this).edit().putBoolean("kioskPaused", false).apply();
-                Agent.addEvent(this, "local", "Master code on phone: resumed home screen mode");
-                new Thread(() -> {
-                    PolicyApplier.applyStored(this);
-                    AgentService.requestSync();
-                    runOnUiThread(this::build);
-                }).start();
-            });
-        } else if (Kiosk.active(this)) {
-            action(home, "Pause home screen mode", Ui.OUTLINED, v -> {
                 Agent.prefs(this).edit().putBoolean("kioskPaused", true).apply();
-                Agent.addEvent(this, "local", "Master code on phone: paused home screen mode");
+                Agent.addEvent(this, "local", "Master code on phone: turned off home screen mode");
                 Kiosk.clear(this);
                 Kiosk.syncPreferredActivities(this, false, Agent.prefs(this).getBoolean("prefBrowser", false));
                 Kiosk.announceChange(this);
@@ -374,32 +379,92 @@ public class AdminActivity extends Activity {
                 } catch (Exception ignored) {
                 }
                 build();
-                toast("Paused. The phone works normally until you resume it.");
+                toast("Off. The phone works normally now.");
+            });
+        } else if (canTurnOnHere) {
+            action(home, "Turn on home screen mode", Ui.TONAL, v -> {
+                if (!unlocked()) return;
+                try {
+                    if (Kiosk.paused(this)) {
+                        Agent.prefs(this).edit().putBoolean("kioskPaused", false).apply();
+                        Agent.addEvent(this, "local", "Master code on phone: turned on home screen mode");
+                        new Thread(() -> {
+                            PolicyApplier.applyStored(this);
+                            AgentService.requestSync();
+                            runOnUiThread(() -> {
+                                build();
+                                toast("Home screen mode on. The phone switches right away.");
+                            });
+                        }).start();
+                    } else {
+                        String stored = Agent.prefs(this).getString("policy", "{}");
+                        JSONObject policy = new JSONObject(stored);
+                        policy.put("homeScreen", true);
+                        Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+                        long rev = System.currentTimeMillis();
+                        Agent.prefs(this).edit().putLong("homeScreenRev", rev).putBoolean("homeScreenValue", true).apply();
+                        Agent.addEvent(this, "local", "Master code on phone: turned on home screen mode");
+                        PolicyApplier.applyStored(this);
+                        AgentService.requestSync();
+                        build();
+                        toast("Home screen mode on. The phone switches right away.");
+                    }
+                } catch (Exception e) {
+                    toast("Could not turn it on: " + e.getMessage());
+                }
             });
         }
+
+        // Always here, whether on or off -- this is the same allow/block list the regular Apps
+        // section uses (PolicyApplier feeds it straight into Kiosk's own allowed-apps set), just
+        // reachable without having to leave this section to get at it.
+        Ui.add(root, Ui.rowTile(this, "Allowed Apps", R.drawable.ic_apps_tile, v -> {
+            if (!unlocked()) return;
+            showingKioskAllowedPicker = !showingKioskAllowedPicker;
+            build();
+        }), 16);
+        LinearLayout appsPickerHolder = new LinearLayout(this);
+        appsPickerHolder.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(root, appsPickerHolder, 8);
+        if (showingKioskAllowedPicker) showAppsPicker(appsPickerHolder);
     }
 
     private void buildAppLockSection(LinearLayout root) {
-        LinearLayout appLockCard = Ui.card(this, root);
-        appLockCard.addView(Ui.titleText(this, "App lock"));
         boolean appLockOn = Agent.prefs(this).getBoolean("appLock", false);
-        appLockCard.addView(Ui.body(this, appLockOn
+        LinearLayout statusBox = Ui.card(this, root);
+        statusBox.addView(Ui.body(this, appLockOn
                 ? "On: opening MDM Agent needs its own PIN, separate from the phone's screen lock."
                 : "Off: anyone who opens this app can see it with no extra check.", true));
         if (appLockOn) {
-            action(appLockCard, "Change app PIN", Ui.OUTLINED, v -> promptNewAppPin(false));
-            action(appLockCard, "Turn off app lock", Ui.OUTLINED, v -> {
+            Ui.add(root, Ui.rowTile(this, "Change App PIN", R.drawable.ic_lock_tile,
+                    v -> { if (unlocked()) promptNewAppPin(false); }), 12);
+            Ui.add(root, Ui.rowTile(this, "Turn Off App Lock", R.drawable.ic_remove_tile, v -> {
+                if (!unlocked()) return;
                 AppPin.clear(this);
                 Agent.prefs(this).edit().putBoolean("appLock", false).apply();
                 Agent.addEvent(this, "local", "Master code on phone: turned off app lock");
                 build();
-            });
+            }), 8);
         } else {
-            action(appLockCard, "Turn on app lock", Ui.TONAL, v -> promptNewAppPin(true));
+            Ui.add(root, Ui.rowTile(this, "Turn On App Lock", R.drawable.ic_lock_tile,
+                    v -> { if (unlocked()) promptNewAppPin(true); }), 12);
         }
     }
 
     private void buildSettingsMenuSection(LinearLayout root) {
+        if (settingsMenuSub == null) {
+            Ui.add(root, Ui.rowTile(this, "Settings Menu Icon Setup", R.drawable.ic_apps_tile,
+                    v -> { settingsMenuSub = "iconsetup"; build(); }), 12);
+            Ui.add(root, Ui.rowTile(this, "Settings Menu Categories", R.drawable.ic_apps_tile,
+                    v -> { settingsMenuSub = "categories"; build(); }), 8);
+            return;
+        }
+        Ui.add(root, Ui.button(this, "< Back", Ui.OUTLINED, v -> { settingsMenuSub = null; build(); }), 0);
+        if ("iconsetup".equals(settingsMenuSub)) buildSettingsIconSetup(root);
+        else buildSettingsCategories(root);
+    }
+
+    private void buildSettingsIconSetup(LinearLayout root) {
         LinearLayout menuCard = Ui.card(this, root);
         menuCard.addView(Ui.titleText(this, "Settings menu icon setup"));
         menuCard.addView(Ui.body(this, "The \"Settings\" icon this phone shows has no Android-wide link for a few "
@@ -434,7 +499,9 @@ public class AdminActivity extends Activity {
                 Ui.add(menuCard, learnedRow, 8);
             }
         }
+    }
 
+    private void buildSettingsCategories(LinearLayout root) {
         LinearLayout categoriesCard = Ui.card(this, root);
         categoriesCard.addView(Ui.titleText(this, "Settings menu categories"));
         categoriesCard.addView(Ui.body(this, "Which rows show up on the fake Settings icon. Remove one if it's not "
@@ -982,45 +1049,85 @@ public class AdminActivity extends Activity {
     }
 
     // ---------- apps: allow / block, remembered as overrides and sent to the dashboard ----------
-    private void showApps() {
-        appsBox.removeAllViews();
+    // Shared by both the Apps section's "Show / Hide Apps" and the Home screen mode section's
+    // "Allowed Apps" -- same underlying override list (PolicyApplier feeds it into Kiosk's own
+    // allowed set too), just two different doors into it.
+    private void showAppsPicker(LinearLayout box) {
         try {
-            JSONArray pk = PolicyApplier.collectPackages(this);
-            JSONObject overrides = Agent.getOverrides(this);
-            for (int i = 0; i < pk.length(); i++) {
-                final JSONObject a = pk.getJSONObject(i);
-                final String pkg = a.getString("p");
-                final String label = a.optString("l", pkg);
-                LinearLayout row = Ui.card(this, appsBox);
-                String state = a.optBoolean("h") ? "hidden" : "visible";
-                if (overrides.has(pkg)) state += ", set here: " + overrides.optString(pkg);
-                row.addView(Ui.titleText(this, label));
-                row.addView(Ui.body(this, pkg + " · " + state, true));
-                row.setClickable(true);
-                row.setFocusable(true);
-                row.setOnClickListener(v -> promptAppMode(pkg, label));
-            }
+            appsPickerPackages = PolicyApplier.collectPackages(this);
         } catch (Exception e) {
             toast("Could not list apps: " + e.getMessage());
+            return;
         }
+        box.removeAllViews();
+        final EditText search = Ui.field(this, "Search apps");
+        search.setText(appsPickerQuery);
+        Ui.add(box, search, 8);
+        LinearLayout gridHolder = new LinearLayout(this);
+        gridHolder.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(box, gridHolder, 8);
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                appsPickerQuery = s.toString();
+                renderAppsGrid(gridHolder);
+            }
+        });
+        renderAppsGrid(gridHolder);
     }
 
-    private void promptAppMode(String pkg, String label) {
+    private void renderAppsGrid(LinearLayout gridHolder) {
+        gridHolder.removeAllViews();
+        android.widget.GridLayout grid = Ui.tileGrid(this);
+        android.content.pm.PackageManager pm = getPackageManager();
+        JSONObject overrides = Agent.getOverrides(this);
+        String needle = appsPickerQuery.trim().toLowerCase();
+        for (int i = 0; i < appsPickerPackages.length(); i++) {
+            JSONObject a = appsPickerPackages.optJSONObject(i);
+            if (a == null) continue;
+            final String pkg = a.optString("p", "");
+            final String label = a.optString("l", pkg);
+            if (!needle.isEmpty() && !label.toLowerCase().contains(needle) && !pkg.toLowerCase().contains(needle)) continue;
+            String state = a.optBoolean("h") ? "hidden" : "allowed";
+            if (overrides.has(pkg)) state = overrides.optString(pkg).equals("block") ? "blocked" : "allowed";
+            android.graphics.drawable.Drawable icon;
+            try {
+                icon = pm.getApplicationIcon(pkg);
+            } catch (Exception e) {
+                icon = null;
+            }
+            Ui.addTile(grid, Ui.appTile(this, label + "\n(" + state + ")", icon, 72,
+                    v -> promptAppMode(gridHolder, pkg, label)));
+        }
+        Ui.add(gridHolder, grid, 0);
+    }
+
+    private void promptAppMode(LinearLayout gridHolder, String pkg, String label) {
         if (!unlocked()) return;
         new AlertDialog.Builder(this)
                 .setTitle(label)
                 .setMessage(pkg)
                 .setNegativeButton("Cancel", null)
-                .setNeutralButton("Allow", (d, w) -> setApp(pkg, "allow"))
-                .setPositiveButton("Block", (d, w) -> setApp(pkg, "block"))
+                .setNeutralButton("Allow", (d, w) -> setApp(gridHolder, pkg, "allow"))
+                .setPositiveButton("Block", (d, w) -> setApp(gridHolder, pkg, "block"))
                 .show();
     }
 
-    private void setApp(String pkg, String mode) {
+    private void setApp(LinearLayout gridHolder, String pkg, String mode) {
         String err = PolicyApplier.applyOverride(this, pkg, mode);
         if (err != null) toast(err);
         else AgentService.requestSync();
-        showApps();
+        try {
+            appsPickerPackages = PolicyApplier.collectPackages(this);
+        } catch (Exception ignored) {
+        }
+        renderAppsGrid(gridHolder);
     }
 
     // ---------- APK install ----------
