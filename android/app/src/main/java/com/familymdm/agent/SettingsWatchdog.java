@@ -235,11 +235,14 @@ final class SettingsWatchdog {
     }
 
     /**
-     * What's already on screen, right now -- for the normal case: already sitting on the target
-     * Settings screen, then pressing Learn. Looks back 15 minutes for the most recent settings-ish
-     * screen instead of only forward from this moment, since the person got there before this
-     * command ever arrived; a transition that already happened is still a transition. Returns
-     * "pkg/cls", or null if nothing settings-ish is recent enough to be the answer.
+     * What was last on screen in Settings, looking back 15 minutes -- for the normal case: already
+     * sitting on the target Settings screen, then pressing Learn (dashboard flow), or coming back
+     * from Settings into MDM Agent itself (local, on-phone flow). That second case is why this
+     * tracks the most recent settings-ish event specifically, not just the single most recent
+     * foreground event of any kind: switching back into MDM Agent to finish the capture is itself
+     * a foreground event, for com.familymdm.agent, and it would otherwise be the last one seen,
+     * overwriting the real answer with "myself" every single time. Returns "pkg/cls", or null if
+     * nothing settings-ish happened in the last 15 minutes at all.
      */
     static String captureNow(Context c) {
         try {
@@ -251,15 +254,16 @@ final class SettingsWatchdog {
             UsageEvents.Event e = new UsageEvents.Event();
             while (events.hasNextEvent()) {
                 events.getNextEvent(e);
-                if (e.getEventType() == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                    pkg = e.getPackageName();
+                if (e.getEventType() != UsageEvents.Event.MOVE_TO_FOREGROUND) continue;
+                String p = e.getPackageName();
+                boolean settingsish = p.equals("com.android.settings") || p.toLowerCase().contains("settings")
+                        || p.startsWith("com.google.android.apps.wellbeing") || p.equals("com.google.android.gms");
+                if (settingsish) {
+                    pkg = p;
                     cls = e.getClassName();
                 }
             }
-            if (pkg == null || cls == null) return null;
-            boolean settingsish = pkg.equals("com.android.settings") || pkg.toLowerCase().contains("settings")
-                    || pkg.startsWith("com.google.android.apps.wellbeing") || pkg.equals("com.google.android.gms");
-            return settingsish ? pkg + "/" + cls : null;
+            return pkg != null ? pkg + "/" + cls : null;
         } catch (Exception e) {
             return null;
         }
