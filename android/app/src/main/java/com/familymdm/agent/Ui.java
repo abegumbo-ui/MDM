@@ -164,4 +164,17 @@ final class Ui {
         e.setBackground(shape(color(c, R.color.m3_surface), dp(c, 8), color(c, R.color.m3_outline), dp(c, 1)));
         return e;
     }
+
+    /** Same look as field(), but narrows a dropdown of suggestions as you type instead of a plain box. */
+    static android.widget.AutoCompleteTextView autoCompleteField(Context c, String hint) {
+        android.widget.AutoCompleteTextView e = new android.widget.AutoCompleteTextView(c);
+        e.setHint(hint);
+        e.setSingleLine(true);
+        e.setTextColor(color(c, R.color.m3_on_surface));
+        e.setHintTextColor(color(c, R.color.m3_on_surface_variant));
+        e.setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 12));
+        e.setBackground(shape(color(c, R.color.m3_surface), dp(c, 8), color(c, R.color.m3_outline), dp(c, 1)));
+        e.setThreshold(1);
+        return e;
+    }
 }
