@@ -184,7 +184,13 @@ public class HomeActivity extends Activity {
             }
         } catch (Exception ignored) {
         }
-        if (showBrowser) grid.addView(browserTile((getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3));
+        int width = (getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3;
+        // HomeActivity's own app list always skips this app's package (so the admin screen itself
+        // never shows up as a tile for whoever's using the phone) -- but the fake Settings icon
+        // lives in that same package, so it was getting silently skipped too. Given its own tile
+        // here instead, the same way the Browser app already is.
+        grid.addView(settingsMenuTile(width));
+        if (showBrowser) grid.addView(browserTile(width));
         for (String[] a : apps) {
             if (schedules == null || PolicyApplier.withinSchedule(schedules.optJSONObject(a[1]))) shown.add(a);
         }
@@ -193,7 +199,6 @@ public class HomeActivity extends Activity {
         if (shown.isEmpty()) {
             Ui.add(root, Ui.body(this, "No apps are available right now.", true), 16);
         }
-        int width = (getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3;
         for (String[] a : shown) grid.addView(tile(a[0], a[1], width));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -229,6 +234,29 @@ public class HomeActivity extends Activity {
                 Toast.makeText(this, "That app can't be opened right now.", Toast.LENGTH_SHORT).show();
             }
         });
+        return t;
+    }
+
+    /** A tile for this app's own fake Settings icon, skipped by the loop above since it shares this app's package. */
+    private LinearLayout settingsMenuTile(int width) {
+        LinearLayout t = new LinearLayout(this);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        t.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10));
+        GridLayout.LayoutParams glp = new GridLayout.LayoutParams();
+        glp.width = width;
+        t.setLayoutParams(glp);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(android.R.drawable.ic_menu_preferences);
+        t.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
+
+        TextView name = Ui.body(this, "Settings", false);
+        name.setTextSize(12);
+        name.setGravity(Gravity.CENTER);
+        t.addView(name);
+
+        t.setOnClickListener(v -> startActivity(new Intent(this, SettingsMenuActivity.class)));
         return t;
     }
 
