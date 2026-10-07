@@ -51,6 +51,8 @@ public class MainActivity extends Activity {
     private android.widget.Button enrollButton;
     private android.widget.Button pickButton;
     private android.widget.Button updateButton;
+    private android.widget.Button refreshButton;
+    private final android.os.Handler refreshHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private boolean updateAvailable;
 
     @Override
@@ -74,6 +76,12 @@ public class MainActivity extends Activity {
         statusCard = Ui.card(this, root);
         status = Ui.body(this, "", false);
         statusCard.addView(status);
+        refreshButton = Ui.button(this, "Refresh", Ui.OUTLINED, v -> {
+            AgentService.requestSync();
+            toast("Checking in with the dashboard…");
+            refreshHandler.postDelayed(this::refresh, 2500);
+        });
+        Ui.add(statusCard, refreshButton, 8);
 
         // ---- step 1: device owner (shown until the adb command has been run) ----
         ownerBox = Ui.card(this, root);
@@ -316,6 +324,7 @@ public class MainActivity extends Activity {
         }
         sb.append("\nAgent build: ").append(Updater.currentBuild(this));
         status.setText(sb.toString());
+        refreshButton.setVisibility(enrolled ? View.VISIBLE : View.GONE);
         logoHolder.removeAllViews();
         android.widget.ImageView logo = Ui.logoView(this);
         if (logo != null) Ui.add(logoHolder, logo, 8);
