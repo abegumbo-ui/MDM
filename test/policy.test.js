@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, siteAllowed } from "../src/policy.js";
+import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -24,6 +24,18 @@ test("freezeUpdates defaults off and passes through when set", () => {
 test("blockAccessibility defaults off and passes through when set", () => {
   assert.equal(buildAgentPolicy({}, []).blockAccessibility, false);
   assert.equal(buildAgentPolicy({ blockAccessibility: true }, []).blockAccessibility, true);
+});
+
+test("restrictions: every android.os.UserManager.DISALLOW_* key is listed, and every new one defaults off", () => {
+  const keys = Object.values(RESTRICTIONS).map((v) => v.key);
+  assert.equal(keys.length, 77, "should cover every known DISALLOW_* restriction");
+  assert.equal(new Set(keys).size, keys.length, "no duplicate keys");
+  const defaultOnCount = Object.values(RESTRICTIONS).filter((v) => v.on).length;
+  assert.equal(defaultOnCount, 8, "only the original core-lockdown restrictions default on; everything added since defaults off");
+  for (const key of ["no_camera", "no_sms", "no_bluetooth", "disallow_biometric", "no_cellular_2g", "no_sim_globally"]) {
+    assert.ok(keys.includes(key), key + " should be listed");
+    assert.ok(!buildAgentPolicy({}, []).restrictions.includes(key), key + " should default off");
+  }
 });
 
 test("blockedSettings: every category is blocked by default, and an explicit list is honored", () => {
