@@ -334,4 +334,34 @@ final class Agent {
         }
         prefs(c).edit().putString("overrides", clean.toString()).putLong("overridesRev", rev).apply();
     }
+
+    // ---------- restrictions flipped on the phone with the master code ----------
+
+    static synchronized JSONObject getRestrictionOverrides(Context c) {
+        try {
+            return new JSONObject(prefs(c).getString("restrictionOverrides", "{}"));
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
+    }
+
+    static long restrictionOverridesRev(Context c) {
+        return prefs(c).getLong("restrictionOverridesRev", 0);
+    }
+
+    /** key is the raw android.os.UserManager restriction key (e.g. "no_camera"). Bumps the revision so the dashboard adopts it. */
+    static synchronized void setRestrictionOverride(Context c, String key, boolean on) {
+        try {
+            JSONObject o = getRestrictionOverrides(c);
+            o.put(key, on);
+            prefs(c).edit().putString("restrictionOverrides", o.toString()).putLong("restrictionOverridesRev", System.currentTimeMillis()).apply();
+        } catch (JSONException ignored) {
+        }
+    }
+
+    /** Adopts the dashboard's cleared map once it has folded our change in (same dance as adoptOverrides). */
+    static synchronized void adoptRestrictionOverrides(Context c, JSONObject map, long rev) {
+        if (map == null || rev <= restrictionOverridesRev(c)) return;
+        prefs(c).edit().putString("restrictionOverrides", map.toString()).putLong("restrictionOverridesRev", rev).apply();
+    }
 }

@@ -218,6 +218,8 @@ public class AgentService extends Service {
         body.put("messages", messages);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
+        body.put("restrictionOverrides", Agent.getRestrictionOverrides(this));
+        body.put("restrictionOverridesRev", Agent.restrictionOverridesRev(this));
         body.put("fallbackCode", Agent.fallbackCode(this));
         body.put("syncPaused", Agent.syncPaused(this));
         long hsRev = Agent.prefs(this).getLong("homeScreenRev", 0);
@@ -235,6 +237,7 @@ public class AgentService extends Service {
         Agent.dropSiteRequests(this, siteRequests.length());
         Agent.dropMessages(this, messages.length());
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
+        Agent.adoptRestrictionOverrides(this, reply.optJSONObject("restrictionOverrides"), reply.optLong("restrictionOverridesRev", 0));
         Master.store(this, reply.optJSONObject("master"));
         if (!iconsSent.isEmpty()) {
             Set<String> sent = Agent.getSet(this, "icons_sent");

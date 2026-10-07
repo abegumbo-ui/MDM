@@ -334,6 +334,36 @@ final class PolicyApplier {
         }
     }
 
+    /** Every restriction key this agent understands, for building a phone-side toggle list. */
+    static java.util.List<String> allRestrictionKeys() {
+        return new java.util.ArrayList<>(ALLOWED_RESTRICTIONS);
+    }
+
+    /** Immediate local change from the admin panel, same shape as applyOverride: applies the
+     * restriction (or clears it) right away, and records it as an override so the next sync tells
+     * the dashboard, instead of waiting for the dashboard's own policy to catch up on its own. */
+    static String applyRestrictionOverride(Context c, String key, boolean on) {
+        if (!ALLOWED_RESTRICTIONS.contains(key)) return "Not a restriction this agent knows about.";
+        DevicePolicyManager dpm = Agent.dpm(c);
+        ComponentName admin = Agent.admin(c);
+        try {
+            Set<String> applied = Agent.getSet(c, "restrictions");
+            if (on) {
+                dpm.addUserRestriction(admin, key);
+                applied.add(key);
+            } else {
+                dpm.clearUserRestriction(admin, key);
+                applied.remove(key);
+            }
+            Agent.putSet(c, "restrictions", applied);
+            Agent.setRestrictionOverride(c, key, on);
+            Agent.addEvent(c, "local", "Master code on phone: restriction " + (on ? "on: " : "off: ") + key);
+            return null;
+        } catch (Exception e) {
+            return e.getMessage();
+        }
+    }
+
     /**
      * Approval mode: a launchable app that appeared after the approved baseline is hidden immediately,
      * using the last policy the dashboard sent (so it works offline too). Returns true if it was held.

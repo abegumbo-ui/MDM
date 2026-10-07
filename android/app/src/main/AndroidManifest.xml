@@ -68,6 +68,29 @@
             android:exported="false"
             android:taskAffinity="com.familymdm.agent.settingsmenu" />
 
+        <!-- The Browser add-on's own screen. Reached only through the BrowserAddon alias below;
+             never launched directly, so it stays unexported. -->
+        <activity
+            android:name=".BrowserAddonActivity"
+            android:exported="false" />
+
+        <!-- The Browser add-on's own launcher icon, disabled by default, same package as this
+             agent (not a second installed app), turned on only by the administrator from Add-ons
+             (see AdminActivity.buildAddonsSection() and BrowserAddon.setEnabled()). An
+             activity-alias instead of a separate APK: there's nothing to install, sign, or keep in
+             sync, since it's already part of this same build. -->
+        <activity-alias
+            android:name=".BrowserAddon"
+            android:targetActivity=".BrowserAddonActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:label="Browser">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <activity
             android:name=".HomeActivity"
             android:exported="true"
