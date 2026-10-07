@@ -57,7 +57,10 @@ export const RESTRICTIONS = {
   mobileNetworksDisabled: { key: "no_config_mobile_networks", label: "Block changing mobile network settings", on: false },
   tetheringDisabled: { key: "no_config_tethering", label: "Block Wi-Fi hotspot and tethering", on: false },
   vpnConfigDisabled: { key: "no_config_vpn", label: "Block adding or changing a VPN", on: false },
-  privateDnsDisabled: { key: "no_config_private_dns", label: "Block changing Private DNS", on: false },
+  // Unlike the rest of this list, Android's own constant for this one is spelled out in full --
+  // "disallow_config_private_dns", not the usual "no_..." shorthand -- so it doesn't follow the
+  // pattern the other keys do.
+  privateDnsDisabled: { key: "disallow_config_private_dns", label: "Block changing Private DNS", on: false },
 };
 
 export const DEFAULT_RESTRICTIONS = Object.fromEntries(Object.entries(RESTRICTIONS).map(([k, v]) => [k, v.on]));
