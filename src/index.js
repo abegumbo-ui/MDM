@@ -6,6 +6,21 @@ const POLL_SECONDS = 15; // how often an online phone checks in (it already jump
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
+// Same idea for reads: the free tier's ~100,000/day cap is mostly spent on this one value, read
+// on every single agent sync (every 15s, per device) even though the logo itself changes rarely.
+// Cached per Worker isolate instead of re-read from KV every time; an isolate can live for many
+// requests in a row, so this cuts real KV reads by roughly this cache's lifetime in practice, even
+// though it isn't a guaranteed shared cache across every edge location.
+const LOGO_REV_CACHE_MS = 2 * 60 * 1000;
+let logoRevCache = null;
+let logoRevCacheAt = 0;
+async function cachedLogoRev(env) {
+  const now = Date.now();
+  if (logoRevCache !== null && now - logoRevCacheAt < LOGO_REV_CACHE_MS) return logoRevCache;
+  logoRevCache = Number(await env.STATE.get("logoRev")) || 0;
+  logoRevCacheAt = now;
+  return logoRevCache;
+}
 const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
@@ -313,13 +328,18 @@ async function adminApi(request, env, url) {
     if (method === "DELETE") {
       await env.STATE.delete("logo");
       await env.STATE.delete("logoRev");
+      logoRevCache = 0;
+      logoRevCacheAt = Date.now();
       return json({ ok: true });
     }
     if (method === "PUT") {
       const buf = await request.arrayBuffer();
       if (buf.byteLength < 50 || buf.byteLength > MAX_IMAGE_BYTES || !isPng(buf)) return json({ error: "Use a PNG image under 200 KB" }, 400);
       await env.STATE.put("logo", toBase64(buf));
-      await env.STATE.put("logoRev", String(Date.now()));
+      const rev = Date.now();
+      await env.STATE.put("logoRev", String(rev));
+      logoRevCache = rev;
+      logoRevCacheAt = Date.now();
       return json({ ok: true });
     }
   }
@@ -796,7 +816,7 @@ async function agentApi(request, env, url) {
     const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
     const master = d.master || null;
-    const logoRev = Number(await env.STATE.get("logoRev")) || 0;
+    const logoRev = await cachedLogoRev(env);
     return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, master, logoRev });
   }
   return json({ error: "Not found" }, 404);
