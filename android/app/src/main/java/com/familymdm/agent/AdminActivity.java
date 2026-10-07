@@ -316,13 +316,19 @@ public class AdminActivity extends Activity {
         LinearLayout blockCard = Ui.card(this, root);
         blockCard.addView(Ui.titleText(this, "Blocked apps/screens"));
         for (String comp : AppBlocklist.list(this)) {
+            boolean paused = AppBlocklist.isPaused(this, comp);
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-            TextView t = Ui.body(this, comp, false);
+            TextView t = Ui.body(this, comp + (paused ? "  (paused)" : ""), false);
             t.setTextSize(12);
             t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             row.addView(t);
+            row.addView(Ui.button(this, paused ? "Resume" : "Pause", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                AppBlocklist.setPaused(this, comp, !paused);
+                build();
+            }));
             row.addView(Ui.button(this, "Remove", Ui.OUTLINED, v -> {
                 if (!unlocked()) return;
                 AppBlocklist.remove(this, comp);
