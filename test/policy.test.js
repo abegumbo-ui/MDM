@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
+import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, normalizeWatchdogPatterns, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -36,6 +36,25 @@ test("restrictions: every android.os.UserManager.DISALLOW_* key is listed, and e
     assert.ok(keys.includes(key), key + " should be listed");
     assert.ok(!buildAgentPolicy({}, []).restrictions.includes(key), key + " should default off");
   }
+});
+
+test("normalizeWatchdogPatterns: keeps only known categories, dedups, and caps length", () => {
+  assert.deepEqual(normalizeWatchdogPatterns(null), {});
+  const out = normalizeWatchdogPatterns({
+    network: ["WifiSettingsActivity", "wifisettingsactivity", " datausage "],
+    "not-a-real-category": ["whatever"],
+  });
+  assert.deepEqual(out, { network: ["wifisettingsactivity", "datausage"] });
+
+  const tooMany = normalizeWatchdogPatterns({ google: Array.from({ length: 30 }, (_, i) => "frag" + i) });
+  assert.equal(tooMany.google.length, 20);
+});
+
+test("watchdogPatterns round-trips through buildAgentPolicy", () => {
+  const learned = { network: ["networksettingsalias"] };
+  const p = buildAgentPolicy({ watchdogPatterns: learned }, []);
+  assert.deepEqual(p.watchdogPatterns, learned);
+  assert.deepEqual(buildAgentPolicy({}, []).watchdogPatterns, {});
 });
 
 test("blockedSettings: every category is blocked by default, and an explicit list is honored", () => {

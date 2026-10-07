@@ -386,6 +386,11 @@ public class AgentService extends Service {
                 case "listSystemApps":
                     msg = PolicyApplier.collectSystemPackages(this).toString();
                     break;
+                case "learnSettings":
+                    // No result here -- SettingsWatchdog reports back on its own once the next
+                    // Settings screen actually opens (or the capture window times out).
+                    SettingsWatchdog.startLearn(this, args.optString("category"), id);
+                    return;
                 default:
                     ok = false;
                     msg = "unknown command";
