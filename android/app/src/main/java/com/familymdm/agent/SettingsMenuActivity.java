@@ -35,7 +35,9 @@ public class SettingsMenuActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
         root.addView(Ui.headline(this, "Settings"));
 
+        java.util.Set<String> hidden = SettingsMenu.hiddenCategories(this);
         for (String category : SettingsMenu.ORDER) {
+            if (hidden.contains(category)) continue;
             root.addView(row(category));
         }
 

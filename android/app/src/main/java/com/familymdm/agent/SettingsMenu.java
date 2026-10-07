@@ -106,6 +106,18 @@ final class SettingsMenu {
             "connected", "personalize", "gesture", "system"));
 
     private static final String PREF_PREFIX = "fakeMenuTarget:";
+    private static final String HIDDEN_KEY = "fakeMenuHiddenCategories";
+
+    /** Categories removed from the fake Settings menu on this phone -- hidden, not deleted from ORDER. */
+    static Set<String> hiddenCategories(Context c) {
+        return Agent.getSet(c, HIDDEN_KEY);
+    }
+
+    static void setHidden(Context c, String category, boolean hidden) {
+        Set<String> set = hiddenCategories(c);
+        if (hidden) set.add(category); else set.remove(category);
+        Agent.putSet(c, HIDDEN_KEY, set);
+    }
 
     /** The exact "pkg/cls" learned on this phone for a NEEDS_LEARN category, or null if not yet. */
     static String learnedTarget(Context c, String category) {

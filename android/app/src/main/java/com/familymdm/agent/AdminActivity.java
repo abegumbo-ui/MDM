@@ -310,6 +310,29 @@ public class AdminActivity extends Activity {
             }
         }
 
+        LinearLayout categoriesCard = Ui.card(this, root);
+        categoriesCard.addView(Ui.titleText(this, "Settings menu categories"));
+        categoriesCard.addView(Ui.body(this, "Which rows show up on the fake Settings icon. Remove one if it's not "
+                + "needed; Replace brings it back.", true));
+        java.util.Set<String> hiddenCategories = SettingsMenu.hiddenCategories(this);
+        for (String category : SettingsMenu.ORDER) {
+            boolean hidden = hiddenCategories.contains(category);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            TextView t = Ui.body(this, SettingsMenu.label(category) + (hidden ? "  (removed)" : ""), hidden);
+            t.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(t);
+            row.addView(Ui.button(this, hidden ? "Replace" : "Remove", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                SettingsMenu.setHidden(this, category, !hidden);
+                Agent.addEvent(this, "local", "Master code on phone: " + (!hidden ? "removed" : "replaced")
+                        + " \"" + SettingsMenu.label(category) + "\" on the Settings menu");
+                build();
+            }));
+            Ui.add(categoriesCard, row, 4);
+        }
+
         // Plain list, nothing fancy: exact components to watch for and bounce away from the
         // instant they're in the foreground. Never touches a dashboard -- stored on this phone
         // only. Whatever is typed in has to be the full "package/ClassName" component (the part
@@ -623,6 +646,9 @@ public class AdminActivity extends Activity {
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Next", (d, w) -> {
+                    // Matching is deliberately lenient here -- requiring the exact "Label (pkg)"
+                    // suggestion string, with exact case and spacing, was rejecting real apps the
+                    // person had clearly picked or typed correctly in every way that mattered.
                     String typed = input.getText().toString().trim();
                     String pkg = byDisplay.get(typed);
                     if (pkg == null) {
@@ -632,6 +658,26 @@ public class AdminActivity extends Activity {
                                 break;
                             }
                         }
+                    }
+                    if (pkg == null) {
+                        for (java.util.Map.Entry<String, String> e : byDisplay.entrySet()) {
+                            if (e.getKey().equalsIgnoreCase(typed)) {
+                                pkg = e.getValue();
+                                break;
+                            }
+                        }
+                    }
+                    if (pkg == null && !typed.isEmpty()) {
+                        String needle = typed.toLowerCase();
+                        String onlyMatch = null;
+                        int matchCount = 0;
+                        for (java.util.Map.Entry<String, String> e : byDisplay.entrySet()) {
+                            if (e.getKey().toLowerCase().contains(needle)) {
+                                matchCount++;
+                                onlyMatch = e.getValue();
+                            }
+                        }
+                        if (matchCount == 1) pkg = onlyMatch;
                     }
                     if (pkg == null) {
                         toast("Pick a real installed app from the list, or type its exact package name.");
