@@ -125,11 +125,33 @@ final class SettingsWatchdog {
         public void run() {
             try {
                 if (screenOn) check(c);
+                clearError(c);
+            } catch (SecurityException e) {
+                // Silently failing here would leave the whole feature looking broken with no clue why.
+                // This is the one failure mode that isn't "the OEM named this screen something else" --
+                // it means the phone never granted usage access, so nothing below even gets tried.
+                reportError(c, "Settings watchdog can't see which screen is open: " + e.getMessage()
+                        + ". A device owner should get usage access automatically; if this keeps showing, "
+                        + "it may need to be granted by hand under Settings > Apps > Special access > Usage access.");
             } catch (Exception e) {
                 Log.w(TAG, "settings watchdog check failed: " + e);
             }
             if (handler != null) handler.postDelayed(this, POLL_MS);
         }
+    }
+
+    /** At most once every 30 minutes, so a permission problem shows up without flooding the log. */
+    private static void reportError(Context c, String msg) {
+        long last = Agent.prefs(c).getLong("watchdogErrorAt", 0);
+        long now = System.currentTimeMillis();
+        if (now - last > 30 * 60 * 1000) {
+            Agent.prefs(c).edit().putLong("watchdogErrorAt", now).apply();
+            Agent.addEvent(c, "error", msg);
+        }
+    }
+
+    private static void clearError(Context c) {
+        if (Agent.prefs(c).getLong("watchdogErrorAt", 0) != 0) Agent.prefs(c).edit().remove("watchdogErrorAt").apply();
     }
 
     private static void check(Context c) {

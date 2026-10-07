@@ -56,6 +56,8 @@ export const RESTRICTIONS = {
   airplaneModeDisabled: { key: "no_airplane_mode", label: "Block turning on Airplane mode", on: false },
   mobileNetworksDisabled: { key: "no_config_mobile_networks", label: "Block changing mobile network settings", on: false },
   tetheringDisabled: { key: "no_config_tethering", label: "Block Wi-Fi hotspot and tethering", on: false },
+  vpnConfigDisabled: { key: "no_config_vpn", label: "Block adding or changing a VPN", on: false },
+  privateDnsDisabled: { key: "no_config_private_dns", label: "Block changing Private DNS", on: false },
 };
 
 export const DEFAULT_RESTRICTIONS = Object.fromEntries(Object.entries(RESTRICTIONS).map(([k, v]) => [k, v.on]));
