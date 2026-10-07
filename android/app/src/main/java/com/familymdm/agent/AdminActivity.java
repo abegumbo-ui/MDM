@@ -1081,6 +1081,13 @@ public class AdminActivity extends Activity {
     }
 
     private void buildDeviceSection(LinearLayout root) {
+        LinearLayout master = Ui.card(this, root);
+        master.addView(Ui.titleText(this, "Master code"));
+        master.addView(Ui.body(this, "Opens this screen and every other code prompt. Works here with no internet"
+                + (Agent.standalone(this) ? "." : ", and reaches the dashboard on the next sync, same as from there.")
+                + " Status: " + (Master.isSet(this) ? "set" : "not set") + ".", true));
+        action(master, Master.isSet(this) ? "Change master code" : "Set master code", Ui.TONAL, v -> changeMaster());
+
         boolean hidden;
         try {
             hidden = new JSONObject(Agent.prefs(this).getString("policy", "{}")).optBoolean("hideAppIcon", false);
@@ -1126,6 +1133,38 @@ public class AdminActivity extends Activity {
         action(device, "Stop managing and remove this app", Ui.OUTLINED, v -> confirm(
                 "Release this phone and uninstall the agent?", () -> release(true)));
         action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
+    }
+
+    private void changeMaster() {
+        final EditText input = Ui.field(this, "New master code (6 or more characters)");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        LinearLayout box = form(input);
+        android.app.AlertDialog dialog = Ui.alertDialog(this)
+                .setTitle("Change master code")
+                .setView(box)
+                .create();
+        Ui.add(box, Ui.button(this, "Save", Ui.FILLED, v -> {
+            if (!unlocked()) return;
+            String code = input.getText().toString();
+            if (code.length() < 6) {
+                toast("Must be at least 6 characters.");
+                return;
+            }
+            try {
+                Master.setLocal(this, code);
+                // Marks this as the newer value so the dashboard adopts it on the next sync,
+                // same single-value tug-of-war already used for Home screen mode and the app icon.
+                Agent.prefs(this).edit().putLong("masterRev", System.currentTimeMillis()).apply();
+                dialog.dismiss();
+                if (!Agent.standalone(this)) AgentService.requestSync();
+                build();
+                toast("Master code changed.");
+            } catch (Exception e) {
+                toast("Could not change it: " + e.getMessage());
+            }
+        }), 16);
+        Ui.add(box, Ui.button(this, "Cancel", Ui.OUTLINED, v -> dialog.dismiss()), 8);
+        dialog.show();
     }
 
     private void refreshStatus() {

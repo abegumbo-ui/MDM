@@ -232,6 +232,15 @@ public class AgentService extends Service {
             body.put("hideAppIconRev", hiaRev);
             body.put("hideAppIconValue", Agent.prefs(this).getBoolean("hideAppIconValue", false));
         }
+        long mRev = Agent.prefs(this).getLong("masterRev", 0);
+        if (mRev > 0) {
+            body.put("masterRev", mRev);
+            JSONObject mv = new JSONObject();
+            mv.put("salt", Agent.prefs(this).getString("masterSalt", ""));
+            mv.put("hash", Agent.prefs(this).getString("masterHash", ""));
+            mv.put("iterations", Agent.prefs(this).getInt("masterIter", 10000));
+            body.put("masterValue", mv);
+        }
         List<String> iconsSent = new ArrayList<>();
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);

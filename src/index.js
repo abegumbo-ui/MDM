@@ -418,11 +418,15 @@ async function adminApi(request, env, url) {
       // The browser derives the hash (PBKDF2), so the code itself never reaches the server.
       if (!/^[0-9a-f]{32}$/.test(body.salt || "") || !/^[0-9a-f]{64}$/.test(body.hash || "")) return json({ error: "Invalid master code data" }, 400);
       d.master = { salt: body.salt, hash: body.hash, iterations: MASTER_ITERATIONS };
+      // Newer than whatever the phone itself might have set, same reasoning as every other
+      // phone-settable value below: the most recent change, from either side, wins.
+      d.masterRev = Date.now();
       await putJSON(env, key, d);
       return json({ ok: true });
     }
     if (devConfig[2] === "master" && method === "DELETE") {
       d.master = null;
+      d.masterRev = Date.now();
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -833,6 +837,15 @@ async function agentApi(request, env, url) {
       config.hideAppIcon = !!body.hideAppIconValue;
       d.config = config;
       d.hideAppIconRev = Number(body.hideAppIconRev);
+      dirty = true;
+    }
+    if (body.masterValue && Number(body.masterRev) > (d.masterRev || 0)
+        && /^[0-9a-f]{32}$/.test(body.masterValue.salt || "") && /^[0-9a-f]{64}$/.test(body.masterValue.hash || "")) {
+      // Changed on the phone itself (Administrator -> Device): becomes the real master code here
+      // too, same mirroring as everything else above -- not a value the dashboard's own Settings
+      // card would otherwise silently overwrite back to whatever it last had.
+      d.master = { salt: body.masterValue.salt, hash: body.masterValue.hash, iterations: Number(body.masterValue.iterations) || MASTER_ITERATIONS };
+      d.masterRev = Number(body.masterRev);
       dirty = true;
     }
     if (typeof body.appCode === "string") {
