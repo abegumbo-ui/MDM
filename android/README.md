@@ -1,8 +1,19 @@
-# Android agent + Browser
+# Android agent + Browser + Lockdown Setup
+
+Three separate apps live here:
+
+- **agent** (`android/app`) -- the ongoing MDM agent, talks to the dashboard, managed remotely.
+- **browser** (`android/browser`) -- the agent's companion allowlisted browser.
+- **lockdown** (`android/lockdown`) -- a one-time, one-way setup tool, entirely separate from the
+  other two. It never talks to a server at all. It's its own device-owner app (Android only allows
+  one per device, so it can't coexist with the agent on the same phone), walks through picking
+  restrictions and apps to remove, and once "Close Forever" is confirmed it applies everything,
+  hides its own launcher icon so it can never be opened again, and leaves the phone in that state
+  permanently -- a factory reset is the only way to undo any of it.
 
 ## Release signing
 
-Both apps are built as the `release` variant (not `debug`) and share one signing key, set as
+All three apps are built as the `release` variant (not `debug`) and share one signing key, set as
 `applicationId`/`versionCode` says on the tin -- not a Play Store build, just a proper, unique
 signing key instead of the SDK's generic, well-known `debug.keystore` (every Android Studio
 install generates the exact same one: alias `androiddebugkey`, password `android`). A sideloaded

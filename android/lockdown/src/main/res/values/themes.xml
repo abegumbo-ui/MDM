@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/m3_surface</item>
+        <item name="android:statusBarColor">@color/m3_surface_container</item>
+        <item name="android:navigationBarColor">@color/m3_surface</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColor">@color/m3_on_surface</item>
+        <item name="android:colorAccent">@color/m3_primary</item>
+        <item name="android:alertDialogTheme">@style/AppAlertDialogTheme</item>
+    </style>
+
+    <!-- See the agent app's own themes.xml for why this is built this way: the
+         android:alertDialogTheme attribute alone isn't enough on every OEM, so Ui.alertDialog()
+         always passes this explicitly, and the button style below pins its own text color rather
+         than trusting colorAccent to cascade down to it. -->
+    <style name="AppAlertDialogTheme" parent="android:Theme.DeviceDefault.Dialog.Alert">
+        <item name="android:windowBackground">@color/m3_surface_container</item>
+        <item name="android:colorBackground">@color/m3_surface_container</item>
+        <item name="android:textColor">@color/m3_on_surface</item>
+        <item name="android:textColorPrimary">@color/m3_on_surface</item>
+        <item name="android:textColorSecondary">@color/m3_on_surface_variant</item>
+        <item name="android:colorAccent">@color/m3_primary</item>
+        <item name="android:buttonBarPositiveButtonStyle">@style/AppAlertDialogButton</item>
+        <item name="android:buttonBarNegativeButtonStyle">@style/AppAlertDialogButton</item>
+        <item name="android:buttonBarNeutralButtonStyle">@style/AppAlertDialogButton</item>
+        <item name="android:windowTitleStyle">@style/AppAlertDialogTitle</item>
+        <item name="android:textColorAlertDialogListItem">@color/m3_on_surface</item>
+    </style>
+
+    <style name="AppAlertDialogButton">
+        <item name="android:textColor">@color/m3_primary</item>
+    </style>
+
+    <style name="AppAlertDialogTitle">
+        <item name="android:textColor">@color/m3_on_surface</item>
+    </style>
+</resources>
