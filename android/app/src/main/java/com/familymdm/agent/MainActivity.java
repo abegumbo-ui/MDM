@@ -142,7 +142,8 @@ public class MainActivity extends Activity {
         android.widget.GridLayout grid = Ui.tileGrid(this);
         Ui.addTile(grid, Ui.tile(this, "User", R.drawable.ic_person, 96,
                 v -> startActivity(new Intent(this, UserActivity.class))));
-        Ui.addTile(grid, Ui.tile(this, "Administrator", R.drawable.ic_shield, 96, v -> promptMaster()));
+        Ui.addTile(grid, Ui.tile(this, "Administrator", R.drawable.ic_shield, 96,
+                v -> startActivity(new Intent(this, AdminCodeActivity.class))));
         Ui.addTile(grid, Ui.tile(this, "Message the\nAdministrator", R.drawable.ic_message_tile, 96, v -> promptMessage()));
         Ui.addTile(grid, Ui.tile(this, "Remove This\nAgent", R.drawable.ic_remove_tile, 96, v -> promptCode("uninstall")));
         Ui.add(actionsBox, grid, 16);
@@ -556,29 +557,6 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    private void promptMaster() {
-        final EditText input = Ui.field(this, "Code");
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
-                .setTitle("Enter code")
-                .setView(input)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("OK", (d, w) -> {
-                    final String code = input.getText().toString();
-                    new Thread(() -> {
-                        final String err = Master.check(this, code);
-                        runOnUiThread(() -> {
-                            if (err != null) {
-                                toast(err);
-                            } else {
-                                Agent.prefs(this).edit().putLong("adminUntil", System.currentTimeMillis() + 10 * 60 * 1000).apply();
-                                startActivity(new Intent(this, AdminActivity.class));
-                            }
-                        });
-                    }).start();
-                })
-                .show();
-    }
 
     private void removeAgent() {
         PolicyApplier.release(this);
