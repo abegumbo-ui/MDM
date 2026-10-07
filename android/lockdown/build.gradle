@@ -1,0 +1,49 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Same numbering scheme as the agent app, so "newer build" always means "install over the old one".
+def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
+android {
+    namespace 'com.familymdm.lockdown'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.familymdm.lockdown"
+        minSdk 26
+        targetSdk 30
+        versionCode buildNumber
+        versionName "0.1." + buildNumber
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // Reuses the same signing key as the agent and browser apps (not a copy of the file -- points
+    // at ../app/release.keystore) purely so there's only one key to manage across the whole repo.
+    // This app never talks to either of the others, so there's no signature-permission reason to
+    // share it, just convenience.
+    signingConfigs {
+        release {
+            storeFile file('../app/release.keystore')
+            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "unset"
+            keyAlias 'mdmagentrelease'
+            keyPassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "unset"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+
+    lint {
+        // See android/app/build.gradle's matching block for why.
+        checkReleaseBuilds false
+    }
+}
