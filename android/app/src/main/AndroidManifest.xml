@@ -47,22 +47,14 @@
             android:name=".LocalSettingsActivity"
             android:exported="false" />
 
-        <!-- Its own icon in the regular launcher, named and shaped like the real Settings app. A
-             distinct taskAffinity keeps it a genuinely separate entry in recents/the task switcher;
-             without one, both this and MainActivity share the same default (the package name), so
-             Android treats tapping either launcher icon as resuming whichever one was already open
-             instead of launching the one actually tapped. -->
+        <!-- Shaped like the real Settings app, reached only from HomeActivity's own tile in Home
+             screen mode now, not a separate icon in the regular launcher anymore. A distinct
+             taskAffinity still keeps it its own entry in recents rather than joining MainActivity's
+             task, same reasoning as when it was a second launcher icon. -->
         <activity
             android:name=".SettingsMenuActivity"
-            android:exported="true"
-            android:label="Settings"
-            android:icon="@drawable/ic_settings_modern"
-            android:taskAffinity="com.familymdm.agent.settingsmenu">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:taskAffinity="com.familymdm.agent.settingsmenu" />
 
         <activity
             android:name=".HomeActivity"
