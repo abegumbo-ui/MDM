@@ -167,6 +167,30 @@ Wherever the agent app asks for a code, that phone's own **master code** is acce
 - **Automatically:** **Settings → Agent updates**. Phones check every 6 hours.
 Updates come from the "Latest agent build" release in this repo (the repo is public, so no token is needed).
 
+## Keeping a few apps updated, even while installs are blocked (optional)
+Blocking app installs/updates (the default, and what Home screen mode and the standalone Lockdown
+app both force on) normally freezes everything, including apps you still need -- e.g. Waze or
+Google Maps eventually stop working once their own backend drops support for an old client version,
+with no way to fix that short of unblocking installs generally.
+
+**Settings → Updates** on the phone lists exactly the installed, not-blocked apps on that phone
+that could use a newer version, and updates just those -- nothing else becomes installable. It
+works by embedding the same open-source library Aurora Store (a well-known unofficial, FOSS Play
+Store client) is built on, talking to Google's real Play Store protocol directly, with no Play
+Store app or Google account on the phone itself.
+
+That needs a one-time setup step here on the dashboard, since the actual Google login has to live
+somewhere, and a phone with no Google account on it can't be the one holding it:
+1. Make a separate, dedicated Google account used for nothing else but this.
+2. Run `tools/get-play-token.py` from this repo, once, **on your own computer** -- never on the
+   phone, and it never asks anyone but Google for anything. Full instructions are in the script
+   itself.
+3. It prints three values. Set them as Worker secrets (Settings → Variables and Secrets, same
+   place as `ADMIN_PASSWORD`): `PLAY_EMAIL`, `PLAY_ANDROID_ID`, `PLAY_MASTER_TOKEN`.
+
+Until that's set up, **Settings → Updates** just says so and does nothing else -- it's entirely
+optional, and every other feature in this app works the same with or without it.
+
 ## Installing apps from the dashboard
 **Controls → Upload APK from this computer** sends a file (up to 24 MB, kept for a week) to the phone and installs it silently. For bigger apps use **Install from link** (any direct https:// link, e.g. a GitHub release), or turn on approval mode and let the person install from the Play Store.
 

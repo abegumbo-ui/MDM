@@ -567,6 +567,48 @@ test("agent update info comes from the latest GitHub build and needs a device to
   }
 });
 
+test("play-token needs a device token, needs the dashboard set up, and refreshes a short-lived token from the stored master token", async () => {
+  const cookie = await login();
+  const { auth } = await enrolledDevice(cookie);
+  assert.equal((await post("/agent/play-token", {})).status, 401, "needs a device token");
+
+  const notSetUp = await post("/agent/play-token", {}, auth);
+  assert.equal(notSetUp.status, 503);
+  assert.match((await notSetUp.json()).error, /not set up/);
+
+  env.PLAY_EMAIL = "updates@example.com";
+  env.PLAY_ANDROID_ID = "abc123";
+  env.PLAY_MASTER_TOKEN = "aas_et/fake-master-token";
+  const realFetch = globalThis.fetch;
+  let seenBody = null;
+  globalThis.fetch = async (u, init) => {
+    assert.equal(u, "https://android.clients.google.com/auth");
+    seenBody = new URLSearchParams(init.body);
+    return new Response("Auth=ya29.fake-short-token\nSID=x\n");
+  };
+  try {
+    const res = await post("/agent/play-token", {}, auth);
+    assert.equal(res.status, 200);
+    const info = await res.json();
+    assert.equal(info.auth, "ya29.fake-short-token");
+    assert.equal(info.email, "updates@example.com");
+    assert.equal(info.androidId, "abc123");
+    assert.equal(seenBody.get("EncryptedPasswd"), "aas_et/fake-master-token");
+    assert.equal(seenBody.get("service"), "androidmarket");
+    assert.equal(seenBody.get("app"), "com.android.vending");
+
+    globalThis.fetch = async () => new Response("Error=BadAuthentication\n", { status: 403 });
+    const bad = await post("/agent/play-token", {}, auth);
+    assert.equal(bad.status, 503);
+    assert.match((await bad.json()).error, /BadAuthentication/);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete env.PLAY_EMAIL;
+    delete env.PLAY_ANDROID_ID;
+    delete env.PLAY_MASTER_TOKEN;
+  }
+});
+
 test("enrollment code carries the APK URL and checksum for QR-code provisioning, when published", async () => {
   const cookie = await login();
   const realFetch = globalThis.fetch;
