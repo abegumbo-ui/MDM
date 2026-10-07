@@ -166,12 +166,14 @@ final class AppBlocklist {
         String component = pkg + "/" + cls;
         recordSeen(c, component);
         Set<String> blocked = list(c);
-        if (blocked.contains(component) && !pausedList(c).contains(component)) {
-            // Tried bouncing to Settings' own homepage (Settings.ACTION_SETTINGS) instead of the
-            // device home screen, but Android silently drops an arbitrary activity launch from a
-            // background context like this poller -- no crash, it just never opens. ACTION_MAIN +
-            // CATEGORY_HOME is specifically exempt from that restriction, which is the only reason
-            // this ever worked at all. Back to the reliable one.
+        // When BlockAccessibilityService is on, it already reacts to this exact same event almost
+        // instantly with a clean back-press. This poller runs on an 800ms cadence and UsageEvents
+        // itself isn't perfectly real-time, so without this check it could independently "discover"
+        // the very same already-handled event afterward and bounce a second time on top of it --
+        // the double-bounce that was closing Settings entirely instead of just backing out of the
+        // blocked screen. Kept fully intact (detection, recording, the bounce itself) as a fallback
+        // for whenever Accessibility isn't turned on -- it just steps aside while that's active.
+        if (blocked.contains(component) && !pausedList(c).contains(component) && !Agent.accessibilityServiceOn(c)) {
             Kiosk.startHome(c);
             Agent.addEvent(c, "restriction", "Blocked app/screen opened (" + component + ") -- sent back to the home screen");
         }
