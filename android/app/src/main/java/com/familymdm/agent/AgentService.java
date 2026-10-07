@@ -48,7 +48,6 @@ public class AgentService extends Service {
         if (before != 0 && before != build) Agent.addEvent(this, "update", "Agent updated: build " + before + " to build " + build);
         Agent.prefs(this).edit().putInt("knownBuild", build).apply();
         if (packageReceiver == null) registerPackageReceiver();
-        SettingsWatchdog.start(this);
         if (thread == null || !thread.isAlive()) {
             running = true;
             thread = new Thread(this::loop, "mdm-agent");
@@ -62,7 +61,6 @@ public class AgentService extends Service {
     public void onDestroy() {
         running = false;
         if (instance == this) instance = null;
-        SettingsWatchdog.stop(this);
         if (packageReceiver != null) {
             try {
                 unregisterReceiver(packageReceiver);
@@ -386,35 +384,6 @@ public class AgentService extends Service {
                 case "listSystemApps":
                     msg = PolicyApplier.collectSystemPackages(this).toString();
                     break;
-                case "checkNow":
-                    try {
-                        msg = SettingsWatchdog.debugCurrentForeground(this);
-                    } catch (SecurityException se) {
-                        ok = false;
-                        msg = "No usage-access permission: " + se.getMessage();
-                    }
-                    break;
-                case "learnSettings": {
-                    // Normal case: already on the target screen, Learn pressed after -- answer
-                    // right away with this result, same sync cycle as any other command.
-                    String category = args.optString("category");
-                    String component = SettingsWatchdog.captureNow(this);
-                    if (component == null) {
-                        // Not there yet -- arm a capture for whenever they do navigate there,
-                        // and report nothing now (SettingsWatchdog reports back on its own).
-                        SettingsWatchdog.startLearn(this, category, id);
-                        return;
-                    }
-                    try {
-                        JSONObject o = new JSONObject();
-                        o.put("category", category);
-                        o.put("component", component);
-                        msg = o.toString();
-                    } catch (JSONException ex) {
-                        msg = component;
-                    }
-                    break;
-                }
                 default:
                     ok = false;
                     msg = "unknown command";

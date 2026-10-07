@@ -14,16 +14,13 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.InputStream;
 import java.text.DateFormat;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Status and enrollment screen. Actions are locked behind codes the administrator controls: one-time
@@ -53,10 +50,16 @@ public class MainActivity extends Activity {
         QUICK_SETTINGS.put("accessibility", Settings.ACTION_ACCESSIBILITY_SETTINGS);
         QUICK_SETTINGS.put("aboutPhone", Settings.ACTION_DEVICE_INFO_SETTINGS);
     }
-    // Survives Activity re-creation within the same process, but not a fresh launch (process restart,
-    // reboot, the app swiped away) — so the app re-locks whenever it was actually closed, without
-    // nagging for every internal navigation (e.g. opening the file picker and coming back).
+    // Cleared the instant this screen loses focus (onPause), so leaving this app for any reason at
+    // all -- the home button, switching apps, even a system picker launched from here -- demands
+    // the PIN again on return. Deliberately strict: no grace period, no exemption for internal
+    // navigation.
     private static boolean appLockPassed = false;
+    // recreate() (used right after a successful unlock) triggers this same Activity's own onPause()
+    // as part of tearing down the old instance -- without this, that onPause would immediately
+    // reset appLockPassed back to false before the new instance ever got to check it, undoing the
+    // unlock that was just entered.
+    private static boolean suppressNextLockReset = false;
     private boolean locked;
 
     private TextView status;
@@ -85,11 +88,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (Agent.prefs(this).getBoolean("appLock", false) && !appLockPassed) {
-            showLockScreen();
-            return;
-        }
-        locked = false;
+        checkAppLock();
+        if (locked) return;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 16);
@@ -242,12 +242,30 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        checkAppLock();
         if (locked) return;
         refresh();
         Agent.startServiceIfEnrolled(this);
         if (reshowFrp) {
             reshowFrp = false;
             askFrp();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (suppressNextLockReset) {
+            suppressNextLockReset = false;
+        } else {
+            appLockPassed = false;
+        }
+    }
+
+    /** Shows the lock screen if app lock is on and hasn't been passed since the last time this screen lost focus. */
+    private void checkAppLock() {
+        if (!locked && Agent.prefs(this).getBoolean("appLock", false) && !appLockPassed) {
+            showLockScreen();
         }
     }
 
@@ -301,6 +319,7 @@ public class MainActivity extends Activity {
                         toast(err);
                     } else {
                         appLockPassed = true;
+                        suppressNextLockReset = true;
                         recreate();
                     }
                 })
@@ -324,6 +343,7 @@ public class MainActivity extends Activity {
                             } else {
                                 Agent.addEvent(this, "local", "Administrator code used to bypass the app PIN");
                                 appLockPassed = true;
+                                suppressNextLockReset = true;
                                 recreate();
                             }
                         });
@@ -376,11 +396,11 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * One button per allowed category that has a real top-level Settings screen to jump straight
-     * to -- a fast door into just that area, same idea as the "quick settings shortcut" apps on
-     * the Play Store. Not a fence: once inside, Settings works like Settings always does, and the
-     * watchdog (if that category is still blocked for other categories) is what actually enforces
-     * anything, same as it always did.
+     * One button per category that has a real top-level Settings screen to jump straight to -- a
+     * fast door into just that area, same idea as the "quick settings shortcut" apps on the Play
+     * Store. Not a fence: once inside, Settings works like Settings always does. Covers a couple
+     * categories (Security and privacy, Accessibility) the Settings menu icon deliberately leaves
+     * out, so this card stays even though that icon covers most of the same ground.
      */
     private void refreshQuickSettings(boolean active) {
         quickSettingsCard.removeAllViews();
@@ -389,30 +409,15 @@ public class MainActivity extends Activity {
             return;
         }
         quickSettingsCard.addView(Ui.titleText(this, "Quick settings"));
-        Set<String> blockedCats = new HashSet<>();
-        try {
-            String stored = Agent.prefs(this).getString("policy", null);
-            if (stored != null) {
-                JSONArray arr = new JSONObject(stored).optJSONArray("blockedSettings");
-                if (arr != null) for (int i = 0; i < arr.length(); i++) blockedCats.add(arr.optString(i));
-            }
-        } catch (Exception ignored) {
-        }
-        boolean any = false;
         for (Map.Entry<String, String> e : QUICK_SETTINGS.entrySet()) {
-            if (blockedCats.contains(e.getKey())) continue;
-            any = true;
             String action = e.getValue();
-            Ui.add(quickSettingsCard, Ui.button(this, SettingsWatchdog.label(e.getKey()), Ui.OUTLINED, v -> {
+            Ui.add(quickSettingsCard, Ui.button(this, SettingsMenu.label(e.getKey()), Ui.OUTLINED, v -> {
                 try {
                     startActivity(new Intent(action));
                 } catch (Exception ex) {
                     toast("Could not open that screen.");
                 }
             }), 8);
-        }
-        if (!any) {
-            quickSettingsCard.addView(Ui.body(this, "Nothing allowed here yet -- ask the administrator to allow a category.", true));
         }
         quickSettingsCard.setVisibility(View.VISIBLE);
     }

@@ -123,47 +123,6 @@ test("dashboard log: a config save that actually changes something is recorded, 
   assert.equal(device.pushLog.length, 1, "a no-op save adds nothing to the log");
 });
 
-test("learnSettings: rejects an unknown category, queues a valid one, and its deferred result round-trips", async () => {
-  const cookie = await login();
-  const { auth, id } = await enrolledDevice(cookie);
-
-  const bad = await post(`/api/devices/${id}/command`, { type: "learnSettings", args: { category: "not-a-real-category" } }, { cookie });
-  assert.equal(bad.status, 400);
-
-  const ok = await post(`/api/devices/${id}/command`, { type: "learnSettings", args: { category: "network" } }, { cookie });
-  assert.equal(ok.status, 200);
-
-  const sync = await (await post("/agent/sync", {}, auth)).json();
-  assert.equal(sync.commands.length, 1);
-  assert.equal(sync.commands[0].type, "learnSettings");
-  assert.equal(sync.commands[0].args.category, "network");
-
-  // The phone doesn't answer immediately (the command just arms a capture) -- the result arrives
-  // on a later sync, once something was actually seen on the phone, same id as the command.
-  const msg = JSON.stringify({ category: "network", component: "com.android.settings/.Settings$NetworkDashboardActivity" });
-  await post("/agent/sync", { results: [{ id: sync.commands[0].id, type: "learnSettings", ok: true, msg }] }, auth);
-
-  const devices = await (await req("/api/devices", { headers: { cookie } })).json();
-  const device = devices.find((x) => x.id === id);
-  const result = device.results.find((r) => r.type === "learnSettings");
-  assert.deepEqual(JSON.parse(result.msg), { category: "network", component: "com.android.settings/.Settings$NetworkDashboardActivity" });
-});
-
-test("checkNow: a plain diagnostic command, no args needed, round-trips like any other", async () => {
-  const cookie = await login();
-  const { auth, id } = await enrolledDevice(cookie);
-
-  assert.equal((await post(`/api/devices/${id}/command`, { type: "checkNow" }, { cookie })).status, 200);
-  const sync = await (await post("/agent/sync", {}, auth)).json();
-  assert.equal(sync.commands.length, 1);
-  assert.equal(sync.commands[0].type, "checkNow");
-
-  await post("/agent/sync", { results: [{ id: sync.commands[0].id, type: "checkNow", ok: true, msg: "Last foreground app seen: com.android.settings/.Settings" }] }, auth);
-  const devices = await (await req("/api/devices", { headers: { cookie } })).json();
-  const device = devices.find((x) => x.id === id);
-  assert.equal(device.results.find((r) => r.type === "checkNow").msg, "Last foreground app seen: com.android.settings/.Settings");
-});
-
 async function enrolledBrowser(cookie) {
   const { code } = await (await post("/api/codes", { type: "browser" }, { cookie })).json();
   const { token } = await (await post("/browser/enroll", { code, info: { model: "Y" } })).json();

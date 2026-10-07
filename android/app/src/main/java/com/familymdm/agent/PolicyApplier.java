@@ -139,19 +139,6 @@ final class PolicyApplier {
         return arr;
     }
 
-    /** {category: [fragment, ...]} learned on this specific phone (see SettingsWatchdog, "Learn"). */
-    private static Map<String, String[]> parseWatchdogPatterns(JSONObject wp) {
-        Map<String, String[]> out = new HashMap<>();
-        if (wp == null) return out;
-        Iterator<String> it = wp.keys();
-        while (it.hasNext()) {
-            String k = it.next();
-            List<String> frags = strings(wp.optJSONArray(k));
-            out.put(k, frags.toArray(new String[0]));
-        }
-        return out;
-    }
-
     private static String label(PackageManager pm, ResolveInfo ri) {
         String pkg = ri.activityInfo.packageName;
         String cached = LABELS.get(pkg);
@@ -180,8 +167,6 @@ final class PolicyApplier {
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
         applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
         applyAccessibilityLock(c, dpm, admin, policy.optBoolean("blockAccessibility", false));
-        SettingsWatchdog.setBlocked(new HashSet<>(strings(policy.optJSONArray("blockedSettings"))));
-        SettingsWatchdog.setExtraPatterns(parseWatchdogPatterns(policy.optJSONObject("watchdogPatterns")));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");

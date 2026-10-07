@@ -45,7 +45,7 @@ public class SettingsMenuActivity extends Activity {
     }
 
     private LinearLayout row(String category) {
-        String label = SettingsWatchdog.label(category);
+        String label = SettingsMenu.label(category);
         boolean readyYet = !SettingsMenu.NEEDS_LEARN.contains(category) || SettingsMenu.learnedTarget(this, category) != null;
 
         LinearLayout row = new LinearLayout(this);
