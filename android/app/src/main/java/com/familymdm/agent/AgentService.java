@@ -386,11 +386,27 @@ public class AgentService extends Service {
                 case "listSystemApps":
                     msg = PolicyApplier.collectSystemPackages(this).toString();
                     break;
-                case "learnSettings":
-                    // No result here -- SettingsWatchdog reports back on its own once the next
-                    // Settings screen actually opens (or the capture window times out).
-                    SettingsWatchdog.startLearn(this, args.optString("category"), id);
-                    return;
+                case "learnSettings": {
+                    // Normal case: already on the target screen, Learn pressed after -- answer
+                    // right away with this result, same sync cycle as any other command.
+                    String category = args.optString("category");
+                    String component = SettingsWatchdog.captureNow(this);
+                    if (component == null) {
+                        // Not there yet -- arm a capture for whenever they do navigate there,
+                        // and report nothing now (SettingsWatchdog reports back on its own).
+                        SettingsWatchdog.startLearn(this, category, id);
+                        return;
+                    }
+                    try {
+                        JSONObject o = new JSONObject();
+                        o.put("category", category);
+                        o.put("component", component);
+                        msg = o.toString();
+                    } catch (JSONException ex) {
+                        msg = component;
+                    }
+                    break;
+                }
                 default:
                     ok = false;
                     msg = "unknown command";
