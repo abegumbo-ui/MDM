@@ -89,6 +89,35 @@ final class SettingsWatchdog {
     }
 
     /**
+     * Raw diagnostic, independent of the category-learning workflow entirely: whatever was last in
+     * the foreground, even if it doesn't look settings-related, plus how many foreground events were
+     * seen at all. Answers the one question "Learn" timing out can't: is detection working on this
+     * phone at all, or is it the category matching that's the problem.
+     */
+    static String debugCurrentForeground(Context c) {
+        UsageStatsManager usm = (UsageStatsManager) c.getSystemService(Context.USAGE_STATS_SERVICE);
+        if (usm == null) return "This phone has no usage-stats service -- the watchdog cannot work here at all.";
+        long now = System.currentTimeMillis();
+        UsageEvents events = usm.queryEvents(now - 15 * 60 * 1000, now);
+        String pkg = null, cls = null;
+        int count = 0;
+        UsageEvents.Event e = new UsageEvents.Event();
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e);
+            if (e.getEventType() == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                pkg = e.getPackageName();
+                cls = e.getClassName();
+                count++;
+            }
+        }
+        if (pkg == null) {
+            return "No foreground-app events seen in the last 15 minutes at all. Usage access likely isn't "
+                    + "actually granted on this phone, whatever the automatic device-owner grant is supposed to do.";
+        }
+        return "Last foreground app seen: " + pkg + "/" + cls + " (" + count + " foreground event(s) in the last 15 minutes).";
+    }
+
+    /**
      * What's already on screen, right now -- for the normal case: already sitting on the target
      * Settings screen, then pressing Learn. Looks back 15 minutes for the most recent settings-ish
      * screen instead of only forward from this moment, since the person got there before this

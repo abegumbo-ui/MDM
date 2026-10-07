@@ -803,11 +803,16 @@ function renderDeviceSettings(m,dv){
       try{await saveConfigFor(dv,'Added. The phone applies it within about 15 seconds.')}catch(e){snack(e.message,1)}}),
      btn('Dismiss','outline',function(){dv.results=dv.results.filter(function(r){return r!==learnResult});render()})))
   }else if(parsed){
-   lc.append(h('div',{class:'mute'},'Learning for "'+catLabel+'" timed out -- nothing opened within 3 minutes. Tap Learn and try again, a little faster this time.'))
+   lc.append(h('div',{class:'mute'},'Learning for "'+catLabel+'" timed out -- nothing opened within 3 minutes. If this keeps happening even when you\'re sure you opened it, try "Check now" below first to see whether detection is seeing anything on this phone at all.'))
   }
   m.append(lc)}
  const swCard=h('div',{class:'card'},h('h2',null,'Settings watchdog'),
   h('div',{class:'mute'},'Android will not let one app simply refuse to let another app\'s screen open. Instead, the phone watches for a blocked Settings screen opening and immediately sends the person back to the home screen -- in practice a quick flash of that screen, not something that never appears at all. Matching which screen is open depends on names the phone\'s manufacturer chose, which can vary by phone; a Settings screen that opens without matching any category below shows up in the Phone log. To teach it one: on the phone, go into that category in Settings FIRST, then come back here and tap Learn -- it answers within about 15-30 seconds (tap Refresh at the top of this page to check, this page does not update itself). If you tap Learn before going there, it also waits up to 3 minutes for you to open it. Every category is blocked by default -- switch off the ones this person should be able to reach. Each switch saves immediately and applies within about 15 seconds.'));
+ swCard.append(h('div',{style:'margin-top:8px'},btn('Check now','outline',async function(){
+  await call('POST','/api/devices/'+dv.id+'/command',{type:'checkNow',args:{}});
+  snack('Checking whatever the phone can currently see -- tap Refresh in about 15-30 seconds.');load()})));
+ const checkResult=(dv.results||[]).slice().reverse().find(function(r){return r.type==='checkNow'});
+ if(checkResult)swCard.append(h('div',{class:'mute small',style:'margin-top:8px'},(checkResult.ok?'':'⚠️ ')+checkResult.msg+' · '+ago(checkResult.at)));
  for(const k in state.settingsCategories){
   swCard.append(h('div',{class:'setting'},h('div',{class:'grow'},state.settingsCategories[k]),
    btn('Learn','outline',async function(){

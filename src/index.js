@@ -6,7 +6,7 @@ const POLL_SECONDS = 15; // how often an online phone checks in (it already jump
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
-const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "learnSettings"]);
+const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "learnSettings", "checkNow"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_IMAGE_BYTES = 200 * 1024;
