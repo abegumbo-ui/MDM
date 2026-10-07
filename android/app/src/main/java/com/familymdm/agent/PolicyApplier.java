@@ -42,7 +42,7 @@ final class PolicyApplier {
             "no_modify_accounts", "no_add_user", "no_install_unknown_sources",
             "no_install_apps", "no_debugging_features", "no_config_credentials",
             "no_config_location", "no_airplane_mode", "no_config_mobile_networks", "no_config_tethering",
-            "no_config_vpn", "no_config_private_dns"));
+            "no_config_vpn", "disallow_config_private_dns"));
 
     // Restrictions that would also stop the agent's own installs, updates and uninstalls.
     private static final Set<String> INSTALL_RELATED = new HashSet<>(Arrays.asList(
