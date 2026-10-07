@@ -1,7 +1,6 @@
 package com.familymdm.agent;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.net.Uri;
@@ -363,7 +362,7 @@ public class LocalSettingsActivity extends Activity {
         } else {
             for (int d = 1; d <= 5; d++) checked[d] = true;
         }
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Days this app is available")
                 .setMultiChoiceItems(DAY_NAMES, checked, (d, which, isChecked) -> checked[which] = isChecked)
                 .setNegativeButton("Cancel", null)
@@ -428,7 +427,7 @@ public class LocalSettingsActivity extends Activity {
         final EditText two = Ui.field(this, "Repeat it");
         one.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         two.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Change master code")
                 .setMessage("Write it down somewhere safe. There is no way to reset it.")
                 .setView(form(one, two))

@@ -2,7 +2,6 @@ package com.familymdm.agent;
 
 import android.app.Activity;
 import android.app.ActivityManager;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
@@ -139,7 +138,7 @@ public class LockActivity extends Activity {
     private void promptMaster() {
         final EditText input = Ui.field(this, "Master code");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Administrator")
                 .setView(input)
                 .setNegativeButton("Cancel", null)

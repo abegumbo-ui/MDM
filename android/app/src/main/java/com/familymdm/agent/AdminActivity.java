@@ -1,7 +1,6 @@
 package com.familymdm.agent;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.KeyguardManager;
 import android.content.Intent;
 import android.net.Uri;
@@ -37,6 +36,8 @@ public class AdminActivity extends Activity {
     private boolean showingKioskAllowedPicker;
     // Settings menu section: null = pick "Icon setup" or "Categories"; otherwise which one is open.
     private String settingsMenuSub;
+    // Blocking section: null = pick "Block Apps/Screens" or "Block Whole Apps"; otherwise which.
+    private String blockingSub;
     // Shared by both apps pickers above (never shown at once, since only one section renders at a
     // time) -- the apps list and search text backing whichever picker is currently expanded.
     private JSONArray appsPickerPackages;
@@ -59,9 +60,16 @@ public class AdminActivity extends Activity {
         build();
     }
 
+    /** One level at a time: out of a sub-screen (Settings menu / Blocking's own two-deep nav) back
+     * to its section's top, or out of a section back to the Administrator home -- never both at
+     * once, which is what showed as two separate "< Back" rows stacked on top of each other. */
     @Override
     public void onBackPressed() {
-        if (currentSection != null) {
+        if (settingsMenuSub != null || blockingSub != null) {
+            settingsMenuSub = null;
+            blockingSub = null;
+            build();
+        } else if (currentSection != null) {
             currentSection = null;
             resetSubState();
             build();
@@ -76,6 +84,7 @@ public class AdminActivity extends Activity {
         showingAppsPicker = false;
         showingKioskAllowedPicker = false;
         settingsMenuSub = null;
+        blockingSub = null;
     }
 
     private boolean inSection(String name) {
@@ -107,7 +116,7 @@ public class AdminActivity extends Activity {
         if (component == null) return; // still waiting -- came back too soon, or never got to a settings-ish screen
         Agent.prefs(this).edit().remove("pendingLocalLearnCategory").remove("pendingLocalLearnExpiresAt").apply();
         String label = SettingsMenu.label(category);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Learned \"" + label + "\"?")
                 .setMessage("Right after Settings opened, this is what was on screen:\n\n" + component
                         + "\n\nUse it as the Settings menu's direct link for \"" + label + "\"?")
@@ -171,6 +180,7 @@ public class AdminActivity extends Activity {
         SECTION_TITLES.put("applock", "App lock");
         SECTION_TITLES.put("settingsmenu", "Settings menu");
         SECTION_TITLES.put("blocking", "Blocking");
+        SECTION_TITLES.put("permissions", "Permissions");
         SECTION_TITLES.put("network", "Network");
         SECTION_TITLES.put("device", "Device");
         SECTION_TITLES.put("messages", "Messages");
@@ -208,6 +218,7 @@ public class AdminActivity extends Activity {
             Ui.addTile(grid, Ui.tile(this, "App lock", R.drawable.ic_lock_tile, 96, v -> openSection("applock")));
             Ui.addTile(grid, Ui.tile(this, "Settings\nmenu", R.drawable.ic_apps_tile, 96, v -> openSection("settingsmenu")));
             Ui.addTile(grid, Ui.tile(this, "Blocking", R.drawable.ic_shield, 96, v -> openSection("blocking")));
+            Ui.addTile(grid, Ui.tile(this, "Permissions", R.drawable.ic_permissions_tile, 96, v -> openSection("permissions")));
             Ui.addTile(grid, Ui.tile(this, "Network", R.drawable.ic_wifi_tile, 96, v -> openSection("network")));
             Ui.addTile(grid, Ui.tile(this, "Device", R.drawable.ic_device_tile, 96, v -> openSection("device")));
             Ui.addTile(grid, Ui.tile(this, "Messages", R.drawable.ic_message_tile, 96, v -> openSection("messages")));
@@ -225,6 +236,7 @@ public class AdminActivity extends Activity {
         if (inSection("applock")) buildAppLockSection(root);
         if (inSection("settingsmenu")) buildSettingsMenuSection(root);
         if (inSection("blocking")) buildBlockingSection(root);
+        if (inSection("permissions")) buildPermissionsSection(root);
         if (inSection("network")) buildNetworkSection(root);
         if (inSection("device")) buildDeviceSection(root);
         if (inSection("lock")) refreshStatus();
@@ -459,7 +471,6 @@ public class AdminActivity extends Activity {
                     v -> { settingsMenuSub = "categories"; build(); }), 8);
             return;
         }
-        Ui.add(root, Ui.button(this, "< Back", Ui.OUTLINED, v -> { settingsMenuSub = null; build(); }), 0);
         if ("iconsetup".equals(settingsMenuSub)) buildSettingsIconSetup(root);
         else buildSettingsCategories(root);
     }
@@ -527,6 +538,18 @@ public class AdminActivity extends Activity {
     }
 
     private void buildBlockingSection(LinearLayout root) {
+        if (blockingSub == null) {
+            Ui.add(root, Ui.rowTile(this, "Block Apps/Screens", R.drawable.ic_shield,
+                    v -> { blockingSub = "apps"; build(); }), 12);
+            Ui.add(root, Ui.rowTile(this, "Block Whole Apps", R.drawable.ic_shield,
+                    v -> { blockingSub = "whole"; build(); }), 8);
+            return;
+        }
+        if ("apps".equals(blockingSub)) buildBlockedComponentsSection(root);
+        else buildBlockedWholeAppsSection(root);
+    }
+
+    private void buildBlockedComponentsSection(LinearLayout root) {
         // Plain list, nothing fancy: exact components to watch for and bounce away from the
         // instant they're in the foreground. Never touches a dashboard -- stored on this phone
         // only. Whatever is typed in has to be the full "package/ClassName" component (the part
@@ -555,8 +578,10 @@ public class AdminActivity extends Activity {
             Ui.add(blockCard, row, 4);
         }
         action(blockCard, "Add App", Ui.TONAL, v -> promptAddBlockedComponent());
+    }
 
-        // A whole different kind of block from the one above -- an OS-level hide via
+    private void buildBlockedWholeAppsSection(LinearLayout root) {
+        // A whole different kind of block from the component list above -- an OS-level hide via
         // setApplicationHidden(), not a reactive bounce. The app just can't launch or run at all
         // while hidden, instantly, with no flash. Phone-only, same as the component list.
         LinearLayout wholeAppCard = Ui.card(this, root);
@@ -591,20 +616,63 @@ public class AdminActivity extends Activity {
             Ui.add(wholeAppCard, row, 4);
         }
         action(wholeAppCard, "Add App", Ui.TONAL, v -> promptAddWholeApp());
+    }
 
+    /** Every special/runtime permission this agent actually uses, with its current status and a way
+     * to open the right Settings screen when it's off. */
+    private void buildPermissionsSection(LinearLayout root) {
         LinearLayout accessCard = Ui.card(this, root);
         accessCard.addView(Ui.titleText(this, "Accessibility service"));
         boolean accessOn = Agent.accessibilityServiceOn(this);
-        accessCard.addView(Ui.body(this, "Backs out of a blocked screen (above) instantly, and doesn't "
-                + "leave it sitting in recents the way the plain bounce does. "
+        accessCard.addView(Ui.body(this, "Backs out of a blocked screen instantly, and doesn't leave it "
+                + "sitting in recents the way the plain bounce does. "
                 + (accessOn ? "Currently on. To stop it being turned off from Settings without going through "
-                + "here, add Settings' own Accessibility screen to the blocked list above (same \"Add App\" "
-                + "flow), then use its Pause button whenever you need to get in and change something yourself."
+                + "here, add Settings' own Accessibility screen to the blocked list (Blocking > Block "
+                + "Apps/Screens), then use its Pause button whenever you need to get in and change something "
+                + "yourself."
                 : "Currently off -- turn it on under Settings > Accessibility, then come back here."), true));
         if (!accessOn) {
             action(accessCard, "Open Accessibility settings", Ui.OUTLINED, v -> {
                 startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            });
+        }
+
+        LinearLayout usageCard = Ui.card(this, root);
+        usageCard.addView(Ui.titleText(this, "Usage access"));
+        boolean usageOn = Agent.usageAccessOn(this);
+        usageCard.addView(Ui.body(this, usageOn
+                ? "Currently on. Used by the blocklist's fallback detection and by the Settings menu's "
+                + "\"Learn\" feature to see what screen was last open."
+                : "Currently off -- turn it on under Settings > Apps > Special access > Usage access, then "
+                + "come back here.", true));
+        if (!usageOn) {
+            action(usageCard, "Open Usage access settings", Ui.OUTLINED, v -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Exception e) {
+                    toast("Not available on this phone.");
+                }
+            });
+        }
+
+        LinearLayout batteryCard = Ui.card(this, root);
+        batteryCard.addView(Ui.titleText(this, "Battery optimization"));
+        android.os.PowerManager powerManager = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        boolean batteryOk = powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName());
+        batteryCard.addView(Ui.body(this, batteryOk
+                ? "Currently exempt. The background check-in loop can keep running normally even with the screen off."
+                : "Currently not exempt -- the phone's own battery manager could slow down check-ins. Exempt "
+                + "this app for reliable background syncing.", true));
+        if (!batteryOk) {
+            action(batteryCard, "Request exemption", Ui.OUTLINED, v -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:" + getPackageName())));
+                } catch (Exception e) {
+                    toast("Not available on this phone.");
+                }
             });
         }
     }
@@ -697,7 +765,7 @@ public class AdminActivity extends Activity {
     }
 
     private void confirm(String message, final Runnable ok) {
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setMessage(message)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Yes", (d, w) -> {
@@ -719,7 +787,7 @@ public class AdminActivity extends Activity {
         final EditText message = Ui.field(this, "Message shown on the phone (optional)");
         final EditText minutes = Ui.field(this, "Minutes (0 = just lock the screen)");
         minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Lock with a message")
                 .setView(form(message, minutes))
                 .setNegativeButton("Cancel", null)
@@ -740,7 +808,7 @@ public class AdminActivity extends Activity {
         final EditText minutes = Ui.field(this, "Minutes");
         minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
         minutes.setText("60");
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Browse freely for a while")
                 .setMessage("Opens any site for a chosen time. Every new site visited is then held for approval, just like a newly installed app.")
                 .setView(minutes)
@@ -807,7 +875,7 @@ public class AdminActivity extends Activity {
         final java.util.List<String> suggestions = new java.util.ArrayList<>(AppBlocklist.seen(this));
         java.util.Collections.sort(suggestions);
         final android.widget.AutoCompleteTextView input = autoCompleteOver("package/ClassName", suggestions);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Add app/screen to block")
                 .setMessage("The exact component, written as package/ClassName -- for example:\n\n"
                         + "com.google.android.gms/com.google.android.gms.googlesettings.ui.GoogleSettingsActivity")
@@ -837,7 +905,7 @@ public class AdminActivity extends Activity {
         final java.util.List<String> suggestions = new java.util.ArrayList<>(byDisplay.keySet());
         java.util.Collections.sort(suggestions);
         final android.widget.AutoCompleteTextView input = autoCompleteOver("App name or package", suggestions);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Block a whole app")
                 .setMessage("Pick an installed app from the list, or type its exact package name.")
                 .setView(input)
@@ -882,7 +950,7 @@ public class AdminActivity extends Activity {
                     }
                     final String finalPkg = pkg;
                     final String label = appLabel(pm, finalPkg);
-                    new AlertDialog.Builder(this)
+                    Ui.alertDialog(this)
                             .setTitle("Block \"" + label + "\" entirely?")
                             .setMessage("This hides the whole app at the Android level -- it won't open or run "
                                     + "at all until you Pause or Remove it here. If the phone or other apps "
@@ -904,7 +972,7 @@ public class AdminActivity extends Activity {
         final java.util.List<String> suggestions = new java.util.ArrayList<>(AppBlocklist.seen(this));
         java.util.Collections.sort(suggestions);
         final android.widget.AutoCompleteTextView input = autoCompleteOver("package/ClassName", suggestions);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Add the link for \"" + label + "\"")
                 .setMessage("The exact component, written as package/ClassName.")
                 .setView(input)
@@ -928,7 +996,7 @@ public class AdminActivity extends Activity {
                             ? "Found it -- this screen exists on this phone.\n\n"
                             : "Android doesn't recognize this as an existing screen on this phone -- it could "
                             + "still work if it's just not exported, or it could be wrong.\n\n") + v;
-                    new AlertDialog.Builder(this)
+                    Ui.alertDialog(this)
                             .setTitle(exists ? "Found it" : "Not found")
                             .setMessage(msg + "\n\nUse it as the link for \"" + label + "\" anyway?")
                             .setNegativeButton("Cancel", null)
@@ -948,7 +1016,7 @@ public class AdminActivity extends Activity {
         final EditText two = Ui.field(this, "Repeat it");
         one.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         two.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle(turningOn ? "Choose an app PIN" : "Change the app PIN")
                 .setMessage("This only locks MDM Agent's own screen. It has nothing to do with the phone's own screen lock, and works even if the phone has none set.")
                 .setView(form(one, two))
@@ -975,7 +1043,7 @@ public class AdminActivity extends Activity {
     private void askWifi() {
         final EditText ssid = Ui.field(this, "Network name");
         final EditText pass = Ui.field(this, "Password (empty for an open network)");
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Add a Wi-Fi network")
                 .setView(form(ssid, pass))
                 .setNegativeButton("Cancel", null)
@@ -994,7 +1062,7 @@ public class AdminActivity extends Activity {
     private void askPin() {
         final EditText input = Ui.field(this, "New PIN (4 to 16 digits)");
         input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Set screen lock PIN")
                 .setView(form(input))
                 .setNegativeButton("Cancel", null)
@@ -1017,7 +1085,7 @@ public class AdminActivity extends Activity {
 
     private void promptWipe() {
         final EditText input = Ui.field(this, "Type ERASE to confirm");
-        new AlertDialog.Builder(this)
+        Ui.alertDialog(this)
                 .setTitle("Erase everything?")
                 .setMessage("This factory-resets the phone and cannot be undone.")
                 .setView(form(input))
@@ -1087,35 +1155,140 @@ public class AdminActivity extends Activity {
         android.widget.GridLayout grid = Ui.tileGrid(this);
         android.content.pm.PackageManager pm = getPackageManager();
         JSONObject overrides = Agent.getOverrides(this);
+        java.util.Set<String> hardBlocked = WholeAppBlocklist.list(this);
         String needle = appsPickerQuery.trim().toLowerCase();
         for (int i = 0; i < appsPickerPackages.length(); i++) {
             JSONObject a = appsPickerPackages.optJSONObject(i);
             if (a == null) continue;
             final String pkg = a.optString("p", "");
+            if (pkg.equals(getPackageName())) continue; // never offer to allow/block the agent itself here
             final String label = a.optString("l", pkg);
             if (!needle.isEmpty() && !label.toLowerCase().contains(needle) && !pkg.toLowerCase().contains(needle)) continue;
             String state = a.optBoolean("h") ? "hidden" : "allowed";
             if (overrides.has(pkg)) state = overrides.optString(pkg).equals("block") ? "blocked" : "allowed";
-            android.graphics.drawable.Drawable icon;
-            try {
-                icon = pm.getApplicationIcon(pkg);
-            } catch (Exception e) {
-                icon = null;
-            }
-            Ui.addTile(grid, Ui.appTile(this, label + "\n(" + state + ")", icon, 72,
+            if (hardBlocked.contains(pkg)) state = "hard blocked";
+            Ui.addTile(grid, Ui.appTile(this, label + "\n(" + state + ")", appIcon(pm, pkg), 72,
                     v -> promptAppMode(gridHolder, pkg, label)));
         }
         Ui.add(gridHolder, grid, 0);
     }
 
+    /** pm.getApplicationIcon() alone throws for an app this agent has hidden (setApplicationHidden) --
+     * it's still really installed, just excluded from PackageManager's default, visible-apps-only
+     * queries, so the icon still has to be fetched by looking it up with MATCH_UNINSTALLED_PACKAGES
+     * first. Being hidden elsewhere is no reason for its icon to disappear from this picker too. */
+    private android.graphics.drawable.Drawable appIcon(android.content.pm.PackageManager pm, String pkg) {
+        try {
+            return pm.getApplicationIcon(pkg);
+        } catch (Exception e) {
+            try {
+                android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(pkg, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES);
+                return pm.getApplicationIcon(ai);
+            } catch (Exception e2) {
+                return null;
+            }
+        }
+    }
+
     private void promptAppMode(LinearLayout gridHolder, String pkg, String label) {
         if (!unlocked()) return;
-        new AlertDialog.Builder(this)
+        final String[] options = {"Allow", "Block", "Schedule", "Cancel"};
+        Ui.alertDialog(this)
                 .setTitle(label)
                 .setMessage(pkg)
+                .setItems(options, (d, which) -> {
+                    switch (which) {
+                        case 0:
+                            setApp(gridHolder, pkg, "allow");
+                            break;
+                        case 1:
+                            promptBlockKind(gridHolder, pkg, label);
+                            break;
+                        case 2:
+                            promptSchedule(gridHolder, pkg, label);
+                            break;
+                        default: // Cancel
+                    }
+                })
+                .show();
+    }
+
+    /** The whole point of Home screen mode is that an app not allowed on it can still run in the
+     * background (Maps keeps using Google Play services) -- a soft block (the regular override)
+     * keeps that. A hard block is the same OS-level hide as "Block whole app": it can't run at all. */
+    private void promptBlockKind(LinearLayout gridHolder, String pkg, String label) {
+        if (!unlocked()) return;
+        Ui.alertDialog(this)
+                .setTitle("Block \"" + label + "\"")
+                .setMessage("Soft block: stays installed and can keep running in the background (e.g. during "
+                        + "Home screen mode) -- just can't be opened or shown as allowed.\n\n"
+                        + "Hard block: the whole app is hidden at the Android level -- it can't open or run at "
+                        + "all until it's paused or removed from Blocking > Block Whole Apps.")
                 .setNegativeButton("Cancel", null)
-                .setNeutralButton("Allow", (d, w) -> setApp(gridHolder, pkg, "allow"))
-                .setPositiveButton("Block", (d, w) -> setApp(gridHolder, pkg, "block"))
+                .setNeutralButton("Soft Block", (d, w) -> setApp(gridHolder, pkg, "block"))
+                .setPositiveButton("Hard Block", (d, w) -> {
+                    WholeAppBlocklist.add(this, pkg);
+                    Agent.addEvent(this, "local", "Master code on phone: blocked the whole app \"" + pkg + "\" (hard block, from the apps picker)");
+                    toast("\"" + label + "\" is hidden now.");
+                    renderAppsGrid(gridHolder);
+                })
+                .show();
+    }
+
+    private boolean validTime(String s) {
+        if (!s.matches("\\d{1,2}:\\d{2}")) return false;
+        try {
+            String[] p = s.split(":");
+            int h = Integer.parseInt(p[0]), m = Integer.parseInt(p[1]);
+            return h >= 0 && h < 24 && m >= 0 && m < 60;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** A simple every-day time window, stored the same way the dashboard's own per-app schedules
+     * are (policy.schedules[pkg] = {days, from, to} -- see PolicyApplier.withinSchedule()), just
+     * mutated locally and re-applied right away the same way turning on Home screen mode here does. */
+    private void promptSchedule(LinearLayout gridHolder, String pkg, String label) {
+        if (!unlocked()) return;
+        final EditText from = Ui.field(this, "Allowed from (HH:MM, 24h)");
+        final EditText to = Ui.field(this, "Allowed until (HH:MM, 24h)");
+        Ui.alertDialog(this)
+                .setTitle("Schedule \"" + label + "\"")
+                .setMessage("Only allowed to open during this window, every day. Outside it, this behaves the same as a soft block.")
+                .setView(form(from, to))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    String f = from.getText().toString().trim();
+                    String t = to.getText().toString().trim();
+                    if (!validTime(f) || !validTime(t)) {
+                        toast("Use HH:MM, 24-hour, for both times.");
+                        return;
+                    }
+                    try {
+                        JSONObject policy = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
+                        JSONObject schedules = policy.optJSONObject("schedules");
+                        if (schedules == null) {
+                            schedules = new JSONObject();
+                            policy.put("schedules", schedules);
+                        }
+                        JSONObject sched = new JSONObject();
+                        sched.put("from", f);
+                        sched.put("to", t);
+                        JSONArray days = new JSONArray();
+                        for (int day = 0; day < 7; day++) days.put(day);
+                        sched.put("days", days);
+                        schedules.put(pkg, sched);
+                        Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+                        Agent.addEvent(this, "local", "Master code on phone: scheduled \"" + pkg + "\" for " + f + "-" + t + " every day");
+                        PolicyApplier.applyStored(this);
+                        AgentService.requestSync();
+                        toast("Scheduled. Allowed " + f + "-" + t + " every day.");
+                        renderAppsGrid(gridHolder);
+                    } catch (Exception e) {
+                        toast("Could not save the schedule: " + e.getMessage());
+                    }
+                })
                 .show();
     }
 
