@@ -47,6 +47,10 @@ public class AdminActivity extends Activity {
     private JSONArray appsPickerPackages;
     private String appsPickerQuery = "";
     private boolean appsPickerKioskContext;
+    // Updates section: results of the last "Check for updates" tap (null = not checked yet this visit).
+    private java.util.List<PlayUpdates.UpdateInfo> updatesList;
+    private String updatesError;
+    private boolean updatesChecking;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -180,6 +184,7 @@ public class AdminActivity extends Activity {
     static {
         SECTION_TITLES.put("lock", "Lock");
         SECTION_TITLES.put("apps", "Apps");
+        SECTION_TITLES.put("updates", "Updates");
         SECTION_TITLES.put("browser", "Browser");
         SECTION_TITLES.put("kiosk", "Home screen mode");
         SECTION_TITLES.put("applock", "App lock");
@@ -224,6 +229,7 @@ public class AdminActivity extends Activity {
             android.widget.GridLayout grid = Ui.tileGrid(this);
             Ui.addTile(grid, Ui.tile(this, "Lock", R.drawable.ic_lock_tile, 96, v -> openSection("lock")));
             Ui.addTile(grid, Ui.tile(this, "Apps", R.drawable.ic_apps_tile, 96, v -> openSection("apps")));
+            Ui.addTile(grid, Ui.tile(this, "Updates", R.drawable.ic_update_tile, 96, v -> openSection("updates")));
             Ui.addTile(grid, Ui.tile(this, "Browser", R.drawable.ic_browser_tile, 96, v -> openSection("browser")));
             Ui.addTile(grid, Ui.tile(this, "Home screen\nmode", R.drawable.ic_home_tile, 96, v -> openSection("kiosk")));
             Ui.addTile(grid, Ui.tile(this, "App lock", R.drawable.ic_lock_tile, 96, v -> openSection("applock")));
@@ -242,6 +248,7 @@ public class AdminActivity extends Activity {
         if (inSection("messages")) buildMessagesSection(root);
         if (inSection("lock")) buildLockSection(root);
         if (inSection("apps")) buildAppsSection(root);
+        if (inSection("updates")) buildUpdatesSection(root);
         if (inSection("browser")) buildBrowserSection(root);
         if (inSection("kiosk")) buildKioskSection(root);
         if (inSection("applock")) buildAppLockSection(root);
@@ -372,6 +379,82 @@ public class AdminActivity extends Activity {
         appsPickerHolder.setOrientation(LinearLayout.VERTICAL);
         Ui.add(root, appsPickerHolder, 8);
         if (showingAppsPicker) showAppsPicker(appsPickerHolder, false);
+    }
+
+    /** Not the whole Play Store -- just the installed, not-blocked apps on this phone (plus
+     * whatever Waze/Maps/Android Auto actually need, since those often aren't in the allow/block
+     * list at all), checked against the real Play Store protocol through a token the dashboard
+     * mints from its own dedicated Google account (see PlayUpdates, and SETUP.md). Nothing else
+     * ever becomes installable from this. */
+    private void buildUpdatesSection(LinearLayout root) {
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Updates"));
+        card.addView(Ui.body(this, "Checks only the apps already on this phone that aren't blocked, "
+                + "plus whatever Waze, Google Maps, and Android Auto need to keep working -- never "
+                + "the whole Play Store. Nothing else becomes installable.", true));
+        if (updatesError != null) card.addView(Ui.body(this, updatesError, true));
+
+        action(card, updatesChecking ? "Checking..." : "Check for updates", Ui.TONAL, v -> {
+            if (!unlocked() || updatesChecking) return;
+            updatesChecking = true;
+            updatesError = null;
+            updatesList = null;
+            build();
+            java.util.List<String> eligible;
+            try {
+                eligible = eligiblePackagesForUpdates();
+            } catch (Exception e) {
+                eligible = PlayUpdates.CANDIDATE_PACKAGES;
+            }
+            PlayUpdates.checkForUpdates(this, eligible, (result, error) -> runOnUiThread(() -> {
+                updatesChecking = false;
+                updatesError = error;
+                updatesList = result;
+                build();
+            }));
+        });
+
+        if (updatesList != null) {
+            if (updatesList.isEmpty()) card.addView(Ui.body(this, "Everything checked is already up to date.", true));
+            for (PlayUpdates.UpdateInfo u : updatesList) {
+                final String pkg = u.getPkg();
+                final String label = u.getLabel();
+                Ui.add(root, Ui.rowTile(this, label + "\nbuild " + u.getInstalledVersion() + " -> " + u.getAvailableVersion(),
+                        R.drawable.ic_update_tile, v -> {
+                            if (!unlocked()) return;
+                            toast("Updating " + label + "...");
+                            PlayUpdates.updateOne(this, pkg, (msg, error) -> runOnUiThread(() -> {
+                                if (error != null) {
+                                    toast("Could not update " + label + ": " + error);
+                                    return;
+                                }
+                                Agent.addEvent(this, "local", "Master code on phone: " + msg);
+                                toast(msg);
+                                updatesList = null;
+                                build();
+                            }));
+                        }), 8);
+            }
+        }
+    }
+
+    /** Installed, not hard-blocked/hidden, and not soft-blocked -- same eligibility the Apps grid
+     * itself uses -- plus PlayUpdates.CANDIDATE_PACKAGES unconditionally, since those (Play
+     * services, the Play Store app, Android Auto) are usually unmanaged, not explicitly "allowed". */
+    private java.util.List<String> eligiblePackagesForUpdates() throws JSONException {
+        java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>(PlayUpdates.CANDIDATE_PACKAGES);
+        JSONObject overrides = Agent.getOverrides(this);
+        java.util.Set<String> hardBlocked = WholeAppBlocklist.list(this);
+        JSONArray packages = PolicyApplier.collectPackages(this);
+        for (int i = 0; i < packages.length(); i++) {
+            JSONObject a = packages.optJSONObject(i);
+            if (a == null) continue;
+            String pkg = a.optString("p", "");
+            if (pkg.isEmpty() || hardBlocked.contains(pkg) || a.optBoolean("h")) continue;
+            if ("block".equals(overrides.optString(pkg, ""))) continue;
+            set.add(pkg);
+        }
+        return new java.util.ArrayList<>(set);
     }
 
     private void buildBrowserSection(LinearLayout root) {

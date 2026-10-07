@@ -123,6 +123,40 @@ final class Installer {
         return "install started";
     }
 
+    /** Installs or updates an app that ships as a base APK plus split APKs in one atomic session --
+     * the normal shape of a Play Store "app bundle" install (see PlayUpdates). Every file commits
+     * together or not at all, same as a single-APK install. */
+    static String installMultiple(Context c, java.util.List<File> apkFiles) throws IOException {
+        openWindow(c);
+        PackageInstaller pi = c.getPackageManager().getPackageInstaller();
+        PackageInstaller.SessionParams params =
+                new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        int id = pi.createSession(params);
+        PackageInstaller.Session session = pi.openSession(id);
+        try {
+            for (File f : apkFiles) {
+                try (OutputStream out = session.openWrite(f.getName(), 0, f.length()); InputStream in = new FileInputStream(f)) {
+                    byte[] buf = new byte[16384];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                    session.fsync(out);
+                }
+            }
+            session.commit(resultIntent(c, id, "install"));
+        } catch (IOException | RuntimeException e) {
+            session.abandon();
+            closeWindow(c);
+            throw e;
+        } finally {
+            session.close();
+            for (File f : apkFiles) {
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+            }
+        }
+        return "install started";
+    }
+
     static String uninstall(Context c, String packageName) throws Exception {
         PackageManager pm = c.getPackageManager();
         DevicePolicyManager dpm = Agent.dpm(c);
