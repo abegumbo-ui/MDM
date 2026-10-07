@@ -449,8 +449,24 @@ final class SettingsWatchdog {
             return;
         }
         if (blocked.contains(matched)) {
+            bounceToSettingsMain(c);
+            Agent.addEvent(c, "restriction", "Blocked Settings category \"" + matched + "\" was opened -- bounced back to Settings' main screen");
+        }
+    }
+
+    /**
+     * Kicked out of a blocked category lands back on Settings' own top-level screen, not out of
+     * Settings entirely -- a flat "go home" reads as "get out of here", when the actual rule is
+     * narrower: this one screen, not Settings itself. Clears Settings' own back stack on the way,
+     * so the blocked screen isn't one "back" press away either.
+     */
+    private static void bounceToSettingsMain(Context c) {
+        try {
+            Intent i = new Intent(android.provider.Settings.ACTION_SETTINGS);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            c.startActivity(i);
+        } catch (Exception e) {
             Kiosk.startHome(c);
-            Agent.addEvent(c, "restriction", "Blocked Settings category \"" + matched + "\" was opened -- sent back to the home screen");
         }
     }
 
