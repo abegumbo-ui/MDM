@@ -57,34 +57,58 @@ public class AdminActivity extends Activity {
 
     /**
      * Picks up where a "Learn" tap left off: it sent the person into Settings and recorded which
-     * category they were after, so coming back here (swipe up / recents, not re-launching this
-     * activity) is what finishes the capture -- no server round trip, no separate dashboard tap.
+     * category (and what the capture is for) they were after, so coming back here (swipe up /
+     * recents, not re-launching this activity) is what finishes the capture -- no server round
+     * trip, no separate dashboard tap. Two different things get learned this same way: a watchdog
+     * match fragment (so a blocked category gets recognized and bounced), or a fake-menu launch
+     * target (the one exact screen SettingsMenuActivity jumps straight to for a category with no
+     * android-wide link at all).
      */
     private void checkPendingLocalLearn() {
         String category = Agent.prefs(this).getString("pendingLocalLearnCategory", null);
         if (category == null) return;
+        String kind = Agent.prefs(this).getString("pendingLocalLearnKind", "watchdog");
         long expires = Agent.prefs(this).getLong("pendingLocalLearnExpiresAt", 0);
         if (System.currentTimeMillis() > expires) {
-            Agent.prefs(this).edit().remove("pendingLocalLearnCategory").remove("pendingLocalLearnExpiresAt").apply();
+            Agent.prefs(this).edit().remove("pendingLocalLearnCategory").remove("pendingLocalLearnKind").remove("pendingLocalLearnExpiresAt").apply();
             return;
         }
         String component = SettingsWatchdog.captureNow(this);
         if (component == null) return; // still waiting -- came back too soon, or never got to a settings-ish screen
-        Agent.prefs(this).edit().remove("pendingLocalLearnCategory").remove("pendingLocalLearnExpiresAt").apply();
+        Agent.prefs(this).edit().remove("pendingLocalLearnCategory").remove("pendingLocalLearnKind").remove("pendingLocalLearnExpiresAt").apply();
         String label = SettingsWatchdog.label(category);
+        boolean menu = "menu".equals(kind);
         String frag = component.contains("/") ? component.substring(component.lastIndexOf('/') + 1).toLowerCase() : component.toLowerCase();
         new AlertDialog.Builder(this)
                 .setTitle("Learned \"" + label + "\"?")
                 .setMessage("Right after Settings opened, this is what was on screen:\n\n" + component
-                        + "\n\nAdd it so the watchdog recognizes this screen as \"" + label + "\" from now on?")
-                .setPositiveButton("Add", (d, w) -> {
-                    SettingsWatchdog.addLocalPattern(this, category, frag);
-                    Agent.addEvent(this, "local", "Master code on phone: learned \"" + label + "\" locally (" + frag + ")");
-                    toast("Added. The watchdog recognizes it right away.");
+                        + (menu ? "\n\nUse it as the Settings menu's direct link for \"" + label + "\"?"
+                        : "\n\nAdd it so the watchdog recognizes this screen as \"" + label + "\" from now on?"))
+                .setPositiveButton(menu ? "Use it" : "Add", (d, w) -> {
+                    if (menu) {
+                        SettingsMenu.setLearnedTarget(this, category, component);
+                        Agent.addEvent(this, "local", "Master code on phone: learned the Settings menu link for \"" + label + "\"");
+                        toast("Saved. The Settings menu icon opens straight to it now.");
+                    } else {
+                        SettingsWatchdog.addLocalPattern(this, category, frag);
+                        Agent.addEvent(this, "local", "Master code on phone: learned \"" + label + "\" locally (" + frag + ")");
+                        toast("Added. The watchdog recognizes it right away.");
+                    }
                     build();
                 })
                 .setNegativeButton("Discard", null)
                 .show();
+    }
+
+    private void startLocalLearn(String category, String kind, String label) {
+        if (!unlocked()) return;
+        Agent.prefs(this).edit()
+                .putString("pendingLocalLearnCategory", category)
+                .putString("pendingLocalLearnKind", kind)
+                .putLong("pendingLocalLearnExpiresAt", System.currentTimeMillis() + 10 * 60 * 1000)
+                .apply();
+        toast("Opening Settings -- go into \"" + label + "\", then come back here.");
+        startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }
 
     private boolean unlocked() {
@@ -280,15 +304,7 @@ public class AdminActivity extends Activity {
             TextView rowLabel = Ui.body(this, label, false);
             rowLabel.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             row.addView(rowLabel);
-            row.addView(Ui.button(this, "Learn", Ui.OUTLINED, v -> {
-                if (!unlocked()) return;
-                Agent.prefs(this).edit()
-                        .putString("pendingLocalLearnCategory", category)
-                        .putLong("pendingLocalLearnExpiresAt", System.currentTimeMillis() + 10 * 60 * 1000)
-                        .apply();
-                toast("Opening Settings -- go into \"" + label + "\", then come back here.");
-                startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            }));
+            row.addView(Ui.button(this, "Learn", Ui.OUTLINED, v -> startLocalLearn(category, "watchdog", label)));
             Ui.add(swCard, row, 4);
             if (learned != null && learned.length > 0) {
                 LinearLayout learnedRow = new LinearLayout(this);
@@ -304,6 +320,40 @@ public class AdminActivity extends Activity {
                     build();
                 }));
                 Ui.add(swCard, learnedRow, 8);
+            }
+        }
+
+        LinearLayout menuCard = Ui.card(this, root);
+        menuCard.addView(Ui.titleText(this, "Settings menu icon setup"));
+        menuCard.addView(Ui.body(this, "The \"Settings\" icon this phone shows has no Android-wide link for a few "
+                + "categories -- Motorola made these up itself, with no name any app can use. Learn them here the "
+                + "same way: tap Learn, go into that category for real, then come back to this screen.", true));
+        for (String category : SettingsMenu.NEEDS_LEARN) {
+            String label = category.equals("connected") ? "Connected devices (Connection preferences)" : SettingsWatchdog.label(category);
+            String learned = SettingsMenu.learnedTarget(this, category);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            TextView rowLabel = Ui.body(this, label, false);
+            rowLabel.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(rowLabel);
+            row.addView(Ui.button(this, learned != null ? "Re-learn" : "Learn", Ui.OUTLINED,
+                    v -> startLocalLearn(category, "menu", label)));
+            Ui.add(menuCard, row, 4);
+            if (learned != null) {
+                LinearLayout learnedRow = new LinearLayout(this);
+                learnedRow.setOrientation(LinearLayout.HORIZONTAL);
+                learnedRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                TextView learnedText = Ui.body(this, "Set to: " + learned, true);
+                learnedText.setTextSize(12);
+                learnedText.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                learnedRow.addView(learnedText);
+                learnedRow.addView(Ui.button(this, "Clear", Ui.OUTLINED, v -> {
+                    if (!unlocked()) return;
+                    SettingsMenu.clearLearnedTarget(this, category);
+                    build();
+                }));
+                Ui.add(menuCard, learnedRow, 8);
             }
         }
 

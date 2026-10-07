@@ -56,6 +56,18 @@
             android:name=".BluetoothActivity"
             android:exported="false" />
 
+        <!-- Its own icon in the regular launcher, named and shaped like the real Settings app. -->
+        <activity
+            android:name=".SettingsMenuActivity"
+            android:exported="true"
+            android:label="Settings"
+            android:icon="@android:drawable/ic_menu_preferences">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".HomeActivity"
             android:exported="true"
