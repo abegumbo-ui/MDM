@@ -1088,12 +1088,7 @@ public class AdminActivity extends Activity {
                 + " Status: " + (Master.isSet(this) ? "set" : "not set") + ".", true));
         action(master, Master.isSet(this) ? "Change master code" : "Set master code", Ui.TONAL, v -> changeMaster());
 
-        boolean hidden;
-        try {
-            hidden = new JSONObject(Agent.prefs(this).getString("policy", "{}")).optBoolean("hideAppIcon", false);
-        } catch (Exception e) {
-            hidden = false;
-        }
+        final boolean hidden = isAppIconHidden();
         LinearLayout icon = Ui.card(this, root);
         icon.addView(Ui.titleText(this, "App icon"));
         icon.addView(Ui.body(this, hidden
@@ -1133,6 +1128,14 @@ public class AdminActivity extends Activity {
         action(device, "Stop managing and remove this app", Ui.OUTLINED, v -> confirm(
                 "Release this phone and uninstall the agent?", () -> release(true)));
         action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
+    }
+
+    private boolean isAppIconHidden() {
+        try {
+            return new JSONObject(Agent.prefs(this).getString("policy", "{}")).optBoolean("hideAppIcon", false);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void changeMaster() {
