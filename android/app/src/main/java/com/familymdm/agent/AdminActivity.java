@@ -1081,6 +1081,42 @@ public class AdminActivity extends Activity {
     }
 
     private void buildDeviceSection(LinearLayout root) {
+        LinearLayout master = Ui.card(this, root);
+        master.addView(Ui.titleText(this, "Master code"));
+        master.addView(Ui.body(this, "Opens this screen and every other code prompt. Works here with no internet"
+                + (Agent.standalone(this) ? "." : ", and reaches the dashboard on the next sync, same as from there.")
+                + " Status: " + (Master.isSet(this) ? "set" : "not set") + ".", true));
+        action(master, Master.isSet(this) ? "Change master code" : "Set master code", Ui.TONAL, v -> changeMaster());
+
+        final boolean hidden = isAppIconHidden();
+        LinearLayout icon = Ui.card(this, root);
+        icon.addView(Ui.titleText(this, "App icon"));
+        icon.addView(Ui.body(this, hidden
+                ? "Hidden. Dial *#*#636#*#* on this phone to bring it back, or turn it back on here or from the dashboard."
+                : "Visible, like any other app. Hiding it doesn't stop anything -- this phone keeps syncing with the dashboard and applying policy exactly the same either way.", true));
+        action(icon, hidden ? "Show app icon" : "Hide app icon", hidden ? Ui.OUTLINED : Ui.TONAL, v -> {
+            if (!unlocked()) return;
+            try {
+                String stored = Agent.prefs(this).getString("policy", "{}");
+                JSONObject policy = new JSONObject(stored);
+                boolean newValue = !hidden;
+                policy.put("hideAppIcon", newValue);
+                long rev = System.currentTimeMillis();
+                Agent.prefs(this).edit()
+                        .putString("policy", policy.toString())
+                        .putLong("hideAppIconRev", rev)
+                        .putBoolean("hideAppIconValue", newValue)
+                        .apply();
+                Agent.addEvent(this, "local", "Master code on phone: " + (newValue ? "hid" : "showed") + " the app icon");
+                PolicyApplier.applyStored(this);
+                AgentService.requestSync();
+                build();
+                toast(newValue ? "Hidden. Dial *#*#636#*#* to bring it back." : "Visible again.");
+            } catch (Exception e) {
+                toast("Could not change it: " + e.getMessage());
+            }
+        });
+
         LinearLayout device = Ui.card(this, root);
         device.addView(Ui.titleText(this, "Device"));
         action(device, "Reboot", Ui.TONAL, v -> confirm("Reboot the phone?", () -> run(() -> {
@@ -1092,6 +1128,46 @@ public class AdminActivity extends Activity {
         action(device, "Stop managing and remove this app", Ui.OUTLINED, v -> confirm(
                 "Release this phone and uninstall the agent?", () -> release(true)));
         action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
+    }
+
+    private boolean isAppIconHidden() {
+        try {
+            return new JSONObject(Agent.prefs(this).getString("policy", "{}")).optBoolean("hideAppIcon", false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void changeMaster() {
+        final EditText input = Ui.field(this, "New master code (6 or more characters)");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        LinearLayout box = form(input);
+        android.app.AlertDialog dialog = Ui.alertDialog(this)
+                .setTitle("Change master code")
+                .setView(box)
+                .create();
+        Ui.add(box, Ui.button(this, "Save", Ui.FILLED, v -> {
+            if (!unlocked()) return;
+            String code = input.getText().toString();
+            if (code.length() < 6) {
+                toast("Must be at least 6 characters.");
+                return;
+            }
+            try {
+                Master.setLocal(this, code);
+                // Marks this as the newer value so the dashboard adopts it on the next sync,
+                // same single-value tug-of-war already used for Home screen mode and the app icon.
+                Agent.prefs(this).edit().putLong("masterRev", System.currentTimeMillis()).apply();
+                dialog.dismiss();
+                if (!Agent.standalone(this)) AgentService.requestSync();
+                build();
+                toast("Master code changed.");
+            } catch (Exception e) {
+                toast("Could not change it: " + e.getMessage());
+            }
+        }), 16);
+        Ui.add(box, Ui.button(this, "Cancel", Ui.OUTLINED, v -> dialog.dismiss()), 8);
+        dialog.show();
     }
 
     private void refreshStatus() {

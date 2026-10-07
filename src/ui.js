@@ -1,20 +1,15 @@
 // Dashboard pages. Material 3 styling with plain CSS and vanilla JS (no build step, no libraries).
 
 const STYLE = String.raw`
+/* Same dark red theme as the phone app itself (see android/app/src/main/res/values/colors.xml) --
+   one fixed theme, not light/dark depending on the system, same as the app only ever has the one. */
 :root{
-  --primary:#6750a4;--on-primary:#fff;--primary-container:#eaddff;--on-primary-container:#21005d;
-  --secondary-container:#e8def8;--on-secondary-container:#1d192b;
-  --surface:#fef7ff;--surface-1:#f7f2fa;--surface-2:#f3edf7;--surface-3:#ece6f0;
-  --on-surface:#1d1b20;--on-surface-variant:#49454f;--outline:#79747e;--outline-variant:#cac4d0;
-  --error:#b3261e;--error-container:#f9dedc;--ok:#146c2e;--ok-container:#d8f5df;--warn:#8a5100;--warn-container:#ffe9c7;
+  --primary:#C62828;--on-primary:#fff;--primary-container:#3A0A0A;--on-primary-container:#FFCDD2;
+  --secondary-container:#262626;--on-secondary-container:#fff;
+  --surface:#0D0D0D;--surface-1:#171717;--surface-2:#1c1c1c;--surface-3:#222222;
+  --on-surface:#fff;--on-surface-variant:#B0B0B0;--outline:#3A3A3A;--outline-variant:#2A2A2A;
+  --error:#FF5252;--error-container:#4a1515;--ok:#7fd99a;--ok-container:#0f3d1c;--warn:#ffb95c;--warn-container:#4a2f00;
 }
-@media(prefers-color-scheme:dark){:root{
-  --primary:#d0bcff;--on-primary:#381e72;--primary-container:#4f378b;--on-primary-container:#eaddff;
-  --secondary-container:#4a4458;--on-secondary-container:#e8def8;
-  --surface:#141218;--surface-1:#1d1b20;--surface-2:#211f26;--surface-3:#2b2930;
-  --on-surface:#e6e0e9;--on-surface-variant:#cac4d0;--outline:#938f99;--outline-variant:#49454f;
-  --error:#f2b8b5;--error-container:#8c1d18;--ok:#7fd99a;--ok-container:#0f3d1c;--warn:#ffb95c;--warn-container:#4a2f00;
-}}
 *{box-sizing:border-box}
 html{background:var(--surface)}
 body{margin:0;background:var(--surface);color:var(--on-surface);font:14px/1.5 Roboto,system-ui,sans-serif;overscroll-behavior-y:none}
@@ -88,7 +83,7 @@ pre.cmd{background:var(--surface-3);border-radius:12px;padding:12px;white-space:
 `;
 
 export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>MDM Login</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0D0D0D"><title>MDM Login</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
 <style>${STYLE}</style></head>
 <body><div class="login"><div class="card"><h2 style="font-size:22px;margin-bottom:12px">MDM Dashboard</h2>
@@ -96,7 +91,7 @@ export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><
 <button class="btn">Sign in</button></div>${error ? `<p class="mute" style="color:var(--error)">${error}</p>` : ""}</form></div></div></body></html>`;
 
 export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>MDM Dashboard</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0D0D0D"><title>MDM Dashboard</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>${STYLE}</style></head>
@@ -107,7 +102,12 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <div id="snack"></div>
 <script>
 const DAYS=['S','M','T','W','T','F','S'];
-let deviceTab=0,lastOpenId=null; // which pager page a device's detail view is on, kept across re-renders (e.g. typing in a search box)
+// Which pager page a device's detail view is on, kept across re-renders (e.g. typing in a search
+// box) -- and in sessionStorage too, because a phone browser backgrounded for a minute or so often
+// throws this whole tab away and reloads it fresh when you switch back, which looked like "it just
+// goes back to Overview on its own" with nothing actually wrong.
+let deviceTab=parseInt(sessionStorage.getItem('deviceTab')||'0',10)||0,lastOpenId=sessionStorage.getItem('lastOpenId')||null;
+function setDeviceTab(i){deviceTab=i;try{sessionStorage.setItem('deviceTab',i)}catch(e){}}
 let state=null,devices=[],browsers=[],windevices=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
 function route(){const x=(location.hash||'#devices').slice(1);
  if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null;openWinId=null}
@@ -274,7 +274,7 @@ function resetCard(d){
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No phone protection is unbreakable. This checks the known ways around a reset: resetting from Settings, Safe Mode, USB debugging, an unlocked bootloader, an old system, and simply setting the phone up again.'));
  return card}
 function renderDeviceDetail(m,d){
- if(d.id!==lastOpenId){lastOpenId=d.id;deviceTab=0}
+ if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceTab(0)}
  const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
  m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
  m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico dev',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;padding:0'},'📱'),
@@ -373,7 +373,8 @@ function renderDeviceDetail(m,d){
  devBox.append(dd);ct.append(devBox);
 
  // ----- Location (on demand -- a single fix per tap, never continuous tracking) -----
- const loc=h('section');const locCard=h('div',{class:'card'},h('h2',null,'Location'),
+ // Folded into Controls below instead of its own tab -- one card doesn't need a whole tab to itself.
+ const locCard=h('div',{class:'card'},h('h2',null,'Location'),
   h('div',{class:'mute'},'One fix at a time, only when you ask -- nothing here tracks the phone continuously or stores a history of where it\'s been.'));
  locCard.append(h('div',{style:'margin-top:8px'},btn('Find now','tonal',async function(){
   await call('POST','/api/devices/'+d.id+'/command',{type:'locate',args:{}});
@@ -388,16 +389,16 @@ function renderDeviceDetail(m,d){
    h('div',{class:'mute small'},'As of '+ago(lastFix.at)+'.'),
    h('a',{href:'https://maps.google.com/?q='+fix.lat+','+fix.lon,target:'_blank',rel:'noopener',style:'display:inline-block;margin-top:4px'},'Open in Google Maps ↗')));
   else locCard.append(h('div',{class:'mute small',style:'margin-top:8px'},'Could not read the last result.'))}
- loc.append(locCard);
+ ct.append(locCard);
 
  // ----- Apps on this phone -----
- const ap=h('section');const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
+ // Folded into the Apps tab below (with App rules and System apps) instead of its own tab.
+ const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
  for(const a of d.packages)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},d));
  if(!d.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
- ap.append(al);
 
  // ----- System apps (hidden from the launcher, e.g. a lock-screen component) -----
- const sa=h('section');const sal=h('div',{class:'card'},h('h2',null,'System apps'),
+ const sal=h('div',{class:'card'},h('h2',null,'System apps'),
   h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "On this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
  sal.append(h('div',{style:'margin-top:8px'},btn('Scan for hidden system apps','tonal',async function(){
   await call('POST','/api/devices/'+d.id+'/command',{type:'listSystemApps',args:{}});
@@ -415,7 +416,6 @@ function renderDeviceDetail(m,d){
   for(const a of shown)sal.append(appRow({p:a.p,l:a.l,s:true,prot:false,hiddenOn:a.h?1:0},d,{triple:true}));
   if(!sysApps.length)sal.append(h('div',{class:'mute'},'No hidden system apps found.'));
   else if(!shown.length)sal.append(h('div',{class:'mute'},'No system apps match.'))}
- sa.append(sal);
 
  // ----- Log -----
  const lg=h('section');
@@ -431,8 +431,8 @@ function renderDeviceDetail(m,d){
  for(const e of d.events.slice().reverse())ll.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
  lg.append(ll);
 
- // ----- Network -----
- const nw=h('section');const wl=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
+ // ----- Network (folded into the Settings tab below instead of its own tab) -----
+ const wl=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
  wl.append(kv('Now',d.info.wifi?(d.info.wifi.transport==='wifi'?(d.info.wifi.ssid||'(name hidden: Location is off)'):d.info.wifi.transport==='mobile'?'Mobile data':'No connection'):'unknown'));
  for(const n of d.wifiNetworks){const pw=h('span',{class:'mono'},n.password?'••••••••':'(open)');
   const show=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');show.onclick=function(){pw.textContent=n.password||'(open)'};
@@ -441,18 +441,20 @@ function renderDeviceDetail(m,d){
  wl.append(h('div',{style:'margin-top:8px'},btn('Add Wi-Fi network…','',async function(){
    const v=await ask('Add a Wi-Fi network',[{key:'ssid',label:'Network name',max:32},{key:'password',label:'Password (leave empty for an open network)',max:63}],'Add to phone');
    if(!v||!v.ssid)return;await queue('Add Wi-Fi','addWifi',{ssid:v.ssid,password:v.password})})));
- nw.append(wl);
 
  // ----- App rules, Sites, Settings: this device's own, independent of every other device -----
- const arules=h('section');renderApps(arules,d);
+ // Apps on this phone and System apps join App rules here; Wi-Fi joins Settings; Location joined
+ // Controls above -- ten tabs down to six, same reasoning as the phone's own Apps/Settings hubs:
+ // real overlap between several of them and no grouping was the actual "hard to find" complaint.
+ const arules=h('section');renderApps(arules,d);arules.append(al,sal);
  const st=h('section');renderSites(st,d);
- const se=h('section');renderDeviceSettings(se,d);
+ const se=h('section');renderDeviceSettings(se,d);se.append(wl);
 
  // ----- pager -----
- const parts=[['Overview',ov],['Controls',ct],['Location',loc],['On this phone',ap],['App rules',arules],['System apps',sa],['Sites',st],['Settings',se],['Log',lg],['Network',nw]];
+ const parts=[['Overview',ov],['Controls',ct],['Apps',arules],['Browsing',st],['Settings',se],['Log',lg]];
  const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
- parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){deviceTab=i;pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
- pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));deviceTab=i;[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
+ parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){setDeviceTab(i);pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
+ pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));setDeviceTab(i);[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
  m.append(tabsRow,pager,h('div',{class:'mute small',style:'margin-top:8px;text-align:center'},'Swipe sideways or tap a tab'));
  // A re-render (e.g. typing in a search box inside a pager page) rebuilds this whole pager from
  // scratch, which would otherwise always snap back to the first tab — jump straight back instead.

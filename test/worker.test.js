@@ -449,6 +449,26 @@ test("a restriction flipped on the phone becomes the real dashboard setting, not
   assert.ok(!sync.policy.restrictions.includes("no_camera"));
 });
 
+test("a master code changed on the phone becomes the real dashboard setting, not a permanent shadow state", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  const value = { salt: "a".repeat(32), hash: "b".repeat(64), iterations: 10000 };
+  let sync = await (await post("/agent/sync", { masterValue: value, masterRev: 100 }, auth)).json();
+  assert.deepEqual(sync.master, value, "echoed straight back, so the phone that just sent it adopts the same value");
+  let dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
+  assert.equal(dev.masterSet, true, "the dashboard now mirrors what happened on the phone");
+
+  // stale revision is ignored
+  const stale = { salt: "c".repeat(32), hash: "d".repeat(64), iterations: 10000 };
+  sync = await (await post("/agent/sync", { masterValue: stale, masterRev: 50 }, auth)).json();
+  assert.deepEqual(sync.master, value);
+
+  // Changing it from the dashboard now actually sticks -- no stale phone-side value left to fight it.
+  await put(cookie, `/api/devices/${id}/master`, { salt: "e".repeat(32), hash: "f".repeat(64) });
+  sync = await (await post("/agent/sync", {}, auth)).json();
+  assert.equal(sync.master.salt, "e".repeat(32));
+});
+
 test("phone log events are stored and shown", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);
