@@ -59,6 +59,11 @@ public class AdminActivity extends Activity {
     private java.util.List<PlayUpdates.UpdateInfo> updatesList;
     private String updatesError;
     private boolean updatesChecking;
+    // System Apps section: apps with no launcher icon of their own -- not kept in sync
+    // automatically, same as the dashboard's own equivalent scan; null = not scanned this visit.
+    private JSONArray systemAppsCache;
+    private String systemAppsQuery = "";
+    private boolean systemAppsLoading;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -272,11 +277,13 @@ public class AdminActivity extends Activity {
             Ui.add(root, Ui.rowTile(this, "Regular Apps", R.drawable.ic_apps_tile, v -> { appsSub = "regular"; build(); }), 0);
             Ui.add(root, Ui.rowTile(this, "Home Screen Mode", R.drawable.ic_home_tile, v -> { appsSub = "kiosk"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "Blocking", R.drawable.ic_shield, v -> { appsSub = "blocking"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "System Apps", R.drawable.ic_device_tile, v -> { appsSub = "system"; build(); }), 8);
             return;
         }
         if ("regular".equals(appsSub)) buildAppsSection(root);
         else if ("kiosk".equals(appsSub)) buildKioskSection(root);
         else if ("blocking".equals(appsSub)) buildBlockingSection(root);
+        else if ("system".equals(appsSub)) buildSystemAppsSection(root);
     }
 
     /** Same idea as buildAppsHub, for the five "phone configuration" tiles that used to each be
@@ -416,6 +423,95 @@ public class AdminActivity extends Activity {
         appsPickerHolder.setOrientation(LinearLayout.VERTICAL);
         Ui.add(root, appsPickerHolder, 8);
         if (showingAppsPicker) showAppsPicker(appsPickerHolder, false);
+    }
+
+    /** Apps with no launcher icon of their own -- not what "Regular Apps" shows. Scanning reads
+     * straight from the phone (can run to a few hundred entries, so it only happens on tap, not on
+     * every visit), the same scope the dashboard's own "System apps" scan already covers; this is
+     * the on-phone equivalent of that, previously missing here entirely. Hiding/showing one reuses
+     * WholeAppBlocklist, the same OS-level hide "Hard Block" already uses elsewhere. */
+    private void buildSystemAppsSection(LinearLayout root) {
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "System Apps"));
+        card.addView(Ui.body(this, "Blocking one of these needs real care -- it can break a part of "
+                + "the phone if it's something Android depends on.", true));
+        action(card, systemAppsLoading ? "Scanning..." : (systemAppsCache == null ? "Scan for system apps" : "Scan again"), Ui.TONAL, v -> {
+            if (systemAppsLoading) return;
+            systemAppsLoading = true;
+            build();
+            new Thread(() -> {
+                JSONArray result;
+                try {
+                    result = PolicyApplier.collectSystemPackages(this);
+                } catch (Exception e) {
+                    result = new JSONArray();
+                }
+                final JSONArray found = result;
+                runOnUiThread(() -> {
+                    systemAppsLoading = false;
+                    systemAppsCache = found;
+                    build();
+                });
+            }).start();
+        });
+
+        if (systemAppsCache == null) return;
+        final EditText search = Ui.field(this, "Search system apps");
+        search.setText(systemAppsQuery);
+        Ui.add(root, search, 8);
+        LinearLayout listHolder = new LinearLayout(this);
+        listHolder.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(root, listHolder, 8);
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                systemAppsQuery = s.toString();
+                renderSystemAppsGrid(listHolder);
+            }
+        });
+        renderSystemAppsGrid(listHolder);
+    }
+
+    private void renderSystemAppsGrid(LinearLayout holder) {
+        holder.removeAllViews();
+        android.content.pm.PackageManager pm = getPackageManager();
+        java.util.Set<String> hardBlocked = WholeAppBlocklist.list(this);
+        String needle = systemAppsQuery.trim().toLowerCase();
+        android.widget.GridLayout grid = Ui.tileGrid(this);
+        for (int i = 0; i < systemAppsCache.length(); i++) {
+            JSONObject a = systemAppsCache.optJSONObject(i);
+            if (a == null) continue;
+            final String pkg = a.optString("p", "");
+            final String label = a.optString("l", pkg);
+            if (!needle.isEmpty() && !label.toLowerCase().contains(needle) && !pkg.toLowerCase().contains(needle)) continue;
+            final boolean hidden = hardBlocked.contains(pkg) || a.optBoolean("h");
+            Ui.addTile(grid, Ui.appTile(this, label + "\n(" + (hidden ? "hidden" : "visible") + ")", appIcon(pm, pkg), 72,
+                    v -> promptSystemAppToggle(holder, pkg, label, hidden)));
+        }
+        Ui.add(holder, grid, 4);
+        if (grid.getChildCount() == 0) Ui.add(holder, Ui.body(this, "No system apps match.", true), 8);
+    }
+
+    private void promptSystemAppToggle(LinearLayout holder, String pkg, String label, boolean hidden) {
+        if (!unlocked()) return;
+        Ui.alertDialog(this)
+                .setTitle(label)
+                .setMessage(hidden ? "Show this system app again?"
+                        : "Hide this system app? Only do this if you're sure what it is -- hiding the wrong one can break a part of the phone.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton(hidden ? "Show" : "Hide", (d, w) -> {
+                    if (hidden) WholeAppBlocklist.remove(this, pkg);
+                    else WholeAppBlocklist.add(this, pkg);
+                    Agent.addEvent(this, "local", "Master code on phone: " + (hidden ? "showed" : "hid") + " the system app \"" + pkg + "\"");
+                    renderSystemAppsGrid(holder);
+                })
+                .show();
     }
 
     /** Not the whole Play Store -- just the installed, not-blocked apps on this phone (plus
@@ -850,6 +946,51 @@ public class AdminActivity extends Activity {
                 }
             });
         }
+
+        buildRestrictionsCard(root);
+    }
+
+    /** Read-only, on purpose: for a dashboard-connected phone, restrictions are set from the
+     * dashboard's own Restrictions card -- this just answers "what's actually active on this
+     * phone right now and what does it mean", the same information Android's own "blocked by your
+     * admin" system dialogs refer to, in one place instead of hunting for it restriction by
+     * restriction. A standalone phone's own equivalent (with the toggles themselves) is Overview ->
+     * Phone settings -> Restrictions. */
+    private void buildRestrictionsCard(LinearLayout root) {
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Restrictions"));
+        java.util.Set<String> active = new java.util.TreeSet<>(Agent.getSet(this, "restrictions"));
+        if (Agent.standalone(this)) {
+            card.addView(Ui.body(this, "Set from Overview -> Phone settings -> Restrictions on this phone.", true));
+        } else {
+            card.addView(Ui.body(this, "Set from the dashboard's own Restrictions card. Read-only here -- "
+                    + "this is what's actually active on this phone right now.", true));
+        }
+        if (active.isEmpty()) {
+            card.addView(Ui.body(this, "None are on right now.", true));
+        } else {
+            StringBuilder sb = new StringBuilder();
+            for (String key : active) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(humanizeRestriction(key));
+            }
+            card.addView(Ui.body(this, sb.toString(), false));
+        }
+    }
+
+    /** "no_camera" -> "Block camera"; matches the same key format the dashboard's own Restrictions
+     * card uses, just turned back into words here instead of carrying ~77 hand-written labels over
+     * from there too. */
+    private String humanizeRestriction(String key) {
+        String s = key.startsWith("no_") ? key.substring(3) : key.startsWith("disallow_") ? key.substring(9) : key;
+        String[] words = s.split("_");
+        StringBuilder sb = new StringBuilder("Block ");
+        for (int i = 0; i < words.length; i++) {
+            if (words[i].isEmpty()) continue;
+            if (i > 0) sb.append(' ');
+            sb.append(Character.toUpperCase(words[i].charAt(0))).append(words[i].substring(1));
+        }
+        return sb.toString();
     }
 
     private void buildNetworkSection(LinearLayout root) {
@@ -1424,9 +1565,17 @@ public class AdminActivity extends Activity {
                 .create();
 
         boolean alreadyAllowed = state.equals("allowed");
+        boolean hardBlocked = state.equals("hard blocked");
         if (!alreadyAllowed) {
             Ui.add(box, Ui.rowTile(this, "Allow", R.drawable.ic_apps_tile, v -> {
                 dialog.dismiss();
+                // A hard-blocked app is hidden at the Android level (WholeAppBlocklist), a
+                // completely different, global mechanism from the regular allow/block override --
+                // setting the override alone (what this used to do unconditionally) left the app
+                // still hidden with no visible reason why. Un-hiding it is available from either
+                // context now, same as hiding it in the first place only ever required Home screen
+                // mode: that asymmetry was the actual bug, not a missing confirmation step.
+                if (hardBlocked) WholeAppBlocklist.remove(this, pkg);
                 setApp(gridHolder, pkg, "allow");
             }), 0);
         }
