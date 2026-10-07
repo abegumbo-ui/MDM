@@ -248,7 +248,7 @@ public class HomeActivity extends Activity {
         t.setLayoutParams(glp);
 
         ImageView icon = new ImageView(this);
-        icon.setImageResource(android.R.drawable.ic_menu_preferences);
+        icon.setImageResource(R.drawable.ic_settings_modern);
         t.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
 
         TextView name = Ui.body(this, "Settings", false);
