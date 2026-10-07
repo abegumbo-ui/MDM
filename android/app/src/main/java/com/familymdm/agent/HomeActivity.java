@@ -51,11 +51,15 @@ public class HomeActivity extends Activity {
         }
     };
 
-    /** Lets Kiosk.clear() exit this screen right away instead of waiting for the 30s refresh. */
+    /** Fires on every policy pass, not just when kiosk mode itself turns off -- lets Kiosk.clear()
+     * exit this screen right away instead of waiting for the 30s refresh, AND (just as important)
+     * redraws the grid right away when the allowed-apps list itself changes while kiosk mode stays
+     * on, instead of leaving stale tiles on screen for up to 30 seconds after an allow/block change. */
     private final BroadcastReceiver kioskChanged = new BroadcastReceiver() {
         @Override
         public void onReceive(Context ctx, Intent intent) {
             if (!Kiosk.active(HomeActivity.this)) leave();
+            else build();
         }
     };
 

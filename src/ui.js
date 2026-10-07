@@ -796,9 +796,13 @@ function renderDeviceSettings(m,dv){
 }
 
 load().catch(function(e){snack(e.message,1);document.getElementById('main').textContent='Could not load: '+e.message});
+// Every 5 minutes, not 60 seconds -- each of these three calls reads every device from Workers KV
+// (one get() per device), and a dashboard tab left open all day was the main thing actually burning
+// through the free tier's ~100,000 reads/day cap. Any action you take still reloads immediately on
+// its own, so this interval is only about catching changes from elsewhere (another tab, a phone).
 setInterval(function(){if(document.hidden)return;
  call('GET','/api/devices').then(function(d){devices=d;if(tab==='devices')render()}).catch(function(){});
  call('GET','/api/browsers').then(function(b){for(const x of b)x.isBrowser=true;browsers=b;if(tab==='devices')render()}).catch(function(){});
  call('GET','/api/windevices').then(function(w){windevices=w;if(tab==='devices')render()}).catch(function(){});
-},60000);
+},300000);
 </script></body></html>`;

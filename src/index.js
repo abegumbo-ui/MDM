@@ -84,7 +84,10 @@ async function sessionCookie(env) {
 
 // ---- KV state ----
 const getJSON = async (env, key, dflt) => (await env.STATE.get(key, "json")) ?? dflt;
-const putJSON = (env, key, val, opts) => env.STATE.put(key, JSON.stringify(val), opts);
+const putJSON = (env, key, val, opts) => {
+  invalidateListCache(key);
+  return env.STATE.put(key, JSON.stringify(val), opts);
+};
 // Every device (and every standalone Browser) carries its own independent config -- apps, sites,
 // and every Settings toggle. A brand-new device starts from a clean, empty config, never from
 // another device's rules -- app rules set for one phone (e.g. because of something only relevant
@@ -96,18 +99,44 @@ async function configOf(env, d) {
   return { cfg, seeded: true };
 }
 
-async function listDevices(env) {
+// Listing any of the three device kinds below reads every single record from KV, one get() per
+// device -- that's the normal, correct way to do it, but it means the dashboard's own 60-second
+// auto-refresh (ui.js) burns through Workers KV's free-tier ~100,000 reads/day cap far faster than
+// a handful of phones checking in every few minutes ever would, especially with more than one
+// admin tab/session open at once. A short, per-isolate cache doesn't make that correct (a change
+// can take up to CACHE_MS to show up through the auto-refresh alone), but every action in ui.js
+// already reloads right after making it, so that's the only path that actually needs to be instant
+// -- and it is, since it's a fresh, uncached call either way.
+const CACHE_MS = 20 * 1000;
+const listCaches = { device: { at: 0, value: null }, browserDevice: { at: 0, value: null }, winDevice: { at: 0, value: null } };
+// Called on every write/delete to a device:/browserDevice:/winDevice: key (see putJSON below, and
+// the three explicit deletes) so a just-made change is never masked by a stale cached list -- the
+// cache only ever saves a read when nothing relevant changed, never when something did.
+function invalidateListCache(key) {
+  const prefix = key.split(":")[0];
+  if (listCaches[prefix]) listCaches[prefix].at = 0;
+}
+async function listByPrefix(env, prefix) {
+  const cache = listCaches[prefix];
+  const now = Date.now();
+  if (cache.value && now - cache.at < CACHE_MS) return cache.value;
   const out = [];
   let cursor;
   do {
-    const page = await env.STATE.list({ prefix: "device:", ...(cursor && { cursor }) });
+    const page = await env.STATE.list({ prefix: `${prefix}:`, ...(cursor && { cursor }) });
     for (const k of page.keys) {
       const d = await getJSON(env, k.name, null);
       if (d) out.push(d);
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
+  cache.value = out;
+  cache.at = now;
   return out;
+}
+
+async function listDevices(env) {
+  return listByPrefix(env, "device");
 }
 
 const publicDevice = (d) => ({
@@ -135,17 +164,7 @@ const publicDevice = (d) => ({
 // at all. Each has its own "sites" allowlist, same as any agent-managed device, but no app policy,
 // restrictions, or device-owner features of their own.
 async function listBrowserDevices(env) {
-  const out = [];
-  let cursor;
-  do {
-    const page = await env.STATE.list({ prefix: "browserDevice:", ...(cursor && { cursor }) });
-    for (const k of page.keys) {
-      const d = await getJSON(env, k.name, null);
-      if (d) out.push(d);
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-  return out;
+  return listByPrefix(env, "browserDevice");
 }
 
 const publicBrowserDevice = (d) => ({
@@ -188,17 +207,7 @@ async function authBrowserDevice(request, env) {
 // Device" for the admin to rename and manage -- enable/disable lockdown, the allowed-programs
 // list, and remote removal, all from here instead of only locally on the machine's own Setup app.
 async function listWinDevices(env) {
-  const out = [];
-  let cursor;
-  do {
-    const page = await env.STATE.list({ prefix: "winDevice:", ...(cursor && { cursor }) });
-    for (const k of page.keys) {
-      const d = await getJSON(env, k.name, null);
-      if (d) out.push(d);
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-  return out;
+  return listByPrefix(env, "winDevice");
 }
 
 const publicWinDevice = (d) => ({
@@ -519,6 +528,7 @@ async function adminApi(request, env, url) {
       // The app keeps no local fallback of its own, so this is the only way to disconnect it
       // short of uninstalling: without a token it goes right back to "nothing is allowed" and
       // needs a fresh code.
+      invalidateListCache(key);
       await env.STATE.delete(key);
       return json({ ok: true });
     }
@@ -542,6 +552,7 @@ async function adminApi(request, env, url) {
     const d = await getJSON(env, key, null);
     if (!d) return json({ error: "Unknown device" }, 404);
     if (method === "DELETE" && !dev[2]) {
+      invalidateListCache(key);
       await env.STATE.delete(key);
       return json({ ok: true });
     }
@@ -623,6 +634,7 @@ async function adminApi(request, env, url) {
       // Same as disconnecting a Browser: without a token it goes right back to doing nothing
       // locally until re-registered. If the device is still alive, use the "uninstall" command
       // below first so it actually removes itself, rather than just losing contact with it.
+      invalidateListCache(key);
       await env.STATE.delete(key);
       return json({ ok: true });
     }
