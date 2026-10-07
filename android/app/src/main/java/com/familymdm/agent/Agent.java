@@ -97,6 +97,21 @@ final class Agent {
     }
 
     /**
+     * "Only control from the dashboard" (Settings on the dashboard): the phone's own master-code
+     * Administrator panel refuses to open at all, so every change has to come from the dashboard
+     * instead. Meaningless (and ignored) on a standalone phone, since that phone has no dashboard
+     * to fall back on -- the on-phone panel is the only way to manage it at all.
+     */
+    static boolean phoneAdminLocked(Context c) {
+        if (standalone(c)) return false;
+        try {
+            return new JSONObject(prefs(c).getString("policy", "{}")).optBoolean("phoneAdminLocked", false);
+        } catch (JSONException e) {
+            return false;
+        }
+    }
+
+    /**
      * Battery saving: an enrolled device that has stopped checking in with the dashboard, on
      * purpose, until someone turns it back on from this phone's own Admin screen. Unlike
      * standalone(), this phone still has a dashboard and a token -- it is just not using them
