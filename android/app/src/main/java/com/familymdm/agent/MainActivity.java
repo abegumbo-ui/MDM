@@ -14,11 +14,16 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.InputStream;
 import java.text.DateFormat;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Status and enrollment screen. Actions are locked behind codes the administrator controls: one-time
@@ -27,6 +32,27 @@ import java.util.Date;
 public class MainActivity extends Activity {
     private static final int PICK_APK = 1;
     private static final long PICK_WINDOW_MS = 5 * 60 * 1000;
+
+    // Settings categories with a stable, documented android.provider.Settings action that opens
+    // that category's real top-level screen directly -- a fast, direct door into just that one
+    // area, not an attempt to fence the real Settings app off from anything else (Android has no
+    // API for that; once inside, normal Settings navigation, search included, still works as it
+    // always does). Categories without a clean dedicated top-level action are left out rather than
+    // guessed at with a narrower sub-screen that might surprise someone.
+    private static final LinkedHashMap<String, String> QUICK_SETTINGS = new LinkedHashMap<>();
+    static {
+        QUICK_SETTINGS.put("network", Settings.ACTION_WIRELESS_SETTINGS);
+        QUICK_SETTINGS.put("connected", Settings.ACTION_BLUETOOTH_SETTINGS);
+        QUICK_SETTINGS.put("apps", Settings.ACTION_APPLICATION_SETTINGS);
+        QUICK_SETTINGS.put("notifications", Settings.ACTION_ALL_APPS_NOTIFICATION_SETTINGS);
+        QUICK_SETTINGS.put("sound", Settings.ACTION_SOUND_SETTINGS);
+        QUICK_SETTINGS.put("display", Settings.ACTION_DISPLAY_SETTINGS);
+        QUICK_SETTINGS.put("storage", Settings.ACTION_INTERNAL_STORAGE_SETTINGS);
+        QUICK_SETTINGS.put("security", Settings.ACTION_SECURITY_SETTINGS);
+        QUICK_SETTINGS.put("location", Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        QUICK_SETTINGS.put("accessibility", Settings.ACTION_ACCESSIBILITY_SETTINGS);
+        QUICK_SETTINGS.put("aboutPhone", Settings.ACTION_DEVICE_INFO_SETTINGS);
+    }
     // Survives Activity re-creation within the same process, but not a fresh launch (process restart,
     // reboot, the app swiped away) — so the app re-locks whenever it was actually closed, without
     // nagging for every internal navigation (e.g. opening the file picker and coming back).
@@ -46,6 +72,7 @@ public class MainActivity extends Activity {
     private boolean reshowFrp;
     private LinearLayout enrollBox;
     private LinearLayout actionsBox;
+    private LinearLayout quickSettingsCard;
     private EditText serverField;
     private EditText codeField;
     private android.widget.Button enrollButton;
@@ -136,6 +163,8 @@ public class MainActivity extends Activity {
         actionsBox = new LinearLayout(this);
         actionsBox.setOrientation(LinearLayout.VERTICAL);
         Ui.add(root, actionsBox, 0);
+
+        quickSettingsCard = Ui.card(this, actionsBox);
 
         LinearLayout upd = Ui.card(this, actionsBox);
         upd.addView(Ui.titleText(this, "Update"));
@@ -343,6 +372,49 @@ public class MainActivity extends Activity {
         updateText.setText("This agent is build " + Updater.currentBuild(this) + ".");
         boolean canPick = System.currentTimeMillis() < Agent.prefs(this).getLong("installUntil", 0);
         pickButton.setVisibility(canPick ? View.VISIBLE : View.GONE);
+        refreshQuickSettings(active);
+    }
+
+    /**
+     * One button per allowed category that has a real top-level Settings screen to jump straight
+     * to -- a fast door into just that area, same idea as the "quick settings shortcut" apps on
+     * the Play Store. Not a fence: once inside, Settings works like Settings always does, and the
+     * watchdog (if that category is still blocked for other categories) is what actually enforces
+     * anything, same as it always did.
+     */
+    private void refreshQuickSettings(boolean active) {
+        quickSettingsCard.removeAllViews();
+        if (!active) {
+            quickSettingsCard.setVisibility(View.GONE);
+            return;
+        }
+        quickSettingsCard.addView(Ui.titleText(this, "Quick settings"));
+        Set<String> blockedCats = new HashSet<>();
+        try {
+            String stored = Agent.prefs(this).getString("policy", null);
+            if (stored != null) {
+                JSONArray arr = new JSONObject(stored).optJSONArray("blockedSettings");
+                if (arr != null) for (int i = 0; i < arr.length(); i++) blockedCats.add(arr.optString(i));
+            }
+        } catch (Exception ignored) {
+        }
+        boolean any = false;
+        for (Map.Entry<String, String> e : QUICK_SETTINGS.entrySet()) {
+            if (blockedCats.contains(e.getKey())) continue;
+            any = true;
+            String action = e.getValue();
+            Ui.add(quickSettingsCard, Ui.button(this, SettingsWatchdog.label(e.getKey()), Ui.OUTLINED, v -> {
+                try {
+                    startActivity(new Intent(action));
+                } catch (Exception ex) {
+                    toast("Could not open that screen.");
+                }
+            }), 8);
+        }
+        if (!any) {
+            quickSettingsCard.addView(Ui.body(this, "Nothing allowed here yet -- ask the administrator to allow a category.", true));
+        }
+        quickSettingsCard.setVisibility(View.VISIBLE);
     }
 
     // ---------- offline mode setup ----------
