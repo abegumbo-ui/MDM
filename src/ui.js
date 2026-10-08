@@ -71,15 +71,29 @@ pre.cmd{background:var(--surface-3);border-radius:12px;padding:12px;white-space:
 .dev:hover{background:var(--surface-2)}
 .dev .ico{width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
 .dev .name{font-weight:500;font-size:16px}
-.pagetabs{display:flex;gap:8px;overflow-x:auto;margin:12px 0 8px;padding-bottom:4px}
+.pagetabs{display:flex;gap:4px;overflow-x:auto;margin:12px 0 8px;padding-bottom:4px}
 .pagetabs button{white-space:nowrap;border:1px solid var(--outline);background:none;color:var(--on-surface);border-radius:8px;padding:6px 14px;font:500 13px Roboto,system-ui,sans-serif;cursor:pointer}
 .pagetabs button.on{background:var(--secondary-container);color:var(--on-secondary-container);border-color:transparent}
+.pagetabs .tile{flex:none;width:68px}
+.pagetabs .tile .ico{width:44px;height:44px;font-size:20px;border-radius:14px}
 .pager{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;align-items:flex-start;scrollbar-width:none}
 .pager::-webkit-scrollbar{display:none}
 .pager>section{flex:0 0 100%;scroll-snap-align:start;min-width:0}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--outline-variant)}
 .kv:first-child{border-top:0}.kv b{font-weight:500;text-align:right;word-break:break-word}
 .login{max-width:360px;margin:16vh auto 0;padding:0 16px}
+.tilegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:14px;margin:12px 0}
+.tile{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;background:none;border:0;color:var(--on-surface);font:500 12px Roboto,system-ui,sans-serif;text-align:center;padding:0}
+.tile .ico{width:60px;height:60px;border-radius:18px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:28px}
+.tile.on .ico{background:var(--primary)}
+.tile:hover .ico{filter:brightness(1.15)}
+.search{position:relative;margin:12px 0}
+.search input{width:100%;padding-left:36px}
+.search .ico{position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--on-surface-variant)}
+.search-results{background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:12px;margin-top:4px;overflow:hidden}
+.search-results div{padding:10px 14px;cursor:pointer;border-top:1px solid var(--outline-variant)}
+.search-results div:first-child{border-top:0}
+.search-results div:hover{background:var(--surface-2)}
 `;
 
 export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -110,6 +124,7 @@ const DAYS=['S','M','T','W','T','F','S'];
 // goes back to Overview on its own" with nothing actually wrong.
 let deviceTab=parseInt(sessionStorage.getItem('deviceTab')||'0',10)||0,lastOpenId=sessionStorage.getItem('lastOpenId')||null;
 function setDeviceTab(i){deviceTab=i;try{sessionStorage.setItem('deviceTab',i)}catch(e){}}
+let deviceSearch='';
 // Second-level picker inside the Apps and Settings tabs, same hub-in-front-of-a-sub-section idiom
 // the phone app itself uses (AdminActivity's buildAppsHub/buildSettingsHub) -- null means "show the
 // picker", a key means "show that one section, with a Back button".
@@ -294,10 +309,12 @@ function resetCard(d){
 
 /* ---------- hub picker: same idiom as the phone app's own Apps/Settings hubs ---------- */
 function hubPicker(m,options){
- for(const [key,label,setSub] of options){
-  const row=h('div',{class:'card',style:'cursor:pointer'},h('div',{style:'font-weight:500'},label));
-  row.onclick=function(){setSub(key);render()};
-  m.append(row)}}
+ const grid=h('div',{class:'tilegrid'});
+ for(const [key,label,setSub,icon] of options){
+  const tile=h('button',{class:'tile'},h('div',{class:'ico'},icon||'•'),h('div',null,label));
+  tile.onclick=function(){setSub(key);render()};
+  grid.append(tile)}
+ m.append(grid)}
 function hubBack(m,setSub){
  const b=h('button',{class:'btn outline',style:'margin-bottom:12px'},'‹ Back');
  b.onclick=function(){setSub(null);render()};
@@ -308,7 +325,7 @@ function phoneLocalNote(m,text){
 /* ---------- Apps hub: Regular Apps / Home Screen Mode / Blocking / System Apps ---------- */
 function buildAppsHub(m,dv){
  if(!appsSub){
-  hubPicker(m,[['regular','Regular Apps',setAppsSub],['kiosk','Home Screen Mode',setAppsSub],['blocking','Blocking',setAppsSub],['system','System Apps',setAppsSub]]);
+  hubPicker(m,[['regular','Regular Apps',setAppsSub,'📱'],['kiosk','Home Screen Mode',setAppsSub,'🏠'],['blocking','Blocking',setAppsSub,'🛡️'],['system','System Apps',setAppsSub,'⚙️']]);
   return}
  hubBack(m,setAppsSub);
  if(appsSub==='regular'){
@@ -385,7 +402,7 @@ function buildAppsHub(m,dv){
 /* ---------- Settings hub: Settings Menu / Permissions / Network / Updates / Device ---------- */
 function buildSettingsHub(m,dv){
  if(!settingsSub){
-  hubPicker(m,[['menu','Settings Menu',setSettingsSub],['permissions','Permissions',setSettingsSub],['network','Network',setSettingsSub],['updates','Updates',setSettingsSub],['device','Device',setSettingsSub]]);
+  hubPicker(m,[['menu','Settings Menu',setSettingsSub,'📱'],['permissions','Permissions',setSettingsSub,'🔐'],['network','Network',setSettingsSub,'📶'],['updates','Updates',setSettingsSub,'🔄'],['device','Device',setSettingsSub,'💻']]);
   return}
  hubBack(m,setSettingsSub);
  if(settingsSub==='menu')phoneLocalNote(m,'The disguised "Settings" icon\'s setup (which categories show, which real screen each one opens) lives on the phone itself (Settings → Settings Menu). Phone-only by design: nothing here to configure remotely.');
@@ -505,16 +522,49 @@ function renderDeviceDetail(m,d){
  lg.append(ll);
 
  // ----- pager -----
- // Same six names and shapes as the phone's own Administrator screen (Lock / Apps / Add-ons /
- // App lock / Settings / Messages), plus two the dashboard needs that the phone doesn't: Overview
- // (the phone shows this as a toggle above its tile grid, not a tile) and Log (the phone has no
- // log viewer of its own). Apps and Settings are real two-level hubs here too, same picker-then-
- // section idiom as AdminActivity's buildAppsHub/buildSettingsHub.
- const parts=[['Overview',ov],['Lock',lk],['Apps',ap],['Add-ons',ad],['App lock',al2],['Settings',se],['Messages',msgs],['Log',lg]];
+ // Same six names and icons as the phone's own Administrator screen's home tile grid (Lock / Apps /
+ // Add-ons / App lock / Settings / Messages), plus two the dashboard needs that the phone doesn't:
+ // Overview (the phone shows this as a toggle above its tile grid, not a tile) and Log (the phone
+ // has no log viewer of its own). Apps and Settings are real two-level hubs here too, same picker-
+ // then-section idiom as AdminActivity's buildAppsHub/buildSettingsHub.
+ const parts=[['Overview','📊',ov],['Lock','🔒',lk],['Apps','📱',ap],['Add-ons','🌐',ad],['App lock','🔒',al2],['Settings','⚙️',se],['Messages','💬',msgs],['Log','📜',lg]];
  const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
- parts.forEach(function(p,i){const b=h('button',{class:i===deviceTab?'on':''},p[0]);b.onclick=function(){setDeviceTab(i);pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'})};tabsRow.append(b);pager.append(p[1])});
- pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));setDeviceTab(i);[...tabsRow.children].forEach(function(b,j){b.className=j===i?'on':''})};
- m.append(tabsRow,pager,h('div',{class:'mute small',style:'margin-top:8px;text-align:center'},'Swipe sideways or tap a tab'));
+ const gotoTab=function(i){setAppsSub(null);setSettingsSub(null);setDeviceTab(i);render()};
+ parts.forEach(function(p,i){const b=h('button',{class:'tile'+(i===deviceTab?' on':'')},h('div',{class:'ico'},p[1]),h('div',null,p[0]));b.onclick=function(){gotoTab(i)};tabsRow.append(b);pager.append(p[2])});
+ pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));setDeviceTab(i);[...tabsRow.children].forEach(function(b,j){b.className='tile'+(j===i?' on':'')})};
+
+ // ----- search: every section and sub-section, same as "search Settings" on a phone -----
+ const searchIndex=[
+  ['Overview',function(){gotoTab(0)}],['Lock',function(){gotoTab(1)}],
+  ['Apps — Regular Apps',function(){setDeviceTab(2);setAppsSub('regular');render()}],
+  ['Apps — Home Screen Mode',function(){setDeviceTab(2);setAppsSub('kiosk');render()}],
+  ['Apps — Blocking',function(){setDeviceTab(2);setAppsSub('blocking');render()}],
+  ['Apps — System Apps',function(){setDeviceTab(2);setAppsSub('system');render()}],
+  ['Add-ons (Browser)',function(){gotoTab(3)}],['App lock',function(){gotoTab(4)}],
+  ['Settings — Settings Menu',function(){setDeviceTab(5);setSettingsSub('menu');render()}],
+  ['Settings — Permissions',function(){setDeviceTab(5);setSettingsSub('permissions');render()}],
+  ['Settings — Network / Wi-Fi',function(){setDeviceTab(5);setSettingsSub('network');render()}],
+  ['Settings — Updates',function(){setDeviceTab(5);setSettingsSub('updates');render()}],
+  ['Settings — Device',function(){setDeviceTab(5);setSettingsSub('device');render()}],
+  ['Turn off / on the phone\'s own Administrator panel',function(){setDeviceTab(5);setSettingsSub('device');render()}],
+  ['Messages',function(){gotoTab(6)}],['Log',function(){gotoTab(7)}]];
+ const sWrap=h('div',{class:'search'});
+ const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
+ const sResults=h('div',{class:'search-results'});
+ const renderSResults=function(){
+  sResults.textContent='';
+  if(!deviceSearch){sResults.style.display='none';return}
+  const q=deviceSearch.toLowerCase();
+  const hits=searchIndex.filter(function(e){return e[0].toLowerCase().includes(q)});
+  if(!hits.length){sResults.style.display='block';sResults.append(h('div',{class:'mute'},'No settings match.'));return}
+  sResults.style.display='block';
+  for(const [label,go] of hits){const row=h('div',null,label);row.onclick=function(){deviceSearch='';go()};sResults.append(row)}};
+ sInput.oninput=function(){deviceSearch=sInput.value;const pos=sInput.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search every setting…"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
+ renderSResults();
+ sWrap.append(h('div',{class:'ico'},'🔎'),sInput,sResults);
+ m.append(sWrap);
+
+ m.append(tabsRow,pager,h('div',{class:'mute small',style:'margin-top:8px;text-align:center'},'Swipe sideways or tap a tile'));
  // A re-render (e.g. typing in a search box inside a pager page) rebuilds this whole pager from
  // scratch, which would otherwise always snap back to the first tab — jump straight back instead.
  if(deviceTab)requestAnimationFrame(function(){pager.scrollTo({left:deviceTab*pager.clientWidth})});
