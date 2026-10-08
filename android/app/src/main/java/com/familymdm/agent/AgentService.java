@@ -232,6 +232,11 @@ public class AgentService extends Service {
             body.put("hideAppIconRev", hiaRev);
             body.put("hideAppIconValue", Agent.prefs(this).getBoolean("hideAppIconValue", false));
         }
+        long hkaRev = Agent.prefs(this).getLong("hideKioskAdminRev", 0);
+        if (hkaRev > 0) {
+            body.put("hideKioskAdminRev", hkaRev);
+            body.put("hideKioskAdminValue", Agent.prefs(this).getBoolean("hideKioskAdminValue", false));
+        }
         long mRev = Agent.prefs(this).getLong("masterRev", 0);
         if (mRev > 0) {
             body.put("masterRev", mRev);

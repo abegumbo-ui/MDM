@@ -285,6 +285,15 @@ export function normalizeConfig(input) {
     // other restriction keep working exactly the same either way. Dialing *#*#636#*#* on the
     // phone's own dialer brings it back too, so this isn't a one-way door even offline.
     hideAppIcon: c.hideAppIcon === true,
+    // The "Block enrolling fingerprint or face unlock" restriction only stops a NEW biometric from
+    // being set up -- it does nothing to one already enrolled. This is the actual off switch:
+    // disables fingerprint/face at the keyguard itself (forces PIN/pattern/password), independent
+    // of that restriction and of whatever's already enrolled.
+    disableBiometricUnlock: c.disableBiometricUnlock === true,
+    // Home screen mode's own launcher always shows an "Administrator" button below the allowed
+    // apps so whoever set it up can get back in -- this hides that button for everyone else who
+    // picks up the phone, same as hiding the app icon does outside home screen mode.
+    hideKioskAdmin: c.hideKioskAdmin === true,
     sites, restrictions };
 }
 
@@ -341,7 +350,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
@@ -355,6 +364,8 @@ const SIMPLE_CONFIG_FIELDS = [
   ["blockAccessibility", "Block accessibility services"],
   ["phoneAdminLocked", "Only control from the dashboard"],
   ["hideAppIcon", "Hide the app icon"],
+  ["disableBiometricUnlock", "Disable fingerprint/face at the lock screen"],
+  ["hideKioskAdmin", "Hide the Administrator button in home screen mode"],
   ["reportWifi", "Report Wi-Fi name"],
   ["autoUpdate", "Auto-update the agent"],
 ];
