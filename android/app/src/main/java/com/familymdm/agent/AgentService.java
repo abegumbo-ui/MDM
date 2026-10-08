@@ -405,6 +405,12 @@ public class AgentService extends Service {
                 case "locate":
                     msg = Actions.locate(this);
                     break;
+                case "checkUpdates":
+                    msg = checkUpdates();
+                    break;
+                case "updateApp":
+                    msg = updateApp(args.getString("packageName"));
+                    break;
                 default:
                     ok = false;
                     msg = "unknown command";
@@ -415,6 +421,59 @@ public class AgentService extends Service {
         }
         Agent.addResult(this, id, type, ok, msg);
         Agent.addEvent(this, ok ? "command" : "error", type + (ok ? ": " : " failed: ") + msg);
+    }
+
+    /** PlayUpdates itself is callback-based (it talks to the Play Store); this command runner is
+     * synchronous, so block the sync thread on a latch instead of threading the async result all
+     * the way back out -- same shape AdminActivity/UserActivity dodge by running on the UI thread
+     * with a callback instead, which isn't available here. */
+    private String checkUpdates() throws Exception {
+        List<String> eligible;
+        try {
+            eligible = PolicyApplier.eligiblePackagesForUpdates(this);
+        } catch (Exception e) {
+            eligible = PlayUpdates.CANDIDATE_PACKAGES;
+        }
+        final JSONArray[] resultHolder = new JSONArray[1];
+        final String[] errorHolder = new String[1];
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        PlayUpdates.checkForUpdates(this, eligible, (result, error) -> {
+            if (error != null) {
+                errorHolder[0] = error;
+            } else {
+                JSONArray arr = new JSONArray();
+                try {
+                    for (PlayUpdates.UpdateInfo u : result) {
+                        JSONObject o = new JSONObject();
+                        o.put("p", u.getPkg());
+                        o.put("l", u.getLabel());
+                        o.put("installed", u.getInstalledVersion());
+                        o.put("available", u.getAvailableVersion());
+                        arr.put(o);
+                    }
+                } catch (JSONException ignored) {
+                }
+                resultHolder[0] = arr;
+            }
+            latch.countDown();
+        });
+        if (!latch.await(30, java.util.concurrent.TimeUnit.SECONDS)) throw new Exception("timed out checking for updates");
+        if (errorHolder[0] != null) throw new Exception(errorHolder[0]);
+        return resultHolder[0].toString();
+    }
+
+    private String updateApp(String pkg) throws Exception {
+        final String[] msgHolder = new String[1];
+        final String[] errorHolder = new String[1];
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        PlayUpdates.updateOne(this, pkg, (msg, error) -> {
+            if (error != null) errorHolder[0] = error;
+            else msgHolder[0] = msg;
+            latch.countDown();
+        });
+        if (!latch.await(60, java.util.concurrent.TimeUnit.SECONDS)) throw new Exception("timed out updating " + pkg);
+        if (errorHolder[0] != null) throw new Exception(errorHolder[0]);
+        return msgHolder[0];
     }
 
     /** After release the phone must confirm the uninstall itself; offer it as a tap-to-finish notification. */

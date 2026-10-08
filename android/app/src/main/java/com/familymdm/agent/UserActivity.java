@@ -8,10 +8,6 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Toast;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.io.InputStream;
 
 /**
@@ -80,7 +76,7 @@ public class UserActivity extends Activity {
             build();
             java.util.List<String> eligible;
             try {
-                eligible = eligiblePackagesForUpdates();
+                eligible = PolicyApplier.eligiblePackagesForUpdates(this);
             } catch (Exception e) {
                 eligible = PlayUpdates.CANDIDATE_PACKAGES;
             }
@@ -113,25 +109,6 @@ public class UserActivity extends Activity {
                         }), 8);
             }
         }
-    }
-
-    /** Same eligibility AdminActivity's own Updates section uses: installed, not hard-blocked/hidden,
-     * and not soft-blocked, plus PlayUpdates.CANDIDATE_PACKAGES unconditionally since those (Play
-     * services, the Play Store app, Android Auto) are usually unmanaged, not explicitly "allowed". */
-    private java.util.List<String> eligiblePackagesForUpdates() throws JSONException {
-        java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>(PlayUpdates.CANDIDATE_PACKAGES);
-        JSONObject overrides = Agent.getOverrides(this);
-        java.util.Set<String> hardBlocked = WholeAppBlocklist.list(this);
-        JSONArray packages = PolicyApplier.collectPackages(this);
-        for (int i = 0; i < packages.length(); i++) {
-            JSONObject a = packages.optJSONObject(i);
-            if (a == null) continue;
-            String pkg = a.optString("p", "");
-            if (pkg.isEmpty() || hardBlocked.contains(pkg) || a.optBoolean("h")) continue;
-            if ("block".equals(overrides.optString(pkg, ""))) continue;
-            set.add(pkg);
-        }
-        return new java.util.ArrayList<>(set);
     }
 
     private void toast(String s) {

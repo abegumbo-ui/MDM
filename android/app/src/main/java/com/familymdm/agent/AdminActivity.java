@@ -536,7 +536,7 @@ public class AdminActivity extends Activity {
             build();
             java.util.List<String> eligible;
             try {
-                eligible = eligiblePackagesForUpdates();
+                eligible = PolicyApplier.eligiblePackagesForUpdates(this);
             } catch (Exception e) {
                 eligible = PlayUpdates.CANDIDATE_PACKAGES;
             }
@@ -572,24 +572,6 @@ public class AdminActivity extends Activity {
         }
     }
 
-    /** Installed, not hard-blocked/hidden, and not soft-blocked -- same eligibility the Apps grid
-     * itself uses -- plus PlayUpdates.CANDIDATE_PACKAGES unconditionally, since those (Play
-     * services, the Play Store app, Android Auto) are usually unmanaged, not explicitly "allowed". */
-    private java.util.List<String> eligiblePackagesForUpdates() throws JSONException {
-        java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>(PlayUpdates.CANDIDATE_PACKAGES);
-        JSONObject overrides = Agent.getOverrides(this);
-        java.util.Set<String> hardBlocked = WholeAppBlocklist.list(this);
-        JSONArray packages = PolicyApplier.collectPackages(this);
-        for (int i = 0; i < packages.length(); i++) {
-            JSONObject a = packages.optJSONObject(i);
-            if (a == null) continue;
-            String pkg = a.optString("p", "");
-            if (pkg.isEmpty() || hardBlocked.contains(pkg) || a.optBoolean("h")) continue;
-            if ("block".equals(overrides.optString(pkg, ""))) continue;
-            set.add(pkg);
-        }
-        return new java.util.ArrayList<>(set);
-    }
 
     /** Things that live inside this same app rather than as their own separate install -- so far
      * just the Browser add-on, but named "Add-ons" (not "Browser") so more can join it later
