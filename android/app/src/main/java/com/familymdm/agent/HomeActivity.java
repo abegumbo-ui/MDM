@@ -11,6 +11,8 @@ import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.Drawable;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -38,6 +40,7 @@ public class HomeActivity extends Activity {
     private LinearLayout root;
     private LinearLayout logoHolder;
     private GridLayout grid;
+    private boolean torchOn;
 
     private final Runnable refresh = new Runnable() {
         @Override
@@ -197,6 +200,7 @@ public class HomeActivity extends Activity {
         // here instead, the same way the Browser app already is.
         grid.addView(settingsMenuTile(width));
         if (showBrowser) grid.addView(browserTile(width));
+        if (flashCameraId() != null) grid.addView(flashlightTile(width));
         for (String[] a : apps) {
             if (schedules == null || PolicyApplier.withinSchedule(schedules.optJSONObject(a[1]))) shown.add(a);
         }
@@ -274,6 +278,62 @@ public class HomeActivity extends Activity {
 
         t.setOnClickListener(v -> startActivity(new Intent(this, SettingsMenuActivity.class)));
         return t;
+    }
+
+    /** Toggles the flash as a torch directly, since Android's lock task mode suppresses Quick
+     * Settings expansion while home-screen mode is on (a deliberate restriction, there to stop
+     * Wi-Fi/data/airplane mode being flipped from there too) -- there's no way to reach the usual
+     * flashlight tile at all while this is the home screen. setTorchMode() doesn't need the CAMERA
+     * permission; it's a torch-only API meant for exactly this kind of flashlight toggle. */
+    private LinearLayout flashlightTile(int width) {
+        LinearLayout t = new LinearLayout(this);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        t.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10));
+        GridLayout.LayoutParams glp = new GridLayout.LayoutParams();
+        glp.width = width;
+        t.setLayoutParams(glp);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_flash);
+        icon.setColorFilter(torchOn ? 0xFFFFD600 : 0xFFFFFFFF);
+        t.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
+
+        TextView name = Ui.body(this, torchOn ? "Flashlight: On" : "Flashlight", false);
+        name.setTextSize(12);
+        name.setGravity(Gravity.CENTER);
+        t.addView(name);
+
+        t.setOnClickListener(v -> {
+            String id = flashCameraId();
+            if (id == null) {
+                Toast.makeText(this, "No flash on this phone.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            try {
+                CameraManager cm = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+                torchOn = !torchOn;
+                cm.setTorchMode(id, torchOn);
+                build();
+            } catch (Exception e) {
+                torchOn = false;
+                Toast.makeText(this, "Could not turn on the flashlight.", Toast.LENGTH_SHORT).show();
+            }
+        });
+        return t;
+    }
+
+    /** The first back camera with a flash unit, or null if this phone has none. */
+    private String flashCameraId() {
+        try {
+            CameraManager cm = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+            for (String id : cm.getCameraIdList()) {
+                Boolean has = cm.getCameraCharacteristics(id).get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                if (Boolean.TRUE.equals(has)) return id;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     /** A tile for the separate Browser app, since home-screen mode only lists apps the admin explicitly allowed. */
