@@ -37,9 +37,11 @@ final class SettingsMenu {
             "network", "connected", "androidAuto", "apps", "notifications", "sound", "modes", "personalize",
             "display", "homeLock", "gesture", "storage", "battery", "system", "aboutPhone", "location");
 
-    /** Android Auto's real package -- no launcher icon of its own, so it needs a row here to be reachable
-     * at all while Home screen mode only allows apps on the Allowed Apps list (see Kiosk.ESSENTIALS,
-     * which keeps it able to run in the background even then). */
+    /** Android Auto's real package. There's no standard android.settings.* action that opens it
+     * directly (the real Settings app reaches it as a sub-screen under Connected devices >
+     * Connection preferences, not through a documented Intent action), so this jumps straight into
+     * the app itself instead. Like any other app, it only opens in Home screen mode once it's set to
+     * Allow on the Apps list -- same as everything else there, nothing special-cased for it. */
     static final String ANDROID_AUTO_PKG = "com.google.android.projection.gearhead";
 
     // All 22 real Settings categories' display labels -- wider than ORDER, since MainActivity's
