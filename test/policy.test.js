@@ -88,6 +88,19 @@ test("explicit blocks apply even if the device never reported the package", () =
   assert.deepEqual(p.hide, ["com.example.game"]);
 });
 
+test("explicit allow applies even if this sync's package report omits it -- it never silently falls back to blockUnlisted's hide", () => {
+  // Android Auto has no stable moment it's guaranteed to appear in a given sync's package report;
+  // an admin who already set it to Allow must not have it drop out of `allowed`/`show` (and get
+  // hidden by blockUnlisted) just because one sync's reported-packages list happens to omit it.
+  const p = buildAgentPolicy(
+    { homeScreen: true, blockUnlisted: true, apps: { "com.google.android.projection.gearhead": { mode: "allow" } } },
+    [], // the device's last report doesn't include it this time
+  );
+  assert.ok(p.allowed.includes("com.google.android.projection.gearhead"));
+  assert.ok(p.show.includes("com.google.android.projection.gearhead"));
+  assert.ok(!p.hide.includes("com.google.android.projection.gearhead"));
+});
+
 test("soft block: stays visible (never hidden) and never appears in the home-screen allowed list", () => {
   const p = buildAgentPolicy({ homeScreen: true, apps: { "com.example.game": { mode: "soft" }, "com.example.maps": { mode: "allow" } } }, [
     "com.example.game",

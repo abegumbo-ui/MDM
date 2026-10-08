@@ -72,7 +72,10 @@ public class SettingsMenuActivity extends Activity {
     private void open(String category, String label) {
         Intent i = SettingsMenu.intentFor(this, category);
         if (i == null) {
-            Toast.makeText(this, "Not set up yet -- an administrator needs to learn this screen first.", Toast.LENGTH_LONG).show();
+            String msg = category.equals("androidAuto")
+                    ? "Android Auto is not installed on this phone."
+                    : "Not set up yet -- an administrator needs to learn this screen first.";
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
             return;
         }
         try {
