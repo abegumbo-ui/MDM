@@ -566,6 +566,24 @@ test("turning the Browser add-on on from the phone's own Admin screen mirrors in
   assert.equal(devices.find((d) => d.id === id).config.browserAddonEnabled, false);
 });
 
+test("blocking a whole app from the phone's own Admin screen mirrors into the dashboard config", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.deepEqual(devices.find((d) => d.id === id).config.wholeAppBlocklist, {});
+  await post("/agent/sync", { wholeAppBlocklistRev: 100, wholeAppBlocklistValue: { "com.example.game": { paused: false } } }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.deepEqual(devices.find((d) => d.id === id).config.wholeAppBlocklist, { "com.example.game": { paused: false } });
+  // A stale revision is ignored.
+  await post("/agent/sync", { wholeAppBlocklistRev: 50, wholeAppBlocklistValue: {} }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.deepEqual(devices.find((d) => d.id === id).config.wholeAppBlocklist, { "com.example.game": { paused: false } });
+  // A newer one wins, and it's a full replace, not a merge.
+  await post("/agent/sync", { wholeAppBlocklistRev: 200, wholeAppBlocklistValue: { "com.example.other": { paused: true } } }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.deepEqual(devices.find((d) => d.id === id).config.wholeAppBlocklist, { "com.example.other": { paused: true } });
+});
+
 test("PIN commands validate the PIN and never echo it back in the device record", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);

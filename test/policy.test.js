@@ -41,6 +41,12 @@ test("browserAddonEnabled defaults off and passes through when set", () => {
   assert.equal(buildAgentPolicy({ browserAddonEnabled: true }, []).browserAddonEnabled, true);
 });
 
+test("wholeAppBlocklist defaults empty, passes through, and sanitizes junk entries", () => {
+  assert.deepEqual(buildAgentPolicy({}, []).wholeAppBlocklist, {});
+  const p = buildAgentPolicy({ wholeAppBlocklist: { "com.example.a": { paused: true }, "bad pkg!": { paused: true }, "com.example.b": {} } }, []);
+  assert.deepEqual(p.wholeAppBlocklist, { "com.example.a": { paused: true }, "com.example.b": { paused: false } });
+});
+
 test("restrictions: every android.os.UserManager.DISALLOW_* key is listed, and every new one defaults off", () => {
   const keys = Object.values(RESTRICTIONS).map((v) => v.key);
   assert.equal(keys.length, 77, "should cover every known DISALLOW_* restriction");

@@ -242,6 +242,11 @@ public class AgentService extends Service {
             body.put("browserAddonRev", baRev);
             body.put("browserAddonValue", Agent.prefs(this).getBoolean("browserAddonValue", false));
         }
+        long wabRev = WholeAppBlocklist.rev(this);
+        if (wabRev > 0) {
+            body.put("wholeAppBlocklistRev", wabRev);
+            body.put("wholeAppBlocklistValue", WholeAppBlocklist.toJson(this));
+        }
         long mRev = Agent.prefs(this).getLong("masterRev", 0);
         if (mRev > 0) {
             body.put("masterRev", mRev);

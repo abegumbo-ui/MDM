@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, normalizeWholeAppBlocklist, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -970,6 +970,13 @@ async function agentApi(request, env, url) {
       config.browserAddonEnabled = !!body.browserAddonValue;
       d.config = config;
       d.browserAddonRev = Number(body.browserAddonRev);
+      dirty = true;
+    }
+    if (Number(body.wholeAppBlocklistRev) > (d.wholeAppBlocklistRev || 0)) {
+      // Same mirroring again, for the whole-app blocklist (Blocking > Block Whole Apps).
+      config.wholeAppBlocklist = normalizeWholeAppBlocklist(body.wholeAppBlocklistValue);
+      d.config = config;
+      d.wholeAppBlocklistRev = Number(body.wholeAppBlocklistRev);
       dirty = true;
     }
     if (body.masterValue && Number(body.masterRev) > (d.masterRev || 0)

@@ -419,7 +419,10 @@ function buildAppsHub(m,dv){
   m.append(h('div',{class:'card'},h('h2',null,'Allowed Apps'),h('div',{class:'mute'},'Same Default / Allow / Block / Schedule controls as Regular Apps -- set to Allow whatever should appear while Home screen mode is on, before turning it on above.')));
   renderAppEditor(m,dv);
  } else if(appsSub==='blocking'){
-  phoneLocalNote(m,'Set directly on the phone\'s own Administrator screen (Apps → Blocking) -- specific screens to bounce away from, or whole apps to hide at the Android level. Phone-only by design: it never touches this dashboard, so there\'s nothing to show or change here.');
+  const bCard=h('div',{class:'card'},h('h2',null,'Block Apps/Screens'),
+   h('div',{class:'mute'},'Specific screens (exact app components) to bounce away from the instant they open -- set directly on the phone\'s own Administrator screen (Apps → Blocking → Block Apps/Screens). Picking the exact screen needs the phone itself (it offers an autocomplete built from what\'s actually been seen in the foreground there), so this one box stays phone-only.'));
+  m.append(bCard);
+  renderWholeAppBlocklist(m,dv);
  } else if(appsSub==='system'){
   const sal=h('div',{class:'card'},h('h2',null,'System apps'),
    h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "Apps on this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
@@ -704,6 +707,39 @@ function renderAppEditor(m,dv){
  for(const a of installedSorted)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},dv));
  if(!dv.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
  m.append(al);
+}
+// Whole-package hides (Android's setApplicationHidden, not the regular per-app Block mode) --
+// same list the phone's own Blocking > Block Whole Apps screen edits.
+function renderWholeAppBlocklist(m,dv){
+ const wab=dv.config.wholeAppBlocklist||{};
+ const card=h('div',{class:'card'},h('h2',null,'Block Whole Apps'),
+  h('div',{class:'mute'},'Hides an entire app at the Android level -- it can\'t open or run at all, not just one screen inside it. Can hide something the phone or other apps depend on, so pick carefully.'));
+ const installed=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE}).sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)});
+ const sel=h('select',null,new Option('Pick an installed app…',''));
+ for(const a of installed)if(!wab[a.p])sel.append(new Option((a.l||a.p)+' ('+a.p+')',a.p));
+ const free=h('input',{type:'text',placeholder:'Or type an exact package name',class:'grow'});
+ card.append(h('div',{class:'row',style:'margin-top:8px'},sel,free,btn('Block it','tonal',async function(){
+  const pkg=(sel.value||free.value.trim());
+  if(!pkg)return;
+  if(!confirm('Block "'+pkg+'" entirely? This hides the whole app at the Android level -- it won\'t open or run at all until you Pause or Remove it here.'))return;
+  dv.config.wholeAppBlocklist=dv.config.wholeAppBlocklist||{};dv.config.wholeAppBlocklist[pkg]={paused:false};
+  try{await saveConfigFor(dv,'Blocked. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
+ m.append(card);
+
+ const list=h('div',{class:'card'});
+ const keys=Object.keys(wab);
+ if(!keys.length)list.append(h('div',{class:'mute'},'No whole apps blocked.'));
+ for(const pkg of keys.sort()){
+  const paused=!!wab[pkg].paused;
+  const known=dv.packages.find(function(x){return x.p===pkg});
+  const row=h('div',{class:'app'});
+  row.append(h('div',{class:'grow'},h('div',{style:'font-weight:500'},(known&&known.l)||pkg),
+   h('div',{class:'mute small mono'},pkg+(paused?'  (paused)':''))));
+  row.append(h('div',{class:'row'},
+   btn(paused?'Resume':'Pause','outline',async function(){dv.config.wholeAppBlocklist[pkg].paused=!paused;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}render()}),
+   btn('Remove','danger',async function(){if(!confirm('Remove the whole-app block on '+pkg+'? This un-hides it.'))return;delete dv.config.wholeAppBlocklist[pkg];try{await saveConfigFor(dv,'Removed.')}catch(e){snack(e.message,1)}render()})));
+  list.append(row)}
+ m.append(list);
 }
 function renderApps(m,dv){
  const pend=new Map();

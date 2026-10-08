@@ -297,7 +297,22 @@ export function normalizeConfig(input) {
     // The lighter, built-in Browser add-on (its own icon, right inside this app, no separate
     // install) -- same on/off switch as the phone's own Add-ons screen, just reachable remotely too.
     browserAddonEnabled: c.browserAddonEnabled === true,
+    // Whole-package hides (Android's setApplicationHidden, not the regular per-app Block mode) --
+    // same list the phone's own Blocking > Block Whole Apps screen edits, just reachable remotely
+    // too. {pkg: {paused: bool}}.
+    wholeAppBlocklist: normalizeWholeAppBlocklist(c.wholeAppBlocklist),
     sites, restrictions };
+}
+
+/** {pkg: {paused: bool}} for the whole-app blocklist, sanitized -- same shape round-tripped both
+ * ways, since the phone needs the whole map to reconcile its local list against, not just a
+ * derived array. */
+export function normalizeWholeAppBlocklist(o) {
+  const out = {};
+  for (const [pkg, v] of Object.entries(o && typeof o === "object" ? o : {})) {
+    if (/^[A-Za-z0-9_.]{1,200}$/.test(pkg)) out[pkg] = { paused: !!(v && v.paused) };
+  }
+  return out;
 }
 
 /** Overrides made on the phone itself ({pkg: "allow"|"block"}), sanitized. */
@@ -358,7 +373,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
