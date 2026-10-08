@@ -173,7 +173,6 @@ public class AgentService extends Service {
             }
         }
         o.put("kiosk", Kiosk.active(this));
-        o.put("kioskPaused", Kiosk.paused(this));
         JSONObject battery = Telemetry.battery(this);
         if (battery != null) o.put("battery", battery);
         o.put("wifi", Telemetry.wifi(this));

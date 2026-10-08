@@ -2,7 +2,12 @@ import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, nor
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
-const POLL_SECONDS = 300; // how often an online phone checks in (it already jumps to 3s for a moment right after running a command) -- 5 min instead of 15s, so this stays well under the KV free tier's write/read caps
+// How often an online phone checks in on its own. A command queued from the dashboard only
+// reaches the phone at its NEXT check-in -- there's no push channel to wake it sooner -- so this
+// is also the real upper bound on "how long until a dashboard action takes effect" (the UI says so
+// honestly rather than a shorter number that isn't true). 5 minutes, not something much shorter,
+// to stay well under the KV free tier's write/read caps across many devices.
+const POLL_SECONDS = 300;
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;

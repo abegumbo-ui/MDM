@@ -374,7 +374,7 @@ final class PolicyApplier {
             if (stored == null) return false;
             JSONObject policy = new JSONObject(stored);
             if (!policy.optBoolean("approveNew")) return false;
-            if (policy.optBoolean("homeScreen", false) && !Kiosk.paused(c)) return false; // new apps are simply not allowed on the home screen
+            if (policy.optBoolean("homeScreen", false)) return false; // new apps are simply not allowed on the home screen
             if (strings(policy.optJSONArray("known")).contains(pkg)) return false;
             if (strings(policy.optJSONArray("show")).contains(pkg)) return false;
             if ("allow".equals(Agent.getOverrides(c).optString(pkg))) return false;
