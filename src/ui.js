@@ -353,14 +353,22 @@ function buildAppsHub(m,dv){
  // The one "‹ Back" button for this whole page (renderDeviceDetail, below) already pops one level
  // at a time -- no second Back button nested in here too.
  if(appsSub==='regular'){
-  renderApps(m,dv);
-  const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
-  const installedSorted=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE}).sort(function(a,b){
-   const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;
-   return aa!==ab?aa-ab:0});
-  for(const a of installedSorted)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},dv));
-  if(!dv.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
-  m.append(al);
+  // Same gating as the phone's own Regular Apps section (AdminActivity.buildAppsSection): while
+  // Home screen mode is on, app allow/block decisions only come from the Allowed Apps editor in
+  // the Home Screen Mode tab -- showing the same editor here too would just be two controls
+  // fighting over the same config.apps, with no way to tell here that Home screen mode is why an
+  // app looks different than expected.
+  if(dv.config.homeScreen){
+   const note=h('div',{class:'card'},h('div',{class:'mute'},'Home screen mode is on. Apps can only be allowed or blocked from the Allowed Apps list in the Home Screen Mode tab while it\'s on.'));
+   note.append(h('div',{style:'margin-top:10px'},btn('Turn off Home screen mode','outline',async function(){
+    if(!confirm('Turn off Home screen mode on this phone?'))return;
+    dv.config.homeScreen=false;
+    for(const pkg in dv.config.apps)if(dv.config.apps[pkg].mode==='soft')delete dv.config.apps[pkg];
+    try{await saveConfigFor(dv,'Home screen mode off.')}catch(e){snack(e.message,1)}render()})));
+   m.append(note);
+  } else {
+   renderAppEditor(m,dv);
+  }
 
   const appBox=h('div',{class:'card'},h('h2',null,'Install an APK'));const ar=h('div',{class:'row',style:'margin-top:8px'});
   const file=h('input',{type:'file',accept:'.apk,application/vnd.android.package-archive',style:'display:none'});
@@ -404,6 +412,8 @@ function buildAppsHub(m,dv){
    h('div',{class:'mute'},'Home screen mode always shows an "Administrator" button below the allowed apps, to get back in. Hiding it removes that button for everyone who picks up the phone -- dialing *#*#636#*#* on the phone itself, or turning this back off from here, both still work.')),
    sw(dv.config.hideKioskAdmin,async function(on){dv.config.hideKioskAdmin=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
   m.append(hsCard);
+  m.append(h('div',{class:'card'},h('h2',null,'Allowed Apps'),h('div',{class:'mute'},'Same Default / Allow / Block / Schedule controls as Regular Apps -- set to Allow whatever should appear while Home screen mode is on, before turning it on above.')));
+  renderAppEditor(m,dv);
  } else if(appsSub==='blocking'){
   phoneLocalNote(m,'Set directly on the phone\'s own Administrator screen (Apps → Blocking) -- specific screens to bounce away from, or whole apps to hide at the Android level. Phone-only by design: it never touches this dashboard, so there\'s nothing to show or change here.');
  } else if(appsSub==='system'){
@@ -664,6 +674,20 @@ function allApps(dv){
   const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;
   return aa!==ab?aa-ab:(a.l||a.p).localeCompare(b.l||b.p)})}
 function cur(dv,pkg){const c=dv.config.apps[pkg];return c?{mode:c.mode,schedule:c.schedule||null}:{mode:'',schedule:null}}
+// App rules + "Apps on this phone": the one editor for config.apps, shown from Regular Apps while
+// Home screen mode is off, and from the Home Screen Mode tab (as "Allowed Apps") regardless of
+// on/off -- same shared data, same split AdminActivity itself keeps (its own "Show / Hide Apps"
+// vs "Allowed Apps" pickers), just reached from whichever tab actually applies right now.
+function renderAppEditor(m,dv){
+ renderApps(m,dv);
+ const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
+ const installedSorted=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE}).sort(function(a,b){
+  const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;
+  return aa!==ab?aa-ab:0});
+ for(const a of installedSorted)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},dv));
+ if(!dv.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
+ m.append(al);
+}
 function renderApps(m,dv){
  const pend=new Map();
  for(const p of dv.applied.pending||[]){const a=dv.packages.find(function(x){return x.p===p});pend.set(p,(a&&a.l)||p)}
