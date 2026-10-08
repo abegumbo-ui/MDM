@@ -294,6 +294,9 @@ export function normalizeConfig(input) {
     // apps so whoever set it up can get back in -- this hides that button for everyone else who
     // picks up the phone, same as hiding the app icon does outside home screen mode.
     hideKioskAdmin: c.hideKioskAdmin === true,
+    // The lighter, built-in Browser add-on (its own icon, right inside this app, no separate
+    // install) -- same on/off switch as the phone's own Add-ons screen, just reachable remotely too.
+    browserAddonEnabled: c.browserAddonEnabled === true,
     sites, restrictions };
 }
 
@@ -355,7 +358,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
@@ -371,6 +374,7 @@ const SIMPLE_CONFIG_FIELDS = [
   ["hideAppIcon", "Hide the app icon"],
   ["disableBiometricUnlock", "Disable fingerprint/face at the lock screen"],
   ["hideKioskAdmin", "Hide the Administrator button in home screen mode"],
+  ["browserAddonEnabled", "Browser add-on"],
   ["reportWifi", "Report Wi-Fi name"],
   ["autoUpdate", "Auto-update the agent"],
 ];

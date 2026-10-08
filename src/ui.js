@@ -573,9 +573,10 @@ function renderDeviceDetail(m,d){
  // ----- Apps (hub: Regular Apps / Home Screen Mode / Blocking / System Apps) -----
  const ap=h('section');buildAppsHub(ap,d);
 
- // ----- Add-ons (the allowed-sites list and "make Browser the only browser" -- the phone's own
- // Add-ons screen is just the two Browser-install toggles, which are phone-local; the allowlist
- // itself has always lived here) -----
+ // ----- Add-ons (the allowed-sites list, the Browser add-on's own on/off switch, and "make
+ // Browser the only browser" -- the phone's standalone-Browser install/open buttons are the only
+ // part of its own Add-ons screen that stays phone-local, since "install" is a one-shot action
+ // with nothing to mirror as a toggle) -----
  const ad=h('section');renderSites(ad,d);
 
  // ----- Settings (hub: Settings Menu / Permissions / Network / Updates / Device) -----
@@ -844,6 +845,9 @@ function renderSitesEditor(m,dv){
  m.append(list);
 }
 function renderSites(m,dv){
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser add-on'),
+  h('div',{class:'mute'},'A lighter Browser built right into the agent app, its own icon, nothing extra installed. Opens only the sites on this same allowlist. The separate standalone Browser app below is untouched either way.')),
+  sw(dv.config.browserAddonEnabled,async function(on){dv.config.browserAddonEnabled=on;try{await saveConfigFor(dv,on?'Browser add-on on. Its icon is on the phone now.':'Browser add-on off.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
   h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the App rules box so it can\'t be opened directly.')),
   sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it within about 5 minutes.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));

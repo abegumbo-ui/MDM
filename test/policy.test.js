@@ -36,6 +36,11 @@ test("hideAppIcon defaults off and passes through when set", () => {
   assert.equal(buildAgentPolicy({ hideAppIcon: true }, []).hideAppIcon, true);
 });
 
+test("browserAddonEnabled defaults off and passes through when set", () => {
+  assert.equal(buildAgentPolicy({}, []).browserAddonEnabled, false);
+  assert.equal(buildAgentPolicy({ browserAddonEnabled: true }, []).browserAddonEnabled, true);
+});
+
 test("restrictions: every android.os.UserManager.DISALLOW_* key is listed, and every new one defaults off", () => {
   const keys = Object.values(RESTRICTIONS).map((v) => v.key);
   assert.equal(keys.length, 77, "should cover every known DISALLOW_* restriction");

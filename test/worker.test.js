@@ -548,6 +548,24 @@ test("turning Home screen mode on from the phone's own Admin screen mirrors into
   assert.equal(devices.find((d) => d.id === id).config.homeScreen, false);
 });
 
+test("turning the Browser add-on on from the phone's own Admin screen mirrors into the dashboard config", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).config.browserAddonEnabled, false);
+  await post("/agent/sync", { browserAddonRev: 100, browserAddonValue: true }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).config.browserAddonEnabled, true);
+  // A stale revision is ignored.
+  await post("/agent/sync", { browserAddonRev: 50, browserAddonValue: false }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).config.browserAddonEnabled, true);
+  // A newer one wins.
+  await post("/agent/sync", { browserAddonRev: 200, browserAddonValue: false }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.equal(devices.find((d) => d.id === id).config.browserAddonEnabled, false);
+});
+
 test("PIN commands validate the PIN and never echo it back in the device record", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);

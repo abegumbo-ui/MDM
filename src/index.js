@@ -965,6 +965,13 @@ async function agentApi(request, env, url) {
       d.hideKioskAdminRev = Number(body.hideKioskAdminRev);
       dirty = true;
     }
+    if (Number(body.browserAddonRev) > (d.browserAddonRev || 0)) {
+      // Same mirroring again, for the Browser add-on's own on/off toggle.
+      config.browserAddonEnabled = !!body.browserAddonValue;
+      d.config = config;
+      d.browserAddonRev = Number(body.browserAddonRev);
+      dirty = true;
+    }
     if (body.masterValue && Number(body.masterRev) > (d.masterRev || 0)
         && /^[0-9a-f]{32}$/.test(body.masterValue.salt || "") && /^[0-9a-f]{64}$/.test(body.masterValue.hash || "")) {
       // Changed on the phone itself (Administrator -> Device): becomes the real master code here
