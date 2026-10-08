@@ -482,11 +482,26 @@ async function adminApi(request, env, url, session) {
       session: session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name },
     });
   }
-  const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from)$/.exec(path);
+  const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from|owner)$/.exec(path);
   if (devConfig) {
     const d = await getJSON(env, `device:${devConfig[1]}`, null);
     if (!d || !canSee(session, d.ownerId)) return json({ error: "Unknown device" }, 404);
     const key = `device:${devConfig[1]}`;
+    if (devConfig[2] === "owner" && method === "PUT") {
+      // Admin-only reassignment: hand an existing (or ownerless) device to a client account, or
+      // take it back to admin-only. Separate from enrollment-time ownership (see /agent/enroll) --
+      // this is for a device that's already here and needs to move, same as a deleted client's
+      // devices sitting there until someone gives them to a new or recreated account.
+      if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
+      const ownerId = body.ownerId == null ? null : String(body.ownerId);
+      if (ownerId !== null) {
+        const client = await getJSON(env, `client:${ownerId}`, null);
+        if (!client) return json({ error: "Unknown client" }, 404);
+      }
+      d.ownerId = ownerId;
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
     if (devConfig[2] === "config" && method === "PUT") {
       const { cfg: before } = await configOf(env, d);
       const next = normalizeConfig(body);
@@ -524,11 +539,22 @@ async function adminApi(request, env, url, session) {
       return json({ ok: true });
     }
   }
-  const brConfig = /^\/api\/browsers\/([0-9a-f]+)\/(config|clone-from)$/.exec(path);
+  const brConfig = /^\/api\/browsers\/([0-9a-f]+)\/(config|clone-from|owner)$/.exec(path);
   if (brConfig) {
     const key = `browserDevice:${brConfig[1]}`;
     const d = await getJSON(env, key, null);
     if (!d || !canSee(session, d.ownerId)) return json({ error: "Unknown browser" }, 404);
+    if (brConfig[2] === "owner" && method === "PUT") {
+      if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
+      const ownerId = body.ownerId == null ? null : String(body.ownerId);
+      if (ownerId !== null) {
+        const client = await getJSON(env, `client:${ownerId}`, null);
+        if (!client) return json({ error: "Unknown client" }, 404);
+      }
+      d.ownerId = ownerId;
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
     if (brConfig[2] === "config" && method === "PUT") {
       d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing });
       await putJSON(env, key, d);
