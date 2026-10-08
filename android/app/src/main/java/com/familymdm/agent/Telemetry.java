@@ -95,6 +95,18 @@ final class Telemetry {
             } catch (SecurityException ignored) {
             }
         }
+        // getNetworkOperatorName() is public info (the carrier whose tower the radio is on), no
+        // permission needed -- unlike reading a SIM phone number or IMEI.
+        if ("mobile".equals(transport)) {
+            try {
+                android.telephony.TelephonyManager tm =
+                        (android.telephony.TelephonyManager) c.getSystemService(Context.TELEPHONY_SERVICE);
+                String carrier = tm == null ? null : tm.getNetworkOperatorName();
+                if (carrier == null || carrier.isEmpty()) carrier = tm == null ? null : tm.getSimOperatorName();
+                if (carrier != null && !carrier.isEmpty()) o.put("carrier", carrier);
+            } catch (Exception ignored) {
+            }
+        }
         return o;
     }
 }

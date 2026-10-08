@@ -266,7 +266,8 @@ function chipsFor(d,full){
  const bat=d.info.battery;
  if(bat)c.append(h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},svgIcon('battery','currentColor'),bat.pct+'%'+(bat.charging?' ⚡':'')));
  const wf=d.info.wifi;
- if(wf)c.append(h('span',{class:'chip'},svgIcon(wf.transport==='wifi'?'wifi':'device','currentColor'),wf.transport==='wifi'?(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?'Mobile':'No connection'));
+ if(wf)c.append(h('span',{class:'chip'},svgIcon(wf.transport==='wifi'?'wifi':'device','currentColor'),
+  wf.transport==='wifi'?(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?('SIM card'+(wf.carrier?' — '+wf.carrier:'')):'No connection'));
  if(d.inflight.some(function(x){return x.type==='lock'})||d.pending)c.append(h('span',{class:'chip warn'},'⏳ Command on its way'));
  if(lockedNow(d))c.append(h('span',{class:'chip warn'},'🔒 Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
  if(browsingFreely(d))c.append(h('span',{class:'chip warn'},'🌐 Free browsing until '+new Date(d.info.browseUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
@@ -456,7 +457,7 @@ function renderDeviceDetail(m,d){
  info.append(kv('Recovery code',d.fallbackCode||'not seen yet (needs a check-in on a current build)'),
   kv('Android',d.info.android||'?'),kv('Agent build',(d.info.versionCode||'?')+(latest?' (latest '+latest.versionCode+')':'')),
   kv('Last check-in',ago(d.lastSeen)),kv('Battery',d.info.battery?d.info.battery.pct+'%'+(d.info.battery.charging?' (charging)':''):'unknown'),
-  kv('Connection',d.info.wifi?(d.info.wifi.transport==='wifi'?'Wi-Fi '+(d.info.wifi.ssid||'(name hidden)')+(d.info.wifi.rssi?' · '+d.info.wifi.rssi+' dBm':''):d.info.wifi.transport==='mobile'?'Mobile data':'None'):'unknown'),
+  kv('Connection',d.info.wifi?(d.info.wifi.transport==='wifi'?'Wi-Fi '+(d.info.wifi.ssid||'(name hidden)')+(d.info.wifi.rssi?' · '+d.info.wifi.rssi+' dBm':''):d.info.wifi.transport==='mobile'?'SIM card'+(d.info.wifi.carrier?' — '+d.info.wifi.carrier:''):'None'):'unknown'),
   kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On':'Off'),
   kv('PIN control',d.info.pinControl===undefined?'unknown':d.info.pinControl?'Ready: you can set or remove the lock':'Not active yet (see Lock)'),
   kv('Apps',d.packages.length+' ('+d.packages.filter(function(p){return p.h}).length+' hidden)'),
@@ -966,7 +967,7 @@ function renderPermissions(m,dv){
 }
 function renderNetworkSection(m,dv){
  const wl=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
- wl.append(kv('Now',dv.info.wifi?(dv.info.wifi.transport==='wifi'?(dv.info.wifi.ssid||'(name hidden: Location is off)'):dv.info.wifi.transport==='mobile'?'Mobile data':'No connection'):'unknown'));
+ wl.append(kv('Now',dv.info.wifi?(dv.info.wifi.transport==='wifi'?(dv.info.wifi.ssid||'(name hidden: Location is off)'):dv.info.wifi.transport==='mobile'?'SIM card'+(dv.info.wifi.carrier?' — '+dv.info.wifi.carrier:''):'No connection'):'unknown'));
  for(const n of dv.wifiNetworks){const pw=h('span',{class:'mono'},n.password?'••••••••':'(open)');
   const show=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');show.onclick=function(){pw.textContent=n.password||'(open)'};
   wl.append(h('div',{class:'kv'},h('span',null,n.ssid),h('span',null,pw,n.password?show:null)))}
