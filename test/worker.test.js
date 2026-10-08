@@ -26,6 +26,12 @@ async function login() {
   return ok.headers.get("set-cookie").split(";")[0];
 }
 
+async function loginClient(loginName, password) {
+  const ok = await req("/login", { method: "POST", body: new URLSearchParams({ loginName, password }) });
+  assert.equal(ok.status, 303);
+  return ok.headers.get("set-cookie").split(";")[0];
+}
+
 test("unauthenticated requests are rejected", async () => {
   assert.equal((await req("/api/state")).status, 401);
   assert.match(await (await req("/")).text(), /Sign in/);
@@ -850,4 +856,46 @@ test("GET /api/devices caches briefly (saves KV reads on the dashboard's own aut
   const afterChange = await (await req("/api/devices", { headers: { cookie } })).json();
   assert.equal(mine(afterChange).pending, 1, "the queued command shows up right away -- the write busted the cache instead of leaving it stale");
   assert.ok(getCalls > callsAfterFirst, "the post-write read should have gone back to KV instead of reusing the stale cache");
+});
+
+test("admin can hand a device to a client account, and take it back", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  await post("/api/clients", { loginName: "parentacct", name: "Parent", password: "secret123" }, { cookie });
+  const clientCookie = await loginClient("parentacct", "secret123");
+
+  // Not theirs yet.
+  assert.deepEqual(await (await req("/api/devices", { headers: { cookie: clientCookie } })).json(), []);
+
+  const handOff = await put(cookie, `/api/devices/${id}/owner`, { ownerId: "parentacct" });
+  assert.equal(handOff.status, 200);
+
+  const clientDevices = await (await req("/api/devices", { headers: { cookie: clientCookie } })).json();
+  assert.equal(clientDevices.length, 1);
+  assert.equal(clientDevices[0].id, id);
+
+  // Admin still sees it too (among whatever other devices earlier tests left in this shared kv),
+  // and can take it back.
+  const adminDevices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.ok(adminDevices.some((d) => d.id === id));
+  await put(cookie, `/api/devices/${id}/owner`, { ownerId: null });
+  assert.deepEqual(await (await req("/api/devices", { headers: { cookie: clientCookie } })).json(), []);
+
+  // A command still works for the device's current owner after reassignment.
+  assert.equal((await post(`/api/devices/${id}/command`, { type: "lock" }, { cookie })).status, 200);
+});
+
+test("a client cannot reassign device ownership (even a device it already owns), and admin gets a clean error for an unknown client", async () => {
+  const cookie = await login();
+  const { id } = await enrolledDevice(cookie);
+  await post("/api/clients", { loginName: "parentacct2", name: "Parent 2", password: "secret123" }, { cookie });
+  const clientCookie = await loginClient("parentacct2", "secret123");
+  await put(cookie, `/api/devices/${id}/owner`, { ownerId: "parentacct2" }); // admin hands it over first
+
+  // The client can see this device now, but reassigning ownership is still admin-only.
+  assert.equal((await put(clientCookie, `/api/devices/${id}/owner`, { ownerId: "parentacct2" })).status, 403);
+  // A device the client can't see at all behaves like it doesn't exist, same as everywhere else.
+  const { id: otherId } = await enrolledDevice(cookie);
+  assert.equal((await put(clientCookie, `/api/devices/${otherId}/owner`, { ownerId: "parentacct2" })).status, 404);
+  assert.equal((await put(cookie, `/api/devices/${id}/owner`, { ownerId: "no-such-client" })).status, 404);
 });

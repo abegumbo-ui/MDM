@@ -501,6 +501,18 @@ function renderDeviceDetail(m,d){
    h('div',{class:'mute small'},'As of '+ago(lastFix.at)+'.'),
    h('a',{href:'https://maps.google.com/?q='+fix.lat+','+fix.lon,target:'_blank',rel:'noopener',style:'display:inline-block;margin-top:4px'},'Open in Google Maps ↗')));
   else locCard.append(h('div',{class:'mute small',style:'margin-top:8px'},'Could not read the last result.'))}
+ if(state.session.role==='admin'){
+  const ownerCard=h('div',{class:'card'},h('h2',null,'Owner'),
+   h('div',{class:'mute'},'Which client account (if any) this phone belongs to -- they see only their own devices and can manage this one from their own login. Admin always sees every device regardless.'));
+  const sel=h('select',{style:'width:100%;margin-top:8px'});
+  sel.append(h('option',{value:''},'Admin only (no client)'));
+  for(const c of clients)sel.append(h('option',{value:c.id},c.name+' ('+c.id+')'));
+  sel.value=d.ownerId||'';
+  sel.onchange=async function(){
+   try{await call('PUT','/api/devices/'+d.id+'/owner',{ownerId:sel.value||null});d.ownerId=sel.value||null;snack('Saved.');load()}catch(e){snack(e.message,1);sel.value=d.ownerId||''}};
+  ownerCard.append(sel);
+  ov.append(ownerCard);
+ }
  ov.append(locCard);
  const acts=h('div',{class:'card'},h('h2',null,'Activity'));
  if(d.pending)acts.append(h('div',{class:'act'},'⏳ '+d.pending+' command(s) waiting for the phone\'s next check-in'));
@@ -871,6 +883,19 @@ function renderBrowserDetail(m,b){
   btn('Rename','outline',async function(){const name=prompt('Name for this browser',b.name);if(!name)return;await call('PUT','/api/browsers/'+b.id,{name:name});load()}),
   btn('Disconnect','danger',async function(){if(!confirm('Disconnect '+b.name+'? It goes back to needing to connect again, and allows nothing until then.'))return;await call('DELETE','/api/browsers/'+b.id);location.hash='devices'})));
  m.append(controls);
+
+ if(state.session.role==='admin'){
+  const ownerCard=h('div',{class:'card'},h('h2',null,'Owner'),
+   h('div',{class:'mute'},'Which client account (if any) this browser belongs to -- they see only their own devices and can manage this one from their own login. Admin always sees every device regardless.'));
+  const sel=h('select',{style:'width:100%;margin-top:8px'});
+  sel.append(h('option',{value:''},'Admin only (no client)'));
+  for(const c of clients)sel.append(h('option',{value:c.id},c.name+' ('+c.id+')'));
+  sel.value=b.ownerId||'';
+  sel.onchange=async function(){
+   try{await call('PUT','/api/browsers/'+b.id+'/owner',{ownerId:sel.value||null});b.ownerId=sel.value||null;snack('Saved.');load()}catch(e){snack(e.message,1);sel.value=b.ownerId||''}};
+  ownerCard.append(sel);
+  m.append(ownerCard);
+ }
 
  renderRequestsCard(m,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b);
  renderCloneCard(m,b);
