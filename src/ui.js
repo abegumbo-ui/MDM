@@ -355,7 +355,7 @@ function buildAppsHub(m,dv){
  if(appsSub==='regular'){
   renderApps(m,dv);
   const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
-  const installedSorted=dv.packages.slice().sort(function(a,b){
+  const installedSorted=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE}).sort(function(a,b){
    const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;
    return aa!==ab?aa-ab:0});
   for(const a of installedSorted)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},dv));
@@ -649,11 +649,16 @@ function renderDeviceDetail(m,d){
 }
 
 /* ---------- apps ---------- */
+// The agent is always launchable (it has its own icon, unless hidden) so it always reports itself
+// as an installed app -- nothing useful ever comes from seeing it in its own app list, and there's
+// no sane action to take on it here (it can't be blocked off or uninstalled from itself).
+const SELF_PACKAGE='com.familymdm.agent';
 function allApps(dv){
  const seen=new Map();
  for(const a of dv.packages){
+  if(a.p===SELF_PACKAGE)continue;
   const o=seen.get(a.p)||{p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:0};if(a.h)o.hiddenOn++;seen.set(a.p,o)}
- for(const p in dv.config.apps)if(!seen.has(p))seen.set(p,{p:p,l:dv.config.apps[p].label||p,s:false,prot:false,hiddenOn:0});
+ for(const p in dv.config.apps)if(p!==SELF_PACKAGE&&!seen.has(p))seen.set(p,{p:p,l:dv.config.apps[p].label||p,s:false,prot:false,hiddenOn:0});
  // Allowed apps first (what you actually came here to check), then everything else alphabetically.
  return [...seen.values()].sort(function(a,b){
   const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;
@@ -726,7 +731,10 @@ function appRow(a,dv,opts){
  const render2=function(){render()};
  const ctl=h('div',{class:'row',style:'margin-top:8px'},seg);
  const installedHere=dv.packages.some(function(x){return x.p===a.p});
- if(!a.s&&installedHere)ctl.append(btn('Uninstall','danger',async function(){
+ // Never offer to uninstall a protected package (MDM Agent itself included -- it blocks its own
+ // uninstall at the Android level anyway, see PolicyApplier's setUninstallBlocked, so the button
+ // would only ever fail) or a system app, which Android won't actually remove either.
+ if(!a.s&&!a.prot&&installedHere)ctl.append(btn('Uninstall','danger',async function(){
   if(!confirm('Uninstall '+(a.l||a.p)+' from '+dv.name+'? This removes the app and its data from the phone.'))return;
   await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
   snack('Uninstall queued. The phone does it at its next check-in (within about 5 minutes).');load()}));
