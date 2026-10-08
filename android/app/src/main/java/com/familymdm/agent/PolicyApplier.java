@@ -172,7 +172,23 @@ final class PolicyApplier {
         // recovery path either way (dialing *#*#636#*#* brings the icon straight back), with the
         // dashboard as a second, remote way back for a non-standalone phone.
         applyHideAppIcon(c, policy.optBoolean("hideAppIcon", false));
-        applyBrowserAddon(c, policy.optBoolean("browserAddonEnabled", false));
+        // Seed guards: the Browser add-on and the whole-app blocklist both existed as phone-local
+        // features for a long time before either became syncable. Without this, the very first
+        // sync on an already-updated phone would see the dashboard's brand new, still-empty/false
+        // config for these fields and silently stomp whatever was really set on the phone (turning
+        // the add-on back off, or un-hiding every already-blocked app) -- so if nothing has ever
+        // been pushed up for a field yet (its rev is still 0) and the phone already has real state
+        // for it, push that real state up first instead of adopting the server's default over it.
+        if (Agent.prefs(c).getLong("browserAddonRev", 0) == 0 && BrowserAddon.isEnabled(c)) {
+            Agent.prefs(c).edit().putLong("browserAddonRev", System.currentTimeMillis()).putBoolean("browserAddonValue", true).apply();
+        } else {
+            applyBrowserAddon(c, policy.optBoolean("browserAddonEnabled", false));
+        }
+        if (WholeAppBlocklist.rev(c) == 0 && !WholeAppBlocklist.list(c).isEmpty()) {
+            WholeAppBlocklist.seed(c);
+        } else {
+            WholeAppBlocklist.adopt(c, policy.optJSONObject("wholeAppBlocklist"));
+        }
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");

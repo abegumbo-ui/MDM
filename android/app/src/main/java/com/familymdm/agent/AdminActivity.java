@@ -887,12 +887,14 @@ public class AdminActivity extends Activity {
                 WholeAppBlocklist.setPaused(this, pkg, !paused);
                 Agent.addEvent(this, "local", "Master code on phone: " + (!paused ? "paused" : "resumed")
                         + " the whole-app block on \"" + pkg + "\"");
+                AgentService.requestSync();
                 build();
             }));
             row.addView(Ui.button(this, "Remove", Ui.OUTLINED, v -> {
                 if (!unlocked()) return;
                 WholeAppBlocklist.remove(this, pkg);
                 Agent.addEvent(this, "local", "Master code on phone: removed the whole-app block on \"" + pkg + "\"");
+                AgentService.requestSync();
                 build();
             }));
             Ui.add(wholeAppCard, row, 4);
@@ -1419,6 +1421,7 @@ public class AdminActivity extends Activity {
                             .setPositiveButton("Block it", (d2, w2) -> {
                                 WholeAppBlocklist.add(this, finalPkg);
                                 Agent.addEvent(this, "local", "Master code on phone: blocked the whole app \"" + finalPkg + "\"");
+                                AgentService.requestSync();
                                 toast("\"" + label + "\" is hidden now.");
                                 build();
                             })
