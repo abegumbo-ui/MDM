@@ -87,7 +87,9 @@ export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
 <style>${STYLE}</style></head>
 <body><div class="login"><div class="card"><h2 style="font-size:22px;margin-bottom:12px">MDM Dashboard</h2>
-<form method="post" action="/login"><div class="row"><input class="grow" type="password" name="password" placeholder="Admin password" autofocus required>
+<form method="post" action="/login">
+<input type="text" name="loginName" placeholder="Client login name (leave empty if you're the administrator)" style="width:100%;margin-bottom:8px" autocapitalize="off" autocorrect="off">
+<div class="row"><input class="grow" type="password" name="password" placeholder="Password" autofocus required>
 <button class="btn">Sign in</button></div>${error ? `<p class="mute" style="color:var(--error)">${error}</p>` : ""}</form></div></div></body></html>`;
 
 export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -114,7 +116,7 @@ function setDeviceTab(i){deviceTab=i;try{sessionStorage.setItem('deviceTab',i)}c
 let appsSub=sessionStorage.getItem('appsSub')||null,settingsSub=sessionStorage.getItem('settingsSub')||null;
 function setAppsSub(v){appsSub=v;try{v?sessionStorage.setItem('appsSub',v):sessionStorage.removeItem('appsSub')}catch(e){}}
 function setSettingsSub(v){settingsSub=v;try{v?sessionStorage.setItem('settingsSub',v):sessionStorage.removeItem('settingsSub')}catch(e){}}
-let state=null,devices=[],browsers=[],windevices=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
+let state=null,devices=[],browsers=[],windevices=[],clients=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
 function route(){const x=(location.hash||'#devices').slice(1);
  if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null;openWinId=null}
  else if(x.indexOf('browser/')===0){tab='devices';openBrowserId=x.slice(8);openId=null;openWinId=null}
@@ -179,6 +181,7 @@ function ask(title,fields,okLabel,note){
 async function load(){
  state=await call('GET','/api/state');devices=await call('GET','/api/devices');browsers=await call('GET','/api/browsers');windevices=await call('GET','/api/windevices');
  for(const b of browsers)b.isBrowser=true;
+ if(state.session.role==='admin')clients=await call('GET','/api/clients');
  render();
  call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
 async function saveConfigFor(d,msg){await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about 5 minutes.')}
@@ -197,10 +200,12 @@ function render(){
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){renderDeviceDetail(m,d);return}openId=null}
  if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){renderBrowserDetail(m,b);return}openBrowserId=null}
  if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){renderWinDetail(m,w);return}openWinId=null}
- if(tab==='codes'||tab==='settings'){
+ if(tab==='codes'||tab==='settings'||tab==='clients'){
   const back=h('button',{class:'btn outline'},'‹ Devices');back.onclick=function(){location.hash='devices'};
   m.append(h('div',{class:'row'},back));
-  (tab==='codes'?renderCodes:renderSettings)(m);
+  if(tab==='codes')renderCodes(m);
+  else if(tab==='clients')renderClients(m);
+  else renderSettings(m);
   return}
  renderDevices(m)}
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
@@ -237,7 +242,9 @@ function renderDevices(m){
   for(const d of devices){
    const card=h('div',{class:'card dev'});
    card.onclick=function(){location.hash='device/'+d.id};
-   card.append(h('div',{class:'ico'},'📱'),h('div',{class:'grow'},h('div',{class:'name'},d.name)),h('div',{class:'mute',style:'font-size:22px'},'›'));
+   const nameCol=h('div',{class:'grow'},h('div',{class:'name'},d.name));
+   if(state.session.role==='admin'&&d.ownerId)nameCol.append(h('div',{class:'mute small'},d.ownerId));
+   card.append(h('div',{class:'ico'},'📱'),nameCol,h('div',{class:'mute',style:'font-size:22px'},'›'));
    m.append(card)}
   for(const b of browsers){
    const card=h('div',{class:'card dev'});
@@ -254,8 +261,14 @@ function renderDevices(m){
  const row=h('div',{class:'row'});
  row.append(btn('Refresh','tonal',load));
  const codes=h('button',{class:'btn outline'},'Codes');codes.onclick=function(){location.hash='codes'};
- const settings=h('button',{class:'btn outline'},'Settings');settings.onclick=function(){location.hash='settings'};
- row.append(codes,settings);
+ row.append(codes);
+ // The logo is the only thing left here, and it's admin-only (see renderSettings) -- a client
+ // would find nothing behind this button, so it doesn't show one at all.
+ if(state.session.role==='admin'){
+  const settings=h('button',{class:'btn outline'},'Settings');settings.onclick=function(){location.hash='settings'};
+  const clients=h('button',{class:'btn outline'},'Clients');clients.onclick=function(){location.hash='clients'};
+  row.append(settings,clients);
+ }
  m.append(row);
 }
 function kv(k,v){return h('div',{class:'kv'},h('span',{class:'mute'},k),h('b',null,v))}
@@ -787,6 +800,34 @@ function renderSettings(m){
  m.append(logoCard);
  m.append(h('div',{class:'card'},h('h2',null,'Everything else moved'),
   h('div',{class:'mute'},'New-apps approval, Factory Reset Protection, Home screen mode, auto-update, Wi-Fi reporting, the master code, and every restriction switch are now each phone\'s own — open a phone and look for its Settings box.')));
+}
+/* ---------- clients (admin-only: each owns a slice of devices/browsers, created here) ---------- */
+function renderClients(m){
+ m.append(h('div',{class:'card'},h('h2',null,'Clients'),
+  h('div',{class:'mute'},'Each client logs in on their own, sees only their own phones and browsers, and generates their own codes to enroll them. You (the administrator) still see everything, from every client, right here.')));
+ const addCard=h('div',{class:'card'},h('h2',null,'Add a client'));
+ const loginName=h('input',{type:'text',placeholder:'Login name (3-32 letters/numbers/-/_, what they log in with)',style:'width:100%;margin-top:8px'});
+ const name=h('input',{type:'text',placeholder:'Display name (optional, defaults to the login name)',style:'width:100%;margin-top:8px'});
+ const password=h('input',{type:'password',placeholder:'Password (6+ characters) -- give this to them yourself',style:'width:100%;margin-top:8px'});
+ addCard.append(loginName,name,password,h('div',{style:'margin-top:8px'},btn('Add client','tonal',async function(){
+  try{
+   await call('POST','/api/clients',{loginName:loginName.value.trim(),name:name.value.trim(),password:password.value});
+   snack('Client added. Give them the login name and password to sign in.');
+   loginName.value='';name.value='';password.value='';
+   clients=await call('GET','/api/clients');render()
+  }catch(e){snack(e.message,1)}})));
+ m.append(addCard);
+
+ const list=h('div',{class:'card'});
+ if(!clients.length)list.append(h('div',{class:'mute'},'No clients yet.'));
+ for(const c of clients){
+  const n=devices.filter(function(d){return d.ownerId===c.id}).length+browsers.filter(function(d){return d.ownerId===c.id}).length;
+  list.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},c.name),
+   h('div',{class:'mute small'},'Login: '+c.id+' · '+n+' device(s)')),
+   btn('Delete','danger',async function(){
+    if(!confirm('Delete client "'+c.name+'"? They can no longer log in. Their devices stay exactly as they are -- not deleted, not reassigned -- just invisible to every client until you hand them to a new or recreated account.'))return;
+    await call('DELETE','/api/clients/'+c.id);clients=await call('GET','/api/clients');render()})))}
+ m.append(list);
 }
 /** Everything that used to be shared by every phone, now that specific phone's own. */
 /* ---------- Settings hub: Permissions / Network / Updates / Device (Settings Menu is phone-only) ---------- */

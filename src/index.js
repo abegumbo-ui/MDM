@@ -75,17 +75,48 @@ function safeEqual(a, b) {
   for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return r === 0;
 }
+async function pbkdf2(password, saltHex, iterations) {
+  const salt = Uint8Array.from(saltHex.match(/.{2}/g).map((b) => parseInt(b, 16)));
+  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  return hex(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, 256));
+}
+// A Worker checking this, not a cheap phone CPU, so full-strength iterations (unlike the phone's own
+// master-code check, which has to stay cheap enough for a flip-phone-class chip -- see Master.java).
+const CLIENT_PW_ITERATIONS = 100000;
+async function hashClientPassword(password) {
+  const salt = randomHex(16);
+  return { salt, hash: await pbkdf2(password, salt, CLIENT_PW_ITERATIONS), iterations: CLIENT_PW_ITERATIONS };
+}
+async function verifyClientPassword(password, rec) {
+  if (!rec || !rec.salt || !rec.hash) return false;
+  return safeEqual(await pbkdf2(password, rec.salt, rec.iterations || CLIENT_PW_ITERATIONS), rec.hash);
+}
+const LOGIN_NAME_RE = /^[a-z0-9][a-z0-9_-]{2,31}$/;
 
-// ---- admin auth: one password (Worker secret) -> HMAC-signed cookie ----
-async function isAuthed(request, env) {
-  const m = /(?:^|;\s*)sess=(\d+)\.([0-9a-f]+)/.exec(request.headers.get("cookie") || "");
-  if (!m || Number(m[1]) < Date.now() / 1000) return false;
-  return safeEqual(m[2], await hmac(env.ADMIN_PASSWORD, `sess:${m[1]}`));
-}
-async function sessionCookie(env) {
+// ---- auth: the admin password (Worker secret) signs every session cookie, admin or client, so
+// a per-client password never has to double as a signing key -- only who's logged in (and as
+// what) changes between sessions. isAdmin() and isClient() below are the two shapes of "logged
+// in" everything else branches on; getSession() itself never needs to be called twice.
+async function sessionCookieFor(env, tag) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
-  return `sess=${exp}.${await hmac(env.ADMIN_PASSWORD, `sess:${exp}`)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_SECONDS}`;
+  return `sess=${exp}.${encodeURIComponent(tag)}.${await hmac(env.ADMIN_PASSWORD, `sess:${tag}:${exp}`)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_SECONDS}`;
 }
+async function getSession(request, env) {
+  const m = /(?:^|;\s*)sess=(\d+)\.([^.;]+)\.([0-9a-f]+)/.exec(request.headers.get("cookie") || "");
+  if (!m) return null;
+  const exp = Number(m[1]);
+  if (!exp || exp < Date.now() / 1000) return null;
+  const tag = decodeURIComponent(m[2]);
+  if (!safeEqual(m[3], await hmac(env.ADMIN_PASSWORD, `sess:${tag}:${exp}`))) return null;
+  if (tag === "admin") return { role: "admin" };
+  const cm = /^client:(.+)$/.exec(tag);
+  if (!cm) return null;
+  const c = await getJSON(env, `client:${cm[1]}`, null);
+  if (!c) return null; // the client account was deleted since this cookie was issued
+  return { role: "client", id: cm[1], name: c.name };
+}
+const isAdmin = (session) => !!session && session.role === "admin";
+const isClient = (session) => !!session && session.role === "client";
 
 // ---- KV state ----
 const getJSON = async (env, key, dflt) => (await env.STATE.get(key, "json")) ?? dflt;
@@ -113,7 +144,7 @@ async function configOf(env, d) {
 // already reloads right after making it, so that's the only path that actually needs to be instant
 // -- and it is, since it's a fresh, uncached call either way.
 const CACHE_MS = 20 * 1000;
-const listCaches = { device: { at: 0, value: null }, browserDevice: { at: 0, value: null }, winDevice: { at: 0, value: null } };
+const listCaches = { device: { at: 0, value: null }, browserDevice: { at: 0, value: null }, winDevice: { at: 0, value: null }, client: { at: 0, value: null } };
 // Called on every write/delete to a device:/browserDevice:/winDevice: key (see putJSON below, and
 // the three explicit deletes) so a just-made change is never masked by a stale cached list -- the
 // cache only ever saves a read when nothing relevant changed, never when something did.
@@ -144,6 +175,17 @@ async function listDevices(env) {
   return listByPrefix(env, "device");
 }
 
+// ---- client accounts: each owns a slice of devices/browsers, created by the admin only (see
+// adminApi's /api/clients routes) -- never self-signup. A device's ownerId is null until a
+// client's own enrollment code stamps it (see /agent/enroll and /browser/enroll below); null
+// means admin-only, exactly today's behavior, so nothing already enrolled changes hands.
+async function listClients(env) {
+  return listByPrefix(env, "client");
+}
+const publicClient = (c) => ({ id: c.id, name: c.name, createdAt: c.createdAt });
+// True if a client session may see this record at all; always true for the admin.
+const canSee = (session, ownerId) => session.role === "admin" || ownerId === session.id;
+
 const publicDevice = (d) => ({
   id: d.id,
   name: d.name,
@@ -163,6 +205,7 @@ const publicDevice = (d) => ({
   siteRequests: d.siteRequests || [],
   messages: d.messages || [],
   pushLog: (d.pushLog || []).slice(-30),
+  ownerId: d.ownerId || null,
 });
 
 // Browser devices: a standalone Browser app connected straight to this dashboard, with no agent/MDM
@@ -178,11 +221,12 @@ const publicBrowserDevice = (d) => ({
   lastSeen: d.lastSeen,
   info: d.info || {},
   siteRequests: d.siteRequests || [],
+  ownerId: d.ownerId || null,
 });
 
 /** namePrefix: null names it from device info (code-based /browser/enroll); a string (e.g. "New
  * Browser") names it that plus a short id suffix, so several self-registrations stay tellable apart. */
-async function createBrowserDevice(env, info, namePrefix) {
+async function createBrowserDevice(env, info, namePrefix, ownerId) {
   const id = randomHex(8);
   const secret = randomHex(24);
   info = info || {};
@@ -193,6 +237,7 @@ async function createBrowserDevice(env, info, namePrefix) {
     lastSeen: Date.now(),
     info,
     siteRequests: [],
+    ownerId: ownerId || null,
   });
   return { id, secret };
 }
@@ -343,7 +388,7 @@ async function authDevice(request, env) {
 }
 
 // ---- admin API (cookie auth) ----
-async function adminApi(request, env, url) {
+async function adminApi(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
 
@@ -382,6 +427,7 @@ async function adminApi(request, env, url) {
       return b64 ? imageResponse(b64) : new Response(null, { status: 404 });
     }
     if (method === "DELETE") {
+      if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
       await env.STATE.delete("logo");
       await env.STATE.delete("logoRev");
       logoRevCache = 0;
@@ -389,6 +435,7 @@ async function adminApi(request, env, url) {
       return json({ ok: true });
     }
     if (method === "PUT") {
+      if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
       const buf = await request.arrayBuffer();
       if (buf.byteLength < 50 || buf.byteLength > MAX_IMAGE_BYTES || !isPng(buf)) return json({ error: "Use a PNG image under 200 KB" }, 400);
       await env.STATE.put("logo", toBase64(buf));
@@ -401,13 +448,44 @@ async function adminApi(request, env, url) {
   }
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
+  if (path === "/api/clients" && method === "GET") {
+    if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
+    return json((await listClients(env)).map(publicClient));
+  }
+  if (path === "/api/clients" && method === "POST") {
+    if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
+    const loginName = String(body.loginName || "").trim().toLowerCase();
+    const name = String(body.name || loginName).slice(0, 80);
+    const password = String(body.password || "");
+    if (!LOGIN_NAME_RE.test(loginName)) return json({ error: "Login name must be 3-32 lowercase letters, numbers, - or _, starting with a letter or number" }, 400);
+    if (password.length < 6) return json({ error: "Password must be at least 6 characters" }, 400);
+    if (await getJSON(env, `client:${loginName}`, null)) return json({ error: "That login name is already taken" }, 400);
+    const rec = { id: loginName, name, createdAt: Date.now(), ...(await hashClientPassword(password)) };
+    await putJSON(env, `client:${loginName}`, rec);
+    return json(publicClient(rec));
+  }
+  const clientMatch = /^\/api\/clients\/([a-z0-9_-]{3,32})$/.exec(path);
+  if (clientMatch && method === "DELETE") {
+    if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
+    // Devices this client owned aren't deleted or reassigned -- they just become invisible to
+    // every client (their ownerId now points at an account that can't log in any more) until the
+    // admin, who can always see everything, hands them to a new or recreated client account.
+    await env.STATE.delete(`client:${clientMatch[1]}`);
+    invalidateListCache(`client:${clientMatch[1]}`);
+    return json({ ok: true });
+  }
   if (path === "/api/state" && method === "GET") {
-    return json({ restrictions: RESTRICTIONS, origin: url.origin, masterIterations: MASTER_ITERATIONS });
+    return json({
+      restrictions: RESTRICTIONS,
+      origin: url.origin,
+      masterIterations: MASTER_ITERATIONS,
+      session: session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name },
+    });
   }
   const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from)$/.exec(path);
   if (devConfig) {
     const d = await getJSON(env, `device:${devConfig[1]}`, null);
-    if (!d) return json({ error: "Unknown device" }, 404);
+    if (!d || !canSee(session, d.ownerId)) return json({ error: "Unknown device" }, 404);
     const key = `device:${devConfig[1]}`;
     if (devConfig[2] === "config" && method === "PUT") {
       const { cfg: before } = await configOf(env, d);
@@ -439,7 +517,7 @@ async function adminApi(request, env, url) {
       const src = body.browser
         ? await getJSON(env, `browserDevice:${body.sourceId}`, null)
         : await getJSON(env, `device:${body.sourceId}`, null);
-      if (!src) return json({ error: "Unknown source" }, 404);
+      if (!src || !canSee(session, src.ownerId)) return json({ error: "Unknown source" }, 404);
       const { cfg: srcCfg } = await configOf(env, src);
       d.config = normalizeConfig(body.browser ? { sites: srcCfg.sites } : srcCfg);
       await putJSON(env, key, d);
@@ -450,7 +528,7 @@ async function adminApi(request, env, url) {
   if (brConfig) {
     const key = `browserDevice:${brConfig[1]}`;
     const d = await getJSON(env, key, null);
-    if (!d) return json({ error: "Unknown browser" }, 404);
+    if (!d || !canSee(session, d.ownerId)) return json({ error: "Unknown browser" }, 404);
     if (brConfig[2] === "config" && method === "PUT") {
       d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing });
       await putJSON(env, key, d);
@@ -460,7 +538,7 @@ async function adminApi(request, env, url) {
       const src = body.browser
         ? await getJSON(env, `browserDevice:${body.sourceId}`, null)
         : await getJSON(env, `device:${body.sourceId}`, null);
-      if (!src) return json({ error: "Unknown source" }, 404);
+      if (!src || !canSee(session, src.ownerId)) return json({ error: "Unknown source" }, 404);
       const { cfg: srcCfg } = await configOf(env, src);
       d.config = normalizeConfig({ sites: srcCfg.sites });
       await putJSON(env, key, d);
@@ -479,8 +557,14 @@ async function adminApi(request, env, url) {
     // code to a different device (or a sibling's phone) does nothing. Enroll codes can't work this
     // way -- a device has no identity yet before it enrolls -- so those stay usable by whoever is first.
     if (["install", "uninstall", "freebrowse"].includes(body.type) && /^[0-9a-f]{1,32}$/.test(body.deviceId || "")) {
+      const owner = await getJSON(env, `device:${body.deviceId}`, null);
+      if (!owner || !canSee(session, owner.ownerId)) return json({ error: "Unknown device" }, 404);
       value.deviceId = body.deviceId;
     }
+    // Stamped onto an enroll/browser code so the device it creates is this client's from the
+    // moment it exists -- see /agent/enroll and /browser/enroll. Admin-generated codes stay
+    // ownerless, same as every device enrolled before client accounts existed.
+    if (isClient(session)) value.ownerId = session.id;
     await putJSON(env, `code:${body.type}:${code}`, value, { expirationTtl: 3600 });
     const reply = { code, type: body.type, server: url.origin, expiresInSeconds: 3600, minutes: value.minutes };
     if (body.type === "enroll") {
@@ -505,7 +589,7 @@ async function adminApi(request, env, url) {
     return b64 ? imageResponse(b64) : new Response(null, { status: 404 });
   }
   if (path === "/api/devices" && method === "GET") {
-    const devices = await listDevices(env);
+    const devices = (await listDevices(env)).filter((d) => canSee(session, d.ownerId));
     return json(
       await Promise.all(devices.map(async (d) => {
         const { cfg } = await configOf(env, d);
@@ -520,7 +604,7 @@ async function adminApi(request, env, url) {
     );
   }
   if (path === "/api/browsers" && method === "GET") {
-    const browsers = await listBrowserDevices(env);
+    const browsers = (await listBrowserDevices(env)).filter((d) => canSee(session, d.ownerId));
     return json(
       await Promise.all(browsers.map(async (d) => {
         const { cfg } = await configOf(env, d);
@@ -532,7 +616,7 @@ async function adminApi(request, env, url) {
   if (bdev) {
     const key = `browserDevice:${bdev[1]}`;
     const d = await getJSON(env, key, null);
-    if (!d) return json({ error: "Unknown browser" }, 404);
+    if (!d || !canSee(session, d.ownerId)) return json({ error: "Unknown browser" }, 404);
     if (method === "DELETE" && !bdev[2]) {
       // The app keeps no local fallback of its own, so this is the only way to disconnect it
       // short of uninstalling: without a token it goes right back to "nothing is allowed" and
@@ -559,7 +643,7 @@ async function adminApi(request, env, url) {
   if (dev) {
     const key = `device:${dev[1]}`;
     const d = await getJSON(env, key, null);
-    if (!d) return json({ error: "Unknown device" }, 404);
+    if (!d || !canSee(session, d.ownerId)) return json({ error: "Unknown device" }, 404);
     if (method === "DELETE" && !dev[2]) {
       invalidateListCache(key);
       await env.STATE.delete(key);
@@ -630,12 +714,16 @@ async function adminApi(request, env, url) {
       return json({ ok: true });
     }
   }
+  // LockGuard (Windows) devices self-register with no enrollment code at all -- there's no client-
+  // scoped flow for them, so for now they stay admin-only, same as before client accounts existed.
   if (path === "/api/windevices" && method === "GET") {
+    if (!isAdmin(session)) return json([]);
     const wins = await listWinDevices(env);
     return json(wins.map(publicWinDevice));
   }
   const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command))?$/.exec(path);
   if (wdev) {
+    if (!isAdmin(session)) return json({ error: "Unknown device" }, 404);
     const key = `winDevice:${wdev[1]}`;
     const d = await getJSON(env, key, null);
     if (!d) return json({ error: "Unknown device" }, 404);
@@ -697,9 +785,8 @@ async function agentApi(request, env, url) {
 
   if (url.pathname === "/agent/enroll") {
     const code = String(body.code || "").toUpperCase();
-    if (!/^[0-9A-F]{8}$/.test(code) || !(await env.STATE.get(`code:enroll:${code}`))) {
-      return json({ error: "Invalid or expired enrollment code" }, 403);
-    }
+    const codeRec = /^[0-9A-F]{8}$/.test(code) ? await getJSON(env, `code:enroll:${code}`, null) : null;
+    if (!codeRec) return json({ error: "Invalid or expired enrollment code" }, 403);
     await env.STATE.delete(`code:enroll:${code}`);
     const id = randomHex(8);
     const secret = randomHex(24);
@@ -714,6 +801,7 @@ async function agentApi(request, env, url) {
       queue: [],
       inflight: [],
       results: [],
+      ownerId: codeRec.ownerId || null,
     });
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
@@ -934,11 +1022,10 @@ async function browserApi(request, env, url) {
 
   if (url.pathname === "/browser/enroll") {
     const code = String(body.code || "").toUpperCase();
-    if (!/^[0-9A-F]{8}$/.test(code) || !(await env.STATE.get(`code:browser:${code}`))) {
-      return json({ error: "Invalid or expired code" }, 403);
-    }
+    const codeRec = /^[0-9A-F]{8}$/.test(code) ? await getJSON(env, `code:browser:${code}`, null) : null;
+    if (!codeRec) return json({ error: "Invalid or expired code" }, 403);
     await env.STATE.delete(`code:browser:${code}`);
-    const { id, secret } = await createBrowserDevice(env, body.info, null);
+    const { id, secret } = await createBrowserDevice(env, body.info, null, codeRec.ownerId);
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
 
@@ -1055,17 +1142,28 @@ export default {
 
       if (url.pathname === "/login" && request.method === "POST") {
         const form = await request.formData();
-        const ok = safeEqual(String(form.get("password") || ""), env.ADMIN_PASSWORD);
-        if (!ok) return html(loginPage("Wrong password."), 401);
-        return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookie(env) } });
+        const password = String(form.get("password") || "");
+        const loginName = String(form.get("loginName") || "").trim().toLowerCase();
+        if (!loginName) {
+          if (!safeEqual(password, env.ADMIN_PASSWORD)) return html(loginPage("Wrong password."), 401);
+          return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookieFor(env, "admin") } });
+        }
+        // A client login name is public-ish (shared with them to log in at all), so this path
+        // can't use safeEqual's constant-time comparison to hide "no such account" -- the KV
+        // lookup itself already takes a different amount of time depending on whether the key
+        // exists. That's fine: it's no worse than any login form ever is about that.
+        const c = await getJSON(env, `client:${loginName}`, null);
+        if (!c || !(await verifyClientPassword(password, c))) return html(loginPage("Wrong login name or password."), 401);
+        return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookieFor(env, `client:${loginName}`) } });
       }
       if (url.pathname === "/logout") {
         return new Response(null, { status: 303, headers: { location: "/", "set-cookie": "sess=; Max-Age=0; Path=/" } });
       }
-      if (!(await isAuthed(request, env))) {
+      const session = await getSession(request, env);
+      if (!session) {
         return url.pathname.startsWith("/api/") ? json({ error: "Unauthorized" }, 401) : html(loginPage());
       }
-      if (url.pathname.startsWith("/api/")) return await adminApi(request, env, url);
+      if (url.pathname.startsWith("/api/")) return await adminApi(request, env, url, session);
       if (url.pathname === "/") return html(dashboardPage());
       return html("Not found", 404);
     } catch (e) {
