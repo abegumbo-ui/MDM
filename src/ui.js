@@ -400,7 +400,7 @@ function buildAppsHub(m,dv){
  } else if(appsSub==='kiosk'){
   const hsCard=h('div',{class:'card'},h('h2',null,'Home screen mode'));
   hsCard.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
-   h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons. An app set to Block is fully switched off, same as always; one left at Default or set to Soft block just has no icon here and stays installed and running in the background. Calls and texts still work. Settings is not available unless you Allow it, so add Wi-Fi from Settings → Network. On or off, nothing in between: the master code on the phone (Administrator) can turn it off there too, and that reaches this switch on the next sync, same as every other setting here.')),
+   h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons, plus a "Settings" tile that always shows regardless of the Allow list (see Settings Menu below -- it\'s the only way to reach any part of Settings while this is on). An app set to Block is fully switched off, same as always; one left at Default or set to Soft block just has no icon here and stays installed and running in the background. Calls and texts still work. On or off, nothing in between: the master code on the phone (Administrator) can turn it off there too, and that reaches this switch on the next sync, same as every other setting here.')),
    sw(dv.config.homeScreen,async function(on){
     if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the Regular Apps box, because only those will appear.')){render();return}
     dv.config.homeScreen=on;
@@ -412,6 +412,10 @@ function buildAppsHub(m,dv){
    h('div',{class:'mute'},'Home screen mode always shows an "Administrator" button below the allowed apps, to get back in. Hiding it removes that button for everyone who picks up the phone -- dialing *#*#636#*#* on the phone itself, or turning this back off from here, both still work.')),
    sw(dv.config.hideKioskAdmin,async function(on){dv.config.hideKioskAdmin=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
   m.append(hsCard);
+  const smCard=h('div',{class:'card'},h('h2',null,'Settings Menu'),
+   h('div',{class:'mute'},'The disguised "Settings" tile home screen mode always shows, whatever the Allow list says -- the only way to reach any part of Settings while it\'s on. Which categories it shows and where each one links to is set up on the phone itself (most need no setup at all; a few manufacturer-only screens need a one-time "Learn" there). Same place as Settings → Settings Menu, shown here too since it\'s part of how home screen mode actually works.'));
+  smCard.append(h('div',{style:'margin-top:8px'},btn('Open Settings → Settings Menu','outline',function(){setDeviceSection('settings');setSettingsSub('menu');render()})));
+  m.append(smCard);
   m.append(h('div',{class:'card'},h('h2',null,'Allowed Apps'),h('div',{class:'mute'},'Same Default / Allow / Block / Schedule controls as Regular Apps -- set to Allow whatever should appear while Home screen mode is on, before turning it on above.')));
   renderAppEditor(m,dv);
  } else if(appsSub==='blocking'){
