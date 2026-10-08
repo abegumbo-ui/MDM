@@ -71,22 +71,25 @@ pre.cmd{background:var(--surface-3);border-radius:12px;padding:12px;white-space:
 .dev:hover{background:var(--surface-2)}
 .dev .ico{width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
 .dev .name{font-weight:500;font-size:16px}
-.pagetabs{display:flex;gap:4px;overflow-x:auto;margin:12px 0 8px;padding-bottom:4px}
-.pagetabs button{white-space:nowrap;border:1px solid var(--outline);background:none;color:var(--on-surface);border-radius:8px;padding:6px 14px;font:500 13px Roboto,system-ui,sans-serif;cursor:pointer}
-.pagetabs button.on{background:var(--secondary-container);color:var(--on-secondary-container);border-color:transparent}
-.pagetabs .tile{flex:none;width:68px}
-.pagetabs .tile .ico{width:44px;height:44px;font-size:20px;border-radius:14px}
-.pager{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;align-items:flex-start;scrollbar-width:none}
-.pager::-webkit-scrollbar{display:none}
-.pager>section{flex:0 0 100%;scroll-snap-align:start;min-width:0}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--outline-variant)}
 .kv:first-child{border-top:0}.kv b{font-weight:500;text-align:right;word-break:break-word}
 .login{max-width:360px;margin:16vh auto 0;padding:0 16px}
-.tilegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:14px;margin:12px 0}
-.tile{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;background:none;border:0;color:var(--on-surface);font:500 12px Roboto,system-ui,sans-serif;text-align:center;padding:0}
-.tile .ico{width:60px;height:60px;border-radius:18px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:28px}
-.tile.on .ico{background:var(--primary)}
-.tile:hover .ico{filter:brightness(1.15)}
+/* Big 2-column home-screen tile grid -- same shape, same 2 columns, same solid red squares with a
+   white icon and a label underneath, as the phone app's own Administrator home grid (Ui.tile /
+   Ui.tileGrid, 96dp squares, 20dp corners, icon at 42% of the square). */
+.tilegrid-lg{display:grid;grid-template-columns:repeat(2,1fr);gap:22px 8px;margin:16px 0}
+.tilegrid-lg .tile{justify-self:center;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;background:none;border:0;color:var(--on-surface);font:500 15px Roboto,system-ui,sans-serif;text-align:center;padding:0;width:100%}
+.tilegrid-lg .tile .ico{width:96px;height:96px;max-width:100%;border-radius:20px;background:var(--primary);display:flex;align-items:center;justify-content:center}
+.tilegrid-lg .tile:hover .ico{filter:brightness(1.1)}
+.tilegrid-lg .tile svg{width:42%;height:42%}
+/* Small icon-plus-label row -- same shape as the phone app's own Ui.rowTile, used for the
+   second-level pickers inside Apps and Settings (Regular Apps / Home Screen Mode / ... and
+   Settings Menu / Permissions / ...). */
+.hubrow{display:flex;align-items:center;gap:14px;padding:12px;border-radius:14px;background:var(--surface-1);border:1px solid var(--outline-variant);cursor:pointer;margin-bottom:8px}
+.hubrow:hover{background:var(--surface-2)}
+.hubrow .ico{width:44px;height:44px;border-radius:12px;background:var(--primary);display:flex;align-items:center;justify-content:center;flex:none}
+.hubrow .ico svg{width:22px;height:22px}
+.hubrow .label{font-size:15px;font-weight:500}
 .search{position:relative;margin:12px 0}
 .search input{width:100%;padding-left:36px}
 .search .ico{position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--on-surface-variant)}
@@ -122,8 +125,8 @@ const DAYS=['S','M','T','W','T','F','S'];
 // box) -- and in sessionStorage too, because a phone browser backgrounded for a minute or so often
 // throws this whole tab away and reloads it fresh when you switch back, which looked like "it just
 // goes back to Overview on its own" with nothing actually wrong.
-let deviceTab=parseInt(sessionStorage.getItem('deviceTab')||'0',10)||0,lastOpenId=sessionStorage.getItem('lastOpenId')||null;
-function setDeviceTab(i){deviceTab=i;try{sessionStorage.setItem('deviceTab',i)}catch(e){}}
+let deviceSection=sessionStorage.getItem('deviceSection')||null,lastOpenId=sessionStorage.getItem('lastOpenId')||null;
+function setDeviceSection(v){deviceSection=v;try{v?sessionStorage.setItem('deviceSection',v):sessionStorage.removeItem('deviceSection')}catch(e){}}
 let deviceSearch='';
 // Second-level picker inside the Apps and Settings tabs, same hub-in-front-of-a-sub-section idiom
 // the phone app itself uses (AdminActivity's buildAppsHub/buildSettingsHub) -- null means "show the
@@ -145,6 +148,25 @@ function h(tag,attrs){const e=document.createElement(tag);attrs=attrs||{};
  for(const k in attrs){if(k==='class')e.className=attrs[k];else if(k.startsWith('on'))e[k]=attrs[k];else if(attrs[k]!==false&&attrs[k]!=null)e.setAttribute(k,attrs[k])}
  for(let i=2;i<arguments.length;i++){const c=arguments[i];if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}
  return e}
+// Same white-on-red icon tiles as the phone app itself: these are the exact vector paths from
+// android/app/src/main/res/drawable/ic_*_tile.xml (and ic_shield.xml), not lookalikes, so the
+// dashboard's icons are pixel-for-pixel the same glyphs the app uses for the same sections. "doc"
+// is the one icon the phone has no equivalent for (the dashboard's own Log page).
+const SVGNS='http://www.w3.org/2000/svg';
+const ICONS={
+ lock:'M18,8h-1L17,6c0,-2.76 -2.24,-5 -5,-5S7,3.24 7,6v2L6,8c-1.1,0 -2,0.9 -2,2v10c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2L20,10c0,-1.1 -0.9,-2 -2,-2zM12,17c-1.1,0 -2,-0.9 -2,-2s0.9,-2 2,-2 2,0.9 2,2 -0.9,2 -2,2zM15.1,8L8.9,8L8.9,6c0,-1.71 1.39,-3.1 3.1,-3.1 1.71,0 3.1,1.39 3.1,3.1v2z',
+ apps:'M4,8h4L8,4L4,4v4zM10,20h4v-4h-4v4zM4,20h4v-4L4,16v4zM4,14h4v-4L4,10v4zM10,14h4v-4h-4v4zM16,4v4h4L20,4h-4zM10,8h4L14,4h-4v4zM16,14h4v-4h-4v4zM16,20h4v-4h-4v4z',
+ globe:'M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM18.92,8h-2.95c-0.32,-1.25 -0.78,-2.45 -1.38,-3.56C16.57,5.14 18.03,6.35 18.92,8zM12,4.04c0.83,1.2 1.48,2.53 1.91,3.96h-3.82C10.52,6.57 11.17,5.24 12,4.04zM4.26,14C4.1,13.36 4,12.69 4,12s0.1,-1.36 0.26,-2h3.38C7.56,10.66 7.5,11.33 7.5,12s0.06,1.34 0.14,2L4.26,14zM5.08,16h2.95c0.32,1.25 0.78,2.45 1.38,3.56C7.43,18.86 5.97,17.65 5.08,16zM8.03,8L5.08,8c0.89,-1.65 2.35,-2.86 4.33,-3.56C8.81,5.55 8.35,6.75 8.03,8zM12,19.96c-0.83,-1.2 -1.48,-2.53 -1.91,-3.96h3.82C13.48,17.43 12.83,18.76 12,19.96zM14.34,14L9.66,14C9.57,13.34 9.5,12.68 9.5,12s0.07,-1.34 0.16,-2h4.68c0.09,0.66 0.16,1.32 0.16,2S14.43,13.34 14.34,14zM14.59,19.56c0.6,-1.11 1.06,-2.31 1.38,-3.56h2.95C18.03,17.65 16.57,18.86 14.59,19.56zM16.36,14c0.08,-0.66 0.14,-1.33 0.14,-2s-0.06,-1.34 -0.14,-2h3.38C19.9,10.64 20,11.31 20,12s-0.1,1.36 -0.26,2L16.36,14z',
+ key:'M12.65,10C11.83,7.67 9.61,6 7,6c-3.31,0 -6,2.69 -6,6s2.69,6 6,6c2.61,0 4.83,-1.67 5.65,-4H17v4h4v-4h2v-4H12.65zM7,14c-1.1,0 -2,-0.9 -2,-2c0,-1.1 0.9,-2 2,-2s2,0.9 2,2C9,13.1 8.1,14 7,14z',
+ message:'M20,2L4,2c-1.1,0 -2,0.9 -2,2v18l4,-4h14c1.1,0 2,-0.9 2,-2L22,4c0,-1.1 -0.9,-2 -2,-2zM6,9h12v2L6,11L6,9zM14,14L6,14v-2h8v2zM18,8L6,8L6,6h12v2z',
+ device:'M17,19L7,19L7,5h10v14zM17,1L7,1c-1.1,0 -2,0.9 -2,2v18c0,1.1 0.9,2 2,2h10c1.1,0 2,-0.9 2,-2L19,3c0,-1.1 -0.9,-2 -2,-2z',
+ home:'M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z',
+ shield:'M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z',
+ wifi:'M1,9l2,2c4.97,-4.97 13.03,-4.97 18,0l2,-2C16.93,2.93 7.08,2.93 1,9zM9,17l3,3 3,-3C13.35,15.34 10.66,15.34 9,17zM5,13l2,2c2.76,-2.76 7.24,-2.76 10,0l2,-2C15.14,9.14 8.87,9.14 5,13z',
+ update:'M19,13c0,3.87 -3.13,7 -7,7 -3.87,0 -7,-3.13 -7,-7 0,-3.83 3.08,-6.94 6.9,-7l0,2.02c-2.7,0.07 -4.9,2.3 -4.9,4.98 0,2.76 2.24,5 5,5 2.76,0 5,-2.24 5,-5 0,-1.27 -0.49,-2.42 -1.27,-3.3l-1.48,1.48 0,-5.5 5.5,0 -1.69,1.69c1.17,1.28 1.94,2.96 1.94,4.63z',
+ doc:'M14,2H6c-1.1,0 -1.99,0.9 -1.99,2L4,20c0,1.1 0.89,2 1.99,2H18c1.1,0 2,-0.9 2,-2L20,8l-6,-6zM13,9L13,3.5L18.5,9L13,9z'};
+function svgIcon(name){const s=document.createElementNS(SVGNS,'svg');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('fill','#fff');
+ const p=document.createElementNS(SVGNS,'path');p.setAttribute('d',ICONS[name]||'');s.append(p);return s}
 function snack(t,bad){const s=document.getElementById('snack');s.textContent=t;s.style.background=bad?'var(--error)':'';s.style.color=bad?'#fff':'';s.style.display='block';clearTimeout(snack.t);snack.t=setTimeout(function(){s.style.display='none'},4500)}
 async function call(method,path,body){
  const r=await fetch(path,{method:method,headers:{'content-type':'application/json'},body:body&&JSON.stringify(body)});
@@ -309,12 +331,13 @@ function resetCard(d){
 
 /* ---------- hub picker: same idiom as the phone app's own Apps/Settings hubs ---------- */
 function hubPicker(m,options){
- const grid=h('div',{class:'tilegrid'});
+ // Same shape as the phone app's own Ui.rowTile: a small red icon square on the left, the label
+ // next to it, stacked full-width rows -- not a grid of big tiles (that's reserved for the
+ // Administrator home screen itself, see renderDeviceDetail's section picker below).
  for(const [key,label,setSub,icon] of options){
-  const tile=h('button',{class:'tile'},h('div',{class:'ico'},icon||'•'),h('div',null,label));
-  tile.onclick=function(){setSub(key);render()};
-  grid.append(tile)}
- m.append(grid)}
+  const row=h('div',{class:'hubrow'},h('div',{class:'ico'},svgIcon(icon)),h('div',{class:'label'},label));
+  row.onclick=function(){setSub(key);render()};
+  m.append(row)}}
 function hubBack(m,setSub){
  const b=h('button',{class:'btn outline',style:'margin-bottom:12px'},'‹ Back');
  b.onclick=function(){setSub(null);render()};
@@ -325,7 +348,7 @@ function phoneLocalNote(m,text){
 /* ---------- Apps hub: Regular Apps / Home Screen Mode / Blocking / System Apps ---------- */
 function buildAppsHub(m,dv){
  if(!appsSub){
-  hubPicker(m,[['regular','Regular Apps',setAppsSub,'📱'],['kiosk','Home Screen Mode',setAppsSub,'🏠'],['blocking','Blocking',setAppsSub,'🛡️'],['system','System Apps',setAppsSub,'⚙️']]);
+  hubPicker(m,[['regular','Regular Apps',setAppsSub,'apps'],['kiosk','Home Screen Mode',setAppsSub,'home'],['blocking','Blocking',setAppsSub,'shield'],['system','System Apps',setAppsSub,'device']]);
   return}
  hubBack(m,setAppsSub);
  if(appsSub==='regular'){
@@ -402,7 +425,7 @@ function buildAppsHub(m,dv){
 /* ---------- Settings hub: Settings Menu / Permissions / Network / Updates / Device ---------- */
 function buildSettingsHub(m,dv){
  if(!settingsSub){
-  hubPicker(m,[['menu','Settings Menu',setSettingsSub,'📱'],['permissions','Permissions',setSettingsSub,'🔐'],['network','Network',setSettingsSub,'📶'],['updates','Updates',setSettingsSub,'🔄'],['device','Device',setSettingsSub,'💻']]);
+  hubPicker(m,[['menu','Settings Menu',setSettingsSub,'apps'],['permissions','Permissions',setSettingsSub,'key'],['network','Network',setSettingsSub,'wifi'],['updates','Updates',setSettingsSub,'update'],['device','Device',setSettingsSub,'device']]);
   return}
  hubBack(m,setSettingsSub);
  if(settingsSub==='menu')phoneLocalNote(m,'The disguised "Settings" icon\'s setup (which categories show, which real screen each one opens) lives on the phone itself (Settings → Settings Menu). Phone-only by design: nothing here to configure remotely.');
@@ -413,7 +436,7 @@ function buildSettingsHub(m,dv){
 }
 
 function renderDeviceDetail(m,d){
- if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceTab(0);setAppsSub(null);setSettingsSub(null)}
+ if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceSection(null);setAppsSub(null);setSettingsSub(null)}
  const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
  m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
  m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico dev',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;padding:0'},'📱'),
@@ -531,33 +554,34 @@ function renderDeviceDetail(m,d){
  for(const e of d.events.slice().reverse())ll.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
  lg.append(ll);
 
- // ----- pager -----
- // Same six names and icons as the phone's own Administrator screen's home tile grid (Lock / Apps /
- // Add-ons / App lock / Settings / Messages), plus two the dashboard needs that the phone doesn't:
- // Overview (the phone shows this as a toggle above its tile grid, not a tile) and Log (the phone
- // has no log viewer of its own). Apps and Settings are real two-level hubs here too, same picker-
- // then-section idiom as AdminActivity's buildAppsHub/buildSettingsHub.
- const parts=[['Overview','📊',ov],['Lock','🔒',lk],['Apps','📱',ap],['Add-ons','🌐',ad],['App lock','🔒',al2],['Settings','⚙️',se],['Messages','💬',msgs],['Log','📜',lg]];
- const tabsRow=h('div',{class:'pagetabs'});const pager=h('div',{class:'pager'});
- const gotoTab=function(i){setAppsSub(null);setSettingsSub(null);setDeviceTab(i);render()};
- parts.forEach(function(p,i){const b=h('button',{class:'tile'+(i===deviceTab?' on':'')},h('div',{class:'ico'},p[1]),h('div',null,p[0]));b.onclick=function(){gotoTab(i)};tabsRow.append(b);pager.append(p[2])});
- pager.onscroll=function(){const i=Math.round(pager.scrollLeft/Math.max(pager.clientWidth,1));setDeviceTab(i);[...tabsRow.children].forEach(function(b,j){b.className='tile'+(j===i?' on':'')})};
+ // ----- section picker -----
+ // The exact same home screen as the phone's own Administrator screen: a 2-column grid of big red
+ // icon tiles (Lock / Apps / Add-ons / App lock / Settings / Messages, same icons, same order --
+ // see AdminActivity's own tile grid), tapping one replaces the grid with that section and a
+ // "‹ Back" button, same as AdminActivity.openSection/onBackPressed. Two extra tiles the phone
+ // doesn't have: Overview (the phone shows this as a toggle above its grid, not a tile) and Log
+ // (the phone has no log viewer of its own). Apps and Settings are real two-level hubs underneath,
+ // same picker-then-section idiom as AdminActivity's buildAppsHub/buildSettingsHub.
+ const sections={overview:['Overview','device',ov],lock:['Lock','lock',lk],apps:['Apps','apps',ap],
+  addons:['Add-ons','globe',ad],applock:['App lock','lock',al2],settings:['Settings','key',se],
+  messages:['Messages','message',msgs],log:['Log','doc',lg]};
+ const openSection=function(key){setAppsSub(null);setSettingsSub(null);setDeviceSection(key);render()};
 
  // ----- search: every section and sub-section, same as "search Settings" on a phone -----
  const searchIndex=[
-  ['Overview',function(){gotoTab(0)}],['Lock',function(){gotoTab(1)}],
-  ['Apps — Regular Apps',function(){setDeviceTab(2);setAppsSub('regular');render()}],
-  ['Apps — Home Screen Mode',function(){setDeviceTab(2);setAppsSub('kiosk');render()}],
-  ['Apps — Blocking',function(){setDeviceTab(2);setAppsSub('blocking');render()}],
-  ['Apps — System Apps',function(){setDeviceTab(2);setAppsSub('system');render()}],
-  ['Add-ons (Browser)',function(){gotoTab(3)}],['App lock',function(){gotoTab(4)}],
-  ['Settings — Settings Menu',function(){setDeviceTab(5);setSettingsSub('menu');render()}],
-  ['Settings — Permissions',function(){setDeviceTab(5);setSettingsSub('permissions');render()}],
-  ['Settings — Network / Wi-Fi',function(){setDeviceTab(5);setSettingsSub('network');render()}],
-  ['Settings — Updates',function(){setDeviceTab(5);setSettingsSub('updates');render()}],
-  ['Settings — Device',function(){setDeviceTab(5);setSettingsSub('device');render()}],
-  ['Turn off / on the phone\'s own Administrator panel',function(){setDeviceTab(5);setSettingsSub('device');render()}],
-  ['Messages',function(){gotoTab(6)}],['Log',function(){gotoTab(7)}]];
+  ['Overview',function(){openSection('overview')}],['Lock',function(){openSection('lock')}],
+  ['Apps — Regular Apps',function(){setDeviceSection('apps');setAppsSub('regular');render()}],
+  ['Apps — Home Screen Mode',function(){setDeviceSection('apps');setAppsSub('kiosk');render()}],
+  ['Apps — Blocking',function(){setDeviceSection('apps');setAppsSub('blocking');render()}],
+  ['Apps — System Apps',function(){setDeviceSection('apps');setAppsSub('system');render()}],
+  ['Add-ons (Browser)',function(){openSection('addons')}],['App lock',function(){openSection('applock')}],
+  ['Settings — Settings Menu',function(){setDeviceSection('settings');setSettingsSub('menu');render()}],
+  ['Settings — Permissions',function(){setDeviceSection('settings');setSettingsSub('permissions');render()}],
+  ['Settings — Network / Wi-Fi',function(){setDeviceSection('settings');setSettingsSub('network');render()}],
+  ['Settings — Updates',function(){setDeviceSection('settings');setSettingsSub('updates');render()}],
+  ['Settings — Device',function(){setDeviceSection('settings');setSettingsSub('device');render()}],
+  ['Turn off / on the phone\'s own Administrator panel',function(){setDeviceSection('settings');setSettingsSub('device');render()}],
+  ['Messages',function(){openSection('messages')}],['Log',function(){openSection('log')}]];
  const sWrap=h('div',{class:'search'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
  const sResults=h('div',{class:'search-results'});
@@ -574,10 +598,19 @@ function renderDeviceDetail(m,d){
  sWrap.append(h('div',{class:'ico'},'🔎'),sInput,sResults);
  m.append(sWrap);
 
- m.append(tabsRow,pager,h('div',{class:'mute small',style:'margin-top:8px;text-align:center'},'Swipe sideways or tap a tile'));
- // A re-render (e.g. typing in a search box inside a pager page) rebuilds this whole pager from
- // scratch, which would otherwise always snap back to the first tab — jump straight back instead.
- if(deviceTab)requestAnimationFrame(function(){pager.scrollTo({left:deviceTab*pager.clientWidth})});
+ if(!deviceSection){
+  const grid=h('div',{class:'tilegrid-lg'});
+  for(const key of ['lock','apps','addons','applock','settings','messages','overview','log']){
+   const [label,icon]=sections[key];
+   const tile=h('button',{class:'tile'},h('div',{class:'ico'},svgIcon(icon)),h('div',null,label));
+   tile.onclick=function(){openSection(key)};
+   grid.append(tile)}
+  m.append(grid);
+ } else {
+  const back=h('button',{class:'btn outline',style:'margin-bottom:12px'},'‹ Back');
+  back.onclick=function(){setAppsSub(null);setSettingsSub(null);setDeviceSection(null);render()};
+  m.append(back,sections[deviceSection][2]);
+ }
 }
 
 /* ---------- apps ---------- */
