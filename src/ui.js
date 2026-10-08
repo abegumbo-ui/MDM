@@ -490,9 +490,19 @@ function renderDeviceDetail(m,d){
  // itself has always lived here) -----
  const ad=h('section');renderSites(ad,d);
 
- // ----- App lock (phone-local PIN on the agent app itself -- never synced here) -----
+ // ----- App lock (a PIN on the agent app itself, separate from the phone's screen lock) -----
  const al2=h('section');
- phoneLocalNote(al2,'Locking the agent app itself behind its own PIN (separate from the phone\'s screen lock) is set directly on the phone\'s own Administrator screen. Phone-local by design: nothing here to configure remotely.');
+ const appLockOn=!!d.info.appLock;
+ const alBox=h('div',{class:'card'},h('h2',null,'App lock'),
+  h('div',{class:'mute'},appLockOn?'On: opening MDM Agent on the phone needs its own PIN.':'Off: anyone who opens MDM Agent on the phone sees it with no extra check.'));
+ const alRow=h('div',{class:'row',style:'margin-top:8px'});
+ alRow.append(btn(appLockOn?'Change App PIN…':'Turn on App lock…','',async function(){
+   const pin=prompt('New app-lock PIN (4+ characters). Needed to open MDM Agent on the phone.');
+   if(!pin)return;await queue('App lock','setAppLockPin',{pin:pin})}));
+ if(appLockOn)alRow.append(btn('Turn off App lock','outline',async function(){
+   if(!confirm('Turn off App lock on this phone?'))return;await queue('App lock','clearAppLockPin',{})}));
+ alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Applies within about 5 minutes.'));
+ al2.append(alBox);
 
  // ----- Settings (hub: Settings Menu / Permissions / Network / Updates / Device) -----
  const se=h('section');buildSettingsHub(se,d);
