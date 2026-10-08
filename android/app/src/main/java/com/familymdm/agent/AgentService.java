@@ -155,6 +155,7 @@ public class AgentService extends Service {
         o.put("deviceOwner", Agent.isOwner(this));
         o.put("screenLock", Actions.hasScreenLock(this));
         o.put("pinControl", Actions.pinControlActive(this));
+        o.put("appLock", Agent.prefs(this).getBoolean("appLock", false));
         o.put("masterSet", Master.isSet(this));
         o.put("restrictions", new JSONArray(Agent.getSet(this, "restrictions")));
         o.put("hiddenCount", Agent.getSet(this, "hidden").size());
@@ -357,6 +358,12 @@ public class AgentService extends Service {
                     break;
                 case "clearPin":
                     msg = Actions.clearPin(this);
+                    break;
+                case "setAppLockPin":
+                    msg = Actions.setAppLockPin(this, args.optString("pin"));
+                    break;
+                case "clearAppLockPin":
+                    msg = Actions.clearAppLockPin(this);
                     break;
                 case "reboot":
                     Agent.addResult(this, id, type, true, "rebooting");

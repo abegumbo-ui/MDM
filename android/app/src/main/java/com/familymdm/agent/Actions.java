@@ -199,4 +199,20 @@ final class Actions {
         }
         return "screen lock removed";
     }
+
+    /** The app's own front-screen PIN (AppPin) -- separate from the phone's screen lock above.
+     * Same effect as AdminActivity's own "Turn On App Lock" / "Change App PIN", just reachable
+     * from the dashboard too. */
+    static String setAppLockPin(Context c, String pin) throws Exception {
+        if (pin == null || pin.length() < 4) throw new Exception("App PIN needs to be at least 4 characters");
+        AppPin.set(c, pin);
+        Agent.prefs(c).edit().putBoolean("appLock", true).apply();
+        return "app lock on";
+    }
+
+    static String clearAppLockPin(Context c) {
+        AppPin.clear(c);
+        Agent.prefs(c).edit().putBoolean("appLock", false).apply();
+        return "app lock off";
+    }
 }
