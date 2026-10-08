@@ -237,6 +237,11 @@ public class AgentService extends Service {
             body.put("hideKioskAdminRev", hkaRev);
             body.put("hideKioskAdminValue", Agent.prefs(this).getBoolean("hideKioskAdminValue", false));
         }
+        long baRev = Agent.prefs(this).getLong("browserAddonRev", 0);
+        if (baRev > 0) {
+            body.put("browserAddonRev", baRev);
+            body.put("browserAddonValue", Agent.prefs(this).getBoolean("browserAddonValue", false));
+        }
         long mRev = Agent.prefs(this).getLong("masterRev", 0);
         if (mRev > 0) {
             body.put("masterRev", mRev);

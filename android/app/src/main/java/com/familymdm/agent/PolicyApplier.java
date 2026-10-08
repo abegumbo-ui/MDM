@@ -172,6 +172,7 @@ final class PolicyApplier {
         // recovery path either way (dialing *#*#636#*#* brings the icon straight back), with the
         // dashboard as a second, remote way back for a non-standalone phone.
         applyHideAppIcon(c, policy.optBoolean("hideAppIcon", false));
+        applyBrowserAddon(c, policy.optBoolean("browserAddonEnabled", false));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
@@ -611,6 +612,19 @@ final class PolicyApplier {
             Agent.addEvent(c, "restriction", wanted ? "The app icon is now hidden (dial *#*#636#*#* to bring it back)" : "The app icon is visible again");
         } catch (Exception e) {
             errorOnce(c, "hideicon", "Could not change whether the app icon shows: " + e.getMessage());
+        }
+    }
+
+    /** Same on/off switch as the phone's own Add-ons screen (BrowserAddon.setEnabled()), just
+     * reachable from the dashboard too -- a no-op when the policy's value already matches what's
+     * on the phone, so a local toggle between syncs isn't stomped back and forth needlessly. */
+    private static void applyBrowserAddon(Context c, boolean wanted) {
+        try {
+            if (BrowserAddon.isEnabled(c) == wanted) return;
+            BrowserAddon.setEnabled(c, wanted);
+            Agent.addEvent(c, "restriction", wanted ? "Browser add-on turned on" : "Browser add-on turned off");
+        } catch (Exception e) {
+            errorOnce(c, "browseraddon", "Could not change the Browser add-on: " + e.getMessage());
         }
     }
 

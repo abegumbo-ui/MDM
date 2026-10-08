@@ -594,7 +594,23 @@ public class AdminActivity extends Activity {
                 : "A lighter Browser, built into this app instead of a separate install. Turning it on adds its own icon to this phone.", true));
         action(addon, addonOn ? "Turn off Browser add-on" : "Turn on Browser add-on", addonOn ? Ui.OUTLINED : Ui.TONAL, v -> {
             if (!unlocked()) return;
-            BrowserAddon.setEnabled(this, !addonOn);
+            try {
+                boolean newValue = !addonOn;
+                BrowserAddon.setEnabled(this, newValue);
+                String stored = Agent.prefs(this).getString("policy", "{}");
+                JSONObject policy = new JSONObject(stored);
+                policy.put("browserAddonEnabled", newValue);
+                long rev = System.currentTimeMillis();
+                Agent.prefs(this).edit()
+                        .putString("policy", policy.toString())
+                        .putLong("browserAddonRev", rev)
+                        .putBoolean("browserAddonValue", newValue)
+                        .apply();
+                Agent.addEvent(this, "local", "Master code on phone: turned the Browser add-on " + (newValue ? "on" : "off"));
+                AgentService.requestSync();
+            } catch (Exception e) {
+                toast("Could not change it: " + e.getMessage());
+            }
             build();
             toast(addonOn ? "Browser add-on off." : "Browser add-on on. Its icon is on this phone now.");
         });
