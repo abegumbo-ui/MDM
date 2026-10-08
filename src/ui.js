@@ -132,9 +132,10 @@ let deviceSearch='';
 // Second-level picker inside the Apps and Settings tabs, same hub-in-front-of-a-sub-section idiom
 // the phone app itself uses (AdminActivity's buildAppsHub/buildSettingsHub) -- null means "show the
 // picker", a key means "show that one section, with a Back button".
-let appsSub=sessionStorage.getItem('appsSub')||null,settingsSub=sessionStorage.getItem('settingsSub')||null;
+let appsSub=sessionStorage.getItem('appsSub')||null,settingsSub=sessionStorage.getItem('settingsSub')||null,lockSub=sessionStorage.getItem('lockSub')||null;
 function setAppsSub(v){appsSub=v;try{v?sessionStorage.setItem('appsSub',v):sessionStorage.removeItem('appsSub')}catch(e){}}
 function setSettingsSub(v){settingsSub=v;try{v?sessionStorage.setItem('settingsSub',v):sessionStorage.removeItem('settingsSub')}catch(e){}}
+function setLockSub(v){lockSub=v;try{v?sessionStorage.setItem('lockSub',v):sessionStorage.removeItem('lockSub')}catch(e){}}
 let state=null,devices=[],browsers=[],windevices=[],clients=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
 function route(){const x=(location.hash||'#devices').slice(1);
  if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null;openWinId=null}
@@ -340,10 +341,6 @@ function hubPicker(m,options){
   const row=h('div',{class:'hubrow'},h('div',{class:'ico'},svgIcon(icon)),h('div',{class:'label'},label));
   row.onclick=function(){setSub(key);render()};
   m.append(row)}}
-function hubBack(m,setSub){
- const b=h('button',{class:'btn outline',style:'margin-bottom:12px'},'‹ Back');
- b.onclick=function(){setSub(null);render()};
- m.append(b)}
 function phoneLocalNote(m,text){
  m.append(h('div',{class:'card'},h('div',{class:'mute'},text)))}
 
@@ -352,11 +349,15 @@ function buildAppsHub(m,dv){
  if(!appsSub){
   hubPicker(m,[['regular','Regular Apps',setAppsSub,'apps'],['kiosk','Home Screen Mode',setAppsSub,'home'],['blocking','Blocking',setAppsSub,'shield'],['system','System Apps',setAppsSub,'device']]);
   return}
- hubBack(m,setAppsSub);
+ // The one "‹ Back" button for this whole page (renderDeviceDetail, below) already pops one level
+ // at a time -- no second Back button nested in here too.
  if(appsSub==='regular'){
   renderApps(m,dv);
   const al=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Every app actually installed here, with the same Default / Allow / Block / Schedule controls as App rules.'));
-  for(const a of dv.packages)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},dv));
+  const installedSorted=dv.packages.slice().sort(function(a,b){
+   const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;
+   return aa!==ab?aa-ab:0});
+  for(const a of installedSorted)al.append(appRow({p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:a.h?1:0},dv));
   if(!dv.packages.length)al.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
   m.append(al);
 
@@ -429,8 +430,7 @@ function buildSettingsHub(m,dv){
  if(!settingsSub){
   hubPicker(m,[['menu','Settings Menu',setSettingsSub,'apps'],['permissions','Permissions',setSettingsSub,'key'],['network','Network',setSettingsSub,'wifi'],['updates','Updates',setSettingsSub,'update'],['device','Device',setSettingsSub,'device']]);
   return}
- hubBack(m,setSettingsSub);
- if(settingsSub==='menu')phoneLocalNote(m,'The disguised "Settings" icon\'s setup (which categories show, which real screen each one opens) lives on the phone itself (Settings → Settings Menu). Phone-only by design: nothing here to configure remotely.');
+ if(settingsSub==='menu')phoneLocalNote(m,'Most of the 15 categories here already work with no setup at all -- they point at a standard Android settings screen (Wi-Fi, Bluetooth, sound, display…) that works the same on every phone. A handful are this phone brand\'s own screens with no standard Android way to open them by name (notably some Motorola-only ones), so for just those few, Settings → Settings Menu → Learn on the phone itself captures the exact screen once, by physically going there -- genuinely needs to happen on the phone, there is no remote equivalent for an unlisted manufacturer screen. Everything else needs nothing here.');
  else if(settingsSub==='permissions')renderPermissions(m,dv);
  else if(settingsSub==='network')renderNetworkSection(m,dv);
  else if(settingsSub==='updates')renderUpdatesSection(m,dv);
@@ -438,7 +438,7 @@ function buildSettingsHub(m,dv){
 }
 
 function renderDeviceDetail(m,d){
- if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceSection(null);setAppsSub(null);setSettingsSub(null)}
+ if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceSection(null);setAppsSub(null);setSettingsSub(null);setLockSub(null)}
  const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
  m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
  m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico dev',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;padding:0'},'📱'),
@@ -491,21 +491,54 @@ function renderDeviceDetail(m,d){
  if(acts.children.length===1)acts.append(h('div',{class:'mute'},'No activity yet.'));
  ov.append(acts);
 
- // ----- Lock -----
+ // ----- Lock (hub: Lock / App lock / Administrator code -- every kind of lock in one place) -----
  const lk=h('section');
- const lockBox=h('div',{class:'card'},h('h2',null,'Lock'));const lr=h('div',{class:'row',style:'margin-top:8px'});
- lr.append(btn('Lock…','',async function(){
-   const v=await ask('Lock this phone',[
-    {key:'minutes',label:'How long',options:[['0','Just lock the screen'],['5','5 minutes'],['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours']]},
-    {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
-    'For a timed lock the phone shows your message and a countdown, and nothing else can be opened until time is up (or you unlock it). Emergency calls stay available.');
-   if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
- cmd(lr,'Unlock now','unlock',{},null,lockedNow(d)?'':'outline');
- cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
- cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
- lockBox.append(lr);
- lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Settings → Device.'));
- lk.append(lockBox);
+ if(!lockSub){
+  hubPicker(lk,[['screen','Lock',setLockSub,'lock'],['applock','App lock',setLockSub,'lock'],['admincode','Administrator code',setLockSub,'key']]);
+ } else if(lockSub==='screen'){
+  const lockBox=h('div',{class:'card'},h('h2',null,'Lock'));const lr=h('div',{class:'row',style:'margin-top:8px'});
+  lr.append(btn('Lock…','',async function(){
+    const v=await ask('Lock this phone',[
+     {key:'minutes',label:'How long',options:[['0','Just lock the screen'],['5','5 minutes'],['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours']]},
+     {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
+     'For a timed lock the phone shows your message and a countdown, and nothing else can be opened until time is up (or you unlock it). Emergency calls stay available.');
+    if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
+  cmd(lr,'Unlock now','unlock',{},null,lockedNow(d)?'':'outline');
+  cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
+  cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
+  lockBox.append(lr);
+  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Settings → Device.'));
+  lk.append(lockBox);
+ } else if(lockSub==='applock'){
+  const appLockOn=!!d.info.appLock;
+  const alBox=h('div',{class:'card'},h('h2',null,'App lock'),
+   h('div',{class:'mute'},appLockOn?'On: opening MDM Agent on the phone needs its own PIN.':'Off: anyone who opens MDM Agent on the phone sees it with no extra check.'));
+  const alRow=h('div',{class:'row',style:'margin-top:8px'});
+  alRow.append(btn(appLockOn?'Change App PIN…':'Turn on App lock…','',async function(){
+    const pin=prompt('New app-lock PIN (4+ characters). Needed to open MDM Agent on the phone.');
+    if(!pin)return;await queue('App lock','setAppLockPin',{pin:pin})}));
+  if(appLockOn)alRow.append(btn('Turn off App lock','outline',async function(){
+    if(!confirm('Turn off App lock on this phone?'))return;await queue('App lock','clearAppLockPin',{})}));
+  alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Needs an agent build that knows setAppLockPin/clearAppLockPin -- if the phone replies "unknown command", update the agent first (Settings → Device → Update agent) and try again once it has checked in. Applies within about 5 minutes.'));
+  lk.append(alBox);
+ } else if(lockSub==='admincode'){
+  const mc=h('div',{class:'card'},h('h2',null,'Administrator code (master code)'),
+   h('div',{class:'mute'},'Works on this phone with no internet (Agent → Administrator): lock, set PIN, install APKs, show/hide apps, release, erase. The phone only stores a scrambled version. Status: '+(d.masterSet?'set':'not set')+'.'));
+  const code=h('input',{type:'password',placeholder:'New administrator code (6+ characters, letters/numbers/symbols)',style:'width:100%;margin-top:8px'});
+  mc.append(code,h('div',{class:'row',style:'margin-top:8px'},
+   btn(d.masterSet?'Change administrator code':'Set administrator code','',async function(){
+    const v=code.value;if(!/^[\x20-\x7e]{6,64}$/.test(v)){snack('Use 6 to 64 normal keyboard characters.',1);return}
+    const salt=crypto.getRandomValues(new Uint8Array(16));
+    const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(v),'PBKDF2',false,['deriveBits']);
+    const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:salt,iterations:state.masterIterations},key,256));
+    const hex=function(a){return [...a].map(function(b){return b.toString(16).padStart(2,'0')}).join('')};
+    await call('PUT','/api/devices/'+d.id+'/master',{salt:hex(salt),hash:hex(bits)});code.value='';d.masterSet=true;snack('Administrator code saved. The phone receives it at its next check-in.');render()}),
+   d.masterSet?btn('Remove','outline',async function(){if(!confirm('Remove this phone\'s administrator code? Its on-phone admin panel stops working.'))return;await call('DELETE','/api/devices/'+d.id+'/master');d.masterSet=false;snack('Administrator code removed.');render()}):null));
+  lk.append(mc);
+  lk.append(h('div',{class:'card'},h('h2',null,'Recovery code'),
+   h('div',{class:'mute'},'This phone\'s own code, generated by the phone itself the first time it ran. Always works here, with no internet, even with no administrator code set — different from every other phone\'s.'),
+   d.fallbackCode?h('div',{class:'code',style:'margin-top:8px;font-size:22px;letter-spacing:2px'},d.fallbackCode):h('div',{class:'mute small',style:'margin-top:8px'},'Not seen yet — shows up after this phone\'s first check-in.')));
+ }
 
  // ----- Apps (hub: Regular Apps / Home Screen Mode / Blocking / System Apps) -----
  const ap=h('section');buildAppsHub(ap,d);
@@ -514,20 +547,6 @@ function renderDeviceDetail(m,d){
  // Add-ons screen is just the two Browser-install toggles, which are phone-local; the allowlist
  // itself has always lived here) -----
  const ad=h('section');renderSites(ad,d);
-
- // ----- App lock (a PIN on the agent app itself, separate from the phone's screen lock) -----
- const al2=h('section');
- const appLockOn=!!d.info.appLock;
- const alBox=h('div',{class:'card'},h('h2',null,'App lock'),
-  h('div',{class:'mute'},appLockOn?'On: opening MDM Agent on the phone needs its own PIN.':'Off: anyone who opens MDM Agent on the phone sees it with no extra check.'));
- const alRow=h('div',{class:'row',style:'margin-top:8px'});
- alRow.append(btn(appLockOn?'Change App PIN…':'Turn on App lock…','',async function(){
-   const pin=prompt('New app-lock PIN (4+ characters). Needed to open MDM Agent on the phone.');
-   if(!pin)return;await queue('App lock','setAppLockPin',{pin:pin})}));
- if(appLockOn)alRow.append(btn('Turn off App lock','outline',async function(){
-   if(!confirm('Turn off App lock on this phone?'))return;await queue('App lock','clearAppLockPin',{})}));
- alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Applies within about 5 minutes.'));
- al2.append(alBox);
 
  // ----- Settings (hub: Settings Menu / Permissions / Network / Updates / Device) -----
  const se=h('section');buildSettingsHub(se,d);
@@ -565,18 +584,21 @@ function renderDeviceDetail(m,d){
  // (the phone has no log viewer of its own). Apps and Settings are real two-level hubs underneath,
  // same picker-then-section idiom as AdminActivity's buildAppsHub/buildSettingsHub.
  const sections={overview:['Overview','device',ov],lock:['Lock','lock',lk],apps:['Apps','apps',ap],
-  addons:['Add-ons','globe',ad],applock:['App lock','lock',al2],settings:['Settings','key',se],
+  addons:['Add-ons','globe',ad],settings:['Settings','key',se],
   messages:['Messages','message',msgs],log:['Log','doc',lg]};
- const openSection=function(key){setAppsSub(null);setSettingsSub(null);setDeviceSection(key);render()};
+ const openSection=function(key){setAppsSub(null);setSettingsSub(null);setLockSub(null);setDeviceSection(key);render()};
 
  // ----- search: every section and sub-section, same as "search Settings" on a phone -----
  const searchIndex=[
-  ['Overview',function(){openSection('overview')}],['Lock',function(){openSection('lock')}],
+  ['Overview',function(){openSection('overview')}],
+  ['Lock — Lock / unlock / screen PIN',function(){setDeviceSection('lock');setLockSub('screen');render()}],
+  ['Lock — App lock',function(){setDeviceSection('lock');setLockSub('applock');render()}],
+  ['Lock — Administrator code (master code)',function(){setDeviceSection('lock');setLockSub('admincode');render()}],
   ['Apps — Regular Apps',function(){setDeviceSection('apps');setAppsSub('regular');render()}],
   ['Apps — Home Screen Mode',function(){setDeviceSection('apps');setAppsSub('kiosk');render()}],
   ['Apps — Blocking',function(){setDeviceSection('apps');setAppsSub('blocking');render()}],
   ['Apps — System Apps',function(){setDeviceSection('apps');setAppsSub('system');render()}],
-  ['Add-ons (Browser)',function(){openSection('addons')}],['App lock',function(){openSection('applock')}],
+  ['Add-ons (Browser)',function(){openSection('addons')}],
   ['Settings — Settings Menu',function(){setDeviceSection('settings');setSettingsSub('menu');render()}],
   ['Settings — Permissions',function(){setDeviceSection('settings');setSettingsSub('permissions');render()}],
   ['Settings — Network / Wi-Fi',function(){setDeviceSection('settings');setSettingsSub('network');render()}],
@@ -602,15 +624,20 @@ function renderDeviceDetail(m,d){
 
  if(!deviceSection){
   const grid=h('div',{class:'tilegrid-lg'});
-  for(const key of ['lock','apps','addons','applock','settings','messages','overview','log']){
+  for(const key of ['lock','apps','addons','settings','messages','overview','log']){
    const [label,icon]=sections[key];
    const tile=h('button',{class:'tile'},h('div',{class:'ico'},svgIcon(icon)),h('div',null,label));
    tile.onclick=function(){openSection(key)};
    grid.append(tile)}
   m.append(grid);
  } else {
+  // One "‹ Back" button total, however deep: a sub-picker (Apps/Settings/Lock) pops back to its
+  // own hub first, everything else pops straight to the home grid -- never two Back buttons
+  // stacked for the same tap.
   const back=h('button',{class:'btn outline',style:'margin-bottom:12px'},'‹ Back');
-  back.onclick=function(){setAppsSub(null);setSettingsSub(null);setDeviceSection(null);render()};
+  back.onclick=function(){
+   if(appsSub||settingsSub||lockSub){setAppsSub(null);setSettingsSub(null);setLockSub(null);render()}
+   else{setDeviceSection(null);render()}};
   m.append(back,sections[deviceSection][2]);
  }
 }
@@ -621,7 +648,10 @@ function allApps(dv){
  for(const a of dv.packages){
   const o=seen.get(a.p)||{p:a.p,l:a.l,s:a.s,prot:a.protected,hiddenOn:0};if(a.h)o.hiddenOn++;seen.set(a.p,o)}
  for(const p in dv.config.apps)if(!seen.has(p))seen.set(p,{p:p,l:dv.config.apps[p].label||p,s:false,prot:false,hiddenOn:0});
- return [...seen.values()].sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)})}
+ // Allowed apps first (what you actually came here to check), then everything else alphabetically.
+ return [...seen.values()].sort(function(a,b){
+  const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;
+  return aa!==ab?aa-ab:(a.l||a.p).localeCompare(b.l||b.p)})}
 function cur(dv,pkg){const c=dv.config.apps[pkg];return c?{mode:c.mode,schedule:c.schedule||null}:{mode:'',schedule:null}}
 function renderApps(m,dv){
  const pend=new Map();
@@ -1033,22 +1063,8 @@ function renderDeviceCard(m,dv){
   sw(dv.config.hideAppIcon,async function(on){
    if(on&&!confirm('Hide the app icon on this phone? Turn it back on here, or dial *#*#636#*#* on the phone itself.'))return;
    dv.config.hideAppIcon=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()}))));
- const mc=h('div',{class:'card'},h('h2',null,'Master code'),
-  h('div',{class:'mute'},'Works on this phone with no internet (Agent → Administrator): lock, set PIN, install APKs, show/hide apps, release, erase. The phone only stores a scrambled version. Status: '+(dv.masterSet?'set':'not set')+'.'));
- const code=h('input',{type:'password',placeholder:'New master code (6+ characters, letters/numbers/symbols)',style:'width:100%;margin-top:8px'});
- mc.append(code,h('div',{class:'row',style:'margin-top:8px'},
-  btn(dv.masterSet?'Change master code':'Set master code','',async function(){
-   const v=code.value;if(!/^[\x20-\x7e]{6,64}$/.test(v)){snack('Use 6 to 64 normal keyboard characters.',1);return}
-   const salt=crypto.getRandomValues(new Uint8Array(16));
-   const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(v),'PBKDF2',false,['deriveBits']);
-   const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:salt,iterations:state.masterIterations},key,256));
-   const hex=function(a){return [...a].map(function(b){return b.toString(16).padStart(2,'0')}).join('')};
-   await call('PUT','/api/devices/'+dv.id+'/master',{salt:hex(salt),hash:hex(bits)});code.value='';dv.masterSet=true;snack('Master code saved. The phone receives it at its next check-in.');render()}),
-  dv.masterSet?btn('Remove','outline',async function(){if(!confirm('Remove this phone\'s master code? Its on-phone admin panel stops working.'))return;await call('DELETE','/api/devices/'+dv.id+'/master');dv.masterSet=false;snack('Master code removed.');render()}):null));
- m.append(mc);
- m.append(h('div',{class:'card'},h('h2',null,'Recovery code'),
-  h('div',{class:'mute'},'This phone\'s own code, generated by the phone itself the first time it ran. Always works here, with no internet, even with no master code set — different from every other phone\'s.'),
-  dv.fallbackCode?h('div',{class:'code',style:'margin-top:8px;font-size:22px;letter-spacing:2px'},dv.fallbackCode):h('div',{class:'mute small',style:'margin-top:8px'},'Not seen yet — shows up after this phone\'s first check-in.')));
+ // The administrator (master) code and the phone's own recovery code moved to the Lock tile's
+ // "Administrator code" row -- every kind of lock lives together there now, not scattered.
 }
 
 load().catch(function(e){snack(e.message,1);document.getElementById('main').textContent='Could not load: '+e.message});
