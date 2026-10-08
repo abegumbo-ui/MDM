@@ -79,7 +79,11 @@ final class Kiosk {
                         | DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
                         | DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
                         | DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
-                        | DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS);
+                        | DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+                        // Lets the swipe-up-from-bottom / Overview gesture show recently used apps
+                        // while this is the home screen, same as a regular launcher -- without this
+                        // flag that gesture does nothing at all in lock task mode.
+                        | DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW);
             }
             if (first) {
                 Agent.addEvent(c, "restriction", "Home screen mode is on: only allowed apps can be opened");

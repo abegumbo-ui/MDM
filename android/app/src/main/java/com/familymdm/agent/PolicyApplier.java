@@ -167,6 +167,7 @@ final class PolicyApplier {
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
         applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
         applyAccessibilityLock(c, dpm, admin, policy.optBoolean("blockAccessibility", false));
+        applyBiometricLock(c, dpm, admin, policy.optBoolean("disableBiometricUnlock", false));
         // Works the same whether the phone has a dashboard or not -- SecretCodeReceiver is the
         // recovery path either way (dialing *#*#636#*#* brings the icon straight back), with the
         // dashboard as a second, remote way back for a non-standalone phone.
@@ -565,6 +566,28 @@ final class PolicyApplier {
             errorCleared(c, "a11y");
         } catch (Exception e) {
             errorOnce(c, "a11y", "Could not change the accessibility-service lock: " + e.getMessage());
+        }
+    }
+
+    /**
+     * The "Block enrolling fingerprint or face unlock" restriction (DISALLOW_BIOMETRIC) only stops
+     * a *new* fingerprint/face from being enrolled -- it does nothing to one already set up, which
+     * keeps right on unlocking the phone. This is the actual off switch: disables fingerprint/face
+     * at the keyguard itself, forcing PIN/pattern/password, without touching whatever's enrolled.
+     * This is the only caller of setKeyguardDisabledFeatures in the app, so setting it outright
+     * (rather than OR/AND-ing in a flag) is safe -- nothing else here could be clobbered by it.
+     */
+    private static void applyBiometricLock(Context c, DevicePolicyManager dpm, ComponentName admin, boolean wanted) {
+        try {
+            int flags = DevicePolicyManager.KEYGUARD_DISABLE_FEATURES_NONE;
+            if (wanted) {
+                flags |= DevicePolicyManager.KEYGUARD_DISABLE_FINGERPRINT;
+                if (Build.VERSION.SDK_INT >= 28) flags |= DevicePolicyManager.KEYGUARD_DISABLE_FACE;
+            }
+            dpm.setKeyguardDisabledFeatures(admin, flags);
+            errorCleared(c, "biometric");
+        } catch (Exception e) {
+            errorOnce(c, "biometric", "Could not change the fingerprint/face lock-screen setting: " + e.getMessage());
         }
     }
 

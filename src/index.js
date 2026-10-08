@@ -932,6 +932,13 @@ async function agentApi(request, env, url) {
       d.hideAppIconRev = Number(body.hideAppIconRev);
       dirty = true;
     }
+    if (Number(body.hideKioskAdminRev) > (d.hideKioskAdminRev || 0)) {
+      // Same mirroring again, for home screen mode's own Administrator-button hide/show toggle.
+      config.hideKioskAdmin = !!body.hideKioskAdminValue;
+      d.config = config;
+      d.hideKioskAdminRev = Number(body.hideKioskAdminRev);
+      dirty = true;
+    }
     if (body.masterValue && Number(body.masterRev) > (d.masterRev || 0)
         && /^[0-9a-f]{32}$/.test(body.masterValue.salt || "") && /^[0-9a-f]{64}$/.test(body.masterValue.hash || "")) {
       // Changed on the phone itself (Administrator -> Device): becomes the real master code here

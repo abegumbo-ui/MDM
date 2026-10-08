@@ -400,6 +400,9 @@ function buildAppsHub(m,dv){
     // stuck invisible in App rules (no button shows it as selected) instead of back at Default.
     if(!on)for(const pkg in dv.config.apps)if(dv.config.apps[pkg].mode==='soft')delete dv.config.apps[pkg];
     try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches within about 5 minutes.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()})));
+  hsCard.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Hide the Administrator button'),
+   h('div',{class:'mute'},'Home screen mode always shows an "Administrator" button below the allowed apps, to get back in. Hiding it removes that button for everyone who picks up the phone -- dialing *#*#636#*#* on the phone itself, or turning this back off from here, both still work.')),
+   sw(dv.config.hideKioskAdmin,async function(on){dv.config.hideKioskAdmin=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
   m.append(hsCard);
  } else if(appsSub==='blocking'){
   phoneLocalNote(m,'Set directly on the phone\'s own Administrator screen (Apps → Blocking) -- specific screens to bounce away from, or whole apps to hide at the Android level. Phone-only by design: it never touches this dashboard, so there\'s nothing to show or change here.');
@@ -606,6 +609,8 @@ function renderDeviceDetail(m,d){
   ['Settings — Updates',function(){setDeviceSection('settings');setSettingsSub('updates');render()}],
   ['Settings — Device',function(){setDeviceSection('settings');setSettingsSub('device');render()}],
   ['Turn off / on the phone\'s own Administrator panel',function(){setDeviceSection('settings');setSettingsSub('device');render()}],
+  ['Disable fingerprint / face / biometric unlock',function(){setDeviceSection('settings');setSettingsSub('device');render()}],
+  ['Apps — Home Screen Mode — hide the Administrator button',function(){setDeviceSection('apps');setAppsSub('kiosk');render()}],
   ['Messages',function(){openSection('messages')}],['Log',function(){openSection('log')}]];
  const sWrap=h('div',{class:'search'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
@@ -1051,6 +1056,10 @@ function renderDeviceCard(m,dv){
   sw(dv.config.blockAccessibility,async function(on){
    if(on&&!confirm('Turn off every accessibility service on this phone? Do this only if nobody here needs one for real accessibility use.'))return;
    dv.config.blockAccessibility=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()}))));
+ m.append(h('div',{class:'card'},h('h2',null,'Fingerprint / face unlock'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Disable fingerprint/face at the lock screen'),
+  h('div',{class:'mute'},'The "Block enrolling fingerprint or face unlock" restriction (App rules) only stops a new one from being set up -- it does nothing to a fingerprint or face already enrolled, which keeps right on working. This is the actual off switch: forces PIN/pattern/password at the lock screen, whatever is already enrolled.')),
+  sw(dv.config.disableBiometricUnlock,async function(on){
+   dv.config.disableBiometricUnlock=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()}))));
  m.append(h('div',{class:'card'},h('h2',null,'Phone info'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Show which Wi-Fi the phone is on'),
   h('div',{class:'mute'},'Android only reveals the network name when its Location setting is on, so this switch turns that on for the phone. The dashboard shows the network name and signal, never where the phone is. Battery level is always shown.')),
   sw(dv.config.reportWifi,async function(on){dv.config.reportWifi=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));

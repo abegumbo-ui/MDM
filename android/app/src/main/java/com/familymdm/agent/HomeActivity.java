@@ -178,6 +178,7 @@ public class HomeActivity extends Activity {
         List<String[]> shown = new ArrayList<>();
         org.json.JSONObject schedules = null;
         boolean showBrowser = false;
+        boolean hideAdminButton = false;
         try {
             String stored = Agent.prefs(this).getString("policy", null);
             if (stored != null) {
@@ -185,6 +186,7 @@ public class HomeActivity extends Activity {
                 schedules = policy.optJSONObject("schedules");
                 org.json.JSONArray sites = policy.optJSONArray("sites");
                 showBrowser = policy.optBoolean("restrictBrowsing", false) || (sites != null && sites.length() > 0);
+                hideAdminButton = policy.optBoolean("hideKioskAdmin", false);
             }
         } catch (Exception ignored) {
         }
@@ -205,18 +207,20 @@ public class HomeActivity extends Activity {
         }
         for (String[] a : shown) grid.addView(tile(a[0], a[1], width));
 
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dp(this, 24);
-        root.addView(Ui.button(this, "Administrator", Ui.OUTLINED, v -> {
-            // MainActivity's own launcher component can be disabled right now (hideAppIcon), in
-            // which case starting it throws instead of just not finding anything to show.
-            try {
-                startActivity(new Intent(this, MainActivity.class));
-            } catch (Exception e) {
-                Toast.makeText(this, "The app icon is hidden right now -- dial *#*#636#*#* to bring it back.", Toast.LENGTH_LONG).show();
-            }
-        }), lp);
+        if (!hideAdminButton) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = Ui.dp(this, 24);
+            root.addView(Ui.button(this, "Administrator", Ui.OUTLINED, v -> {
+                // MainActivity's own launcher component can be disabled right now (hideAppIcon), in
+                // which case starting it throws instead of just not finding anything to show.
+                try {
+                    startActivity(new Intent(this, MainActivity.class));
+                } catch (Exception e) {
+                    Toast.makeText(this, "The app icon is hidden right now -- dial *#*#636#*#* to bring it back.", Toast.LENGTH_LONG).show();
+                }
+            }), lp);
+        }
     }
 
     private LinearLayout tile(String label, final String pkg, int width) {

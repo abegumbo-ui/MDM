@@ -661,6 +661,31 @@ public class AdminActivity extends Activity {
             });
         }
 
+        final boolean adminHidden = isKioskAdminHidden();
+        action(home, adminHidden ? "Show Administrator button in home screen mode" : "Hide Administrator button in home screen mode",
+                adminHidden ? Ui.OUTLINED : Ui.TONAL, v -> {
+                    if (!unlocked()) return;
+                    try {
+                        String stored = Agent.prefs(this).getString("policy", "{}");
+                        JSONObject policy = new JSONObject(stored);
+                        boolean newValue = !adminHidden;
+                        policy.put("hideKioskAdmin", newValue);
+                        long rev = System.currentTimeMillis();
+                        Agent.prefs(this).edit()
+                                .putString("policy", policy.toString())
+                                .putLong("hideKioskAdminRev", rev)
+                                .putBoolean("hideKioskAdminValue", newValue)
+                                .apply();
+                        Agent.addEvent(this, "local", "Master code on phone: " + (newValue ? "hid" : "showed") + " the home screen mode Administrator button");
+                        PolicyApplier.applyStored(this);
+                        AgentService.requestSync();
+                        build();
+                        toast(newValue ? "Hidden. Dial *#*#636#*#* to bring the app icon back if you also hid that." : "Visible again.");
+                    } catch (Exception e) {
+                        toast("Could not change it: " + e.getMessage());
+                    }
+                });
+
         // Always here, whether on or off -- this is the same allow/block list the regular Apps
         // section uses (PolicyApplier feeds it straight into Kiosk's own allowed-apps set), just
         // reachable without having to leave this section to get at it.
@@ -1107,6 +1132,14 @@ public class AdminActivity extends Activity {
     private boolean isAppIconHidden() {
         try {
             return new JSONObject(Agent.prefs(this).getString("policy", "{}")).optBoolean("hideAppIcon", false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isKioskAdminHidden() {
+        try {
+            return new JSONObject(Agent.prefs(this).getString("policy", "{}")).optBoolean("hideKioskAdmin", false);
         } catch (Exception e) {
             return false;
         }
