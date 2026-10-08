@@ -334,6 +334,27 @@ final class PolicyApplier {
         }
     }
 
+    /** Installed, not hard-blocked/hidden, and not soft-blocked -- same eligibility the Apps grid
+     * itself uses -- plus PlayUpdates.CANDIDATE_PACKAGES unconditionally, since those (Play
+     * services, the Play Store app, Android Auto) are usually unmanaged, not explicitly "allowed".
+     * Shared by AdminActivity, UserActivity and AgentService's checkUpdates command -- same rules
+     * everywhere an "Updates" screen decides what it's even allowed to offer. */
+    static java.util.List<String> eligiblePackagesForUpdates(Context c) throws JSONException {
+        java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>(PlayUpdates.CANDIDATE_PACKAGES);
+        JSONObject overrides = Agent.getOverrides(c);
+        Set<String> hardBlocked = WholeAppBlocklist.list(c);
+        JSONArray packages = collectPackages(c);
+        for (int i = 0; i < packages.length(); i++) {
+            JSONObject a = packages.optJSONObject(i);
+            if (a == null) continue;
+            String pkg = a.optString("p", "");
+            if (pkg.isEmpty() || hardBlocked.contains(pkg) || a.optBoolean("h")) continue;
+            if ("block".equals(overrides.optString(pkg, ""))) continue;
+            set.add(pkg);
+        }
+        return new java.util.ArrayList<>(set);
+    }
+
     /** Every restriction key this agent understands, for building a phone-side toggle list. */
     static java.util.List<String> allRestrictionKeys() {
         return new java.util.ArrayList<>(ALLOWED_RESTRICTIONS);
@@ -374,7 +395,7 @@ final class PolicyApplier {
             if (stored == null) return false;
             JSONObject policy = new JSONObject(stored);
             if (!policy.optBoolean("approveNew")) return false;
-            if (policy.optBoolean("homeScreen", false) && !Kiosk.paused(c)) return false; // new apps are simply not allowed on the home screen
+            if (policy.optBoolean("homeScreen", false)) return false; // new apps are simply not allowed on the home screen
             if (strings(policy.optJSONArray("known")).contains(pkg)) return false;
             if (strings(policy.optJSONArray("show")).contains(pkg)) return false;
             if ("allow".equals(Agent.getOverrides(c).optString(pkg))) return false;

@@ -34,12 +34,8 @@ final class Kiosk {
 
     private Kiosk() {}
 
-    static boolean paused(Context c) {
-        return Agent.prefs(c).getBoolean("kioskPaused", false);
-    }
-
     static boolean active(Context c) {
-        return Agent.prefs(c).getBoolean("kioskOn", false) && !paused(c);
+        return Agent.prefs(c).getBoolean("kioskOn", false);
     }
 
     /** Apps shown on the home screen (already filtered by schedules and the master-code overrides). */
@@ -67,7 +63,7 @@ final class Kiosk {
     }
 
     static void apply(Context c, JSONObject policy, Set<String> allowed) {
-        if (!policy.optBoolean("homeScreen", false) || paused(c)) {
+        if (!policy.optBoolean("homeScreen", false)) {
             clear(c);
             return;
         }

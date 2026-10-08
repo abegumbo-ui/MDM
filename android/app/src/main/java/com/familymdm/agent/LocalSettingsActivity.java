@@ -130,7 +130,6 @@ public class LocalSettingsActivity extends Activity {
         sw.addView(Ui.titleText(this, "How apps are handled"));
         toggle(sw, "Home screen mode", "The agent becomes the home screen and shows only the apps you Allow. Other apps keep running in the background but can't be opened. Allow phone, messages and maps first.",
                 cfg.optBoolean("homeScreen"), on -> {
-                    if (on && Agent.prefs(this).getBoolean("kioskPaused", false)) Agent.prefs(this).edit().putBoolean("kioskPaused", false).apply();
                     put("homeScreen", on);
                     commit();
                 });

@@ -536,7 +536,7 @@ public class AdminActivity extends Activity {
             build();
             java.util.List<String> eligible;
             try {
-                eligible = eligiblePackagesForUpdates();
+                eligible = PolicyApplier.eligiblePackagesForUpdates(this);
             } catch (Exception e) {
                 eligible = PlayUpdates.CANDIDATE_PACKAGES;
             }
@@ -572,24 +572,6 @@ public class AdminActivity extends Activity {
         }
     }
 
-    /** Installed, not hard-blocked/hidden, and not soft-blocked -- same eligibility the Apps grid
-     * itself uses -- plus PlayUpdates.CANDIDATE_PACKAGES unconditionally, since those (Play
-     * services, the Play Store app, Android Auto) are usually unmanaged, not explicitly "allowed". */
-    private java.util.List<String> eligiblePackagesForUpdates() throws JSONException {
-        java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>(PlayUpdates.CANDIDATE_PACKAGES);
-        JSONObject overrides = Agent.getOverrides(this);
-        java.util.Set<String> hardBlocked = WholeAppBlocklist.list(this);
-        JSONArray packages = PolicyApplier.collectPackages(this);
-        for (int i = 0; i < packages.length(); i++) {
-            JSONObject a = packages.optJSONObject(i);
-            if (a == null) continue;
-            String pkg = a.optString("p", "");
-            if (pkg.isEmpty() || hardBlocked.contains(pkg) || a.optBoolean("h")) continue;
-            if ("block".equals(overrides.optString(pkg, ""))) continue;
-            set.add(pkg);
-        }
-        return new java.util.ArrayList<>(set);
-    }
 
     /** Things that live inside this same app rather than as their own separate install -- so far
      * just the Browser add-on, but named "Add-ons" (not "Browser") so more can join it later
@@ -662,11 +644,7 @@ public class AdminActivity extends Activity {
         if (active) {
             action(home, "Turn off home screen mode", Ui.OUTLINED, v -> {
                 if (!unlocked()) return;
-                Agent.prefs(this).edit().putBoolean("kioskPaused", true).apply();
-                Agent.addEvent(this, "local", "Master code on phone: turned off home screen mode");
-                Kiosk.clear(this);
-                Kiosk.syncPreferredActivities(this, false, Agent.prefs(this).getBoolean("prefBrowser", false));
-                Kiosk.announceChange(this);
+                setHomeScreen(false);
                 try {
                     stopLockTask();
                 } catch (Exception ignored) {
@@ -677,34 +655,9 @@ public class AdminActivity extends Activity {
         } else if (canTurnOnHere) {
             action(home, "Turn on home screen mode", Ui.TONAL, v -> {
                 if (!unlocked()) return;
-                try {
-                    if (Kiosk.paused(this)) {
-                        Agent.prefs(this).edit().putBoolean("kioskPaused", false).apply();
-                        Agent.addEvent(this, "local", "Master code on phone: turned on home screen mode");
-                        new Thread(() -> {
-                            PolicyApplier.applyStored(this);
-                            AgentService.requestSync();
-                            runOnUiThread(() -> {
-                                build();
-                                toast("Home screen mode on. The phone switches right away.");
-                            });
-                        }).start();
-                    } else {
-                        String stored = Agent.prefs(this).getString("policy", "{}");
-                        JSONObject policy = new JSONObject(stored);
-                        policy.put("homeScreen", true);
-                        Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
-                        long rev = System.currentTimeMillis();
-                        Agent.prefs(this).edit().putLong("homeScreenRev", rev).putBoolean("homeScreenValue", true).apply();
-                        Agent.addEvent(this, "local", "Master code on phone: turned on home screen mode");
-                        PolicyApplier.applyStored(this);
-                        AgentService.requestSync();
-                        build();
-                        toast("Home screen mode on. The phone switches right away.");
-                    }
-                } catch (Exception e) {
-                    toast("Could not turn it on: " + e.getMessage());
-                }
+                setHomeScreen(true);
+                build();
+                toast("Home screen mode on. The phone switches right away.");
             });
         }
 
@@ -1128,6 +1081,27 @@ public class AdminActivity extends Activity {
         action(device, "Stop managing and remove this app", Ui.OUTLINED, v -> confirm(
                 "Release this phone and uninstall the agent?", () -> release(true)));
         action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
+    }
+
+    /** On or off, nothing in between -- see AdminActivity's buildKioskSection() callers. Same
+     * homeScreenRev single-value tug-of-war as everything else on this screen: becomes the real
+     * dashboard setting on the next sync, not a phone-local state the dashboard can't see. */
+    private void setHomeScreen(boolean on) {
+        try {
+            String stored = Agent.prefs(this).getString("policy", "{}");
+            JSONObject policy = new JSONObject(stored);
+            policy.put("homeScreen", on);
+            Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+            Agent.prefs(this).edit()
+                    .putLong("homeScreenRev", System.currentTimeMillis())
+                    .putBoolean("homeScreenValue", on)
+                    .apply();
+            Agent.addEvent(this, "local", "Master code on phone: turned " + (on ? "on" : "off") + " home screen mode");
+            PolicyApplier.applyStored(this);
+            AgentService.requestSync();
+        } catch (Exception e) {
+            toast("Could not change it: " + e.getMessage());
+        }
     }
 
     private boolean isAppIconHidden() {
