@@ -292,14 +292,21 @@ public class AdminActivity extends Activity {
     private void buildSettingsHub(LinearLayout root) {
         if (settingsHubSub == null) {
             Ui.add(root, Ui.rowTile(this, "Settings Menu", R.drawable.ic_apps_tile, v -> { settingsHubSub = "menu"; build(); }), 0);
+            // Split from what used to be one "Permissions" tile mixing two different things: the
+            // same restrictions the dashboard's own Permissions card has (named to match it exactly,
+            // not "Restrictions" here and "Permissions" there), and this app's own on-device access
+            // grants (Accessibility, Usage access, Battery) -- which a dashboard can't set remotely
+            // at all, Android requires walking through its own system screens for those.
             Ui.add(root, Ui.rowTile(this, "Permissions", R.drawable.ic_permissions_tile, v -> { settingsHubSub = "permissions"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "App Access", R.drawable.ic_permissions_tile, v -> { settingsHubSub = "appaccess"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "Network", R.drawable.ic_wifi_tile, v -> { settingsHubSub = "network"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "Updates", R.drawable.ic_update_tile, v -> { settingsHubSub = "updates"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "Device", R.drawable.ic_device_tile, v -> { settingsHubSub = "device"; build(); }), 8);
             return;
         }
         if ("menu".equals(settingsHubSub)) buildSettingsMenuSection(root);
-        else if ("permissions".equals(settingsHubSub)) buildPermissionsSection(root);
+        else if ("permissions".equals(settingsHubSub)) buildRestrictionsCard(root);
+        else if ("appaccess".equals(settingsHubSub)) buildAppAccessSection(root);
         else if ("network".equals(settingsHubSub)) buildNetworkSection(root);
         else if ("updates".equals(settingsHubSub)) buildUpdatesSection(root);
         else if ("device".equals(settingsHubSub)) buildDeviceSection(root);
@@ -879,7 +886,7 @@ public class AdminActivity extends Activity {
 
     /** Every special/runtime permission this agent actually uses, with its current status and a way
      * to open the right Settings screen when it's off. */
-    private void buildPermissionsSection(LinearLayout root) {
+    private void buildAppAccessSection(LinearLayout root) {
         LinearLayout accessCard = Ui.card(this, root);
         accessCard.addView(Ui.titleText(this, "Accessibility service"));
         boolean accessOn = Agent.accessibilityServiceOn(this);
@@ -946,15 +953,13 @@ public class AdminActivity extends Activity {
                 }
             });
         }
-
-        buildRestrictionsCard(root);
     }
 
-    /** Read-only, on purpose: for a dashboard-connected phone, restrictions are set from the
-     * dashboard's own Restrictions card -- this just answers "what's actually active on this
-     * phone right now and what does it mean", the same information Android's own "blocked by your
-     * admin" system dialogs refer to, in one place instead of hunting for it restriction by
-     * restriction. A standalone phone's own equivalent (with the toggles themselves) is Overview ->
+    /** The full restrictions list, same ones the dashboard's own Permissions card has -- live
+     * toggles here too (applyRestrictionOverride + requestSync), not read-only: a change here
+     * reaches the dashboard on the next sync, same mirroring as the Apps list. Its own top-level
+     * tile now (see buildSettingsHub), split out from the on-device access grants that used to
+     * share a "Permissions" tile with it. A standalone phone's own equivalent is Overview ->
      * Phone settings -> Restrictions. */
     private void buildRestrictionsCard(LinearLayout root) {
         LinearLayout card = Ui.card(this, root);

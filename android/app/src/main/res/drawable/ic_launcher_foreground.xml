@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shield + padlock, the same shield glyph used throughout the app's own UI (ic_shield.xml),
+     scaled into the adaptive icon's 108dp canvas with the lock "cut out" of it in the background's
+     own red so it reads as a padlock rather than a solid white blob. Approved by the user before
+     being added (see chat): a shield+lock pair, not the plain-shield alternative also offered. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="23"
+        android:translateY="36"
+        android:scaleX="2.583"
+        android:scaleY="2.583">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z" />
+        <path
+            android:fillColor="#C62828"
+            android:pathData="M9.2,10.3h5.6a0.9,0.9 0,0 1 0.9,0.9v3.1a0.9,0.9 0,0 1 -0.9,0.9h-5.6a0.9,0.9 0,0 1 -0.9,-0.9v-3.1a0.9,0.9 0,0 1 0.9,-0.9z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#C62828"
+            android:strokeWidth="1.05"
+            android:strokeLineCap="round"
+            android:pathData="M10.2,12.3v-2a1.8,1.8 0,0 1 3.6,0v2" />
+    </group>
+</vector>
