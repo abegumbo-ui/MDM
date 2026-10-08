@@ -319,25 +319,30 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   }
   const known = opts.known ? new Set(opts.known) : null;
   const hide = new Set();
-  const show = [];
+  const show = new Set();
   const pending = [];
-  const allowed = [];
-  // Explicit blocks and soft-blocks apply even to packages the device didn't report.
+  const allowed = new Set();
+  // Explicit blocks, soft-blocks and allows apply even to packages the device didn't report (or
+  // didn't report on this particular sync) -- otherwise an app an admin explicitly allowed could
+  // silently drop out of `allowed`/`show` the moment one sync's package list happens to omit it,
+  // and fall through to blockUnlisted's default of hiding it instead, with no visible sign on the
+  // dashboard that anything changed (the admin still sees "Allow" selected).
   for (const [pkg, a] of Object.entries(apps)) {
     if (a.mode === "block") hide.add(pkg);
-    if (a.mode === "soft") show.push(pkg);
+    if (a.mode === "soft") show.add(pkg);
+    if (a.mode === "allow" || a.mode === "force") {
+      allowed.add(pkg);
+      show.add(pkg);
+    }
   }
   for (const pkg of reportedPackages) {
     const mode = apps[pkg]?.mode;
-    if (mode === "allow" || mode === "force") allowed.push(pkg);
-    if (mode === "block") hide.add(pkg);
-    else if (mode === "allow" || mode === "force") show.push(pkg);
-    else if (mode === "soft") show.push(pkg);
-    else if (cfg.approveNew && known && !known.has(pkg) && !isProtected(pkg)) {
+    if (mode === "block" || mode === "allow" || mode === "force" || mode === "soft") continue; // handled above
+    if (cfg.approveNew && known && !known.has(pkg) && !isProtected(pkg)) {
       hide.add(pkg);
       pending.push(pkg);
     } else if (cfg.blockUnlisted && !isProtected(pkg)) hide.add(pkg);
-    else show.push(pkg);
+    else show.add(pkg);
   }
   const restrictions = Object.entries(RESTRICTIONS)
     .filter(([k]) => cfg.restrictions[k])
@@ -350,7 +355,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show, allowed, restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
