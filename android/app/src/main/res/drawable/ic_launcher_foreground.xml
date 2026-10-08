@@ -10,7 +10,7 @@
     android:viewportHeight="108">
     <group
         android:translateX="23"
-        android:translateY="36"
+        android:translateY="23"
         android:scaleX="2.583"
         android:scaleY="2.583">
         <path
