@@ -29,7 +29,12 @@ final class Kiosk {
             "android", "com.android.systemui",
             "com.android.documentsui", "com.google.android.documentsui",
             "com.google.android.permissioncontroller", "com.android.permissioncontroller",
-            "com.google.android.gms", "com.familymdm.browser"
+            "com.google.android.gms", "com.familymdm.browser",
+            // No launcher icon of its own, so there's never a way to add it to Allowed Apps by
+            // hand -- without this it can run in the background but Settings > Connected devices
+            // > Connection preferences > Android Auto silently fails to open it while Home screen
+            // mode is on, even though the exact same tap works fine with Home screen mode off.
+            SettingsMenu.ANDROID_AUTO_PKG,
     };
 
     private Kiosk() {}

@@ -93,12 +93,19 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- resizeableActivity=false tells Android up front that this activity can't share the
+             screen. Without it, trying to split-screen out of Home screen mode (which locks the
+             screen to this activity via lock task mode, fundamentally incompatible with a second
+             app sharing the screen) let some OEM launchers (seen on Motorola's MyUX) attempt it
+             anyway and crash instead of just declining. This makes the OS itself refuse the
+             request before it gets that far, with its own normal "can't split screen" handling. -->
         <activity
             android:name=".HomeActivity"
             android:exported="true"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
-            android:stateNotNeeded="true">
+            android:stateNotNeeded="true"
+            android:resizeableActivity="false">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />

@@ -34,8 +34,13 @@ final class SettingsMenu {
 
     /** Display order, left to right as the real Settings app shows them. */
     static final List<String> ORDER = Arrays.asList(
-            "network", "connected", "apps", "notifications", "sound", "modes", "personalize",
+            "network", "connected", "androidAuto", "apps", "notifications", "sound", "modes", "personalize",
             "display", "homeLock", "gesture", "storage", "battery", "system", "aboutPhone", "location");
+
+    /** Android Auto's real package -- no launcher icon of its own, so it needs a row here to be reachable
+     * at all while Home screen mode only allows apps on the Allowed Apps list (see Kiosk.ESSENTIALS,
+     * which keeps it able to run in the background even then). */
+    static final String ANDROID_AUTO_PKG = "com.google.android.projection.gearhead";
 
     // All 22 real Settings categories' display labels -- wider than ORDER, since MainActivity's
     // own Quick Settings card (a different, older feature) covers a couple this fake menu doesn't.
@@ -44,6 +49,7 @@ final class SettingsMenu {
         LABELS.put("google", "Google");
         LABELS.put("network", "Network and internet");
         LABELS.put("connected", "Connected devices");
+        LABELS.put("androidAuto", "Android Auto");
         LABELS.put("apps", "Apps");
         LABELS.put("notifications", "Notifications");
         LABELS.put("sound", "Sound and vibration");
@@ -134,6 +140,12 @@ final class SettingsMenu {
 
     /** What tapping this category's row should do -- an Intent to launch, or null if nothing is set up for it yet. */
     static Intent intentFor(Context c, String category) {
+        if ("androidAuto".equals(category)) {
+            // Jumps straight into the Android Auto app itself rather than through Settings --
+            // there's no real Settings action for it, and the app has no launcher icon of its
+            // own to tap instead. Null if it isn't installed.
+            return c.getPackageManager().getLaunchIntentForPackage(ANDROID_AUTO_PKG);
+        }
         String action = LINKS.get(category);
         if (action != null) return new Intent(action);
         String learned = learnedTarget(c, category);
