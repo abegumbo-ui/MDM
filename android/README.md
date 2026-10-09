@@ -6,10 +6,15 @@ Three separate apps live here:
 - **browser** (`android/browser`) -- the agent's companion allowlisted browser.
 - **lockdown** (`android/lockdown`) -- a one-time, one-way setup tool, entirely separate from the
   other two. It never talks to a server at all. It's its own device-owner app (Android only allows
-  one per device, so it can't coexist with the agent on the same phone), walks through picking
-  restrictions and apps to remove, and once "Close Forever" is confirmed it applies everything,
-  hides its own launcher icon so it can never be opened again, and leaves the phone in that state
-  permanently -- a factory reset is the only way to undo any of it.
+  one per device, so it can't coexist with the agent on the same phone). Setup is two pickers
+  (Regular apps, System apps, each with search) plus one button: Google Maps, Waze and Android Auto
+  are always allowed and every other app starts blocked, so the pickers are only for allowing more
+  regular apps or blocking specific system apps (ones with no icon, like a search/suggestions
+  service). Once "This device is set up" is confirmed and a 21-digit Factory Reset Protection
+  account ID is entered, it locks the phone into a permanent kiosk mode (only what's allowed can
+  open), hides its own launcher icon so it can never be opened again, and keeps Settings down to
+  just Wi-Fi/Network and Connected devices (GuardService, best-effort). A factory reset -- gated by
+  that FRP account -- is the only way to undo any of it.
 
 ## Release signing
 
