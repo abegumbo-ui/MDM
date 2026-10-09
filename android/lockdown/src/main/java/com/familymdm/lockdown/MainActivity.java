@@ -182,11 +182,14 @@ public class MainActivity extends Activity {
     /** The big on/off switch, rendered right under the banner on every screen -- not buried in the
      * hub, so it's always the first thing visible, and always reachable regardless of what else is
      * being configured. Off means nothing below is enforced: every restriction clears, every app
-     * comes back, the kiosk takeover stops, this app stays exactly as reachable as it always is.
-     * On means whatever's currently saved everywhere else gets pushed live. Flipping it is always
-     * reversible, any number of times, immediately, with no prerequisite -- it has nothing to do
-     * with Factory Reset Protection, which only matters for the separate, final "set up for good"
-     * step at the bottom of the hub. */
+     * comes back, this app stays exactly as reachable as it always is. On means whatever's
+     * currently saved everywhere else gets pushed live -- blocked apps actually can't be opened,
+     * restrictions actually apply -- but the phone stays on its regular launcher the whole time.
+     * The kiosk home-screen takeover (replacing the launcher, pinning into lock task mode) is
+     * deliberately NOT part of this switch -- that only starts at the real final step, "This device
+     * is set up for good" at the bottom of the hub. Flipping this switch is always reversible, any
+     * number of times, immediately, with no prerequisite -- it has nothing to do with Factory Reset
+     * Protection either, which also only matters for that final step. */
     private void buildLockdownSwitch() {
         boolean on = isLockdownOn();
         LinearLayout card = Ui.card(this, root);
@@ -204,12 +207,13 @@ public class MainActivity extends Activity {
         row.addView(sw);
         card.addView(row);
         card.addView(Ui.body(this, on
-                ? "Everything configured below is actively enforced on this phone right now. Turn this off any "
-                + "time -- no factory reset needed -- to open the phone back up, install an update to this app, "
-                + "or change anything."
-                : "Nothing below is enforced yet. Configure whatever's wanted first, then turn this on when "
-                + "it's ready -- this app is never hidden or disabled, so it's always reachable to come back "
-                + "and change anything, including turning this off again.", true));
+                ? "Everything configured below is actively enforced on this phone right now -- blocked apps "
+                + "can't be opened, restrictions actually apply -- but the phone stays on its regular launcher; "
+                + "no kiosk home-screen takeover yet. Turn this off any time -- no factory reset needed -- to "
+                + "open the phone back up, install an update to this app, or change anything."
+                : "Nothing below is enforced yet. Configure whatever's wanted first, then turn this on to test "
+                + "it live -- this app is never hidden or disabled, so it's always reachable to come back and "
+                + "change anything, including turning this off again.", true));
     }
 
     private void toggleLockdown(boolean on) {
@@ -228,13 +232,16 @@ public class MainActivity extends Activity {
         enableLockdown();
     }
 
+    /** Deliberately does NOT call Kiosk.activate() -- that's the kiosk home-screen takeover, which
+     * only starts at the real final step (finishForever()). This just applies the blocks and
+     * restrictions directly via setApplicationHidden()/addUserRestriction(), neither of which is
+     * tied to lock task mode at all, so testing what's blocked works the same on the phone's
+     * regular launcher as it would once kiosk mode is actually running. */
     private void enableLockdown() {
         prefs().edit().putBoolean("lockdownOn", true).apply();
         applyRestrictionsLive();
         applyRegularAppLiveState();
         applySystemAppLiveState();
-        Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
-        Kiosk.activate(this, dpm(), admin(), allowed);
         section = null;
         build();
     }

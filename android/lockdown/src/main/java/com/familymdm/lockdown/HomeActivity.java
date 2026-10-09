@@ -22,10 +22,11 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The home screen while Lockdown is switched on -- a plain grid of whatever's allowed (Maps,
- * Waze, Android Auto, plus anything the admin added on the Regular Apps picker). Its own "Lockdown"
- * tile always opens MainActivity's setup/admin screen, so the admin can always get back in to
- * change anything or switch the whole lockdown back off -- there's no factory-reset-only trap here.
+ * The kiosk home screen -- only reachable once "This device is set up for good" has actually run
+ * (the Lockdown switch applies blocks/restrictions live but deliberately never starts this
+ * takeover). A plain grid of whatever's allowed (Maps, Waze, Android Auto, plus anything the admin
+ * added on the Regular Apps picker). Its own "Lockdown" tile always opens MainActivity's
+ * setup/admin screen, reachable right up until the final lock-in happens.
  */
 public class HomeActivity extends Activity {
     private GridLayout grid;
