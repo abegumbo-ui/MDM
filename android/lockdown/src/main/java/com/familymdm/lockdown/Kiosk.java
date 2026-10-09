@@ -1,5 +1,7 @@
 package com.familymdm.lockdown;
 
+import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -14,9 +16,9 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * One-way lock task setup, ported and trimmed from the agent app's own Kiosk.java -- there's no
- * "off" here, since nothing about this app is meant to be reversible from the phone once Close
- * Forever has run. activate() is called exactly once, at that moment.
+ * Lock task setup, ported and trimmed from the agent app's own Kiosk.java -- reversible, via the
+ * Lockdown switch: activate() turns the kiosk takeover on, deactivate() turns it back off, and
+ * either can run any number of times as the admin flips that switch.
  */
 final class Kiosk {
     private static final String TAG = "Lockdown";
@@ -69,6 +71,28 @@ final class Kiosk {
             Log.w(TAG, "could not set the permanent home app: " + e);
         }
         startHome(c);
+    }
+
+    /** Reverses activate(): clears the lock task allowlist, clears the permanent home app, and
+     * exits lock task mode if the calling activity is currently pinned in it (MainActivity's own
+     * package is always in that allowlist, so this works correctly when called from there). */
+    static void deactivate(Activity a, DevicePolicyManager dpm, ComponentName admin) {
+        try {
+            dpm.setLockTaskPackages(admin, new String[0]);
+        } catch (Exception e) {
+            Log.w(TAG, "could not clear the lock task allowlist: " + e);
+        }
+        try {
+            dpm.clearPackagePersistentPreferredActivities(admin, a.getPackageName());
+        } catch (Exception e) {
+            Log.w(TAG, "could not clear the permanent home app: " + e);
+        }
+        try {
+            ActivityManager am = (ActivityManager) a.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am.getLockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE) a.stopLockTask();
+        } catch (Exception e) {
+            Log.w(TAG, "could not exit lock task mode: " + e);
+        }
     }
 
     static void startHome(Context c) {
