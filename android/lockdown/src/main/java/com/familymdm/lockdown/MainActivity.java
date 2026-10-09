@@ -1,11 +1,16 @@
 package com.familymdm.lockdown;
 
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.app.admin.DevicePolicyManager;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.Build;
@@ -18,11 +23,15 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * One-time, one-way setup. This never talks to a server and keeps nothing configurable running
@@ -38,6 +47,11 @@ public class MainActivity extends Activity {
     private String section;
     private String search = "";
     private LinearLayout pickerList;
+    private EditText bulkInput;
+    private List<String> bulkResults = new ArrayList<>();
+    private static final String ACTION_UNINSTALL_RESULT = "com.familymdm.lockdown.UNINSTALL_RESULT";
+    private static final Pattern PACKAGE_NAME = Pattern.compile("\\b[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z][a-zA-Z0-9_]*)+\\b");
+    private BroadcastReceiver uninstallReceiver;
 
     private SharedPreferences prefs() {
         return getSharedPreferences("lockdown", MODE_PRIVATE);
@@ -78,6 +92,15 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
+        uninstallReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                String pkg = i.getStringExtra("pkg");
+                int status = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+                if (status == PackageInstaller.STATUS_SUCCESS) toast("Uninstalled " + pkg);
+            }
+        };
+        registerReceiver(uninstallReceiver, new IntentFilter(ACTION_UNINSTALL_RESULT));
         build();
     }
 
@@ -85,6 +108,15 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (root != null) build();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try {
+            unregisterReceiver(uninstallReceiver);
+        } catch (Exception ignored) {
+        }
     }
 
     private void toast(String s) {
@@ -108,6 +140,8 @@ public class MainActivity extends Activity {
             buildSettingsPicker();
         } else if ("restrictions".equals(section)) {
             buildRestrictionsPicker();
+        } else if ("bulk".equals(section)) {
+            buildBulkPicker();
         } else if ("frp".equals(section)) {
             buildFrpStep();
         } else {
@@ -177,6 +211,11 @@ public class MainActivity extends Activity {
         Set<String> extraOn = prefs().getStringSet("extraRestrictions", new LinkedHashSet<>());
         Ui.add(card, Ui.button(this, "Device restrictions (" + extraOn.size() + " on)", Ui.TONAL, v -> {
             section = "restrictions";
+            build();
+        }), 8);
+        Ui.add(card, Ui.button(this, "Bulk list from an AI app audit", Ui.TONAL, v -> {
+            section = "bulk";
+            bulkResults = new ArrayList<>();
             build();
         }), 8);
 
@@ -295,6 +334,114 @@ public class MainActivity extends Activity {
                     toast("Could not " + (checked ? "turn on" : "turn off") + " \"" + LockdownPolicy.displayLabel(key) + "\": " + ex.getMessage());
                 }
             }), 6);
+        }
+    }
+
+    // ---------- the bulk-list picker ----------
+    /** For pasting a list an outside AI tool produced after going through a full dump of every app
+     * on this phone (adb shell pm list packages -f, or similar) -- this never sends anything
+     * anywhere itself, it just reads back whatever text was already produced elsewhere and pasted
+     * in here. Any package name found anywhere in the pasted text gets blocked immediately, the
+     * same way the System/Regular apps pickers already do it live; a genuinely removable app (not
+     * part of Android itself) also gets a real uninstall requested. That's the "uninstall it, or
+     * block it if it can't really be uninstalled" behavior asked for -- the block is what actually
+     * guarantees the result either way, since most of what shows up in a list like this is
+     * preinstalled OEM software Android won't let any app actually remove. */
+    private void buildBulkPicker() {
+        LinearLayout header = Ui.card(this, root);
+        Ui.add(header, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            section = null;
+            build();
+        }), 0);
+
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Bulk list from an AI app audit"));
+        card.addView(Ui.body(this, "Paste whatever list an AI tool gave you after going through a dump of every "
+                + "app on this phone -- any format is fine, this only looks for package names (like "
+                + "com.something.app) anywhere in the text and ignores everything else around them. Every "
+                + "package name found gets blocked right away: a regular app gets unchecked on the Regular apps "
+                + "list, a background one gets hidden the same way the System apps picker does. A genuinely "
+                + "removable app (not part of Android itself) also gets a real uninstall requested, silently, "
+                + "since this app is the device owner -- but the block is what actually guarantees the result "
+                + "either way, since most things on a list like this can't really be removed, only blocked.", true));
+        bulkInput = Ui.multilineField(this, "Paste the list here");
+        Ui.add(card, bulkInput, 8);
+        Ui.add(card, Ui.button(this, "Apply list", Ui.DANGER, v -> applyBulkList()), 12);
+
+        if (!bulkResults.isEmpty()) {
+            LinearLayout resultsCard = Ui.card(this, root);
+            resultsCard.addView(Ui.titleText(this, "Result"));
+            for (String line : bulkResults) {
+                Ui.add(resultsCard, Ui.body(this, line, true), 4);
+            }
+        }
+    }
+
+    private void applyBulkList() {
+        Matcher m = PACKAGE_NAME.matcher(bulkInput.getText().toString());
+        Set<String> found = new LinkedHashSet<>();
+        while (m.find()) found.add(m.group());
+
+        PackageManager pm = getPackageManager();
+        Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
+        Set<String> blockedSystem = new LinkedHashSet<>(prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>()));
+        List<String> results = new ArrayList<>();
+        int changed = 0;
+
+        for (String pkg : found) {
+            if (pkg.equals(getPackageName())) {
+                results.add(pkg + " -- skipped (this app itself)");
+                continue;
+            }
+            if (LockdownPolicy.isProtected(pkg)) {
+                results.add(pkg + " -- skipped (protected -- the phone needs this to work)");
+                continue;
+            }
+            ApplicationInfo ai;
+            try {
+                ai = pm.getApplicationInfo(pkg, 0);
+            } catch (PackageManager.NameNotFoundException ex) {
+                results.add(pkg + " -- not installed on this phone");
+                continue;
+            }
+            boolean launchable = pm.getLaunchIntentForPackage(pkg) != null;
+            if (launchable) {
+                if (allowed.remove(pkg)) changed++;
+                results.add(pkg + " -- blocked (was an allowed regular app)");
+            } else {
+                if (blockedSystem.add(pkg)) changed++;
+                try {
+                    dpm().setApplicationHidden(admin(), pkg, true);
+                    results.add(pkg + " -- blocked immediately (system app)");
+                } catch (Exception ex) {
+                    results.add(pkg + " -- added to the block list, but couldn't apply it live: " + ex.getMessage());
+                }
+            }
+            boolean isSystemApp = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+            if (!isSystemApp) {
+                attemptSilentUninstall(pkg);
+                results.add(pkg + " -- also requested a real uninstall (not part of Android itself)");
+            }
+        }
+        prefs().edit().putStringSet("allowedApps", allowed).putStringSet("blockedSystemApps", blockedSystem).apply();
+        if (found.isEmpty()) results.add("No package names found in that text.");
+        bulkResults = results;
+        toast(changed + " app" + (changed == 1 ? "" : "s") + " changed.");
+        build();
+    }
+
+    /** Best-effort only -- a device owner can silently uninstall without the usual confirmation
+     * dialog, but most of what ends up in a list like this is preinstalled OEM software Android
+     * won't actually let anything remove, so this is a bonus on top of the block above, never
+     * something the block depends on. */
+    private void attemptSilentUninstall(String pkg) {
+        try {
+            PackageInstaller installer = getPackageManager().getPackageInstaller();
+            Intent intent = new Intent(ACTION_UNINSTALL_RESULT).setPackage(getPackageName()).putExtra("pkg", pkg);
+            PendingIntent pending = PendingIntent.getBroadcast(this, pkg.hashCode(), intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0));
+            installer.uninstall(pkg, pending.getIntentSender());
+        } catch (Exception ignored) {
         }
     }
 
