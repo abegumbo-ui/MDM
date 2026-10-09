@@ -13,6 +13,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.Switch;
 import android.widget.TextView;
 
 /** Same hand-built dark/red look as the agent app's own Ui.java, trimmed to what this wizard needs. */
@@ -162,6 +163,23 @@ final class Ui {
         e.setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 12));
         e.setBackground(shape(color(c, R.color.m3_surface), dp(c, 8), color(c, R.color.m3_outline), dp(c, 1)));
         return e;
+    }
+
+    /** A Switch with its thumb/track colors pinned explicitly -- this app's theme forces a very
+     * dark background without declaring itself a proper dark theme to the platform, so a plain
+     * Switch inherits ambient device-default colors that can render as barely visible (dark-on-dark)
+     * against it. Explicit tinting here, matching the rest of this app's own palette, instead of
+     * trusting that resolution. */
+    static Switch tintedSwitch(Context c) {
+        Switch sw = new Switch(c);
+        int on = color(c, R.color.m3_primary);
+        int onThumb = color(c, R.color.m3_on_primary);
+        int off = color(c, R.color.m3_outline);
+        int offThumb = color(c, R.color.m3_on_surface_variant);
+        int[][] states = {{android.R.attr.state_checked}, {}};
+        sw.setTrackTintList(new ColorStateList(states, new int[]{on, off}));
+        sw.setThumbTintList(new ColorStateList(states, new int[]{onThumb, offThumb}));
+        return sw;
     }
 
     /** A full-width row with a checkbox, a bold label, and an optional description underneath. */

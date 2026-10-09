@@ -7,12 +7,22 @@ Three separate apps live here:
 - **lockdown** (`android/lockdown`) -- a self-contained setup and kiosk tool, entirely separate
   from the other two. It never talks to a server at all. It's its own device-owner app (Android
   only allows one per device, so it can't coexist with the agent on the same phone). Everything is
-  configured on five screens (Regular apps, System apps, Settings, Device restrictions, and a bulk
-  screen for pasting the output of an outside AI app audit), but none of it is actually enforced on
-  the phone until the **Lockdown switch** at the top -- visible on every screen, not buried in a
-  menu -- is turned on. Flipping it on pushes everything configured below live: Google Maps, Waze
-  and Android Auto are allowed by default (an ordinary, uncheckable-if-you-want-to row, not
-  hardcoded), every other app gets blocked, the real Settings app becomes unreachable except for
+  configured on six screens (Regular apps, System apps, Settings, Device restrictions, a bulk
+  screen for pasting the output of an outside AI app audit, and Notifications), but none of it is
+  actually enforced on the phone until the **Lockdown switch** at the top -- visible on every
+  screen, not buried in a menu -- is turned on. Both app pickers also offer an opt-in "also show
+  protected system components" checkbox, off by default, that reaches a handful of packages
+  (Play Store among them) normally left out of both lists because blocking them can break the
+  phone -- left off by default, but not hardcoded out of reach if that's genuinely wanted.
+  Notifications is a soft block instead of a hard one: a checked app there keeps running and can
+  still be used normally (meant for something Android Auto needs alive in the background, like the
+  Google app or Google Play Services), but any notification it tries to show gets dismissed the
+  instant it posts, so there's nothing on screen to tap into -- this needs "Notification access"
+  granted to the app once, by hand, since a device owner can't grant that one silently like every
+  other permission here. Flipping the Lockdown switch on pushes everything configured on the other
+  five screens live: Google Maps, Waze and Android Auto are allowed by default (an ordinary,
+  uncheckable-if-you-want-to row, not hardcoded), every other app gets blocked, the real Settings
+  app becomes unreachable except for
   whatever categories were checked on the Settings picker (each one opened from this app's own
   in-app Settings menu via a direct android.settings.* action, same as the agent app's own
   disguised Settings menu), and the Device restrictions list -- the same list, order and wording
