@@ -158,6 +158,7 @@ public class MainActivity extends Activity {
         applyRestrictionsLive();
         applyRegularAppLiveState();
         applySystemAppLiveState();
+        applyNotificationPermissionLive();
         if ("regular".equals(section)) {
             buildPicker(true);
         } else if ("system".equals(section)) {
@@ -339,6 +340,35 @@ public class MainActivity extends Activity {
         for (String pkg : blocked) {
             try {
                 dpm().setApplicationHidden(admin(), pkg, on);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private static final String POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS";
+
+    /** Proactive, not just reactive: on Android 13+, POST_NOTIFICATIONS is a real runtime
+     * permission, and a device owner can deny it outright -- a denied app genuinely can't post a
+     * notification in the first place, not just get it cancelled a moment after it briefly
+     * appears. This is what actually keeps a notification from ever showing at all, for the
+     * ordinary case. NotificationSuppressor (the NotificationListenerService) stays in place as a
+     * fallback for everything this can't reach: phones older than Android 13, and the one category
+     * Android exempts from the permission check entirely and won't let any app -- including a
+     * device owner -- suppress: a notification tied to an active foreground service (an ongoing
+     * download or install, specifically). That's a deliberate OS floor, not a gap here. */
+    private void applyNotificationPermissionLive() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        boolean on = isLockdownOn();
+        Set<String> allowed = prefs().getStringSet("allowedNotificationPackages", new LinkedHashSet<>());
+        PackageManager pm = getPackageManager();
+        for (ApplicationInfo ai : pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+            String pkg = ai.packageName;
+            if (pkg.equals(getPackageName()) || pkg.equals("android")) continue;
+            try {
+                dpm().setPermissionGrantState(admin(), pkg, POST_NOTIFICATIONS,
+                        on && !allowed.contains(pkg)
+                                ? DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED
+                                : DevicePolicyManager.PERMISSION_GRANT_STATE_DEFAULT);
             } catch (Exception ignored) {
             }
         }
@@ -570,12 +600,17 @@ public class MainActivity extends Activity {
     // ---------- the Notifications picker (allow-list) ----------
     /** The opposite of the Regular/System apps lists: those block-list a handful of specific
      * apps and leave everything else running; this allow-lists a handful of specific apps and
-     * leaves everything else silent. A checked app here keeps notifying normally; everything
-     * unchecked -- including apps that are still running fine, like the Google app and Google
-     * Play Services -- gets every notification dismissed the instant it posts, so there's never
-     * anything to tap into. Unlike every other permission this app needs, Android does not let a
-     * device owner grant "Notification access" silently via DevicePolicyManager -- it has to be
-     * granted here, once, by hand. */
+     * leaves everything else silent. A checked app here notifies normally; everything unchecked --
+     * even an app that's still running fine and was never blocked, like Google Play Services or
+     * the Google app itself -- is actually denied the Android permission to post a notification
+     * at all (Android 13+), so there's nothing to even briefly appear, not just something that
+     * gets dismissed a moment later. The one thing even that can't stop, which nothing on the
+     * phone can: a notification tied to an active foreground service (an ongoing download or
+     * install) is exempt from the permission check by Android itself. As a fallback for those,
+     * and for phones older than Android 13, a NotificationListenerService also cancels anything
+     * from an unchecked app the instant it posts -- unlike every other permission this app needs,
+     * Android does not let a device owner grant "Notification access" silently, so that part has
+     * to be granted here, once, by hand. */
     private void buildNotificationsPicker() {
         LinearLayout header = Ui.card(this, root);
         Ui.add(header, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
@@ -588,18 +623,22 @@ public class MainActivity extends Activity {
         card.addView(Ui.titleText(this, "Notifications"));
         card.addView(Ui.body(this, "The opposite of the Regular/System apps lists above: those block specific "
                 + "apps and leave everything else running; this allows specific apps to notify and leaves "
-                + "everything else silent. A checked app here notifies normally. Everything unchecked -- even "
-                + "an app that's still running fine and was never blocked, like Google Play Services or the "
-                + "Google app itself -- has every notification dismissed the instant it posts. This doesn't "
-                + "hide or block anything; it only ever touches notifications. Separate again from the Kiosk "
-                + "home screen list below: an app can notify here without ever getting a home-screen icon "
-                + "there (Android Auto, for instance, launches itself and needs neither). Only takes effect "
-                + "while the Lockdown switch at the top is on.", true));
+                + "everything else silent. A checked app here notifies normally. An unchecked app -- even one "
+                + "that's still running fine and was never blocked, like Google Play Services or the Google "
+                + "app itself -- is actually denied Android's own permission to post a notification at all, so "
+                + "there's nothing to even briefly appear. The one thing nothing on the phone can stop, not "
+                + "even this: a notification tied to an active download or install (a foreground service) is "
+                + "exempt from that by Android itself -- those still get through while they're actually "
+                + "ongoing. This doesn't hide or block the app otherwise; it only ever touches notifications. "
+                + "Separate again from the Kiosk home screen list below: an app can notify here without ever "
+                + "getting a home-screen icon there (Android Auto, for instance, launches itself and needs "
+                + "neither). Only takes effect while the Lockdown switch at the top is on.", true));
 
         if (!NotificationSuppressor.isEnabled(this)) {
-            Ui.add(card, Ui.body(this, "Notification access isn't granted to this app yet -- checking apps below "
-                    + "won't actually mute anything until it is. This has to be granted by hand; a device owner "
-                    + "can't grant it silently.", true), 8);
+            Ui.add(card, Ui.body(this, "Notification access isn't granted to this app yet -- as a fallback for "
+                    + "phones older than Android 13 and the one exempt category above, checking apps below "
+                    + "won't also actively cancel anything until it is. This has to be granted by hand; a "
+                    + "device owner can't grant it silently.", true), 8);
             Ui.add(card, Ui.button(this, "Grant notification access", Ui.OUTLINED, v -> {
                 try {
                     startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
@@ -649,6 +688,17 @@ public class MainActivity extends Activity {
                 Set<String> s = new LinkedHashSet<>(prefs().getStringSet("allowedNotificationPackages", new LinkedHashSet<>()));
                 if (checked) s.add(pkg); else s.remove(pkg);
                 prefs().edit().putStringSet("allowedNotificationPackages", s).apply();
+                // Only actually applied to the phone while the Lockdown switch is on -- while it's
+                // off, this just saves the choice for whenever it's turned on later.
+                if (isLockdownOn() && Build.VERSION.SDK_INT >= 33) {
+                    try {
+                        dpm().setPermissionGrantState(admin(), pkg, POST_NOTIFICATIONS,
+                                checked ? DevicePolicyManager.PERMISSION_GRANT_STATE_DEFAULT
+                                        : DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED);
+                    } catch (Exception ex) {
+                        toast("Could not " + (checked ? "allow" : "silence") + " " + label + ": " + ex.getMessage());
+                    }
+                }
             }), 6);
         }
         if (shown == 0) Ui.add(pickerList, Ui.body(this, "No matches.", true), 8);
@@ -1035,6 +1085,7 @@ public class MainActivity extends Activity {
         applyRestrictionsLive();
         applyRegularAppLiveState();
         applySystemAppLiveState();
+        applyNotificationPermissionLive();
         // Everything that needs to be reachable once locked, whether or not it has a tile:
         // apps with an actual home-screen icon, plus apps only allowed to notify (Android Auto,
         // for instance, has no tile but still needs to be launchable for the notification/car
