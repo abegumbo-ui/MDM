@@ -23,13 +23,13 @@ final class Kiosk {
 
     private Kiosk() {}
 
-    /** Everything that may come to the foreground once locked: the three always-allowed apps, the
-     * system essentials, whatever the admin additionally allowed on the Regular Apps picker, and
-     * the phone's own default dialer/SMS handler (so calls and texts still work). */
+    /** Everything that may come to the foreground once locked: the system essentials, whatever the
+     * admin allowed on the Regular Apps picker (Maps/Waze/Android Auto are pre-checked there by
+     * default, but are ordinary rows -- not hardcoded here), and the phone's own default dialer/SMS
+     * handler (so calls and texts still work). */
     static String[] lockTaskPackages(Context c, Set<String> adminAllowed) {
         Set<String> s = new LinkedHashSet<>();
         for (String e : LockdownPolicy.SYSTEM_ESSENTIALS) s.add(e);
-        for (String e : LockdownPolicy.ALWAYS_ALLOWED_APPS) s.add(e);
         s.addAll(adminAllowed);
         try {
             String dialer = ((TelecomManager) c.getSystemService(Context.TELECOM_SERVICE)).getDefaultDialerPackage();

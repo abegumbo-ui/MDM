@@ -69,9 +69,7 @@ public class HomeActivity extends Activity {
     private void build() {
         grid.removeAllViews();
         PackageManager pm = getPackageManager();
-        Set<String> allowed = new LinkedHashSet<>();
-        for (String p : LockdownPolicy.ALWAYS_ALLOWED_APPS) allowed.add(p);
-        allowed.addAll(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
+        Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
 
         List<String[]> apps = new ArrayList<>();
         for (String pkg : allowed) {

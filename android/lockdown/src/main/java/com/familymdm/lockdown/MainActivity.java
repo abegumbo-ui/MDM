@@ -60,6 +60,11 @@ public class MainActivity extends Activity {
             finish();
             return;
         }
+        if (!prefs().contains("allowedApps")) {
+            Set<String> defaults = new LinkedHashSet<>();
+            for (String p : LockdownPolicy.DEFAULT_ALLOWED_APPS) defaults.add(p);
+            prefs().edit().putStringSet("allowedApps", defaults).apply();
+        }
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 16);
@@ -116,13 +121,15 @@ public class MainActivity extends Activity {
     private void buildHub() {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Step 2: choose what's allowed"));
-        card.addView(Ui.body(this, "Google Maps, Waze, and Android Auto are always allowed -- nothing to set up "
-                + "for those. Every other app starts blocked. Use the two lists below to allow more regular "
-                + "apps, or to block specific system apps (ones with no icon of their own, like a search or "
-                + "suggestions service).", true));
+        card.addView(Ui.body(this, "Google Maps, Waze, and Android Auto are allowed by default -- nothing to "
+                + "set up for those unless you want to change it. Every other app starts blocked. Use the two "
+                + "lists below to allow or block regular apps (including those three, if you ever want to), or "
+                + "to block specific system apps (ones with no icon of their own, like a search or suggestions "
+                + "service) -- blocking a system app takes effect immediately, so you can test it before "
+                + "finishing setup.", true));
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
         Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
-        Ui.add(card, Ui.button(this, "Regular apps (" + allowed.size() + " extra allowed)", Ui.TONAL, v -> {
+        Ui.add(card, Ui.button(this, "Regular apps (" + allowed.size() + " allowed)", Ui.TONAL, v -> {
             section = "regular";
             search = "";
             build();
@@ -198,22 +205,33 @@ public class MainActivity extends Activity {
                         regular ? "allowedApps" : "blockedSystemApps", new LinkedHashSet<>()));
                 if (checked) s.add(pkg); else s.remove(pkg);
                 prefs().edit().putStringSet(regular ? "allowedApps" : "blockedSystemApps", s).apply();
+                // System apps take effect immediately, before the final lock -- so a block can
+                // actually be tested (does the phone/another app still work right?) and undone
+                // here if it breaks something, rather than only finding out after everything is
+                // permanent. setApplicationHidden() isn't tied to kiosk mode at all, so this works
+                // the same whether or not the phone is locked yet.
+                if (!regular) {
+                    try {
+                        dpm().setApplicationHidden(admin(), pkg, checked);
+                    } catch (Exception e) {
+                        toast("Could not " + (checked ? "block" : "unblock") + " " + label + ": " + e.getMessage());
+                    }
+                }
             }), 6);
         }
         if (shown == 0) Ui.add(pickerList, Ui.body(this, "No matches.", true), 8);
     }
 
-    /** Every launcher app on the phone, except this app itself, the three always-allowed ones
-     * (nothing to toggle for those), and anything LockdownPolicy protects. */
+    /** Every launcher app on the phone, except this app itself and anything LockdownPolicy
+     * protects. Maps/Waze/Android Auto are ordinary rows here too, just pre-checked by default
+     * (seeded once in onCreate) -- nothing stops unchecking them like any other app. */
     private Map<String, String> regularAppCandidates() {
-        Set<String> alwaysAllowed = new LinkedHashSet<>();
-        for (String p : LockdownPolicy.ALWAYS_ALLOWED_APPS) alwaysAllowed.add(p);
         PackageManager pm = getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         Map<String, String> byPkg = new LinkedHashMap<>();
         for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
             String pkg = ri.activityInfo.packageName;
-            if (pkg.equals(getPackageName()) || alwaysAllowed.contains(pkg) || LockdownPolicy.isProtected(pkg) || byPkg.containsKey(pkg))
+            if (pkg.equals(getPackageName()) || LockdownPolicy.isProtected(pkg) || byPkg.containsKey(pkg))
                 continue;
             byPkg.put(pkg, ri.loadLabel(pm).toString());
         }
