@@ -184,7 +184,9 @@ public class MainActivity extends Activity {
      * being configured. Off means nothing below is enforced: every restriction clears, every app
      * comes back, the kiosk takeover stops, this app stays exactly as reachable as it always is.
      * On means whatever's currently saved everywhere else gets pushed live. Flipping it is always
-     * reversible, any number of times -- there's no point where this stops being true. */
+     * reversible, any number of times, immediately, with no prerequisite -- it has nothing to do
+     * with Factory Reset Protection, which only matters for the separate, final "set up for good"
+     * step at the bottom of the hub. */
     private void buildLockdownSwitch() {
         boolean on = isLockdownOn();
         LinearLayout card = Ui.card(this, root);
@@ -208,49 +210,6 @@ public class MainActivity extends Activity {
                 : "Nothing below is enforced yet. Configure whatever's wanted first, then turn this on when "
                 + "it's ready -- this app is never hidden or disabled, so it's always reachable to come back "
                 + "and change anything, including turning this off again.", true));
-        String frpAccount = prefs().getString("frpAccountId", null);
-        Ui.add(card, Ui.button(this, frpAccount == null ? "Set up recovery account" : "Recovery account: set", Ui.OUTLINED, v -> {
-            section = "frp";
-            build();
-        }), 8);
-
-        LinearLayout finishCard = Ui.card(this, root);
-        finishCard.addView(Ui.titleText(this, "This device is set up for good"));
-        finishCard.addView(Ui.body(this, "A different, one-way step from the switch above -- this one actually "
-                + "can't be undone from the phone. Only press it once everything's been tested with the switch "
-                + "on and is working exactly as wanted: it disables this app itself, for good, so there's no "
-                + "more coming back to change anything, no more updates, nothing -- a factory reset (gated by "
-                + "the recovery account above) is the only way back in after this.", true));
-        Ui.add(finishCard, Ui.button(this, "This device is set up for good", Ui.DANGER, v -> promptFinishForever()), 12);
-    }
-
-    private void promptFinishForever() {
-        if (!isLockdownOn()) {
-            toast("Turn Lockdown on first and confirm everything works the way it's supposed to -- this step can't be undone, so there's nothing to test after.");
-            return;
-        }
-        Ui.alertDialog(this)
-                .setTitle("Set up for good?")
-                .setMessage("This is different from the switch above -- this one really can't be undone. This "
-                        + "app disables itself for good, right now, and there is no more coming back to change "
-                        + "anything or push an update. Only a factory reset, gated by the recovery account, "
-                        + "undoes any of it after this.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Yes, for good", (d, w) -> finishForever())
-                .show();
-    }
-
-    /** The one genuinely irreversible step in this app -- everything else (the Lockdown switch) can
-     * be flipped back and forth any number of times, but this disables MainActivity's own launcher
-     * component for good, the same way the original one-way design always worked. Only reachable
-     * with Lockdown already on, so whatever gets sealed in here has actually been tested first. */
-    private void finishForever() {
-        getPackageManager().setComponentEnabledSetting(
-                new ComponentName(this, MainActivity.class),
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP);
-        prefs().edit().putBoolean("lockedForever", true).apply();
-        finishAndRemoveTask();
     }
 
     private void toggleLockdown(boolean on) {
@@ -266,17 +225,11 @@ public class MainActivity extends Activity {
                     .show();
             return;
         }
-        if (prefs().getString("frpAccountId", null) == null && Build.VERSION.SDK_INT >= 30) {
-            section = "frp";
-            build();
-            return;
-        }
         enableLockdown();
     }
 
     private void enableLockdown() {
         prefs().edit().putBoolean("lockdownOn", true).apply();
-        applyFrpFromSaved();
         applyRestrictionsLive();
         applyRegularAppLiveState();
         applySystemAppLiveState();
@@ -406,6 +359,18 @@ public class MainActivity extends Activity {
             bulkDidnt = new ArrayList<>();
             build();
         }), 8);
+
+        LinearLayout finishCard = Ui.card(this, root);
+        finishCard.addView(Ui.titleText(this, "This device is set up for good"));
+        finishCard.addView(Ui.body(this, "A different, one-way step from the Lockdown switch above -- this one "
+                + "actually can't be undone from the phone. It asks for a recovery Google account first, then "
+                + "confirms twice before doing anything: once pressed through, this app disables itself for "
+                + "good, applying everything currently configured. A factory reset, using that recovery "
+                + "account, is the only way back in after this.", true));
+        Ui.add(finishCard, Ui.button(this, "This device is set up for good", Ui.DANGER, v -> {
+            section = "frp";
+            build();
+        }), 12);
     }
 
     // ---------- the two pickers ----------
@@ -713,17 +678,18 @@ public class MainActivity extends Activity {
         return out;
     }
 
-    // ---------- the recovery-account step ----------
+    // ---------- the final, one-way "set up for good" step ----------
+    /** Reached only from the button at the bottom of the hub. Enter the recovery account, get
+     * validated, then two separate "are you sure" confirmations before anything actually happens --
+     * deliberately more friction than the reversible switch above, since this step genuinely can't
+     * be undone from the phone afterward. */
     private void buildFrpStep() {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Factory Reset Protection"));
-        card.addView(Ui.body(this, "The Google account that can set this phone up again after an actual factory "
-                + "reset -- for if the phone is ever lost or stolen, not something normally needed, since "
-                + "Lockdown itself is turned off from the switch above, not by resetting the phone. No account "
-                + "has to be signed in on the phone itself (Android 11 or newer; keep the bootloader locked).", true));
+        card.addView(Ui.body(this, "The Google account that can set this phone up again after a factory reset "
+                + "-- the only way back in once this device is set up for good. No account has to be signed in "
+                + "on the phone itself (Android 11 or newer; keep the bootloader locked).", true));
         final EditText id = Ui.field(this, "Google account ID (21 digits)");
-        String saved = prefs().getString("frpAccountId", null);
-        if (saved != null) id.setText(saved);
         Ui.add(card, id, 12);
         TextView how = Ui.body(this,
                 "To get the ID: open the Google People API page, tap \"Try it\", set resourceName to people/me "
@@ -740,27 +706,61 @@ public class MainActivity extends Activity {
         }), 8);
         if (Build.VERSION.SDK_INT < 30) {
             Ui.add(card, Ui.body(this, "This phone's Android is older than 11, so Factory Reset Protection itself "
-                    + "isn't available -- everything else still works normally.", true), 12);
+                    + "isn't available -- everything else still locks down normally.", true), 12);
         }
-        Ui.add(card, Ui.button(this, "Save" + (isLockdownOn() ? "" : " and turn Lockdown on"), Ui.DANGER, v -> {
+        Ui.add(card, Ui.button(this, "Continue", Ui.DANGER, v -> {
             String typed = id.getText().toString();
             if (!LockdownPolicy.validAccountId(typed)) {
                 toast("That is not 21 digits. A Google account ID from the People API page is exactly 21 digits.");
                 return;
             }
-            prefs().edit().putString("frpAccountId", LockdownPolicy.normalizeAccountId(typed)).apply();
-            if (isLockdownOn()) {
-                applyFrpFromSaved();
-                toast("Recovery account saved.");
-                section = null;
-                build();
-            } else {
-                enableLockdown();
-            }
+            promptLockItFirst(LockdownPolicy.normalizeAccountId(typed));
         }), 16);
         Ui.add(card, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
             section = null;
             build();
         }), 8);
+    }
+
+    private void promptLockItFirst(String accountId) {
+        Ui.alertDialog(this)
+                .setTitle("Are you sure you want to lock it?")
+                .setMessage("This device is set up for good: everything currently configured gets applied, and "
+                        + "this app disables itself. There's no more coming back to change anything afterward.")
+                .setNegativeButton("Cancel", (d, w) -> build())
+                .setOnCancelListener(d -> build())
+                .setPositiveButton("Yes", (d, w) -> promptLockItSecond(accountId))
+                .show();
+    }
+
+    private void promptLockItSecond(String accountId) {
+        Ui.alertDialog(this)
+                .setTitle("Are you sure you want to lock it?")
+                .setMessage("Last chance to back out. Once you press yes, this app disables itself for good -- "
+                        + "only a factory reset, using the recovery account just entered, undoes any of it.")
+                .setNegativeButton("Cancel", (d, w) -> build())
+                .setOnCancelListener(d -> build())
+                .setPositiveButton("Yes", (d, w) -> finishForever(accountId))
+                .show();
+    }
+
+    /** The one genuinely irreversible step in this app -- everything else (the Lockdown switch) can
+     * be flipped back and forth any number of times. Applies Factory Reset Protection and whatever's
+     * currently configured, activates the kiosk takeover, then disables MainActivity's own launcher
+     * component for good, the same way the original one-way design always worked. */
+    private void finishForever(String accountId) {
+        prefs().edit().putString("frpAccountId", accountId).putBoolean("lockdownOn", true).apply();
+        applyFrpFromSaved();
+        applyRestrictionsLive();
+        applyRegularAppLiveState();
+        applySystemAppLiveState();
+        Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
+        Kiosk.activate(this, dpm(), admin(), allowed);
+        getPackageManager().setComponentEnabledSetting(
+                new ComponentName(this, MainActivity.class),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP);
+        prefs().edit().putBoolean("lockedForever", true).apply();
+        finishAndRemoveTask();
     }
 }

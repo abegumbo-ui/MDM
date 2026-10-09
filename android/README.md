@@ -18,16 +18,18 @@ Three separate apps live here:
   disguised Settings menu), and the Device restrictions list -- the same list, order and wording
   the dashboard offers for the agent app (`src/policy.js`) -- gets applied. Flipping it back off
   reverses every bit of that: restrictions clear, apps come back, the kiosk home-screen takeover
-  stops, and Factory Reset Protection turns off. The app itself is never hidden or disabled while
-  this switch is being used -- its own "Lockdown" tile is always the first thing on the kiosk home
-  screen, so there's a way back in to test, change something, or push an update, as many times as
-  needed. Flipping this switch is always undoable; it's for setup and testing, not the final step.
+  stops. The app itself is never hidden or disabled while this switch is being used -- its own
+  "Lockdown" tile is always the first thing on the kiosk home screen, so there's a way back in to
+  test, change something, or push an update, as many times as needed. Flipping this switch is
+  always undoable, immediately, with no other prerequisite; it's for setup and testing, not the
+  final step, and has nothing to do with Factory Reset Protection.
 
-  **"This device is set up for good"** is the real, genuinely one-way step, deliberately separate
-  from the switch above and only reachable once it's on: it disables this app's own launcher
-  component for good, right then, with no more coming back to change anything or push an update
-  from the phone. A factory reset, gated by whatever Google account ID is saved as the Factory
-  Reset Protection recovery account, is the only way back in after that.
+  **"This device is set up for good"**, at the bottom of the setup screen, is the real, genuinely
+  one-way step: it asks for a recovery Google account, validates it's exactly 21 digits, then
+  confirms twice before doing anything. Once confirmed, it applies everything currently configured,
+  sets that account as the Factory Reset Protection recovery account, and disables this app's own
+  launcher component for good -- no more coming back to change anything or push an update from the
+  phone. A factory reset, using that recovery account, is the only way back in after that.
 
 ## Release signing
 
