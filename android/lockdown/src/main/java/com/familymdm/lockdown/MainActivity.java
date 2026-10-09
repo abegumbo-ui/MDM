@@ -81,10 +81,15 @@ public class MainActivity extends Activity {
             finish();
             return;
         }
-        if (!prefs().contains("allowedApps")) {
+        // Regular/System apps start with nothing blocked -- blocking an app outright (as opposed
+        // to just muting its notifications or leaving it off the kiosk home screen) is a real
+        // risk of breaking something the phone depends on, so it's opt-in only, never a default.
+        // Only notifications default to a safe allow-list: everything is silent except the handful
+        // of apps that genuinely need to be heard from.
+        if (!prefs().contains("allowedNotificationPackages")) {
             Set<String> defaults = new LinkedHashSet<>();
             for (String p : LockdownPolicy.DEFAULT_ALLOWED_APPS) defaults.add(p);
-            prefs().edit().putStringSet("allowedApps", defaults).apply();
+            prefs().edit().putStringSet("allowedNotificationPackages", defaults).apply();
         }
         if (!prefs().contains("extraRestrictions")) {
             prefs().edit().putStringSet("extraRestrictions", new LinkedHashSet<>(LockdownPolicy.DEFAULT_ON_RESTRICTIONS)).apply();
@@ -165,6 +170,8 @@ public class MainActivity extends Activity {
             buildBulkPicker();
         } else if ("notifications".equals(section)) {
             buildNotificationsPicker();
+        } else if ("kiosk".equals(section)) {
+            buildKioskPicker();
         } else if ("frp".equals(section)) {
             buildFrpStep();
         } else {
@@ -299,15 +306,16 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Same idea as applyRestrictionsLive() for the Regular apps list: while the switch is off,
-     * every launchable app stays open-able (hide = false) regardless of allowedApps; while it's on,
-     * only what's allowed stays reachable. Runs on every build(), so nothing drifts and nothing is
-     * ever actually blocked while the switch is off. */
+    /** Same idea as applyRestrictionsLive() for the Regular apps list, but as a block-list, not an
+     * allow-list: everything keeps running by default, and only an app explicitly checked here
+     * gets hidden once the switch is on. There's no default-deny here on purpose -- blocking a
+     * core component you didn't mean to touch is exactly what was causing crashes before, so
+     * nothing is ever blocked unless it's individually, deliberately checked. */
     private void applyRegularAppLiveState() {
         boolean on = isLockdownOn();
         boolean showProtected = showProtectedApps();
         PackageManager pm = getPackageManager();
-        Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
+        Set<String> blocked = prefs().getStringSet("blockedRegularApps", new LinkedHashSet<>());
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         for (ResolveInfo ri : pm.queryIntentActivities(main, PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
             String pkg = ri.activityInfo.packageName;
@@ -317,7 +325,7 @@ public class MainActivity extends Activity {
             // block in the first place, so this never silently hides one nobody chose to.
             if (!showProtected && LockdownPolicy.isProtected(pkg)) continue;
             try {
-                dpm().setApplicationHidden(admin(), pkg, on && !allowed.contains(pkg));
+                dpm().setApplicationHidden(admin(), pkg, on && blocked.contains(pkg));
             } catch (Exception ignored) {
             }
         }
@@ -340,18 +348,18 @@ public class MainActivity extends Activity {
     private void buildHub() {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Step 2: choose what's allowed"));
-        card.addView(Ui.body(this, "Google Maps, Waze, and Android Auto are allowed by default -- nothing to "
-                + "set up for those unless you want to change it. Everything below is just configuration until "
-                + "the Lockdown switch above is on: use these lists to allow or block regular apps (including "
-                + "those three, if you ever want to), to block specific system apps (ones with no icon of their "
-                + "own, like a search or suggestions service), to pick which Settings screens (Wi-Fi, Connected "
-                + "devices, etc.) show up on this app's own Settings tile, or to flip the same restriction "
-                + "switches the dashboard offers for the agent app -- a few start checked by default (Factory "
-                + "Reset, Developer Options), the rest start off. Flip the switch above once it's all set up "
-                + "the way you want.", true));
-        Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
+        card.addView(Ui.body(this, "Three separate, independent controls, and none of them are hardcoded -- "
+                + "every one is an ordinary, individually-toggleable choice: Regular/System apps actually block "
+                + "an app outright (opt-in only -- nothing is blocked unless you check it, since blocking the "
+                + "wrong thing is what causes crashes); Notifications decides which apps are allowed to notify "
+                + "at all (everything is silent by default except what you check -- the opposite of the lists "
+                + "above); Kiosk home screen decides which apps actually get a tappable icon once locked down "
+                + "(an app can run fine, even notify, without ever appearing here -- Android Auto, for "
+                + "instance, launches itself and needs no icon). Settings and Device restrictions work the "
+                + "same as always. Flip the switch above once it's all set up the way you want.", true));
+        Set<String> blockedRegular = prefs().getStringSet("blockedRegularApps", new LinkedHashSet<>());
         Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
-        Ui.add(card, Ui.button(this, "Regular apps (" + allowed.size() + " allowed)", Ui.TONAL, v -> {
+        Ui.add(card, Ui.button(this, "Regular apps (" + blockedRegular.size() + " blocked)", Ui.TONAL, v -> {
             section = "regular";
             search = "";
             build();
@@ -377,9 +385,15 @@ public class MainActivity extends Activity {
             bulkDidnt = new ArrayList<>();
             build();
         }), 8);
-        Set<String> mutedOn = prefs().getStringSet("mutedNotificationPackages", new LinkedHashSet<>());
-        Ui.add(card, Ui.button(this, "Notifications (" + mutedOn.size() + " muted)", Ui.TONAL, v -> {
+        Set<String> notifyOn = prefs().getStringSet("allowedNotificationPackages", new LinkedHashSet<>());
+        Ui.add(card, Ui.button(this, "Notifications (" + notifyOn.size() + " allowed)", Ui.TONAL, v -> {
             section = "notifications";
+            search = "";
+            build();
+        }), 8);
+        Set<String> kioskOn = prefs().getStringSet("kioskTileApps", new LinkedHashSet<>());
+        Ui.add(card, Ui.button(this, "Kiosk home screen (" + kioskOn.size() + " shown)", Ui.TONAL, v -> {
+            section = "kiosk";
             search = "";
             build();
         }), 8);
@@ -408,12 +422,13 @@ public class MainActivity extends Activity {
 
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, regular ? "Regular apps" : "System apps"));
-        card.addView(Ui.body(this, (regular
-                ? "Checked apps can be opened once Lockdown is switched on; everything else gets blocked then. "
-                : "Checked apps get switched off at the Android level once Lockdown is switched on -- they can't "
-                + "run, show a notification, or pop up an ad. System parts the phone depends on aren't listed "
-                + "here. Each one's note below judges it specifically against a Waze/Maps/Android Auto-only "
-                + "build -- anything not recognized says so honestly instead of guessing. ")
+        card.addView(Ui.body(this, "Checked apps get switched off at the Android level once Lockdown is "
+                + "switched on -- they can't run, show a notification, or pop up an ad. Nothing is blocked by "
+                + "default: leave this whole list unchecked and every app just keeps working normally, which "
+                + "is the safer choice unless there's a specific app that's genuinely wanted gone. "
+                + (regular ? "" : "System parts the phone depends on aren't listed here. Each one's note below "
+                + "judges it specifically against a Waze/Maps/Android Auto-only build -- anything not "
+                + "recognized says so honestly instead of guessing. ")
                 + "Nothing here is actually applied to the phone while the switch at the top is off.", true));
         EditText searchField = Ui.field(this, "Search");
         searchField.setText(search);
@@ -541,8 +556,8 @@ public class MainActivity extends Activity {
         card.addView(Ui.body(this, "Paste whatever list an AI tool gave you after going through a dump of every "
                 + "app on this phone -- any format is fine, this only looks for package names (like "
                 + "com.something.app) anywhere in the text and ignores everything else around them. Every "
-                + "package name found gets set to block: a regular app gets unchecked on the Regular apps list, "
-                + "a background one gets added to System apps. While Lockdown is on, that also applies "
+                + "package name found gets checked on the Regular or System apps block list (whichever it "
+                + "belongs on). While Lockdown is on, that also applies "
                 + "immediately, with a real uninstall also requested (silently, since this app is the device "
                 + "owner) for anything that isn't part of Android itself -- but the block is what actually "
                 + "guarantees the result either way, since most things on a list like this can't really be "
@@ -552,13 +567,15 @@ public class MainActivity extends Activity {
         Ui.add(card, Ui.button(this, "Apply list", Ui.DANGER, v -> applyBulkList()), 12);
     }
 
-    // ---------- the Notifications picker (soft block) ----------
-    /** A soft block, separate from the Regular/System apps lists: a checked app here still runs
-     * normally -- needed for things like Android Auto, which needs the Google app and Google
-     * Play Services alive in the background -- but any notification it tries to show gets
-     * dismissed automatically, so there's nothing on screen to tap into. Unlike every other
-     * permission this app needs, Android does not let a device owner grant "Notification access"
-     * silently via DevicePolicyManager -- it has to be granted here, once, by hand. */
+    // ---------- the Notifications picker (allow-list) ----------
+    /** The opposite of the Regular/System apps lists: those block-list a handful of specific
+     * apps and leave everything else running; this allow-lists a handful of specific apps and
+     * leaves everything else silent. A checked app here keeps notifying normally; everything
+     * unchecked -- including apps that are still running fine, like the Google app and Google
+     * Play Services -- gets every notification dismissed the instant it posts, so there's never
+     * anything to tap into. Unlike every other permission this app needs, Android does not let a
+     * device owner grant "Notification access" silently via DevicePolicyManager -- it has to be
+     * granted here, once, by hand. */
     private void buildNotificationsPicker() {
         LinearLayout header = Ui.card(this, root);
         Ui.add(header, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
@@ -569,14 +586,15 @@ public class MainActivity extends Activity {
 
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Notifications"));
-        card.addView(Ui.body(this, "A soft block, separate from the Regular/System apps lists above: a checked "
-                + "app here still runs in the background -- this doesn't hide or block it the way the Regular/"
-                + "System apps lists do -- but it gets no icon on the kiosk home screen to tap into, and any "
-                + "notification it tries to show gets dismissed the instant it posts. Meant for something "
-                + "Android Auto needs running (the Google app, Google Play Services) without being something "
-                + "to tap into, by icon or by notification. Only takes effect while the Lockdown switch at the "
-                + "top is on; an app checked here should also be checked \"allowed\" on the Regular apps list, "
-                + "or it gets hidden outright and can't run at all.", true));
+        card.addView(Ui.body(this, "The opposite of the Regular/System apps lists above: those block specific "
+                + "apps and leave everything else running; this allows specific apps to notify and leaves "
+                + "everything else silent. A checked app here notifies normally. Everything unchecked -- even "
+                + "an app that's still running fine and was never blocked, like Google Play Services or the "
+                + "Google app itself -- has every notification dismissed the instant it posts. This doesn't "
+                + "hide or block anything; it only ever touches notifications. Separate again from the Kiosk "
+                + "home screen list below: an app can notify here without ever getting a home-screen icon "
+                + "there (Android Auto, for instance, launches itself and needs neither). Only takes effect "
+                + "while the Lockdown switch at the top is on.", true));
 
         if (!NotificationSuppressor.isEnabled(this)) {
             Ui.add(card, Ui.body(this, "Notification access isn't granted to this app yet -- checking apps below "
@@ -617,7 +635,7 @@ public class MainActivity extends Activity {
         pickerList.removeAllViews();
         Map<String, String> entries = notificationCandidates();
         String needle = search.trim().toLowerCase(java.util.Locale.ROOT);
-        Set<String> selected = new LinkedHashSet<>(prefs().getStringSet("mutedNotificationPackages", new LinkedHashSet<>()));
+        Set<String> selected = new LinkedHashSet<>(prefs().getStringSet("allowedNotificationPackages", new LinkedHashSet<>()));
         PackageManager pm = getPackageManager();
         int shown = 0;
         for (Map.Entry<String, String> e : entries.entrySet()) {
@@ -628,18 +646,19 @@ public class MainActivity extends Activity {
             shown++;
             android.graphics.drawable.Drawable icon = appIcon(pm, pkg);
             Ui.add(pickerList, Ui.checkRow(this, icon, label, pkg, selected.contains(pkg), (box, checked) -> {
-                Set<String> s = new LinkedHashSet<>(prefs().getStringSet("mutedNotificationPackages", new LinkedHashSet<>()));
+                Set<String> s = new LinkedHashSet<>(prefs().getStringSet("allowedNotificationPackages", new LinkedHashSet<>()));
                 if (checked) s.add(pkg); else s.remove(pkg);
-                prefs().edit().putStringSet("mutedNotificationPackages", s).apply();
+                prefs().edit().putStringSet("allowedNotificationPackages", s).apply();
             }), 6);
         }
         if (shown == 0) Ui.add(pickerList, Ui.body(this, "No matches.", true), 8);
     }
 
     /** Every launcher app, plus the system essentials (the Google app and Google Play Services
-     * among them) that don't have their own launcher icon -- notification muting is a soft block,
-     * not a destructive one, so nothing is excluded here the way isProtected() excludes things on
-     * the Regular/System apps pickers. */
+     * among them) that don't have their own launcher icon -- this list reaches apps that would
+     * never show up on the Regular/System apps block lists at all (nothing here is excluded by
+     * isProtected() the way it is there), since allowing a notification carries none of the risk
+     * blocking the app outright would. */
     private Map<String, String> notificationCandidates() {
         PackageManager pm = getPackageManager();
         Map<String, String> byPkg = new LinkedHashMap<>();
@@ -657,7 +676,90 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
         }
-        return sortedBySelectionThenLabel(byPkg, "mutedNotificationPackages");
+        return sortedBySelectionThenLabel(byPkg, "allowedNotificationPackages");
+    }
+
+    // ---------- the Kiosk home screen picker ----------
+    /** Separate again from both lists above: this is purely about what's tappable from the
+     * locked-down home screen once "This device is set up for good" has run. An app can be left
+     * off this list and still run fine, even still notify (Android Auto, for instance, launches
+     * itself when the car connects and doesn't need an icon to work) -- this only controls
+     * whether it gets a tile to tap into directly. Nothing is checked here by default; it's picked
+     * explicitly, same as every other list in this app. */
+    private void buildKioskPicker() {
+        LinearLayout header = Ui.card(this, root);
+        Ui.add(header, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            section = null;
+            search = "";
+            build();
+        }), 0);
+
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Kiosk home screen"));
+        card.addView(Ui.body(this, "Which apps actually get a tappable icon on the locked-down home screen, "
+                + "once \"This device is set up for good\" has run. Separate from both lists above: being "
+                + "checked here doesn't allow notifications (set that on the Notifications screen) and isn't "
+                + "needed to keep an app running (nothing here blocks anything either) -- it only decides "
+                + "what's tappable directly from the home screen. Nothing is checked by default.", true));
+
+        EditText searchField = Ui.field(this, "Search");
+        searchField.setText(search);
+        searchField.setSelection(search.length());
+        searchField.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                search = s.toString();
+                fillKioskList();
+            }
+        });
+        Ui.add(card, searchField, 8);
+
+        pickerList = new LinearLayout(this);
+        pickerList.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(card, pickerList, 8);
+        fillKioskList();
+    }
+
+    private void fillKioskList() {
+        pickerList.removeAllViews();
+        Map<String, String> entries = kioskCandidates();
+        String needle = search.trim().toLowerCase(java.util.Locale.ROOT);
+        Set<String> selected = new LinkedHashSet<>(prefs().getStringSet("kioskTileApps", new LinkedHashSet<>()));
+        PackageManager pm = getPackageManager();
+        int shown = 0;
+        for (Map.Entry<String, String> e : entries.entrySet()) {
+            String pkg = e.getKey();
+            String label = e.getValue();
+            if (!needle.isEmpty() && !label.toLowerCase(java.util.Locale.ROOT).contains(needle)
+                    && !pkg.toLowerCase(java.util.Locale.ROOT).contains(needle)) continue;
+            shown++;
+            android.graphics.drawable.Drawable icon = appIcon(pm, pkg);
+            Ui.add(pickerList, Ui.checkRow(this, icon, label, pkg, selected.contains(pkg), (box, checked) -> {
+                Set<String> s = new LinkedHashSet<>(prefs().getStringSet("kioskTileApps", new LinkedHashSet<>()));
+                if (checked) s.add(pkg); else s.remove(pkg);
+                prefs().edit().putStringSet("kioskTileApps", s).apply();
+            }), 6);
+        }
+        if (shown == 0) Ui.add(pickerList, Ui.body(this, "No matches.", true), 8);
+    }
+
+    /** Every launcher app on the phone -- deliberately not filtered by isProtected() the way the
+     * Regular/System apps block lists are, since giving something a home-screen tile carries none
+     * of the risk blocking it outright would. */
+    private Map<String, String> kioskCandidates() {
+        PackageManager pm = getPackageManager();
+        Map<String, String> byPkg = new LinkedHashMap<>();
+        for (ResolveInfo ri : pm.queryIntentActivities(
+                new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || byPkg.containsKey(pkg)) continue;
+            byPkg.put(pkg, ri.loadLabel(pm).toString());
+        }
+        return sortedBySelectionThenLabel(byPkg, "kioskTileApps");
     }
 
     private void applyBulkList() {
@@ -667,7 +769,7 @@ public class MainActivity extends Activity {
 
         boolean on = isLockdownOn();
         PackageManager pm = getPackageManager();
-        Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
+        Set<String> blockedRegular = new LinkedHashSet<>(prefs().getStringSet("blockedRegularApps", new LinkedHashSet<>()));
         Set<String> blockedSystem = new LinkedHashSet<>(prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>()));
         List<String> went = new ArrayList<>();
         List<String> didnt = new ArrayList<>();
@@ -692,8 +794,17 @@ public class MainActivity extends Activity {
             }
             boolean launchable = pm.getLaunchIntentForPackage(pkg) != null;
             if (launchable) {
-                if (allowed.remove(pkg)) changed++;
-                went.add(pkg + " -- set to block" + (on ? ", blocked immediately" : " once Lockdown is on") + " (was an allowed regular app)");
+                if (blockedRegular.add(pkg)) changed++;
+                if (on) {
+                    try {
+                        dpm().setApplicationHidden(admin(), pkg, true);
+                        went.add(pkg + " -- blocked immediately (regular app)");
+                    } catch (Exception ex) {
+                        didnt.add(pkg + " (added to the block list, but couldn't apply it live: " + ex.getMessage() + ")");
+                    }
+                } else {
+                    went.add(pkg + " -- set to block once Lockdown is on (regular app)");
+                }
             } else {
                 if (blockedSystem.add(pkg)) changed++;
                 if (on) {
@@ -713,7 +824,7 @@ public class MainActivity extends Activity {
                 went.add(pkg + " -- also requested a real uninstall (not part of Android itself)");
             }
         }
-        prefs().edit().putStringSet("allowedApps", allowed).putStringSet("blockedSystemApps", blockedSystem).apply();
+        prefs().edit().putStringSet("blockedRegularApps", blockedRegular).putStringSet("blockedSystemApps", blockedSystem).apply();
         if (found.isEmpty()) didnt.add("nothing -- no package names found in that text");
         bulkWent = went;
         bulkDidnt = didnt;
@@ -742,8 +853,8 @@ public class MainActivity extends Activity {
         pickerList.removeAllViews();
         Map<String, String> entries = regular ? regularAppCandidates() : systemAppCandidates();
         String needle = search.trim().toLowerCase(java.util.Locale.ROOT);
-        Set<String> selected = new LinkedHashSet<>(prefs().getStringSet(
-                regular ? "allowedApps" : "blockedSystemApps", new LinkedHashSet<>()));
+        String prefsKey = regular ? "blockedRegularApps" : "blockedSystemApps";
+        Set<String> selected = new LinkedHashSet<>(prefs().getStringSet(prefsKey, new LinkedHashSet<>()));
         PackageManager pm = getPackageManager();
         int shown = 0;
         for (Map.Entry<String, String> e : entries.entrySet()) {
@@ -755,19 +866,17 @@ public class MainActivity extends Activity {
             android.graphics.drawable.Drawable icon = appIcon(pm, pkg);
             String desc = regular ? pkg : pkg + "\n" + SystemAppSafety.note(pkg);
             Ui.add(pickerList, Ui.checkRow(this, icon, label, desc, selected.contains(pkg), (box, checked) -> {
-                Set<String> s = new LinkedHashSet<>(prefs().getStringSet(
-                        regular ? "allowedApps" : "blockedSystemApps", new LinkedHashSet<>()));
+                Set<String> s = new LinkedHashSet<>(prefs().getStringSet(prefsKey, new LinkedHashSet<>()));
                 if (checked) s.add(pkg); else s.remove(pkg);
-                prefs().edit().putStringSet(regular ? "allowedApps" : "blockedSystemApps", s).apply();
+                prefs().edit().putStringSet(prefsKey, s).apply();
                 // Only actually applied to the phone while the Lockdown switch is on -- while it's
-                // off, this just saves the choice. Checked means "allowed" for a regular app but
-                // "blocked" for a system app, so which way hidden goes is flipped between the two.
+                // off, this just saves the choice. Checked always means "blocked" now, on both
+                // this picker and the System apps one.
                 if (isLockdownOn()) {
                     try {
-                        dpm().setApplicationHidden(admin(), pkg, regular ? !checked : checked);
+                        dpm().setApplicationHidden(admin(), pkg, checked);
                     } catch (Exception ex) {
-                        toast("Could not " + (checked ? (regular ? "allow" : "block") : (regular ? "block" : "unblock"))
-                                + " " + label + ": " + ex.getMessage());
+                        toast("Could not " + (checked ? "block" : "unblock") + " " + label + ": " + ex.getMessage());
                     }
                 }
             }), 6);
@@ -794,11 +903,11 @@ public class MainActivity extends Activity {
     }
 
     /** Every launcher app on the phone, except this app itself and (unless "also show protected
-     * system components" is checked) anything LockdownPolicy protects. Maps/Waze/Android Auto are
-     * ordinary rows here too, just pre-checked by default (seeded once in onCreate) -- nothing
-     * stops unchecking them like any other app. MATCH_UNINSTALLED_PACKAGES is needed so an app
-     * already blocked (hidden) by this app doesn't vanish from its own picker -- hiding makes
-     * PackageManager treat it like it's uninstalled unless asked otherwise. */
+     * system components" is checked) anything LockdownPolicy protects. Nothing is checked here by
+     * default -- every app keeps running until individually, deliberately checked to block it.
+     * MATCH_UNINSTALLED_PACKAGES is needed so an app already blocked (hidden) by this app doesn't
+     * vanish from its own picker -- hiding makes PackageManager treat it like it's uninstalled
+     * unless asked otherwise. */
     private Map<String, String> regularAppCandidates() {
         PackageManager pm = getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
@@ -810,7 +919,7 @@ public class MainActivity extends Activity {
             if (!showProtected && LockdownPolicy.isProtected(pkg)) continue;
             byPkg.put(pkg, ri.loadLabel(pm).toString());
         }
-        return sortedBySelectionThenLabel(byPkg, "allowedApps");
+        return sortedBySelectionThenLabel(byPkg, "blockedRegularApps");
     }
 
     /** Apps with no launcher icon of their own -- the only kind worth individually blocking, since
@@ -834,7 +943,7 @@ public class MainActivity extends Activity {
         return sortedBySelectionThenLabel(byPkg, "blockedSystemApps");
     }
 
-    /** Checked (allowed, for Regular apps; blocked, for System apps) entries first, each group
+    /** Checked entries first (whatever "checked" means on that particular picker), each group
      * then alphabetical -- so whatever's already been decided on this picker stays easy to find
      * and review instead of getting lost among hundreds of untouched apps. */
     private Map<String, String> sortedBySelectionThenLabel(Map<String, String> byPkg, String prefsKey) {
@@ -926,8 +1035,13 @@ public class MainActivity extends Activity {
         applyRestrictionsLive();
         applyRegularAppLiveState();
         applySystemAppLiveState();
-        Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
-        Kiosk.activate(this, dpm(), admin(), allowed);
+        // Everything that needs to be reachable once locked, whether or not it has a tile:
+        // apps with an actual home-screen icon, plus apps only allowed to notify (Android Auto,
+        // for instance, has no tile but still needs to be launchable for the notification/car
+        // connection that starts it to actually work).
+        Set<String> reachable = new LinkedHashSet<>(prefs().getStringSet("kioskTileApps", new LinkedHashSet<>()));
+        reachable.addAll(prefs().getStringSet("allowedNotificationPackages", new LinkedHashSet<>()));
+        Kiosk.activate(this, dpm(), admin(), reachable);
         getPackageManager().setComponentEnabledSetting(
                 new ComponentName(this, MainActivity.class),
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED,

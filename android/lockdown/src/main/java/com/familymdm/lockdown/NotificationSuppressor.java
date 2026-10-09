@@ -9,14 +9,15 @@ import android.service.notification.StatusBarNotification;
 import java.util.Set;
 
 /**
- * A soft block, separate from hiding an app outright: a muted package keeps running normally --
- * needed for things like Android Auto, which needs the Google app and Google Play Services alive
- * in the background even though nobody should be able to tap into either one -- but any
- * notification it tries to show gets dismissed the instant it posts, so there's nothing on screen
- * to tap into. Only active while the Lockdown switch is on, same as every other enforcement in
- * this app. Needs "Notification access" granted to this app once, manually, via Settings --
- * Android does not let a device owner grant this one silently via DevicePolicyManager, unlike
- * every other permission this app needs.
+ * An allow-list, not a block-list: every package is silent by default, and only a package
+ * explicitly checked on the Notifications picker gets to post anything that stays. This is
+ * deliberately independent of whether a package is blocked outright or has a kiosk home-screen
+ * tile -- a package can keep running fine, even stay reachable, and still never get to notify
+ * (Google Play Services and the Google app, specifically, which Android Auto needs alive in the
+ * background but which nobody should ever see a notification from). Only active while the
+ * Lockdown switch is on, same as every other enforcement in this app. Needs "Notification access"
+ * granted to this app once, manually, via Settings -- Android does not let a device owner grant
+ * this one silently via DevicePolicyManager, unlike every other permission this app needs.
  */
 public class NotificationSuppressor extends NotificationListenerService {
 
@@ -27,8 +28,8 @@ public class NotificationSuppressor extends NotificationListenerService {
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         if (!prefs().getBoolean("lockdownOn", false)) return;
-        Set<String> muted = prefs().getStringSet("mutedNotificationPackages", null);
-        if (muted != null && muted.contains(sbn.getPackageName())) {
+        Set<String> allowed = prefs().getStringSet("allowedNotificationPackages", null);
+        if (allowed == null || !allowed.contains(sbn.getPackageName())) {
             cancelNotification(sbn.getKey());
         }
     }

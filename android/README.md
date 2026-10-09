@@ -7,31 +7,39 @@ Three separate apps live here:
 - **lockdown** (`android/lockdown`) -- a self-contained setup and kiosk tool, entirely separate
   from the other two. It never talks to a server at all. It's its own device-owner app (Android
   only allows one per device, so it can't coexist with the agent on the same phone). Everything is
-  configured on six screens (Regular apps, System apps, Settings, Device restrictions, a bulk
-  screen for pasting the output of an outside AI app audit, and Notifications), but none of it is
-  actually enforced on the phone until the **Lockdown switch** at the top -- visible on every
-  screen, not buried in a menu -- is turned on. Both app pickers also offer an opt-in "also show
-  protected system components" checkbox, off by default, that reaches a handful of packages
-  (Play Store among them) normally left out of both lists because blocking them can break the
-  phone -- left off by default, but not hardcoded out of reach if that's genuinely wanted.
-  Notifications is a soft block instead of a hard one: a checked app there keeps running and can
-  still be used normally (meant for something Android Auto needs alive in the background, like the
-  Google app or Google Play Services), but any notification it tries to show gets dismissed the
-  instant it posts, so there's nothing on screen to tap into -- this needs "Notification access"
-  granted to the app once, by hand, since a device owner can't grant that one silently like every
-  other permission here. Flipping the Lockdown switch on pushes everything configured on the other
-  five screens live: Google Maps, Waze and Android Auto are allowed by default (an ordinary,
-  uncheckable-if-you-want-to row, not hardcoded), every other app gets blocked, the real Settings
-  app becomes unreachable except for
-  whatever categories were checked on the Settings picker (each one opened from this app's own
-  in-app Settings menu via a direct android.settings.* action, same as the agent app's own
-  disguised Settings menu), and the Device restrictions list -- the same list, order and wording
-  the dashboard offers for the agent app (`src/policy.js`) -- gets applied. None of this starts the
-  kiosk home-screen takeover, deliberately: the phone stays on its regular launcher the whole time,
-  blocked apps just can't be opened from it. Flipping the switch back off reverses every bit of
-  that: restrictions clear, apps come back. The app itself is never hidden or disabled while this
-  switch is being used, so there's a way back in to test, change something, or push an update, as
-  many times as needed. Flipping this switch is always undoable, immediately, with no other
+  configured on seven screens (Regular apps, System apps, Settings, Device restrictions, a bulk
+  screen for pasting the output of an outside AI app audit, Notifications, and Kiosk home screen),
+  but none of it is actually enforced on the phone until the **Lockdown switch** at the top --
+  visible on every screen, not buried in a menu -- is turned on. Four of those screens are
+  deliberately independent controls, not layers of the same thing:
+  - **Regular apps / System apps** actually block an app outright (`setApplicationHidden`) --
+    opt-in only, nothing checked by default. Blocking the wrong thing is what causes crashes, so
+    nothing is ever blocked unless it's individually, deliberately checked. Both also offer an
+    opt-in "also show protected system components" checkbox, off by default, that reaches a
+    handful of packages (Play Store among them) normally left out of both lists because blocking
+    them can break the phone.
+  - **Notifications** is an allow-list, the opposite shape from the two above: everything is
+    silent by default, and only a package checked here gets to post a notification that stays.
+    Google Maps, Waze and Android Auto start checked (an ordinary, uncheckable-if-you-want-to row,
+    not hardcoded); everything else -- including Google Play Services and the Google app itself,
+    which Android Auto needs alive in the background -- is silent without ever being blocked.
+    Needs "Notification access" granted to the app once, by hand, since a device owner can't grant
+    that one silently like every other permission here.
+  - **Kiosk home screen** decides which apps get an actual tappable icon on the locked-down home
+    screen -- nothing checked by default. An app can be left off this list and still run fine,
+    even still notify (Android Auto, for instance, launches itself when the car connects and needs
+    no icon of its own).
+
+  Flipping the Lockdown switch on pushes the block lists, Notifications, Device restrictions, and
+  the real Settings app's reachability (whatever categories were checked on the Settings picker,
+  each one opened from this app's own in-app Settings menu via a direct android.settings.* action,
+  same as the agent app's own disguised Settings menu) live immediately. The Kiosk home screen list
+  only actually matters once "This device is set up for good" runs; until then the phone stays on
+  its regular launcher regardless of what's checked there. Flipping the switch back off reverses
+  every bit of what it does control: restrictions clear, blocked apps come back, every
+  notification posts normally again. The app itself is never hidden or disabled while this switch
+  is being used, so there's a way back in to test, change something, or push an update, as many
+  times as needed. Flipping this switch is always undoable, immediately, with no other
   prerequisite; it's for setup and testing, not the final step, and has nothing to do with Factory
   Reset Protection.
 
