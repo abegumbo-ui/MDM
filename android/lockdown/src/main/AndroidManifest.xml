@@ -50,7 +50,7 @@
         <!-- Powers the "Notifications" soft-block picker: lets a package keep running (needed for
              Android Auto, which needs the Google app and GMS alive) while auto-dismissing any
              notification it tries to show. Only acts on packages checked there, and only while
-             the Lockdown switch is on -- see NotificationSuppressor's own note. -->
+             the Lockdown switch is on; see NotificationSuppressor's own note. -->
         <service
             android:name=".NotificationSuppressor"
             android:exported="true"
