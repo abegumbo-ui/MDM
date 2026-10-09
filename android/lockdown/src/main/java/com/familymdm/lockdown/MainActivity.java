@@ -184,7 +184,9 @@ public class MainActivity extends Activity {
         card.addView(Ui.body(this, regular
                 ? "Checked apps can be opened once the phone is locked. Everything else stays installed but can't be opened."
                 : "Checked apps are switched off at the Android level -- they can't run, show a notification, "
-                + "or pop up an ad once the phone is locked. System parts the phone depends on aren't listed here.", true));
+                + "or pop up an ad once the phone is locked. System parts the phone depends on aren't listed here. "
+                + "Each one's note below judges it specifically against a Waze/Maps/Android Auto-only build -- "
+                + "anything not recognized says so honestly instead of guessing.", true));
         EditText searchField = Ui.field(this, "Search");
         searchField.setText(search);
         searchField.setSelection(search.length());
@@ -266,6 +268,7 @@ public class MainActivity extends Activity {
         String needle = search.trim().toLowerCase(java.util.Locale.ROOT);
         Set<String> selected = new LinkedHashSet<>(prefs().getStringSet(
                 regular ? "allowedApps" : "blockedSystemApps", new LinkedHashSet<>()));
+        PackageManager pm = getPackageManager();
         int shown = 0;
         for (Map.Entry<String, String> e : entries.entrySet()) {
             String pkg = e.getKey();
@@ -273,7 +276,14 @@ public class MainActivity extends Activity {
             if (!needle.isEmpty() && !label.toLowerCase(java.util.Locale.ROOT).contains(needle)
                     && !pkg.toLowerCase(java.util.Locale.ROOT).contains(needle)) continue;
             shown++;
-            Ui.add(pickerList, Ui.checkRow(this, label, pkg, selected.contains(pkg), (box, checked) -> {
+            android.graphics.drawable.Drawable icon;
+            try {
+                icon = pm.getApplicationIcon(pkg);
+            } catch (Exception ex) {
+                icon = pm.getDefaultActivityIcon();
+            }
+            String desc = regular ? pkg : pkg + "\n" + SystemAppSafety.note(pkg);
+            Ui.add(pickerList, Ui.checkRow(this, icon, label, desc, selected.contains(pkg), (box, checked) -> {
                 Set<String> s = new LinkedHashSet<>(prefs().getStringSet(
                         regular ? "allowedApps" : "blockedSystemApps", new LinkedHashSet<>()));
                 if (checked) s.add(pkg); else s.remove(pkg);
