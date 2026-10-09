@@ -213,8 +213,8 @@ public class MainActivity extends Activity {
                 if (!regular) {
                     try {
                         dpm().setApplicationHidden(admin(), pkg, checked);
-                    } catch (Exception e) {
-                        toast("Could not " + (checked ? "block" : "unblock") + " " + label + ": " + e.getMessage());
+                    } catch (Exception ex) {
+                        toast("Could not " + (checked ? "block" : "unblock") + " " + label + ": " + ex.getMessage());
                     }
                 }
             }), 6);
