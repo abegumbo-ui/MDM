@@ -150,6 +150,12 @@ final class Ui {
 
     /** A full-width row with a checkbox, a bold label, and an optional description underneath. */
     static LinearLayout checkRow(Context c, String label, String desc, boolean checked, android.widget.CompoundButton.OnCheckedChangeListener l) {
+        return checkRow(c, null, label, desc, checked, l);
+    }
+
+    /** Same as above, with an app icon between the checkbox and the text -- pass null for a row
+     * with no icon (a restriction switch, a Settings category, anything that isn't an app). */
+    static LinearLayout checkRow(Context c, Drawable icon, String label, String desc, boolean checked, android.widget.CompoundButton.OnCheckedChangeListener l) {
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(android.view.Gravity.CENTER_VERTICAL);
@@ -161,6 +167,14 @@ final class Ui {
         box.setChecked(checked);
         box.setOnCheckedChangeListener(l);
         row.addView(box);
+
+        if (icon != null) {
+            android.widget.ImageView iv = new android.widget.ImageView(c);
+            iv.setImageDrawable(icon);
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(c, 32), dp(c, 32));
+            ilp.leftMargin = dp(c, 4);
+            row.addView(iv, ilp);
+        }
 
         LinearLayout text = new LinearLayout(c);
         text.setOrientation(LinearLayout.VERTICAL);
