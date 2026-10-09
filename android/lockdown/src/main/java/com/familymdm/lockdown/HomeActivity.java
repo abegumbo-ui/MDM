@@ -83,13 +83,39 @@ public class HomeActivity extends Activity {
         Collections.sort(apps, (a, b) -> a[0].compareToIgnoreCase(b[0]));
 
         int width = (getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3;
-        if (apps.isEmpty()) {
+        Set<String> settingsCategories = prefs().getStringSet("settingsCategories", new LinkedHashSet<>());
+        if (apps.isEmpty() && settingsCategories.isEmpty()) {
             TextView empty = Ui.body(this, "Nothing is available to open yet.", true);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
             grid.addView(empty, lp);
         }
+        // Always first, same as the agent app's own kiosk home screen -- the only way to reach any
+        // part of Settings once locked, so it's not subject to being left out like a regular app.
+        if (!settingsCategories.isEmpty()) grid.addView(settingsTile(width));
         for (String[] a : apps) grid.addView(tile(a[0], a[1], width));
+    }
+
+    private LinearLayout settingsTile(int width) {
+        LinearLayout t = new LinearLayout(this);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        t.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10));
+        GridLayout.LayoutParams glp = new GridLayout.LayoutParams();
+        glp.width = width;
+        t.setLayoutParams(glp);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageDrawable(getPackageManager().getDefaultActivityIcon());
+        t.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
+
+        TextView name = Ui.body(this, "Settings", false);
+        name.setTextSize(12);
+        name.setGravity(Gravity.CENTER);
+        t.addView(name);
+
+        t.setOnClickListener(v -> startActivity(new Intent(this, SettingsMenuActivity.class)));
+        return t;
     }
 
     private LinearLayout tile(String label, String pkg, int width) {

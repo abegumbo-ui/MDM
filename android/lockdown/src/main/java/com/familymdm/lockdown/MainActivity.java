@@ -65,6 +65,12 @@ public class MainActivity extends Activity {
             for (String p : LockdownPolicy.DEFAULT_ALLOWED_APPS) defaults.add(p);
             prefs().edit().putStringSet("allowedApps", defaults).apply();
         }
+        if (!prefs().contains("settingsCategories")) {
+            Set<String> defaults = new LinkedHashSet<>();
+            defaults.add("network");
+            defaults.add("connected");
+            prefs().edit().putStringSet("settingsCategories", defaults).apply();
+        }
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 16);
@@ -97,6 +103,8 @@ public class MainActivity extends Activity {
             buildPicker(true);
         } else if ("system".equals(section)) {
             buildPicker(false);
+        } else if ("settings".equals(section)) {
+            buildSettingsPicker();
         } else if ("frp".equals(section)) {
             buildFrpStep();
         } else {
@@ -122,11 +130,12 @@ public class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Step 2: choose what's allowed"));
         card.addView(Ui.body(this, "Google Maps, Waze, and Android Auto are allowed by default -- nothing to "
-                + "set up for those unless you want to change it. Every other app starts blocked. Use the two "
-                + "lists below to allow or block regular apps (including those three, if you ever want to), or "
-                + "to block specific system apps (ones with no icon of their own, like a search or suggestions "
-                + "service) -- blocking a system app takes effect immediately, so you can test it before "
-                + "finishing setup.", true));
+                + "set up for those unless you want to change it. Every other app starts blocked, and the real "
+                + "Settings app is never reachable at all. Use the three lists below to allow or block regular "
+                + "apps (including those three, if you ever want to), to block specific system apps (ones with "
+                + "no icon of their own, like a search or suggestions service -- takes effect immediately, so "
+                + "you can test it before finishing setup), or to pick which Settings screens (Wi-Fi, Connected "
+                + "devices, etc.) show up on this app's own Settings tile once locked.", true));
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
         Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
         Ui.add(card, Ui.button(this, "Regular apps (" + allowed.size() + " allowed)", Ui.TONAL, v -> {
@@ -137,6 +146,11 @@ public class MainActivity extends Activity {
         Ui.add(card, Ui.button(this, "System apps (" + blocked.size() + " blocked)", Ui.TONAL, v -> {
             section = "system";
             search = "";
+            build();
+        }), 8);
+        Set<String> settingsOn = prefs().getStringSet("settingsCategories", new LinkedHashSet<>());
+        Ui.add(card, Ui.button(this, "Settings (" + settingsOn.size() + " enabled)", Ui.TONAL, v -> {
+            section = "settings";
             build();
         }), 8);
 
@@ -183,6 +197,30 @@ public class MainActivity extends Activity {
         pickerList.setOrientation(LinearLayout.VERTICAL);
         Ui.add(card, pickerList, 8);
         fillPickerList(regular);
+    }
+
+    // ---------- the Settings picker ----------
+    private void buildSettingsPicker() {
+        LinearLayout header = Ui.card(this, root);
+        Ui.add(header, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            section = null;
+            build();
+        }), 0);
+
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Settings"));
+        card.addView(Ui.body(this, "Checked categories show up on this app's own \"Settings\" tile once the "
+                + "phone is locked, each one jumping straight to the real screen for it. Nothing checked means no "
+                + "Settings tile at all. The real Settings app itself is never reachable any other way -- this "
+                + "list is the only door into it.", true));
+        Set<String> enabled = new LinkedHashSet<>(prefs().getStringSet("settingsCategories", new LinkedHashSet<>()));
+        for (String category : SettingsCategories.ORDER) {
+            Ui.add(card, Ui.checkRow(this, SettingsCategories.label(category), null, enabled.contains(category), (box, checked) -> {
+                Set<String> s = new LinkedHashSet<>(prefs().getStringSet("settingsCategories", new LinkedHashSet<>()));
+                if (checked) s.add(category); else s.remove(category);
+                prefs().edit().putStringSet("settingsCategories", s).apply();
+            }), 6);
+        }
     }
 
     /** Only repopulates the list rows, leaving the search field (and its focus/cursor) alone --
@@ -340,7 +378,6 @@ public class MainActivity extends Activity {
 
         Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
         Kiosk.activate(this, dpm, admin, allowed);
-        startForegroundService(new Intent(this, GuardService.class));
 
         // Disable only this one component -- never the whole package or the admin receiver, which
         // would risk Android treating device-admin status itself as removed. This alone hides the
