@@ -99,6 +99,7 @@ public class MainActivity extends Activity {
             buildOwnerStep();
             return;
         }
+        applyAlwaysOnLockdownLive();
         if ("regular".equals(section)) {
             buildPicker(true);
         } else if ("system".equals(section)) {
@@ -127,6 +128,21 @@ public class MainActivity extends Activity {
         card.addView(Ui.body(this, "It should print \"Success\". This screen updates by itself.", true));
     }
 
+    /** The fixed, non-negotiable restrictions (no_factory_reset, no_debugging_features's sibling
+     * no_safe_boot, etc.) go on the moment this app becomes device owner -- not only once "This
+     * device is set up" is pressed. Setting up a kiosk phone with Factory Reset still reachable
+     * the whole time would defeat the point of the Factory Reset Protection step at the end,
+     * and there's no reason to wait: addUserRestriction() is safe to call repeatedly, so this
+     * just runs again (and no-ops) every time the screen rebuilds. */
+    private void applyAlwaysOnLockdownLive() {
+        for (String r : LockdownPolicy.ALWAYS_ON_LOCKDOWN) {
+            try {
+                dpm().addUserRestriction(admin(), r);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     // ---------- step 2: the hub ----------
     private void buildHub() {
         LinearLayout card = Ui.card(this, root);
@@ -138,7 +154,9 @@ public class MainActivity extends Activity {
                 + "no icon of their own, like a search or suggestions service -- takes effect immediately, so "
                 + "you can test it before finishing setup), to pick which Settings screens (Wi-Fi, Connected "
                 + "devices, etc.) show up on this app's own Settings tile once locked, or to turn on extra "
-                + "Android-level lockdown switches like blocking Developer Options.", true));
+                + "Android-level lockdown switches like blocking Developer Options. Factory Reset and Developer "
+                + "Options are already blocked right now, from the moment this screen first showed up as device "
+                + "owner -- not waiting on the button below.", true));
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
         Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
         Ui.add(card, Ui.button(this, "Regular apps (" + allowed.size() + " allowed)", Ui.TONAL, v -> {
@@ -241,21 +259,41 @@ public class MainActivity extends Activity {
             build();
         }), 0);
 
+        LinearLayout alwaysOnCard = Ui.card(this, root);
+        alwaysOnCard.addView(Ui.titleText(this, "Always on"));
+        alwaysOnCard.addView(Ui.body(this, "These turned on the moment this app became the device owner -- not "
+                + "something to toggle, and not waiting on \"This device is set up\" either. Open Settings right "
+                + "now and check for yourself: Developer Options and Factory Reset are already blocked.", true));
+        for (String key : LockdownPolicy.ALWAYS_ON_LOCKDOWN) {
+            Ui.add(alwaysOnCard, Ui.body(this, LockdownPolicy.displayLabel(key), false), 6);
+        }
+
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Device restrictions"));
-        card.addView(Ui.body(this, "Off by default. Each one is a separate Android lockdown switch -- turn on "
-                + "whichever ones make sense for this phone, like blocking Developer Options and the Build "
-                + "Number unlock trick. The ones marked below fight features this app already builds on purpose "
-                + "(the Wi-Fi/Connected devices Settings categories, calls and texts) -- turning those on will "
-                + "break that specific feature, so only do it if that trade-off is actually wanted here.", true));
+        card.addView(Ui.body(this, "Off by default. Each one is a separate Android lockdown switch, applied the "
+                + "instant you check it -- not waiting on \"This device is set up\" -- so you can go check Settings "
+                + "yourself and confirm it actually did something before you commit to anything. The ones marked "
+                + "below fight features this app already builds on purpose (the Wi-Fi/Connected devices Settings "
+                + "categories, calls and texts) -- turning those on will break that specific feature, so only do "
+                + "it if that trade-off is actually wanted here.", true));
         Set<String> enabled = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", new LinkedHashSet<>()));
         for (String key : LockdownPolicy.EXTRA_RESTRICTIONS) {
             String desc = LockdownPolicy.conflictsWithBuiltins(key)
                     ? "Will break Wi-Fi/Connected devices Settings or calls/texts if this app uses them." : null;
-            Ui.add(card, Ui.checkRow(this, LockdownPolicy.humanize(key), desc, enabled.contains(key), (box, checked) -> {
+            Ui.add(card, Ui.checkRow(this, LockdownPolicy.displayLabel(key), desc, enabled.contains(key), (box, checked) -> {
                 Set<String> s = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", new LinkedHashSet<>()));
                 if (checked) s.add(key); else s.remove(key);
                 prefs().edit().putStringSet("extraRestrictions", s).apply();
+                // Same reasoning as the System apps picker's live blocking -- applied now, not only
+                // at the final lock, so a restriction can actually be tested (does Settings really
+                // reflect it? did it break something else?) and undone here if it does, instead of
+                // only finding out after everything is permanent.
+                try {
+                    if (checked) dpm().addUserRestriction(admin(), key);
+                    else dpm().clearUserRestriction(admin(), key);
+                } catch (Exception ex) {
+                    toast("Could not " + (checked ? "turn on" : "turn off") + " \"" + LockdownPolicy.displayLabel(key) + "\": " + ex.getMessage());
+                }
             }), 6);
         }
     }

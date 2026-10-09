@@ -1,7 +1,9 @@
 package com.familymdm.lockdown;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -85,6 +87,26 @@ final class LockdownPolicy {
 
     static boolean conflictsWithBuiltins(String restrictionKey) {
         return CONFLICTS_WITH_BUILTINS.contains(restrictionKey);
+    }
+
+    /** A few restriction keys whose plain humanize() output doesn't match what Android itself
+     * calls the thing -- "Block Debugging Features" for the switch that's actually labeled
+     * "Developer options" in Settings, for example. Named here so searching for the Settings
+     * screen's own name actually finds the right switch. */
+    private static final Map<String, String> DISPLAY_LABEL_OVERRIDES = new HashMap<>();
+    static {
+        DISPLAY_LABEL_OVERRIDES.put("no_debugging_features", "Block Developer Options (and the Build Number unlock trick)");
+        DISPLAY_LABEL_OVERRIDES.put("no_safe_boot", "Block Safe Mode (holding the power button to boot without apps)");
+        DISPLAY_LABEL_OVERRIDES.put("no_factory_reset", "Block Factory Reset");
+        DISPLAY_LABEL_OVERRIDES.put("no_oem_unlock", "Block OEM Unlock (the bootloader-unlock switch in Developer Options)");
+        DISPLAY_LABEL_OVERRIDES.put("no_install_unknown_sources", "Block Install Unknown Apps (sideloading outside the Play Store)");
+    }
+
+    /** The label to actually show on a picker -- an override above if this key has one, else
+     * humanize()'s generic underscores-to-words rendering. */
+    static String displayLabel(String restrictionKey) {
+        String override = DISPLAY_LABEL_OVERRIDES.get(restrictionKey);
+        return override != null ? override : humanize(restrictionKey);
     }
 
     /** A plain-English label for a restriction key -- its own key, "no_"/"disallow_" dropped,
