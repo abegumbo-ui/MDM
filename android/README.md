@@ -17,11 +17,12 @@ Three separate apps live here:
   specific Settings categories checked on the Settings picker, each one opened from this app's own
   in-app Settings menu via a direct android.settings.* action, the same way the agent app's own
   disguised Settings menu reaches real screens without ever putting all of Settings in the kiosk
-  allowlist. Device restrictions is a separate picker of ~50 individually-toggleable Android
-  lockdown switches (Developer Options, OEM unlock, USB file transfer, and so on), all off by
-  default -- a few of them are flagged as conflicting with the Wi-Fi/Connected devices Settings
-  categories or with calls and texts, and turning those on is a deliberate, admin-made trade-off
-  rather than something this app decides for you.
+  allowlist. Device restrictions is the same restriction list the dashboard offers for the agent
+  app (`src/policy.js`), in the same order and wording, individually toggleable -- a handful start
+  on by default (Factory Reset, Developer Options, and so on), the rest start off, and every one of
+  them applies the instant it's checked. A few are flagged as conflicting with the Wi-Fi/Connected
+  devices Settings categories or with calls and texts, and turning those on is a deliberate,
+  admin-made trade-off rather than something this app decides for you.
   Once "This device is set up" is confirmed and a 21-digit Factory Reset Protection account ID is
   entered, it locks the phone into a permanent kiosk mode (only what's allowed can open) and hides
   its own launcher icon so it can never be opened again. A factory reset -- gated by that FRP
