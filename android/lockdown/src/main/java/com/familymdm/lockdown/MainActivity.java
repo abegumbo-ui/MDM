@@ -20,6 +20,7 @@ import android.text.TextWatcher;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -34,16 +35,19 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * One-time, one-way setup. This never talks to a server and keeps nothing configurable running
- * afterward: pick what's allowed, confirm, set the recovery account, and it locks itself away for
- * good. There is no undo from inside the app -- only a factory reset gets back in, and that reset
- * itself is gated by the Google account entered at the very end.
+ * This never talks to a server. Everything here -- which apps are allowed, which Settings screens
+ * are reachable, which Android restrictions are on -- is just configuration until the Lockdown
+ * switch at the top is turned on; nothing is enforced before that, and this app is never hidden or
+ * disabled, so it's always reachable to come back, change something, update it, or turn the
+ * switch back off. A factory reset is only ever needed if the phone is literally lost or stolen --
+ * not as the normal way to change anything, which is the whole point of the switch.
  */
 public class MainActivity extends Activity {
     private LinearLayout root;
 
-    // null = the two-button hub; "regular" or "system" = inside one of the pickers; "frp" = the
-    // final recovery-account step, reached only after "This device is set up" is confirmed.
+    // null = the hub; "regular"/"system"/"settings"/"restrictions"/"bulk" = inside one of the
+    // pickers; "frp" = the recovery-account step, reached either from its own button or
+    // automatically the first time the Lockdown switch is turned on with no account saved yet.
     private String section;
     private String search = "";
     private LinearLayout pickerList;
@@ -69,12 +73,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Defensive only -- by the time this is true, MainActivity's own launcher component is
-        // already disabled, so Android shouldn't be able to start this at all.
-        if (prefs().getBoolean("lockedForever", false)) {
-            finish();
-            return;
-        }
         if (!prefs().contains("allowedApps")) {
             Set<String> defaults = new LinkedHashSet<>();
             for (String p : LockdownPolicy.DEFAULT_ALLOWED_APPS) defaults.add(p);
@@ -127,6 +125,10 @@ public class MainActivity extends Activity {
         Toast.makeText(this, s, Toast.LENGTH_LONG).show();
     }
 
+    private boolean isLockdownOn() {
+        return prefs().getBoolean("lockdownOn", false);
+    }
+
     private void build() {
         root.removeAllViews();
         Ui.add(root, Ui.banner(this, "Lockdown Setup"), 0);
@@ -135,8 +137,10 @@ public class MainActivity extends Activity {
             buildOwnerStep();
             return;
         }
+        buildLockdownSwitch();
         applyRestrictionsLive();
         applyRegularAppLiveState();
+        applySystemAppLiveState();
         if ("regular".equals(section)) {
             buildPicker(true);
         } else if ("system".equals(section)) {
@@ -167,13 +171,113 @@ public class MainActivity extends Activity {
         card.addView(Ui.body(this, "It should print \"Success\". This screen updates by itself.", true));
     }
 
-    /** Every Device restrictions toggle's real, right-now state is kept in sync with what's saved,
-     * on every build() (same pattern as applyRegularAppLiveState() below) -- so a few defaults
-     * (Factory Reset, Developer Options, etc.) are already on the moment this app becomes device
-     * owner, not waiting on "This device is set up", and nothing drifts out of sync with what the
-     * picker shows checked. */
+    /** The big on/off switch, rendered right under the banner on every screen -- not buried in the
+     * hub, so it's always the first thing visible, and always reachable regardless of what else is
+     * being configured. Off means nothing below is enforced: every restriction clears, every app
+     * comes back, the kiosk takeover stops, this app stays exactly as reachable as it always is.
+     * On means whatever's currently saved everywhere else gets pushed live. Flipping it is always
+     * reversible, any number of times -- there's no point where this stops being true. */
+    private void buildLockdownSwitch() {
+        boolean on = isLockdownOn();
+        LinearLayout card = Ui.card(this, root);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView label = Ui.titleText(this, on ? "Lockdown: ON" : "Lockdown: OFF");
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        row.addView(label, lp);
+        Switch sw = new Switch(this);
+        sw.setChecked(on);
+        sw.setOnCheckedChangeListener((box, checked) -> {
+            if (checked != on) toggleLockdown(checked);
+        });
+        row.addView(sw);
+        card.addView(row);
+        card.addView(Ui.body(this, on
+                ? "Everything configured below is actively enforced on this phone right now. Turn this off any "
+                + "time -- no factory reset needed -- to open the phone back up, install an update to this app, "
+                + "or change anything."
+                : "Nothing below is enforced yet. Configure whatever's wanted first, then turn this on when "
+                + "it's ready -- this app is never hidden or disabled, so it's always reachable to come back "
+                + "and change anything, including turning this off again.", true));
+        String frpAccount = prefs().getString("frpAccountId", null);
+        Ui.add(card, Ui.button(this, frpAccount == null ? "Set up recovery account" : "Recovery account: set", Ui.OUTLINED, v -> {
+            section = "frp";
+            build();
+        }), 8);
+    }
+
+    private void toggleLockdown(boolean on) {
+        if (!on) {
+            Ui.alertDialog(this)
+                    .setTitle("Turn lockdown off?")
+                    .setMessage("Opens the phone back up completely -- every restriction clears, every blocked "
+                            + "app comes back, and the home-screen takeover stops. Nothing configured here is "
+                            + "lost; turning it back on reapplies exactly what's set up below.")
+                    .setNegativeButton("Cancel", (d, w) -> build())
+                    .setPositiveButton("Turn it off", (d, w) -> disableLockdown())
+                    .setOnCancelListener(d -> build())
+                    .show();
+            return;
+        }
+        if (prefs().getString("frpAccountId", null) == null && Build.VERSION.SDK_INT >= 30) {
+            section = "frp";
+            build();
+            return;
+        }
+        enableLockdown();
+    }
+
+    private void enableLockdown() {
+        prefs().edit().putBoolean("lockdownOn", true).apply();
+        applyFrpFromSaved();
+        applyRestrictionsLive();
+        applyRegularAppLiveState();
+        applySystemAppLiveState();
+        Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
+        Kiosk.activate(this, dpm(), admin(), allowed);
+        section = null;
+        build();
+    }
+
+    private void disableLockdown() {
+        prefs().edit().putBoolean("lockdownOn", false).apply();
+        applyRestrictionsLive();
+        applyRegularAppLiveState();
+        applySystemAppLiveState();
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                dpm().setFactoryResetProtectionPolicy(admin(),
+                        new android.app.admin.FactoryResetProtectionPolicy.Builder().setFactoryResetProtectionEnabled(false).build());
+            } catch (Exception ignored) {
+            }
+        }
+        Kiosk.deactivate(this, dpm(), admin());
+        section = null;
+        build();
+    }
+
+    private void applyFrpFromSaved() {
+        String accountId = prefs().getString("frpAccountId", null);
+        if (accountId == null || Build.VERSION.SDK_INT < 30) return;
+        try {
+            android.app.admin.FactoryResetProtectionPolicy p = new android.app.admin.FactoryResetProtectionPolicy.Builder()
+                    .setFactoryResetProtectionAccounts(java.util.Collections.singletonList(accountId))
+                    .setFactoryResetProtectionEnabled(true)
+                    .build();
+            dpm().setFactoryResetProtectionPolicy(admin(), p);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Every Device restrictions toggle's real, right-now state is kept in sync with the Lockdown
+     * switch and what's saved, on every build() -- off clears every restriction regardless of what
+     * boxes are checked below; on applies exactly those boxes. Nothing drifts out of sync with what
+     * the picker shows checked, and nothing is ever enforced while the switch is off. */
     private void applyRestrictionsLive() {
-        Set<String> enabled = prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS);
+        boolean on = isLockdownOn();
+        Set<String> enabled = on ? prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS)
+                : java.util.Collections.emptySet();
         for (String key : LockdownPolicy.RESTRICTIONS.keySet()) {
             try {
                 if (enabled.contains(key)) dpm().addUserRestriction(admin(), key);
@@ -183,15 +287,12 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** The Regular apps picker says every app but Maps/Waze/Android Auto "starts blocked" -- that
-     * was only ever true once lock task mode kicked in at the final lock, not during setup, so
-     * unchecking something here (or running a bulk list that unchecks it) didn't actually stop it
-     * from opening until "This device is set up" was pressed. This runs on every build() (cheap,
-     * idempotent, same as applyAlwaysOnLockdownLive()) and makes the real, right-now state of every
-     * launchable app match allowedApps directly via setApplicationHidden() -- allowed apps stay
-     * openable, everything else is actually blocked immediately, not just recorded as blocked for
-     * later. */
+    /** Same idea as applyRestrictionsLive() for the Regular apps list: while the switch is off,
+     * every launchable app stays open-able (hide = false) regardless of allowedApps; while it's on,
+     * only what's allowed stays reachable. Runs on every build(), so nothing drifts and nothing is
+     * ever actually blocked while the switch is off. */
     private void applyRegularAppLiveState() {
+        boolean on = isLockdownOn();
         PackageManager pm = getPackageManager();
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
@@ -199,7 +300,20 @@ public class MainActivity extends Activity {
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(getPackageName()) || LockdownPolicy.isProtected(pkg)) continue;
             try {
-                dpm().setApplicationHidden(admin(), pkg, !allowed.contains(pkg));
+                dpm().setApplicationHidden(admin(), pkg, on && !allowed.contains(pkg));
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** Same idea again for the System apps list -- only unhides/hides the packages actually saved
+     * in blockedSystemApps, rather than re-scanning every installed system package every build(). */
+    private void applySystemAppLiveState() {
+        boolean on = isLockdownOn();
+        Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
+        for (String pkg : blocked) {
+            try {
+                dpm().setApplicationHidden(admin(), pkg, on);
             } catch (Exception ignored) {
             }
         }
@@ -210,15 +324,14 @@ public class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Step 2: choose what's allowed"));
         card.addView(Ui.body(this, "Google Maps, Waze, and Android Auto are allowed by default -- nothing to "
-                + "set up for those unless you want to change it. Every other app starts blocked, and the real "
-                + "Settings app is never reachable at all. Use the lists below to allow or block regular "
-                + "apps (including those three, if you ever want to), to block specific system apps (ones with "
-                + "no icon of their own, like a search or suggestions service -- takes effect immediately, so "
-                + "you can test it before finishing setup), to pick which Settings screens (Wi-Fi, Connected "
-                + "devices, etc.) show up on this app's own Settings tile once locked, or to flip the same "
-                + "restriction switches the dashboard offers for the agent app -- a few start on by default "
-                + "(Factory Reset, Developer Options) the moment this screen first showed up as device owner, "
-                + "not waiting on the button below, but every one is still a toggle if a default isn't wanted.", true));
+                + "set up for those unless you want to change it. Everything below is just configuration until "
+                + "the Lockdown switch above is on: use these lists to allow or block regular apps (including "
+                + "those three, if you ever want to), to block specific system apps (ones with no icon of their "
+                + "own, like a search or suggestions service), to pick which Settings screens (Wi-Fi, Connected "
+                + "devices, etc.) show up on this app's own Settings tile, or to flip the same restriction "
+                + "switches the dashboard offers for the agent app -- a few start checked by default (Factory "
+                + "Reset, Developer Options), the rest start off. Flip the switch above once it's all set up "
+                + "the way you want.", true));
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
         Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
         Ui.add(card, Ui.button(this, "Regular apps (" + allowed.size() + " allowed)", Ui.TONAL, v -> {
@@ -247,13 +360,6 @@ public class MainActivity extends Activity {
             bulkDidnt = new ArrayList<>();
             build();
         }), 8);
-
-        LinearLayout doneCard = Ui.card(this, root);
-        doneCard.addView(Ui.titleText(this, "This device is set up"));
-        doneCard.addView(Ui.body(this, "Locks the phone to exactly what's allowed above, hides this app for "
-                + "good, and the phone can't be changed again from inside it. The only way back in afterward "
-                + "is a factory reset.", true));
-        Ui.add(doneCard, Ui.button(this, "This device is set up", Ui.DANGER, v -> promptConfirm()), 12);
     }
 
     // ---------- the two pickers ----------
@@ -267,15 +373,13 @@ public class MainActivity extends Activity {
 
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, regular ? "Regular apps" : "System apps"));
-        card.addView(Ui.body(this, regular
-                ? "Checked apps can be opened -- right now, not just once the phone is locked. Everything else "
-                + "is blocked immediately too, the moment this app became the device owner, the same way a "
-                + "System apps block already was: open the real launcher right now and an unchecked app won't "
-                + "even show up."
-                : "Checked apps are switched off at the Android level -- they can't run, show a notification, "
-                + "or pop up an ad once the phone is locked. System parts the phone depends on aren't listed here. "
-                + "Each one's note below judges it specifically against a Waze/Maps/Android Auto-only build -- "
-                + "anything not recognized says so honestly instead of guessing.", true));
+        card.addView(Ui.body(this, (regular
+                ? "Checked apps can be opened once Lockdown is switched on; everything else gets blocked then. "
+                : "Checked apps get switched off at the Android level once Lockdown is switched on -- they can't "
+                + "run, show a notification, or pop up an ad. System parts the phone depends on aren't listed "
+                + "here. Each one's note below judges it specifically against a Waze/Maps/Android Auto-only "
+                + "build -- anything not recognized says so honestly instead of guessing. ")
+                + "Nothing here is actually applied to the phone while the switch at the top is off.", true));
         EditText searchField = Ui.field(this, "Search");
         searchField.setText(search);
         searchField.setSelection(search.length());
@@ -333,12 +437,12 @@ public class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Device restrictions"));
         card.addView(Ui.body(this, "The same restrictions the dashboard offers for the agent app, in the same "
-                + "order, applied the instant you check or uncheck one -- not waiting on \"This device is set "
-                + "up\" -- so you can go check Settings yourself and confirm it actually did something. A few "
-                + "(Factory Reset, Developer Options, and so on) start checked by default; the rest start off. "
-                + "The ones marked below fight features this app already builds on purpose (the Wi-Fi/Connected "
-                + "devices Settings categories, calls and texts) -- turning those on will break that specific "
-                + "feature, so only do it if that trade-off is actually wanted here.", true));
+                + "order. Just configuration until the Lockdown switch at the top is on -- nothing here is "
+                + "actually applied to the phone while it's off, so check or uncheck freely. A few (Factory "
+                + "Reset, Developer Options, and so on) start checked by default; the rest start off. The ones "
+                + "marked below fight features this app already builds on purpose (the Wi-Fi/Connected devices "
+                + "Settings categories, calls and texts) -- turning those on will break that specific feature, "
+                + "so only do it if that trade-off is actually wanted here.", true));
         Set<String> enabled = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS));
         for (String key : LockdownPolicy.RESTRICTIONS.keySet()) {
             String label = LockdownPolicy.RESTRICTIONS.get(key);
@@ -348,15 +452,15 @@ public class MainActivity extends Activity {
                 Set<String> s = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS));
                 if (checked) s.add(key); else s.remove(key);
                 prefs().edit().putStringSet("extraRestrictions", s).apply();
-                // Same reasoning as the System apps picker's live blocking -- applied now, not only
-                // at the final lock, so a restriction can actually be tested (does Settings really
-                // reflect it? did it break something else?) and undone here if it does, instead of
-                // only finding out after everything is permanent.
-                try {
-                    if (checked) dpm().addUserRestriction(admin(), key);
-                    else dpm().clearUserRestriction(admin(), key);
-                } catch (Exception ex) {
-                    toast("Could not " + (checked ? "turn on" : "turn off") + " \"" + label + "\": " + ex.getMessage());
+                // Only actually applied to the phone while the Lockdown switch is on -- while it's
+                // off, this just saves the choice for whenever it's turned on later.
+                if (isLockdownOn()) {
+                    try {
+                        if (checked) dpm().addUserRestriction(admin(), key);
+                        else dpm().clearUserRestriction(admin(), key);
+                    } catch (Exception ex) {
+                        toast("Could not " + (checked ? "turn on" : "turn off") + " \"" + label + "\": " + ex.getMessage());
+                    }
                 }
             }), 6);
         }
@@ -393,11 +497,12 @@ public class MainActivity extends Activity {
         card.addView(Ui.body(this, "Paste whatever list an AI tool gave you after going through a dump of every "
                 + "app on this phone -- any format is fine, this only looks for package names (like "
                 + "com.something.app) anywhere in the text and ignores everything else around them. Every "
-                + "package name found gets blocked right away: a regular app gets unchecked on the Regular apps "
-                + "list, a background one gets hidden the same way the System apps picker does. A genuinely "
-                + "removable app (not part of Android itself) also gets a real uninstall requested, silently, "
-                + "since this app is the device owner -- but the block is what actually guarantees the result "
-                + "either way, since most things on a list like this can't really be removed, only blocked.", true));
+                + "package name found gets set to block: a regular app gets unchecked on the Regular apps list, "
+                + "a background one gets added to System apps. While Lockdown is on, that also applies "
+                + "immediately, with a real uninstall also requested (silently, since this app is the device "
+                + "owner) for anything that isn't part of Android itself -- but the block is what actually "
+                + "guarantees the result either way, since most things on a list like this can't really be "
+                + "removed, only blocked. While Lockdown is off, this just saves the choices for later.", true));
         bulkInput = Ui.multilineField(this, "Paste the list here");
         Ui.add(card, bulkInput, 8);
         Ui.add(card, Ui.button(this, "Apply list", Ui.DANGER, v -> applyBulkList()), 12);
@@ -408,6 +513,7 @@ public class MainActivity extends Activity {
         Set<String> found = new LinkedHashSet<>();
         while (m.find()) found.add(m.group());
 
+        boolean on = isLockdownOn();
         PackageManager pm = getPackageManager();
         Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
         Set<String> blockedSystem = new LinkedHashSet<>(prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>()));
@@ -434,18 +540,22 @@ public class MainActivity extends Activity {
             boolean launchable = pm.getLaunchIntentForPackage(pkg) != null;
             if (launchable) {
                 if (allowed.remove(pkg)) changed++;
-                went.add(pkg + " -- blocked (was an allowed regular app)");
+                went.add(pkg + " -- set to block" + (on ? ", blocked immediately" : " once Lockdown is on") + " (was an allowed regular app)");
             } else {
                 if (blockedSystem.add(pkg)) changed++;
-                try {
-                    dpm().setApplicationHidden(admin(), pkg, true);
-                    went.add(pkg + " -- blocked immediately (system app)");
-                } catch (Exception ex) {
-                    didnt.add(pkg + " (added to the block list, but couldn't apply it live: " + ex.getMessage() + ")");
+                if (on) {
+                    try {
+                        dpm().setApplicationHidden(admin(), pkg, true);
+                        went.add(pkg + " -- blocked immediately (system app)");
+                    } catch (Exception ex) {
+                        didnt.add(pkg + " (added to the block list, but couldn't apply it live: " + ex.getMessage() + ")");
+                    }
+                } else {
+                    went.add(pkg + " -- set to block once Lockdown is on (system app)");
                 }
             }
             boolean isSystemApp = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
-            if (!isSystemApp) {
+            if (!isSystemApp && on) {
                 attemptSilentUninstall(pkg);
                 went.add(pkg + " -- also requested a real uninstall (not part of Android itself)");
             }
@@ -501,18 +611,16 @@ public class MainActivity extends Activity {
                         regular ? "allowedApps" : "blockedSystemApps", new LinkedHashSet<>()));
                 if (checked) s.add(pkg); else s.remove(pkg);
                 prefs().edit().putStringSet(regular ? "allowedApps" : "blockedSystemApps", s).apply();
-                // Takes effect immediately, before the final lock -- so a block (or an allow) can
-                // actually be tested (does the phone/another app still work right?) and undone
-                // here if it breaks something, rather than only finding out after everything is
-                // permanent. setApplicationHidden() isn't tied to kiosk mode at all, so this works
-                // the same whether or not the phone is locked yet. Checked means "allowed" for a
-                // regular app but "blocked" for a system app, so which way hidden goes is flipped
-                // between the two.
-                try {
-                    dpm().setApplicationHidden(admin(), pkg, regular ? !checked : checked);
-                } catch (Exception ex) {
-                    toast("Could not " + (checked ? (regular ? "allow" : "block") : (regular ? "block" : "unblock"))
-                            + " " + label + ": " + ex.getMessage());
+                // Only actually applied to the phone while the Lockdown switch is on -- while it's
+                // off, this just saves the choice. Checked means "allowed" for a regular app but
+                // "blocked" for a system app, so which way hidden goes is flipped between the two.
+                if (isLockdownOn()) {
+                    try {
+                        dpm().setApplicationHidden(admin(), pkg, regular ? !checked : checked);
+                    } catch (Exception ex) {
+                        toast("Could not " + (checked ? (regular ? "allow" : "block") : (regular ? "block" : "unblock"))
+                                + " " + label + ": " + ex.getMessage());
+                    }
                 }
             }), 6);
         }
@@ -559,28 +667,17 @@ public class MainActivity extends Activity {
         return out;
     }
 
-    // ---------- confirm, then the recovery-account step ----------
-    private void promptConfirm() {
-        Ui.alertDialog(this)
-                .setTitle("Are you sure?")
-                .setMessage("This locks the phone to exactly what's allowed right now. This app disappears "
-                        + "afterward, and nothing can be changed again from the phone -- only a factory reset "
-                        + "undoes any of it.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Yes, set it up", (d, w) -> {
-                    section = "frp";
-                    build();
-                })
-                .show();
-    }
-
+    // ---------- the recovery-account step ----------
     private void buildFrpStep() {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Factory Reset Protection"));
-        card.addView(Ui.body(this, "The Google account that can set this phone up again after a factory reset "
-                + "-- the only way back in once this is locked. No account has to be signed in on the phone "
-                + "itself (Android 11 or newer; keep the bootloader locked).", true));
+        card.addView(Ui.body(this, "The Google account that can set this phone up again after an actual factory "
+                + "reset -- for if the phone is ever lost or stolen, not something normally needed, since "
+                + "Lockdown itself is turned off from the switch above, not by resetting the phone. No account "
+                + "has to be signed in on the phone itself (Android 11 or newer; keep the bootloader locked).", true));
         final EditText id = Ui.field(this, "Google account ID (21 digits)");
+        String saved = prefs().getString("frpAccountId", null);
+        if (saved != null) id.setText(saved);
         Ui.add(card, id, 12);
         TextView how = Ui.body(this,
                 "To get the ID: open the Google People API page, tap \"Try it\", set resourceName to people/me "
@@ -597,66 +694,27 @@ public class MainActivity extends Activity {
         }), 8);
         if (Build.VERSION.SDK_INT < 30) {
             Ui.add(card, Ui.body(this, "This phone's Android is older than 11, so Factory Reset Protection itself "
-                    + "isn't available -- everything else still locks down normally.", true), 12);
+                    + "isn't available -- everything else still works normally.", true), 12);
         }
-        Ui.add(card, Ui.button(this, "Lock it", Ui.DANGER, v -> {
+        Ui.add(card, Ui.button(this, "Save" + (isLockdownOn() ? "" : " and turn Lockdown on"), Ui.DANGER, v -> {
             String typed = id.getText().toString();
             if (!LockdownPolicy.validAccountId(typed)) {
                 toast("That is not 21 digits. A Google account ID from the People API page is exactly 21 digits.");
                 return;
             }
-            closeForever(LockdownPolicy.normalizeAccountId(typed));
+            prefs().edit().putString("frpAccountId", LockdownPolicy.normalizeAccountId(typed)).apply();
+            if (isLockdownOn()) {
+                applyFrpFromSaved();
+                toast("Recovery account saved.");
+                section = null;
+                build();
+            } else {
+                enableLockdown();
+            }
         }), 16);
         Ui.add(card, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
             section = null;
             build();
         }), 8);
-    }
-
-    // ---------- the irreversible step ----------
-    private void closeForever(String frpAccountId) {
-        DevicePolicyManager dpm = dpm();
-        ComponentName admin = admin();
-
-        applyFrp(dpm, admin, frpAccountId);
-
-        // Re-asserts the same state applyRestrictionsLive() already keeps live throughout setup --
-        // belt and suspenders for this one irreversible step, same as the blockedSystem loop below.
-        applyRestrictionsLive();
-
-        Set<String> blockedSystem = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
-        for (String pkg : blockedSystem) {
-            try {
-                dpm.setApplicationHidden(admin, pkg, true);
-            } catch (Exception ignored) {
-            }
-        }
-
-        Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
-        Kiosk.activate(this, dpm, admin, allowed);
-
-        // Disable only this one component -- never the whole package or the admin receiver, which
-        // would risk Android treating device-admin status itself as removed. This alone hides the
-        // icon from the launcher and makes the app unopenable from anywhere, while leaving device
-        // owner, lock task, and every restriction just applied fully in force.
-        getPackageManager().setComponentEnabledSetting(
-                new ComponentName(this, MainActivity.class),
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP);
-        prefs().edit().putBoolean("lockedForever", true).apply();
-
-        finishAndRemoveTask();
-    }
-
-    private void applyFrp(DevicePolicyManager dpm, ComponentName admin, String accountId) {
-        if (Build.VERSION.SDK_INT < 30) return;
-        try {
-            android.app.admin.FactoryResetProtectionPolicy p = new android.app.admin.FactoryResetProtectionPolicy.Builder()
-                    .setFactoryResetProtectionAccounts(java.util.Collections.singletonList(accountId))
-                    .setFactoryResetProtectionEnabled(true)
-                    .build();
-            dpm.setFactoryResetProtectionPolicy(admin, p);
-        } catch (Exception ignored) {
-        }
     }
 }

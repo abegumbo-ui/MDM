@@ -22,9 +22,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The permanent home screen once Close Forever has run -- a plain grid of whatever's allowed
- * (Maps, Waze, Android Auto, plus anything the admin added on the Regular Apps picker). There's no
- * way back to a setup screen from here: there is no setup screen anymore.
+ * The home screen while Lockdown is switched on -- a plain grid of whatever's allowed (Maps,
+ * Waze, Android Auto, plus anything the admin added on the Regular Apps picker). Its own "Lockdown"
+ * tile always opens MainActivity's setup/admin screen, so the admin can always get back in to
+ * change anything or switch the whole lockdown back off -- there's no factory-reset-only trap here.
  */
 public class HomeActivity extends Activity {
     private GridLayout grid;
@@ -84,16 +85,40 @@ public class HomeActivity extends Activity {
 
         int width = (getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3;
         Set<String> settingsCategories = prefs().getStringSet("settingsCategories", new LinkedHashSet<>());
-        if (apps.isEmpty() && settingsCategories.isEmpty()) {
-            TextView empty = Ui.body(this, "Nothing is available to open yet.", true);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-            grid.addView(empty, lp);
-        }
-        // Always first, same as the agent app's own kiosk home screen -- the only way to reach any
-        // part of Settings once locked, so it's not subject to being left out like a regular app.
+        // Always first and always shown, admin access back into the setup/admin screen -- this is
+        // what makes the whole lockdown reversible instead of a one-way trap.
+        grid.addView(adminTile(width));
+        // Always next if any Settings categories are enabled, same as the agent app's own kiosk
+        // home screen -- the only way to reach any part of Settings once locked, so it's not
+        // subject to being left out like a regular app.
         if (!settingsCategories.isEmpty()) grid.addView(settingsTile(width));
         for (String[] a : apps) grid.addView(tile(a[0], a[1], width));
+    }
+
+    private LinearLayout adminTile(int width) {
+        LinearLayout t = new LinearLayout(this);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        t.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10));
+        GridLayout.LayoutParams glp = new GridLayout.LayoutParams();
+        glp.width = width;
+        t.setLayoutParams(glp);
+
+        ImageView icon = new ImageView(this);
+        try {
+            icon.setImageDrawable(getPackageManager().getApplicationIcon(getPackageName()));
+        } catch (Exception e) {
+            icon.setImageDrawable(getPackageManager().getDefaultActivityIcon());
+        }
+        t.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
+
+        TextView name = Ui.body(this, "Lockdown", false);
+        name.setTextSize(12);
+        name.setGravity(Gravity.CENTER);
+        t.addView(name);
+
+        t.setOnClickListener(v -> startActivity(new Intent(this, MainActivity.class)));
+        return t;
     }
 
     private LinearLayout settingsTile(int width) {

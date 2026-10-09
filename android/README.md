@@ -4,29 +4,26 @@ Three separate apps live here:
 
 - **agent** (`android/app`) -- the ongoing MDM agent, talks to the dashboard, managed remotely.
 - **browser** (`android/browser`) -- the agent's companion allowlisted browser.
-- **lockdown** (`android/lockdown`) -- a one-time, one-way setup tool, entirely separate from the
-  other two. It never talks to a server at all. It's its own device-owner app (Android only allows
-  one per device, so it can't coexist with the agent on the same phone). Setup is four pickers
-  (Regular apps, System apps, Settings, Device restrictions), a fifth screen for pasting a bulk
-  list (whatever package names an outside AI tool found going through a dump of every app on the
-  phone -- each one gets blocked immediately, with a real silent uninstall also attempted for
-  anything that isn't part of Android itself), plus one button: Google Maps, Waze and
-  Android Auto are allowed by default (an ordinary, uncheckable-if-you-want-to row, not hardcoded)
-  and every other app starts blocked -- for real, immediately, from the moment this app becomes
-  the device owner, not only once the phone is finally locked; the real Settings app is never reachable at all -- only the
-  specific Settings categories checked on the Settings picker, each one opened from this app's own
-  in-app Settings menu via a direct android.settings.* action, the same way the agent app's own
-  disguised Settings menu reaches real screens without ever putting all of Settings in the kiosk
-  allowlist. Device restrictions is the same restriction list the dashboard offers for the agent
-  app (`src/policy.js`), in the same order and wording, individually toggleable -- a handful start
-  on by default (Factory Reset, Developer Options, and so on), the rest start off, and every one of
-  them applies the instant it's checked. A few are flagged as conflicting with the Wi-Fi/Connected
-  devices Settings categories or with calls and texts, and turning those on is a deliberate,
-  admin-made trade-off rather than something this app decides for you.
-  Once "This device is set up" is confirmed and a 21-digit Factory Reset Protection account ID is
-  entered, it locks the phone into a permanent kiosk mode (only what's allowed can open) and hides
-  its own launcher icon so it can never be opened again. A factory reset -- gated by that FRP
-  account -- is the only way to undo any of it.
+- **lockdown** (`android/lockdown`) -- a self-contained setup and kiosk tool, entirely separate
+  from the other two. It never talks to a server at all. It's its own device-owner app (Android
+  only allows one per device, so it can't coexist with the agent on the same phone). Everything is
+  configured on five screens (Regular apps, System apps, Settings, Device restrictions, and a bulk
+  screen for pasting the output of an outside AI app audit), but none of it is actually enforced on
+  the phone until the **Lockdown switch** at the top -- visible on every screen, not buried in a
+  menu -- is turned on. Flipping it on pushes everything configured below live: Google Maps, Waze
+  and Android Auto are allowed by default (an ordinary, uncheckable-if-you-want-to row, not
+  hardcoded), every other app gets blocked, the real Settings app becomes unreachable except for
+  whatever categories were checked on the Settings picker (each one opened from this app's own
+  in-app Settings menu via a direct android.settings.* action, same as the agent app's own
+  disguised Settings menu), and the Device restrictions list -- the same list, order and wording
+  the dashboard offers for the agent app (`src/policy.js`) -- gets applied. Flipping it back off
+  reverses every bit of that: restrictions clear, apps come back, the kiosk home-screen takeover
+  stops, and Factory Reset Protection turns off, no factory reset needed. The app itself is never
+  hidden or disabled -- its own "Lockdown" tile is always the first thing on the kiosk home screen,
+  so there's always a way back in to change something, push an update, or turn it off again. A
+  factory reset is only for if the phone is actually lost or stolen, gated by whatever Google
+  account ID is saved as the Factory Reset Protection recovery account -- not the normal way to
+  undo anything here.
 
 ## Release signing
 
