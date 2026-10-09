@@ -12,7 +12,8 @@ Three separate apps live here:
   phone -- each one gets blocked immediately, with a real silent uninstall also attempted for
   anything that isn't part of Android itself), plus one button: Google Maps, Waze and
   Android Auto are allowed by default (an ordinary, uncheckable-if-you-want-to row, not hardcoded)
-  and every other app starts blocked; the real Settings app is never reachable at all -- only the
+  and every other app starts blocked -- for real, immediately, from the moment this app becomes
+  the device owner, not only once the phone is finally locked; the real Settings app is never reachable at all -- only the
   specific Settings categories checked on the Settings picker, each one opened from this app's own
   in-app Settings menu via a direct android.settings.* action, the same way the agent app's own
   disguised Settings menu reaches real screens without ever putting all of Settings in the kiosk

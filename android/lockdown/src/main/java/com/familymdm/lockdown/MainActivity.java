@@ -133,6 +133,7 @@ public class MainActivity extends Activity {
             return;
         }
         applyAlwaysOnLockdownLive();
+        applyRegularAppLiveState();
         if ("regular".equals(section)) {
             buildPicker(true);
         } else if ("system".equals(section)) {
@@ -173,6 +174,28 @@ public class MainActivity extends Activity {
         for (String r : LockdownPolicy.ALWAYS_ON_LOCKDOWN) {
             try {
                 dpm().addUserRestriction(admin(), r);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** The Regular apps picker says every app but Maps/Waze/Android Auto "starts blocked" -- that
+     * was only ever true once lock task mode kicked in at the final lock, not during setup, so
+     * unchecking something here (or running a bulk list that unchecks it) didn't actually stop it
+     * from opening until "This device is set up" was pressed. This runs on every build() (cheap,
+     * idempotent, same as applyAlwaysOnLockdownLive()) and makes the real, right-now state of every
+     * launchable app match allowedApps directly via setApplicationHidden() -- allowed apps stay
+     * openable, everything else is actually blocked immediately, not just recorded as blocked for
+     * later. */
+    private void applyRegularAppLiveState() {
+        PackageManager pm = getPackageManager();
+        Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || LockdownPolicy.isProtected(pkg)) continue;
+            try {
+                dpm().setApplicationHidden(admin(), pkg, !allowed.contains(pkg));
             } catch (Exception ignored) {
             }
         }
@@ -241,7 +264,10 @@ public class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, regular ? "Regular apps" : "System apps"));
         card.addView(Ui.body(this, regular
-                ? "Checked apps can be opened once the phone is locked. Everything else stays installed but can't be opened."
+                ? "Checked apps can be opened -- right now, not just once the phone is locked. Everything else "
+                + "is blocked immediately too, the moment this app became the device owner, the same way a "
+                + "System apps block already was: open the real launcher right now and an unchecked app won't "
+                + "even show up."
                 : "Checked apps are switched off at the Android level -- they can't run, show a notification, "
                 + "or pop up an ad once the phone is locked. System parts the phone depends on aren't listed here. "
                 + "Each one's note below judges it specifically against a Waze/Maps/Android Auto-only build -- "
@@ -478,17 +504,18 @@ public class MainActivity extends Activity {
                         regular ? "allowedApps" : "blockedSystemApps", new LinkedHashSet<>()));
                 if (checked) s.add(pkg); else s.remove(pkg);
                 prefs().edit().putStringSet(regular ? "allowedApps" : "blockedSystemApps", s).apply();
-                // System apps take effect immediately, before the final lock -- so a block can
+                // Takes effect immediately, before the final lock -- so a block (or an allow) can
                 // actually be tested (does the phone/another app still work right?) and undone
                 // here if it breaks something, rather than only finding out after everything is
                 // permanent. setApplicationHidden() isn't tied to kiosk mode at all, so this works
-                // the same whether or not the phone is locked yet.
-                if (!regular) {
-                    try {
-                        dpm().setApplicationHidden(admin(), pkg, checked);
-                    } catch (Exception ex) {
-                        toast("Could not " + (checked ? "block" : "unblock") + " " + label + ": " + ex.getMessage());
-                    }
+                // the same whether or not the phone is locked yet. Checked means "allowed" for a
+                // regular app but "blocked" for a system app, so which way hidden goes is flipped
+                // between the two.
+                try {
+                    dpm().setApplicationHidden(admin(), pkg, regular ? !checked : checked);
+                } catch (Exception ex) {
+                    toast("Could not " + (checked ? (regular ? "allow" : "block") : (regular ? "block" : "unblock"))
+                            + " " + label + ": " + ex.getMessage());
                 }
             }), 6);
         }
