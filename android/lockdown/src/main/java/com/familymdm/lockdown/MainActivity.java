@@ -48,7 +48,8 @@ public class MainActivity extends Activity {
     private String search = "";
     private LinearLayout pickerList;
     private EditText bulkInput;
-    private List<String> bulkResults = new ArrayList<>();
+    private List<String> bulkWent = new ArrayList<>();
+    private List<String> bulkDidnt = new ArrayList<>();
     private static final String ACTION_UNINSTALL_RESULT = "com.familymdm.lockdown.UNINSTALL_RESULT";
     private static final Pattern PACKAGE_NAME = Pattern.compile("\\b[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z][a-zA-Z0-9_]*)+\\b");
     private BroadcastReceiver uninstallReceiver;
@@ -215,7 +216,8 @@ public class MainActivity extends Activity {
         }), 8);
         Ui.add(card, Ui.button(this, "Bulk list from an AI app audit", Ui.TONAL, v -> {
             section = "bulk";
-            bulkResults = new ArrayList<>();
+            bulkWent = new ArrayList<>();
+            bulkDidnt = new ArrayList<>();
             build();
         }), 8);
 
@@ -354,6 +356,15 @@ public class MainActivity extends Activity {
             build();
         }), 0);
 
+        // The log from the last run goes at the top, above the paste box -- so it's the first
+        // thing visible after pressing "Apply list" instead of something to scroll past.
+        if (!bulkWent.isEmpty() || !bulkDidnt.isEmpty()) {
+            LinearLayout logCard = Ui.card(this, root);
+            logCard.addView(Ui.titleText(this, "Log: " + bulkWent.size() + " went through, " + bulkDidnt.size() + " didn't"));
+            for (String line : bulkWent) Ui.add(logCard, Ui.body(this, "Went: " + line, false), 4);
+            for (String line : bulkDidnt) Ui.add(logCard, Ui.body(this, "Didn't: " + line, true), 4);
+        }
+
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Bulk list from an AI app audit"));
         card.addView(Ui.body(this, "Paste whatever list an AI tool gave you after going through a dump of every "
@@ -367,14 +378,6 @@ public class MainActivity extends Activity {
         bulkInput = Ui.multilineField(this, "Paste the list here");
         Ui.add(card, bulkInput, 8);
         Ui.add(card, Ui.button(this, "Apply list", Ui.DANGER, v -> applyBulkList()), 12);
-
-        if (!bulkResults.isEmpty()) {
-            LinearLayout resultsCard = Ui.card(this, root);
-            resultsCard.addView(Ui.titleText(this, "Result"));
-            for (String line : bulkResults) {
-                Ui.add(resultsCard, Ui.body(this, line, true), 4);
-            }
-        }
     }
 
     private void applyBulkList() {
@@ -385,47 +388,49 @@ public class MainActivity extends Activity {
         PackageManager pm = getPackageManager();
         Set<String> allowed = new LinkedHashSet<>(prefs().getStringSet("allowedApps", new LinkedHashSet<>()));
         Set<String> blockedSystem = new LinkedHashSet<>(prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>()));
-        List<String> results = new ArrayList<>();
+        List<String> went = new ArrayList<>();
+        List<String> didnt = new ArrayList<>();
         int changed = 0;
 
         for (String pkg : found) {
             if (pkg.equals(getPackageName())) {
-                results.add(pkg + " -- skipped (this app itself)");
+                didnt.add(pkg + " (this app itself)");
                 continue;
             }
             if (LockdownPolicy.isProtected(pkg)) {
-                results.add(pkg + " -- skipped (protected -- the phone needs this to work)");
+                didnt.add(pkg + " (protected -- the phone needs this to work)");
                 continue;
             }
             ApplicationInfo ai;
             try {
                 ai = pm.getApplicationInfo(pkg, 0);
             } catch (PackageManager.NameNotFoundException ex) {
-                results.add(pkg + " -- not installed on this phone");
+                didnt.add(pkg + " (not installed on this phone)");
                 continue;
             }
             boolean launchable = pm.getLaunchIntentForPackage(pkg) != null;
             if (launchable) {
                 if (allowed.remove(pkg)) changed++;
-                results.add(pkg + " -- blocked (was an allowed regular app)");
+                went.add(pkg + " -- blocked (was an allowed regular app)");
             } else {
                 if (blockedSystem.add(pkg)) changed++;
                 try {
                     dpm().setApplicationHidden(admin(), pkg, true);
-                    results.add(pkg + " -- blocked immediately (system app)");
+                    went.add(pkg + " -- blocked immediately (system app)");
                 } catch (Exception ex) {
-                    results.add(pkg + " -- added to the block list, but couldn't apply it live: " + ex.getMessage());
+                    didnt.add(pkg + " (added to the block list, but couldn't apply it live: " + ex.getMessage() + ")");
                 }
             }
             boolean isSystemApp = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
             if (!isSystemApp) {
                 attemptSilentUninstall(pkg);
-                results.add(pkg + " -- also requested a real uninstall (not part of Android itself)");
+                went.add(pkg + " -- also requested a real uninstall (not part of Android itself)");
             }
         }
         prefs().edit().putStringSet("allowedApps", allowed).putStringSet("blockedSystemApps", blockedSystem).apply();
-        if (found.isEmpty()) results.add("No package names found in that text.");
-        bulkResults = results;
+        if (found.isEmpty()) didnt.add("nothing -- no package names found in that text");
+        bulkWent = went;
+        bulkDidnt = didnt;
         toast(changed + " app" + (changed == 1 ? "" : "s") + " changed.");
         build();
     }
