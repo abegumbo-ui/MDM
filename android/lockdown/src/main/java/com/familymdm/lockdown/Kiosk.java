@@ -26,11 +26,12 @@ final class Kiosk {
     private Kiosk() {}
 
     /** Everything that may come to the foreground once locked: this app itself (the kiosk launcher
-     * and its own in-app Settings screen both live here), the system essentials, whatever the admin
-     * allowed on the Regular Apps picker (Maps/Waze/Android Auto are pre-checked there by default,
-     * but are ordinary rows -- not hardcoded here), and the phone's own default dialer/SMS handler
-     * (so calls and texts still work). Deliberately never includes com.android.settings -- see
-     * SettingsCategories for how specific real Settings screens stay reachable without it. */
+     * and its own in-app Settings screen both live here), the system essentials, whatever MainActivity
+     * decided is reachable (the Kiosk home screen tile list, plus anything only allowed to notify --
+     * Android Auto, for instance, has no tile but still needs to be launchable), and the phone's own
+     * default dialer/SMS handler (so calls and texts still work). Deliberately never includes
+     * com.android.settings -- see SettingsCategories for how specific real Settings screens stay
+     * reachable without it. */
     static String[] lockTaskPackages(Context c, Set<String> adminAllowed) {
         Set<String> s = new LinkedHashSet<>();
         s.add(c.getPackageName());

@@ -14,10 +14,12 @@ import java.util.regex.Pattern;
 final class LockdownPolicy {
     private LockdownPolicy() {}
 
-    /** Pre-checked (allowed) by default on the Regular Apps picker the first time it's opened --
-     * the three apps this phone is actually meant to run. Not hardcoded or forced: each one is a
-     * normal row on that picker like any other app, and can be unchecked (blocked) same as
-     * anything else if that's ever wanted. */
+    /** Pre-checked (allowed to notify) by default on the Notifications picker the first time it's
+     * opened -- the three apps actually meant to be heard from on this phone. Not hardcoded or
+     * forced: each one is a normal row on that picker like any other app, and can be unchecked
+     * (silenced) same as anything else if that's ever wanted. This has nothing to do with the
+     * Regular apps block list or the Kiosk home-screen list -- those both start with nothing
+     * checked, since neither one carries a safe default the way notification-silence does. */
     static final String[] DEFAULT_ALLOWED_APPS = {
             "com.google.android.apps.maps", "com.waze", "com.google.android.projection.gearhead",
     };

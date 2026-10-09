@@ -24,9 +24,11 @@ import java.util.Set;
 /**
  * The kiosk home screen -- only reachable once "This device is set up for good" has actually run
  * (the Lockdown switch applies blocks/restrictions live but deliberately never starts this
- * takeover). A plain grid of whatever's allowed (Maps, Waze, Android Auto, plus anything the admin
- * added on the Regular Apps picker). Its own "Lockdown" tile always opens MainActivity's
- * setup/admin screen, reachable right up until the final lock-in happens.
+ * takeover). A plain grid of whatever's checked on the Kiosk home screen picker -- a separate,
+ * explicit choice from both the Regular/System apps block lists and the Notifications allow-list,
+ * so something can run fine and even notify without ever getting a tile here. Its own "Lockdown"
+ * tile always opens MainActivity's setup/admin screen, reachable right up until the final lock-in
+ * happens.
  */
 public class HomeActivity extends Activity {
     private GridLayout grid;
@@ -71,19 +73,18 @@ public class HomeActivity extends Activity {
     private void build() {
         grid.removeAllViews();
         PackageManager pm = getPackageManager();
-        Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
+        // The Kiosk home screen list (MainActivity's own picker for it) is the one and only thing
+        // that decides what gets a tile here -- not whether an app is blocked, not whether it's
+        // allowed to notify. An app can be reachable and even noisy without ever having a tile
+        // (Android Auto, for instance, launches itself and doesn't need one).
+        Set<String> tiles = prefs().getStringSet("kioskTileApps", new LinkedHashSet<>());
 
-        Set<String> muted = prefs().getStringSet("mutedNotificationPackages", new LinkedHashSet<>());
         List<String[]> apps = new ArrayList<>();
-        for (String pkg : allowed) {
-            // Muted (Notifications picker) means "runs, but stays out of sight" -- an allowed app
-            // that's also muted keeps running (needed for things like Android Auto) but gets no
-            // icon here to tap into, same as its notifications getting no chance to be tapped.
-            if (muted.contains(pkg)) continue;
+        for (String pkg : tiles) {
             Intent launch = pm.getLaunchIntentForPackage(pkg);
             if (launch == null) continue;
             try {
-                apps.add(new String[]{pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString(), pkg});
+                apps.add(new String[]{pm.getApplicationLabel(pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)).toString(), pkg});
             } catch (PackageManager.NameNotFoundException ignored) {
             }
         }
