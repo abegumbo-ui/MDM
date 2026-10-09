@@ -137,6 +137,10 @@ public class MainActivity extends Activity {
         return prefs().getBoolean("lockdownOn", false);
     }
 
+    private boolean showProtectedApps() {
+        return prefs().getBoolean("showProtectedApps", false);
+    }
+
     private void build() {
         root.removeAllViews();
         Ui.add(root, Ui.banner(this, "Lockdown Setup"), 0);
@@ -159,6 +163,8 @@ public class MainActivity extends Activity {
             buildRestrictionsPicker();
         } else if ("bulk".equals(section)) {
             buildBulkPicker();
+        } else if ("notifications".equals(section)) {
+            buildNotificationsPicker();
         } else if ("frp".equals(section)) {
             buildFrpStep();
         } else {
@@ -199,7 +205,7 @@ public class MainActivity extends Activity {
         TextView label = Ui.titleText(this, on ? "Lockdown: ON" : "Lockdown: OFF");
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         row.addView(label, lp);
-        Switch sw = new Switch(this);
+        Switch sw = Ui.tintedSwitch(this);
         sw.setChecked(on);
         sw.setOnCheckedChangeListener((box, checked) -> {
             if (checked != on) toggleLockdown(checked);
@@ -299,12 +305,17 @@ public class MainActivity extends Activity {
      * ever actually blocked while the switch is off. */
     private void applyRegularAppLiveState() {
         boolean on = isLockdownOn();
+        boolean showProtected = showProtectedApps();
         PackageManager pm = getPackageManager();
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+        for (ResolveInfo ri : pm.queryIntentActivities(main, PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
             String pkg = ri.activityInfo.packageName;
-            if (pkg.equals(getPackageName()) || LockdownPolicy.isProtected(pkg)) continue;
+            if (pkg.equals(getPackageName())) continue;
+            // Protected packages are left alone here unless "also show protected system
+            // components" is checked on the picker -- the same opt-in gate as what's offered to
+            // block in the first place, so this never silently hides one nobody chose to.
+            if (!showProtected && LockdownPolicy.isProtected(pkg)) continue;
             try {
                 dpm().setApplicationHidden(admin(), pkg, on && !allowed.contains(pkg));
             } catch (Exception ignored) {
@@ -366,6 +377,12 @@ public class MainActivity extends Activity {
             bulkDidnt = new ArrayList<>();
             build();
         }), 8);
+        Set<String> mutedOn = prefs().getStringSet("mutedNotificationPackages", new LinkedHashSet<>());
+        Ui.add(card, Ui.button(this, "Notifications (" + mutedOn.size() + " muted)", Ui.TONAL, v -> {
+            section = "notifications";
+            search = "";
+            build();
+        }), 8);
 
         LinearLayout finishCard = Ui.card(this, root);
         finishCard.addView(Ui.titleText(this, "This device is set up for good"));
@@ -413,6 +430,15 @@ public class MainActivity extends Activity {
             }
         });
         Ui.add(card, searchField, 8);
+
+        Ui.add(card, Ui.checkRow(this, "Also show protected system components",
+                "Play Store and the handful of other parts normally left off both lists because blocking them "
+                        + "can break the phone. Checking this does not block anything by itself -- it just makes "
+                        + "them reachable here too, same as any other app, if that's genuinely wanted.",
+                showProtectedApps(), (box, checked) -> {
+                    prefs().edit().putBoolean("showProtectedApps", checked).apply();
+                    fillPickerList(regular);
+                }), 8);
 
         pickerList = new LinearLayout(this);
         pickerList.setOrientation(LinearLayout.VERTICAL);
@@ -526,6 +552,112 @@ public class MainActivity extends Activity {
         Ui.add(card, Ui.button(this, "Apply list", Ui.DANGER, v -> applyBulkList()), 12);
     }
 
+    // ---------- the Notifications picker (soft block) ----------
+    /** A soft block, separate from the Regular/System apps lists: a checked app here still runs
+     * normally -- needed for things like Android Auto, which needs the Google app and Google
+     * Play Services alive in the background -- but any notification it tries to show gets
+     * dismissed automatically, so there's nothing on screen to tap into. Unlike every other
+     * permission this app needs, Android does not let a device owner grant "Notification access"
+     * silently via DevicePolicyManager -- it has to be granted here, once, by hand. */
+    private void buildNotificationsPicker() {
+        LinearLayout header = Ui.card(this, root);
+        Ui.add(header, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            section = null;
+            search = "";
+            build();
+        }), 0);
+
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Notifications"));
+        card.addView(Ui.body(this, "A soft block, separate from the Regular/System apps lists above: a checked "
+                + "app here still runs and can still be used normally -- this doesn't block or hide it -- but "
+                + "any notification it tries to show gets dismissed the instant it posts, so there's nothing to "
+                + "tap into. Meant for something Android Auto needs running (the Google app, Google Play "
+                + "Services) that would otherwise be able to pop up a notification leading back into itself. "
+                + "Only takes effect while the Lockdown switch at the top is on.", true));
+
+        if (!NotificationSuppressor.isEnabled(this)) {
+            Ui.add(card, Ui.body(this, "Notification access isn't granted to this app yet -- checking apps below "
+                    + "won't actually mute anything until it is. This has to be granted by hand; a device owner "
+                    + "can't grant it silently.", true), 8);
+            Ui.add(card, Ui.button(this, "Grant notification access", Ui.OUTLINED, v -> {
+                try {
+                    startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
+                } catch (Exception ex) {
+                    toast("Could not open notification access settings.");
+                }
+            }), 8);
+        }
+
+        EditText searchField = Ui.field(this, "Search");
+        searchField.setText(search);
+        searchField.setSelection(search.length());
+        searchField.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                search = s.toString();
+                fillNotificationsList();
+            }
+        });
+        Ui.add(card, searchField, 8);
+
+        pickerList = new LinearLayout(this);
+        pickerList.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(card, pickerList, 8);
+        fillNotificationsList();
+    }
+
+    private void fillNotificationsList() {
+        pickerList.removeAllViews();
+        Map<String, String> entries = notificationCandidates();
+        String needle = search.trim().toLowerCase(java.util.Locale.ROOT);
+        Set<String> selected = new LinkedHashSet<>(prefs().getStringSet("mutedNotificationPackages", new LinkedHashSet<>()));
+        PackageManager pm = getPackageManager();
+        int shown = 0;
+        for (Map.Entry<String, String> e : entries.entrySet()) {
+            String pkg = e.getKey();
+            String label = e.getValue();
+            if (!needle.isEmpty() && !label.toLowerCase(java.util.Locale.ROOT).contains(needle)
+                    && !pkg.toLowerCase(java.util.Locale.ROOT).contains(needle)) continue;
+            shown++;
+            android.graphics.drawable.Drawable icon = appIcon(pm, pkg);
+            Ui.add(pickerList, Ui.checkRow(this, icon, label, pkg, selected.contains(pkg), (box, checked) -> {
+                Set<String> s = new LinkedHashSet<>(prefs().getStringSet("mutedNotificationPackages", new LinkedHashSet<>()));
+                if (checked) s.add(pkg); else s.remove(pkg);
+                prefs().edit().putStringSet("mutedNotificationPackages", s).apply();
+            }), 6);
+        }
+        if (shown == 0) Ui.add(pickerList, Ui.body(this, "No matches.", true), 8);
+    }
+
+    /** Every launcher app, plus the system essentials (the Google app and Google Play Services
+     * among them) that don't have their own launcher icon -- notification muting is a soft block,
+     * not a destructive one, so nothing is excluded here the way isProtected() excludes things on
+     * the Regular/System apps pickers. */
+    private Map<String, String> notificationCandidates() {
+        PackageManager pm = getPackageManager();
+        Map<String, String> byPkg = new LinkedHashMap<>();
+        for (ResolveInfo ri : pm.queryIntentActivities(
+                new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || byPkg.containsKey(pkg)) continue;
+            byPkg.put(pkg, ri.loadLabel(pm).toString());
+        }
+        for (String essential : LockdownPolicy.SYSTEM_ESSENTIALS) {
+            if (byPkg.containsKey(essential)) continue;
+            try {
+                ApplicationInfo ai = pm.getApplicationInfo(essential, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+                byPkg.put(essential, pm.getApplicationLabel(ai).toString());
+            } catch (Exception ignored) {
+            }
+        }
+        return sortedBySelectionThenLabel(byPkg, "mutedNotificationPackages");
+    }
+
     private void applyBulkList() {
         Matcher m = PACKAGE_NAME.matcher(bulkInput.getText().toString());
         Set<String> found = new LinkedHashSet<>();
@@ -544,13 +676,14 @@ public class MainActivity extends Activity {
                 didnt.add(pkg + " (this app itself)");
                 continue;
             }
-            if (LockdownPolicy.isProtected(pkg)) {
-                didnt.add(pkg + " (protected -- the phone needs this to work)");
+            if (!showProtectedApps() && LockdownPolicy.isProtected(pkg)) {
+                didnt.add(pkg + " (protected -- the phone needs this to work. Check \"also show protected "
+                        + "system components\" on the Regular/System apps picker to block it anyway.)");
                 continue;
             }
             ApplicationInfo ai;
             try {
-                ai = pm.getApplicationInfo(pkg, 0);
+                ai = pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES);
             } catch (PackageManager.NameNotFoundException ex) {
                 didnt.add(pkg + " (not installed on this phone)");
                 continue;
@@ -617,12 +750,7 @@ public class MainActivity extends Activity {
             if (!needle.isEmpty() && !label.toLowerCase(java.util.Locale.ROOT).contains(needle)
                     && !pkg.toLowerCase(java.util.Locale.ROOT).contains(needle)) continue;
             shown++;
-            android.graphics.drawable.Drawable icon;
-            try {
-                icon = pm.getApplicationIcon(pkg);
-            } catch (Exception ex) {
-                icon = pm.getDefaultActivityIcon();
-            }
+            android.graphics.drawable.Drawable icon = appIcon(pm, pkg);
             String desc = regular ? pkg : pkg + "\n" + SystemAppSafety.note(pkg);
             Ui.add(pickerList, Ui.checkRow(this, icon, label, desc, selected.contains(pkg), (box, checked) -> {
                 Set<String> s = new LinkedHashSet<>(prefs().getStringSet(
@@ -645,43 +773,78 @@ public class MainActivity extends Activity {
         if (shown == 0) Ui.add(pickerList, Ui.body(this, "No matches.", true), 8);
     }
 
-    /** Every launcher app on the phone, except this app itself and anything LockdownPolicy
-     * protects. Maps/Waze/Android Auto are ordinary rows here too, just pre-checked by default
-     * (seeded once in onCreate) -- nothing stops unchecking them like any other app. */
+    /** pm.getApplicationIcon(String) alone throws for an app this app has hidden
+     * (setApplicationHidden) -- it's still really installed, just excluded from PackageManager's
+     * default, visible-apps-only queries, so the icon has to be looked up with
+     * MATCH_UNINSTALLED_PACKAGES first. Being hidden is no reason for its icon to disappear from
+     * the very picker that un-hides it. Ported from the agent app's own AdminActivity.appIcon(). */
+    private android.graphics.drawable.Drawable appIcon(PackageManager pm, String pkg) {
+        try {
+            return pm.getApplicationIcon(pkg);
+        } catch (Exception e) {
+            try {
+                ApplicationInfo ai = pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+                return pm.getApplicationIcon(ai);
+            } catch (Exception e2) {
+                return pm.getDefaultActivityIcon();
+            }
+        }
+    }
+
+    /** Every launcher app on the phone, except this app itself and (unless "also show protected
+     * system components" is checked) anything LockdownPolicy protects. Maps/Waze/Android Auto are
+     * ordinary rows here too, just pre-checked by default (seeded once in onCreate) -- nothing
+     * stops unchecking them like any other app. MATCH_UNINSTALLED_PACKAGES is needed so an app
+     * already blocked (hidden) by this app doesn't vanish from its own picker -- hiding makes
+     * PackageManager treat it like it's uninstalled unless asked otherwise. */
     private Map<String, String> regularAppCandidates() {
         PackageManager pm = getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        boolean showProtected = showProtectedApps();
         Map<String, String> byPkg = new LinkedHashMap<>();
-        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+        for (ResolveInfo ri : pm.queryIntentActivities(main, PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
             String pkg = ri.activityInfo.packageName;
-            if (pkg.equals(getPackageName()) || LockdownPolicy.isProtected(pkg) || byPkg.containsKey(pkg))
-                continue;
+            if (pkg.equals(getPackageName()) || byPkg.containsKey(pkg)) continue;
+            if (!showProtected && LockdownPolicy.isProtected(pkg)) continue;
             byPkg.put(pkg, ri.loadLabel(pm).toString());
         }
-        return sortedByLabel(byPkg);
+        return sortedBySelectionThenLabel(byPkg, "allowedApps");
     }
 
     /** Apps with no launcher icon of their own -- the only kind worth individually blocking, since
-     * regular apps are already excluded from the allow-list by default. */
+     * regular apps are already excluded from the allow-list by default. Same
+     * MATCH_UNINSTALLED_PACKAGES reasoning as above, on both the launcher-icon scan and the
+     * installed-apps scan -- without it, a blocked system app drops out of this list the moment
+     * it's actually blocked, making it impossible to find again to unblock. */
     private Map<String, String> systemAppCandidates() {
         PackageManager pm = getPackageManager();
+        boolean showProtected = showProtectedApps();
         Set<String> launchable = new LinkedHashSet<>();
-        for (ResolveInfo ri : pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0))
+        for (ResolveInfo ri : pm.queryIntentActivities(
+                new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_UNINSTALLED_PACKAGES))
             launchable.add(ri.activityInfo.packageName);
         Map<String, String> byPkg = new LinkedHashMap<>();
-        for (ApplicationInfo ai : pm.getInstalledApplications(0)) {
-            if (ai.packageName.equals(getPackageName()) || launchable.contains(ai.packageName) || LockdownPolicy.isProtected(ai.packageName))
-                continue;
+        for (ApplicationInfo ai : pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+            if (ai.packageName.equals(getPackageName()) || launchable.contains(ai.packageName)) continue;
+            if (!showProtected && LockdownPolicy.isProtected(ai.packageName)) continue;
             byPkg.put(ai.packageName, pm.getApplicationLabel(ai).toString());
         }
-        return sortedByLabel(byPkg);
+        return sortedBySelectionThenLabel(byPkg, "blockedSystemApps");
     }
 
-    private Map<String, String> sortedByLabel(Map<String, String> byPkg) {
+    /** Checked (allowed, for Regular apps; blocked, for System apps) entries first, each group
+     * then alphabetical -- so whatever's already been decided on this picker stays easy to find
+     * and review instead of getting lost among hundreds of untouched apps. */
+    private Map<String, String> sortedBySelectionThenLabel(Map<String, String> byPkg, String prefsKey) {
+        Set<String> selected = prefs().getStringSet(prefsKey, new LinkedHashSet<>());
         TreeMap<String, String> sorted = new TreeMap<>();
-        for (Map.Entry<String, String> e : byPkg.entrySet()) sorted.put(e.getValue() + "\u0000" + e.getKey(), e.getKey());
+        for (Map.Entry<String, String> e : byPkg.entrySet()) {
+            String pkg = e.getKey();
+            String rank = selected.contains(pkg) ? "0" : "1";
+            sorted.put(rank + "\u0000" + e.getValue() + "\u0000" + pkg, pkg);
+        }
         Map<String, String> out = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : sorted.entrySet()) out.put(e.getValue(), e.getKey().split("\u0000")[0]);
+        for (String pkg : sorted.values()) out.put(pkg, byPkg.get(pkg));
         return out;
     }
 
