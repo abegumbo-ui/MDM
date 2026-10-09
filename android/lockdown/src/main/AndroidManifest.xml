@@ -4,6 +4,11 @@
     <!-- Deliberately no android.permission.INTERNET, by design, not just by omission: this app
          never talks to a server and can't phone home even if the code tried to. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Only lets this app ask to uninstall a package. As the device owner, that request goes
+         through silently with no confirmation dialog, for the bulk-list feature's best-effort
+         real uninstall attempt (the block it applies alongside is what actually guarantees the
+         outcome, this permission only covers the bonus on top of it). -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <application
         android:allowBackup="false"

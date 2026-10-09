@@ -7,7 +7,10 @@ Three separate apps live here:
 - **lockdown** (`android/lockdown`) -- a one-time, one-way setup tool, entirely separate from the
   other two. It never talks to a server at all. It's its own device-owner app (Android only allows
   one per device, so it can't coexist with the agent on the same phone). Setup is four pickers
-  (Regular apps, System apps, Settings, Device restrictions) plus one button: Google Maps, Waze and
+  (Regular apps, System apps, Settings, Device restrictions), a fifth screen for pasting a bulk
+  list (whatever package names an outside AI tool found going through a dump of every app on the
+  phone -- each one gets blocked immediately, with a real silent uninstall also attempted for
+  anything that isn't part of Android itself), plus one button: Google Maps, Waze and
   Android Auto are allowed by default (an ordinary, uncheckable-if-you-want-to row, not hardcoded)
   and every other app starts blocked; the real Settings app is never reachable at all -- only the
   specific Settings categories checked on the Settings picker, each one opened from this app's own

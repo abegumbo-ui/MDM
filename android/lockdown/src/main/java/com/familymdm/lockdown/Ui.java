@@ -148,6 +148,22 @@ final class Ui {
         return e;
     }
 
+    /** A multi-line text box for pasting a block of text into, rather than a single search/account
+     * field -- monospace so pasted package names stay easy to scan. */
+    static EditText multilineField(Context c, String hint) {
+        EditText e = new EditText(c);
+        e.setHint(hint);
+        e.setMinLines(6);
+        e.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        e.setTextSize(13);
+        e.setTypeface(Typeface.MONOSPACE);
+        e.setTextColor(color(c, R.color.m3_on_surface));
+        e.setHintTextColor(color(c, R.color.m3_on_surface_variant));
+        e.setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 12));
+        e.setBackground(shape(color(c, R.color.m3_surface), dp(c, 8), color(c, R.color.m3_outline), dp(c, 1)));
+        return e;
+    }
+
     /** A full-width row with a checkbox, a bold label, and an optional description underneath. */
     static LinearLayout checkRow(Context c, String label, String desc, boolean checked, android.widget.CompoundButton.OnCheckedChangeListener l) {
         return checkRow(c, null, label, desc, checked, l);
