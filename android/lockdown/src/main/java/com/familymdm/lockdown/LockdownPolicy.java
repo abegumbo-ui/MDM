@@ -1,9 +1,9 @@
 package com.familymdm.lockdown;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -33,52 +33,107 @@ final class LockdownPolicy {
             "com.google.android.gms",
     };
 
-    /** Applied unconditionally at "This device is set up" -- no picker for these, since the whole
-     * point of this app is a small, fixed, non-negotiable lockdown rather than a pick-your-own
-     * restrictions list. Nothing can be installed or removed again, Settings can't touch app
-     * controls, and neither a factory reset from Settings nor Safe Mode offers a way around any of
-     * the above (an actual recovery-mode factory reset still works, which is why the Factory Reset
-     * Protection account matters). */
-    static final String[] ALWAYS_ON_LOCKDOWN = {
-            "no_install_apps", "no_uninstall_apps", "no_install_unknown_sources", "no_control_apps",
-            "no_factory_reset", "no_safe_boot",
-    };
+    /** Android restriction key -> plain-English label, in the exact order and wording used on the
+     * dashboard's own Restrictions screen (src/policy.js's RESTRICTIONS) -- kept in sync by hand,
+     * since this app deliberately has no dependency on the agent/dashboard code and never talks to
+     * it. Every one of these is an ordinary, individually-toggleable row on the Device restrictions
+     * picker; none are hardcoded as non-negotiable here either, same as every other picker in this
+     * app -- the admin decides, and whatever's checked applies immediately, live, the same pattern
+     * as the rest of setup. */
+    static final LinkedHashMap<String, String> RESTRICTIONS = new LinkedHashMap<>();
 
-    /**
-     * Every other android.os.UserManager.DISALLOW_* restriction worth offering here -- defense in
-     * depth, in case something ever reaches a screen outside the in-app Settings menu's own tightly
-     * limited set (an OS bug, a future Android version routing a shortcut differently, anything not
-     * foreseen). "No developer options" (DISALLOW_DEBUGGING_FEATURES) is the one that also blocks
-     * the About phone > Build number tap-seven-times trick -- there's no separate restriction for
-     * tapping the build number itself; blocking debugging features blocks the whole unlock flow.
-     *
-     * None of these are applied automatically -- they're offered on their own picker, individually
-     * toggleable, nothing checked by default. Some of them actively fight functionality this app
-     * already builds on purpose (the Wi-Fi/Bluetooth Settings categories, calls and texts), so
-     * checking those specific ones will break that functionality -- that's left to the admin's own
-     * judgment rather than decided here, since whether that trade-off is wanted depends on what this
-     * particular phone is actually for.
-     */
-    static final String[] EXTRA_RESTRICTIONS = {
-            "no_debugging_features", "no_oem_unlock", "no_config_credentials",
-            "no_modify_accounts", "no_add_user", "no_remove_user", "no_add_managed_profile",
-            "no_remove_managed_profile", "no_add_clone_profile", "no_add_private_profile",
-            "no_config_location", "no_share_location", "no_airplane_mode", "no_config_mobile_networks",
-            "no_config_tethering", "no_config_vpn", "disallow_config_private_dns", "no_network_reset",
-            "no_config_cell_broadcasts", "no_data_roaming", "no_usb_file_transfer", "no_physical_media",
-            "no_config_locale", "no_config_brightness", "no_ambient_display", "no_config_screen_timeout",
-            "no_config_date_time", "no_adjust_volume", "no_camera", "no_record_audio",
-            "no_unmute_microphone", "disallow_unmute_device", "no_fun", "no_create_windows",
-            "no_system_error_dialogs", "no_cross_profile_copy_paste", "no_outgoing_beam",
-            "no_wallpaper", "no_set_wallpaper", "no_run_in_background", "no_set_user_icon",
-            "no_config_wifi", "no_change_wifi_state", "no_wifi_tethering", "no_sharing_admin_configured_wifi",
-            "no_wifi_direct", "no_add_wifi_config",
-            "no_config_bluetooth", "no_bluetooth", "no_bluetooth_sharing",
-            "no_outgoing_calls", "no_sms",
-    };
+    /** Which of the above start checked the first time the picker is opened -- the same defaults as
+     * the dashboard's own "on: true" entries, the handful that make sense turned on for almost any
+     * phone (factory reset chief among them). Everything else starts off. */
+    static final Set<String> DEFAULT_ON_RESTRICTIONS = new LinkedHashSet<>();
 
-    /** The subset of EXTRA_RESTRICTIONS that fights the Wi-Fi/Connected devices Settings categories
-     * or calls and texts -- flagged on the picker with a warning, not left out of it. */
+    private static void r(String key, String label, boolean onByDefault) {
+        RESTRICTIONS.put(key, label);
+        if (onByDefault) DEFAULT_ON_RESTRICTIONS.add(key);
+    }
+
+    static {
+        r("no_factory_reset", "Block factory reset from Settings", true);
+        r("no_safe_boot", "Block Safe Mode", true);
+        r("no_uninstall_apps", "Block uninstalling apps", true);
+        r("no_control_apps", "Block changing apps in Settings", true);
+        r("no_modify_accounts", "Block adding accounts", true);
+        r("no_add_user", "Block adding users", true);
+        r("no_install_unknown_sources", "Block installing from unknown sources", true);
+        r("no_install_apps", "Block ALL app installs (including Play Store)", false);
+        r("no_config_credentials", "Only the administrator can set the screen lock (the person can't set their own PIN or pattern)", false);
+        r("no_debugging_features", "Block Developer options and USB debugging", true);
+        r("no_config_location", "Block changing Location settings", false);
+        r("no_airplane_mode", "Block turning on Airplane mode", false);
+        r("no_config_mobile_networks", "Block changing mobile network settings", false);
+        r("no_config_tethering", "Block Wi-Fi hotspot and tethering", false);
+        r("no_config_vpn", "Block adding or changing a VPN", false);
+        r("disallow_config_private_dns", "Block changing Private DNS", false);
+        r("no_config_wifi", "Block changing Wi-Fi settings", false);
+        r("no_change_wifi_state", "Block turning Wi-Fi on or off", false);
+        r("no_wifi_tethering", "Block Wi-Fi tethering", false);
+        r("no_sharing_admin_configured_wifi", "Block sharing admin-configured Wi-Fi (QR code, password)", false);
+        r("no_wifi_direct", "Block Wi-Fi Direct", false);
+        r("no_add_wifi_config", "Block adding new Wi-Fi networks", false);
+        r("no_config_locale", "Block changing language and region", false);
+        r("no_share_location", "Block sharing location", false);
+        r("no_config_brightness", "Block changing screen brightness", false);
+        r("no_ambient_display", "Block ambient display (always-on display)", false);
+        r("no_config_screen_timeout", "Block changing screen timeout", false);
+        r("no_config_bluetooth", "Block changing Bluetooth settings", false);
+        r("no_bluetooth", "Turn off Bluetooth entirely", false);
+        r("no_bluetooth_sharing", "Block sharing files over Bluetooth", false);
+        r("no_usb_file_transfer", "Block USB file transfer", false);
+        r("no_remove_user", "Block removing users (not relevant without secondary users)", false);
+        r("no_remove_managed_profile", "Block removing a work profile (not relevant without one)", false);
+        r("no_config_date_time", "Block changing date and time", false);
+        r("no_network_reset", "Block \"Reset network settings\"", false);
+        r("no_add_managed_profile", "Block adding a work profile", false);
+        r("no_add_clone_profile", "Block adding a cloned app profile", false);
+        r("no_add_private_profile", "Block adding a private space profile", false);
+        r("no_config_cell_broadcasts", "Block changing emergency cell broadcast settings", false);
+        r("no_physical_media", "Block mounting SD cards or USB storage", false);
+        r("no_unmute_microphone", "Keep the microphone forced muted", false);
+        r("no_adjust_volume", "Block changing volume", false);
+        r("no_outgoing_calls", "Block making calls (emergency calls still work)", false);
+        r("no_sms", "Block sending and receiving SMS", false);
+        r("no_fun", "Disable the \"Easter egg\" (build-number tap tricks)", false);
+        r("no_create_windows", "Block apps from drawing over other apps", false);
+        r("no_system_error_dialogs", "Suppress crash and \"app not responding\" dialogs", false);
+        r("no_cross_profile_copy_paste", "Block copy/paste between profiles", false);
+        r("no_outgoing_beam", "Block Android Beam (old NFC sharing)", false);
+        r("no_wallpaper", "Block viewing or changing wallpaper at all", false);
+        r("no_set_wallpaper", "Block changing wallpaper (can still view it)", false);
+        r("no_record_audio", "Block every app from recording audio", false);
+        r("no_run_in_background", "Stop apps from running in the background", false);
+        r("no_camera", "Disable the camera entirely", false);
+        r("disallow_unmute_device", "Keep the ringer forced silent", false);
+        r("no_data_roaming", "Block enabling data roaming", false);
+        r("no_set_user_icon", "Block changing the profile icon", false);
+        r("no_oem_unlock", "Block unlocking the bootloader", false);
+        r("no_unified_password", "Force a separate work-profile password (not relevant without one)", false);
+        r("no_autofill", "Block the autofill service", false);
+        r("no_content_capture", "Block content capture (used by some assistants)", false);
+        r("no_content_suggestions", "Block content suggestions", false);
+        r("no_user_switch", "Block switching between users (not relevant without secondary users)", false);
+        r("no_sharing_into_profile", "Block sharing content into a work profile", false);
+        r("no_printing", "Block printing", false);
+        r("disallow_microphone_toggle", "Block the quick-settings microphone privacy toggle", false);
+        r("disallow_camera_toggle", "Block the quick-settings camera privacy toggle", false);
+        r("disallow_biometric", "Block enrolling fingerprint or face unlock", false);
+        r("disallow_config_default_apps", "Block changing default apps (browser, etc.)", false);
+        r("no_cellular_2g", "Block allowing 2G cellular connections", false);
+        r("no_ultra_wideband_radio", "Block Ultra-wideband radio", false);
+        r("no_near_field_communication_radio", "Turn off NFC entirely", false);
+        r("no_change_near_field_communication_radio", "Block changing NFC on/off", false);
+        r("no_thread_network", "Block Thread network radio (smart-home)", false);
+        r("no_sim_globally", "Disable the SIM entirely", false);
+        r("no_assist_content", "Block sharing screen content with the assistant", false);
+        r("no_install_unknown_sources_globally", "Block installing from unknown sources, for every user", false);
+    }
+
+    /** The subset of RESTRICTIONS that fights the Wi-Fi/Connected devices Settings categories or
+     * calls and texts -- flagged on the picker with a warning, not left out of it. */
     private static final Set<String> CONFLICTS_WITH_BUILTINS = new HashSet<>(Arrays.asList(
             "no_config_wifi", "no_change_wifi_state", "no_wifi_tethering", "no_sharing_admin_configured_wifi",
             "no_wifi_direct", "no_add_wifi_config",
@@ -87,42 +142,6 @@ final class LockdownPolicy {
 
     static boolean conflictsWithBuiltins(String restrictionKey) {
         return CONFLICTS_WITH_BUILTINS.contains(restrictionKey);
-    }
-
-    /** A few restriction keys whose plain humanize() output doesn't match what Android itself
-     * calls the thing -- "Block Debugging Features" for the switch that's actually labeled
-     * "Developer options" in Settings, for example. Named here so searching for the Settings
-     * screen's own name actually finds the right switch. */
-    private static final Map<String, String> DISPLAY_LABEL_OVERRIDES = new HashMap<>();
-    static {
-        DISPLAY_LABEL_OVERRIDES.put("no_debugging_features", "Block Developer Options (and the Build Number unlock trick)");
-        DISPLAY_LABEL_OVERRIDES.put("no_safe_boot", "Block Safe Mode (holding the power button to boot without apps)");
-        DISPLAY_LABEL_OVERRIDES.put("no_factory_reset", "Block Factory Reset");
-        DISPLAY_LABEL_OVERRIDES.put("no_oem_unlock", "Block OEM Unlock (the bootloader-unlock switch in Developer Options)");
-        DISPLAY_LABEL_OVERRIDES.put("no_install_unknown_sources", "Block Install Unknown Apps (sideloading outside the Play Store)");
-    }
-
-    /** The label to actually show on a picker -- an override above if this key has one, else
-     * humanize()'s generic underscores-to-words rendering. */
-    static String displayLabel(String restrictionKey) {
-        String override = DISPLAY_LABEL_OVERRIDES.get(restrictionKey);
-        return override != null ? override : humanize(restrictionKey);
-    }
-
-    /** A plain-English label for a restriction key -- its own key, "no_"/"disallow_" dropped,
-     * underscores to spaces, each word capitalized. Good enough for a read-only list; nothing here
-     * needs the hand-written copy a picker UI would justify. */
-    static String humanize(String restrictionKey) {
-        String s = restrictionKey.startsWith("no_") ? restrictionKey.substring(3)
-                : restrictionKey.startsWith("disallow_") ? restrictionKey.substring(9) : restrictionKey;
-        String[] words = s.split("_");
-        StringBuilder sb = new StringBuilder("Block ");
-        for (int i = 0; i < words.length; i++) {
-            if (words[i].isEmpty()) continue;
-            if (i > 0) sb.append(' ');
-            sb.append(Character.toUpperCase(words[i].charAt(0))).append(words[i].substring(1));
-        }
-        return sb.toString();
     }
 
     private static final Set<String> PROTECTED_EXACT = new HashSet<>(Arrays.asList(

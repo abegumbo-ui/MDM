@@ -80,6 +80,9 @@ public class MainActivity extends Activity {
             for (String p : LockdownPolicy.DEFAULT_ALLOWED_APPS) defaults.add(p);
             prefs().edit().putStringSet("allowedApps", defaults).apply();
         }
+        if (!prefs().contains("extraRestrictions")) {
+            prefs().edit().putStringSet("extraRestrictions", new LinkedHashSet<>(LockdownPolicy.DEFAULT_ON_RESTRICTIONS)).apply();
+        }
         if (!prefs().contains("settingsCategories")) {
             Set<String> defaults = new LinkedHashSet<>();
             defaults.add("network");
@@ -132,7 +135,7 @@ public class MainActivity extends Activity {
             buildOwnerStep();
             return;
         }
-        applyAlwaysOnLockdownLive();
+        applyRestrictionsLive();
         applyRegularAppLiveState();
         if ("regular".equals(section)) {
             buildPicker(true);
@@ -164,16 +167,17 @@ public class MainActivity extends Activity {
         card.addView(Ui.body(this, "It should print \"Success\". This screen updates by itself.", true));
     }
 
-    /** The fixed, non-negotiable restrictions (no_factory_reset, no_debugging_features's sibling
-     * no_safe_boot, etc.) go on the moment this app becomes device owner -- not only once "This
-     * device is set up" is pressed. Setting up a kiosk phone with Factory Reset still reachable
-     * the whole time would defeat the point of the Factory Reset Protection step at the end,
-     * and there's no reason to wait: addUserRestriction() is safe to call repeatedly, so this
-     * just runs again (and no-ops) every time the screen rebuilds. */
-    private void applyAlwaysOnLockdownLive() {
-        for (String r : LockdownPolicy.ALWAYS_ON_LOCKDOWN) {
+    /** Every Device restrictions toggle's real, right-now state is kept in sync with what's saved,
+     * on every build() (same pattern as applyRegularAppLiveState() below) -- so a few defaults
+     * (Factory Reset, Developer Options, etc.) are already on the moment this app becomes device
+     * owner, not waiting on "This device is set up", and nothing drifts out of sync with what the
+     * picker shows checked. */
+    private void applyRestrictionsLive() {
+        Set<String> enabled = prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS);
+        for (String key : LockdownPolicy.RESTRICTIONS.keySet()) {
             try {
-                dpm().addUserRestriction(admin(), r);
+                if (enabled.contains(key)) dpm().addUserRestriction(admin(), key);
+                else dpm().clearUserRestriction(admin(), key);
             } catch (Exception ignored) {
             }
         }
@@ -211,10 +215,10 @@ public class MainActivity extends Activity {
                 + "apps (including those three, if you ever want to), to block specific system apps (ones with "
                 + "no icon of their own, like a search or suggestions service -- takes effect immediately, so "
                 + "you can test it before finishing setup), to pick which Settings screens (Wi-Fi, Connected "
-                + "devices, etc.) show up on this app's own Settings tile once locked, or to turn on extra "
-                + "Android-level lockdown switches like blocking Developer Options. Factory Reset and Developer "
-                + "Options are already blocked right now, from the moment this screen first showed up as device "
-                + "owner -- not waiting on the button below.", true));
+                + "devices, etc.) show up on this app's own Settings tile once locked, or to flip the same "
+                + "restriction switches the dashboard offers for the agent app -- a few start on by default "
+                + "(Factory Reset, Developer Options) the moment this screen first showed up as device owner, "
+                + "not waiting on the button below, but every one is still a toggle if a default isn't wanted.", true));
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
         Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
         Ui.add(card, Ui.button(this, "Regular apps (" + allowed.size() + " allowed)", Ui.TONAL, v -> {
@@ -326,29 +330,22 @@ public class MainActivity extends Activity {
             build();
         }), 0);
 
-        LinearLayout alwaysOnCard = Ui.card(this, root);
-        alwaysOnCard.addView(Ui.titleText(this, "Always on"));
-        alwaysOnCard.addView(Ui.body(this, "These turned on the moment this app became the device owner -- not "
-                + "something to toggle, and not waiting on \"This device is set up\" either. Open Settings right "
-                + "now and check for yourself: Developer Options and Factory Reset are already blocked.", true));
-        for (String key : LockdownPolicy.ALWAYS_ON_LOCKDOWN) {
-            Ui.add(alwaysOnCard, Ui.body(this, LockdownPolicy.displayLabel(key), false), 6);
-        }
-
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Device restrictions"));
-        card.addView(Ui.body(this, "Off by default. Each one is a separate Android lockdown switch, applied the "
-                + "instant you check it -- not waiting on \"This device is set up\" -- so you can go check Settings "
-                + "yourself and confirm it actually did something before you commit to anything. The ones marked "
-                + "below fight features this app already builds on purpose (the Wi-Fi/Connected devices Settings "
-                + "categories, calls and texts) -- turning those on will break that specific feature, so only do "
-                + "it if that trade-off is actually wanted here.", true));
-        Set<String> enabled = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", new LinkedHashSet<>()));
-        for (String key : LockdownPolicy.EXTRA_RESTRICTIONS) {
+        card.addView(Ui.body(this, "The same restrictions the dashboard offers for the agent app, in the same "
+                + "order, applied the instant you check or uncheck one -- not waiting on \"This device is set "
+                + "up\" -- so you can go check Settings yourself and confirm it actually did something. A few "
+                + "(Factory Reset, Developer Options, and so on) start checked by default; the rest start off. "
+                + "The ones marked below fight features this app already builds on purpose (the Wi-Fi/Connected "
+                + "devices Settings categories, calls and texts) -- turning those on will break that specific "
+                + "feature, so only do it if that trade-off is actually wanted here.", true));
+        Set<String> enabled = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS));
+        for (String key : LockdownPolicy.RESTRICTIONS.keySet()) {
+            String label = LockdownPolicy.RESTRICTIONS.get(key);
             String desc = LockdownPolicy.conflictsWithBuiltins(key)
                     ? "Will break Wi-Fi/Connected devices Settings or calls/texts if this app uses them." : null;
-            Ui.add(card, Ui.checkRow(this, LockdownPolicy.displayLabel(key), desc, enabled.contains(key), (box, checked) -> {
-                Set<String> s = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", new LinkedHashSet<>()));
+            Ui.add(card, Ui.checkRow(this, label, desc, enabled.contains(key), (box, checked) -> {
+                Set<String> s = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS));
                 if (checked) s.add(key); else s.remove(key);
                 prefs().edit().putStringSet("extraRestrictions", s).apply();
                 // Same reasoning as the System apps picker's live blocking -- applied now, not only
@@ -359,7 +356,7 @@ public class MainActivity extends Activity {
                     if (checked) dpm().addUserRestriction(admin(), key);
                     else dpm().clearUserRestriction(admin(), key);
                 } catch (Exception ex) {
-                    toast("Could not " + (checked ? "turn on" : "turn off") + " \"" + LockdownPolicy.displayLabel(key) + "\": " + ex.getMessage());
+                    toast("Could not " + (checked ? "turn on" : "turn off") + " \"" + label + "\": " + ex.getMessage());
                 }
             }), 6);
         }
@@ -623,19 +620,9 @@ public class MainActivity extends Activity {
 
         applyFrp(dpm, admin, frpAccountId);
 
-        for (String r : LockdownPolicy.ALWAYS_ON_LOCKDOWN) {
-            try {
-                dpm.addUserRestriction(admin, r);
-            } catch (Exception ignored) {
-            }
-        }
-        Set<String> extraRestrictions = prefs().getStringSet("extraRestrictions", new LinkedHashSet<>());
-        for (String r : extraRestrictions) {
-            try {
-                dpm.addUserRestriction(admin, r);
-            } catch (Exception ignored) {
-            }
-        }
+        // Re-asserts the same state applyRestrictionsLive() already keeps live throughout setup --
+        // belt and suspenders for this one irreversible step, same as the blockedSystem loop below.
+        applyRestrictionsLive();
 
         Set<String> blockedSystem = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
         for (String pkg : blockedSystem) {
