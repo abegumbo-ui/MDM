@@ -21,11 +21,11 @@ final class LockdownPolicy {
     };
 
     /** Parts of the system every allowed app (and the lock screen itself) needs to keep working:
-     * permission prompts, file picker, share sheets, Google sign-in, the phone/SMS apps, and
-     * Settings itself (needed so Wi-Fi and Connected devices stay reachable -- see GuardService for
-     * how it's kept to just those two areas once inside). */
+     * permission prompts, file picker, share sheets, Google sign-in. Deliberately does NOT include
+     * com.android.settings -- see SettingsCategories for how specific real Settings screens stay
+     * reachable without ever putting the whole Settings app in the allowlist. */
     static final String[] SYSTEM_ESSENTIALS = {
-            "android", "com.android.systemui", "com.android.settings",
+            "android", "com.android.systemui",
             "com.android.documentsui", "com.google.android.documentsui",
             "com.google.android.permissioncontroller", "com.android.permissioncontroller",
             "com.google.android.gms",

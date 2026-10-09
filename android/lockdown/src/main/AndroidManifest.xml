@@ -1,17 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Deliberately no android.permission.INTERNET, by design, not just by omission: this app
          never talks to a server and can't phone home even if the code tried to. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- GuardService's own look at the foreground app, to keep Settings down to Wi-Fi/Connected
-         devices once locked. Requested normally, then also best-effort self-granted as device
-         owner (see GuardService.tryGrantUsageAccess()) since this app has no UI left afterward to
-         ask the person to flip it on by hand under Settings > Apps > Special access. -->
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="false"
@@ -43,17 +35,12 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".GuardService"
+        <!-- This app's own in-app Settings menu, reached only from HomeActivity's own tile. Its own
+             package keeps it hard-locked into the kiosk like HomeActivity, with no need to ever put
+             the real Settings app in the lock task allowlist: see SettingsMenuActivity's own note. -->
+        <activity
+            android:name=".SettingsMenuActivity"
             android:exported="false" />
-
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
 
         <receiver
             android:name=".AdminReceiver"
