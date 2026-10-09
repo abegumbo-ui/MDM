@@ -105,6 +105,8 @@ public class MainActivity extends Activity {
             buildPicker(false);
         } else if ("settings".equals(section)) {
             buildSettingsPicker();
+        } else if ("restrictions".equals(section)) {
+            buildRestrictionsPicker();
         } else if ("frp".equals(section)) {
             buildFrpStep();
         } else {
@@ -131,11 +133,12 @@ public class MainActivity extends Activity {
         card.addView(Ui.titleText(this, "Step 2: choose what's allowed"));
         card.addView(Ui.body(this, "Google Maps, Waze, and Android Auto are allowed by default -- nothing to "
                 + "set up for those unless you want to change it. Every other app starts blocked, and the real "
-                + "Settings app is never reachable at all. Use the three lists below to allow or block regular "
+                + "Settings app is never reachable at all. Use the lists below to allow or block regular "
                 + "apps (including those three, if you ever want to), to block specific system apps (ones with "
                 + "no icon of their own, like a search or suggestions service -- takes effect immediately, so "
-                + "you can test it before finishing setup), or to pick which Settings screens (Wi-Fi, Connected "
-                + "devices, etc.) show up on this app's own Settings tile once locked.", true));
+                + "you can test it before finishing setup), to pick which Settings screens (Wi-Fi, Connected "
+                + "devices, etc.) show up on this app's own Settings tile once locked, or to turn on extra "
+                + "Android-level lockdown switches like blocking Developer Options.", true));
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
         Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
         Ui.add(card, Ui.button(this, "Regular apps (" + allowed.size() + " allowed)", Ui.TONAL, v -> {
@@ -151,6 +154,11 @@ public class MainActivity extends Activity {
         Set<String> settingsOn = prefs().getStringSet("settingsCategories", new LinkedHashSet<>());
         Ui.add(card, Ui.button(this, "Settings (" + settingsOn.size() + " enabled)", Ui.TONAL, v -> {
             section = "settings";
+            build();
+        }), 8);
+        Set<String> extraOn = prefs().getStringSet("extraRestrictions", new LinkedHashSet<>());
+        Ui.add(card, Ui.button(this, "Device restrictions (" + extraOn.size() + " on)", Ui.TONAL, v -> {
+            section = "restrictions";
             build();
         }), 8);
 
@@ -219,6 +227,33 @@ public class MainActivity extends Activity {
                 Set<String> s = new LinkedHashSet<>(prefs().getStringSet("settingsCategories", new LinkedHashSet<>()));
                 if (checked) s.add(category); else s.remove(category);
                 prefs().edit().putStringSet("settingsCategories", s).apply();
+            }), 6);
+        }
+    }
+
+    // ---------- the device restrictions picker ----------
+    private void buildRestrictionsPicker() {
+        LinearLayout header = Ui.card(this, root);
+        Ui.add(header, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            section = null;
+            build();
+        }), 0);
+
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Device restrictions"));
+        card.addView(Ui.body(this, "Off by default. Each one is a separate Android lockdown switch -- turn on "
+                + "whichever ones make sense for this phone, like blocking Developer Options and the Build "
+                + "Number unlock trick. The ones marked below fight features this app already builds on purpose "
+                + "(the Wi-Fi/Connected devices Settings categories, calls and texts) -- turning those on will "
+                + "break that specific feature, so only do it if that trade-off is actually wanted here.", true));
+        Set<String> enabled = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", new LinkedHashSet<>()));
+        for (String key : LockdownPolicy.EXTRA_RESTRICTIONS) {
+            String desc = LockdownPolicy.conflictsWithBuiltins(key)
+                    ? "Will break Wi-Fi/Connected devices Settings or calls/texts if this app uses them." : null;
+            Ui.add(card, Ui.checkRow(this, LockdownPolicy.humanize(key), desc, enabled.contains(key), (box, checked) -> {
+                Set<String> s = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", new LinkedHashSet<>()));
+                if (checked) s.add(key); else s.remove(key);
+                prefs().edit().putStringSet("extraRestrictions", s).apply();
             }), 6);
         }
     }
@@ -362,6 +397,13 @@ public class MainActivity extends Activity {
         applyFrp(dpm, admin, frpAccountId);
 
         for (String r : LockdownPolicy.ALWAYS_ON_LOCKDOWN) {
+            try {
+                dpm.addUserRestriction(admin, r);
+            } catch (Exception ignored) {
+            }
+        }
+        Set<String> extraRestrictions = prefs().getStringSet("extraRestrictions", new LinkedHashSet<>());
+        for (String r : extraRestrictions) {
             try {
                 dpm.addUserRestriction(admin, r);
             } catch (Exception ignored) {

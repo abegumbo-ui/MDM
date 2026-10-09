@@ -42,6 +42,67 @@ final class LockdownPolicy {
             "no_factory_reset", "no_safe_boot",
     };
 
+    /**
+     * Every other android.os.UserManager.DISALLOW_* restriction worth offering here -- defense in
+     * depth, in case something ever reaches a screen outside the in-app Settings menu's own tightly
+     * limited set (an OS bug, a future Android version routing a shortcut differently, anything not
+     * foreseen). "No developer options" (DISALLOW_DEBUGGING_FEATURES) is the one that also blocks
+     * the About phone > Build number tap-seven-times trick -- there's no separate restriction for
+     * tapping the build number itself; blocking debugging features blocks the whole unlock flow.
+     *
+     * None of these are applied automatically -- they're offered on their own picker, individually
+     * toggleable, nothing checked by default. Some of them actively fight functionality this app
+     * already builds on purpose (the Wi-Fi/Bluetooth Settings categories, calls and texts), so
+     * checking those specific ones will break that functionality -- that's left to the admin's own
+     * judgment rather than decided here, since whether that trade-off is wanted depends on what this
+     * particular phone is actually for.
+     */
+    static final String[] EXTRA_RESTRICTIONS = {
+            "no_debugging_features", "no_oem_unlock", "no_config_credentials",
+            "no_modify_accounts", "no_add_user", "no_remove_user", "no_add_managed_profile",
+            "no_remove_managed_profile", "no_add_clone_profile", "no_add_private_profile",
+            "no_config_location", "no_share_location", "no_airplane_mode", "no_config_mobile_networks",
+            "no_config_tethering", "no_config_vpn", "disallow_config_private_dns", "no_network_reset",
+            "no_config_cell_broadcasts", "no_data_roaming", "no_usb_file_transfer", "no_physical_media",
+            "no_config_locale", "no_config_brightness", "no_ambient_display", "no_config_screen_timeout",
+            "no_config_date_time", "no_adjust_volume", "no_camera", "no_record_audio",
+            "no_unmute_microphone", "disallow_unmute_device", "no_fun", "no_create_windows",
+            "no_system_error_dialogs", "no_cross_profile_copy_paste", "no_outgoing_beam",
+            "no_wallpaper", "no_set_wallpaper", "no_run_in_background", "no_set_user_icon",
+            "no_config_wifi", "no_change_wifi_state", "no_wifi_tethering", "no_sharing_admin_configured_wifi",
+            "no_wifi_direct", "no_add_wifi_config",
+            "no_config_bluetooth", "no_bluetooth", "no_bluetooth_sharing",
+            "no_outgoing_calls", "no_sms",
+    };
+
+    /** The subset of EXTRA_RESTRICTIONS that fights the Wi-Fi/Connected devices Settings categories
+     * or calls and texts -- flagged on the picker with a warning, not left out of it. */
+    private static final Set<String> CONFLICTS_WITH_BUILTINS = new HashSet<>(Arrays.asList(
+            "no_config_wifi", "no_change_wifi_state", "no_wifi_tethering", "no_sharing_admin_configured_wifi",
+            "no_wifi_direct", "no_add_wifi_config",
+            "no_config_bluetooth", "no_bluetooth", "no_bluetooth_sharing",
+            "no_outgoing_calls", "no_sms"));
+
+    static boolean conflictsWithBuiltins(String restrictionKey) {
+        return CONFLICTS_WITH_BUILTINS.contains(restrictionKey);
+    }
+
+    /** A plain-English label for a restriction key -- its own key, "no_"/"disallow_" dropped,
+     * underscores to spaces, each word capitalized. Good enough for a read-only list; nothing here
+     * needs the hand-written copy a picker UI would justify. */
+    static String humanize(String restrictionKey) {
+        String s = restrictionKey.startsWith("no_") ? restrictionKey.substring(3)
+                : restrictionKey.startsWith("disallow_") ? restrictionKey.substring(9) : restrictionKey;
+        String[] words = s.split("_");
+        StringBuilder sb = new StringBuilder("Block ");
+        for (int i = 0; i < words.length; i++) {
+            if (words[i].isEmpty()) continue;
+            if (i > 0) sb.append(' ');
+            sb.append(Character.toUpperCase(words[i].charAt(0))).append(words[i].substring(1));
+        }
+        return sb.toString();
+    }
+
     private static final Set<String> PROTECTED_EXACT = new HashSet<>(Arrays.asList(
             "android", "com.android.systemui", "com.android.settings", "com.android.vending", "com.android.phone",
             "com.android.server.telecom", "com.android.packageinstaller", "com.google.android.packageinstaller",

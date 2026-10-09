@@ -6,13 +6,18 @@ Three separate apps live here:
 - **browser** (`android/browser`) -- the agent's companion allowlisted browser.
 - **lockdown** (`android/lockdown`) -- a one-time, one-way setup tool, entirely separate from the
   other two. It never talks to a server at all. It's its own device-owner app (Android only allows
-  one per device, so it can't coexist with the agent on the same phone). Setup is three pickers with
-  search (Regular apps, System apps, Settings) plus one button: Google Maps, Waze and Android Auto
-  are allowed by default (an ordinary, uncheckable-if-you-want-to row, not hardcoded) and every
-  other app starts blocked; the real Settings app is never reachable at all -- only the specific
-  Settings categories checked on the Settings picker, each one opened from this app's own in-app
-  Settings menu via a direct android.settings.* action, the same way the agent app's own disguised
-  Settings menu reaches real screens without ever putting all of Settings in the kiosk allowlist.
+  one per device, so it can't coexist with the agent on the same phone). Setup is four pickers
+  (Regular apps, System apps, Settings, Device restrictions) plus one button: Google Maps, Waze and
+  Android Auto are allowed by default (an ordinary, uncheckable-if-you-want-to row, not hardcoded)
+  and every other app starts blocked; the real Settings app is never reachable at all -- only the
+  specific Settings categories checked on the Settings picker, each one opened from this app's own
+  in-app Settings menu via a direct android.settings.* action, the same way the agent app's own
+  disguised Settings menu reaches real screens without ever putting all of Settings in the kiosk
+  allowlist. Device restrictions is a separate picker of ~50 individually-toggleable Android
+  lockdown switches (Developer Options, OEM unlock, USB file transfer, and so on), all off by
+  default -- a few of them are flagged as conflicting with the Wi-Fi/Connected devices Settings
+  categories or with calls and texts, and turning those on is a deliberate, admin-made trade-off
+  rather than something this app decides for you.
   Once "This device is set up" is confirmed and a 21-digit Factory Reset Protection account ID is
   entered, it locks the phone into a permanent kiosk mode (only what's allowed can open) and hides
   its own launcher icon so it can never be opened again. A factory reset -- gated by that FRP
