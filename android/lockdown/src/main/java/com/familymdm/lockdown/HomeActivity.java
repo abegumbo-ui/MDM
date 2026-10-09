@@ -73,8 +73,13 @@ public class HomeActivity extends Activity {
         PackageManager pm = getPackageManager();
         Set<String> allowed = prefs().getStringSet("allowedApps", new LinkedHashSet<>());
 
+        Set<String> muted = prefs().getStringSet("mutedNotificationPackages", new LinkedHashSet<>());
         List<String[]> apps = new ArrayList<>();
         for (String pkg : allowed) {
+            // Muted (Notifications picker) means "runs, but stays out of sight" -- an allowed app
+            // that's also muted keeps running (needed for things like Android Auto) but gets no
+            // icon here to tap into, same as its notifications getting no chance to be tapped.
+            if (muted.contains(pkg)) continue;
             Intent launch = pm.getLaunchIntentForPackage(pkg);
             if (launch == null) continue;
             try {

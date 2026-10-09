@@ -570,11 +570,13 @@ public class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Notifications"));
         card.addView(Ui.body(this, "A soft block, separate from the Regular/System apps lists above: a checked "
-                + "app here still runs and can still be used normally -- this doesn't block or hide it -- but "
-                + "any notification it tries to show gets dismissed the instant it posts, so there's nothing to "
-                + "tap into. Meant for something Android Auto needs running (the Google app, Google Play "
-                + "Services) that would otherwise be able to pop up a notification leading back into itself. "
-                + "Only takes effect while the Lockdown switch at the top is on.", true));
+                + "app here still runs in the background -- this doesn't hide or block it the way the Regular/"
+                + "System apps lists do -- but it gets no icon on the kiosk home screen to tap into, and any "
+                + "notification it tries to show gets dismissed the instant it posts. Meant for something "
+                + "Android Auto needs running (the Google app, Google Play Services) without being something "
+                + "to tap into, by icon or by notification. Only takes effect while the Lockdown switch at the "
+                + "top is on; an app checked here should also be checked \"allowed\" on the Regular apps list, "
+                + "or it gets hidden outright and can't run at all.", true));
 
         if (!NotificationSuppressor.isEnabled(this)) {
             Ui.add(card, Ui.body(this, "Notification access isn't granted to this app yet -- checking apps below "
