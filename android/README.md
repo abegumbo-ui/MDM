@@ -18,12 +18,16 @@ Three separate apps live here:
   disguised Settings menu), and the Device restrictions list -- the same list, order and wording
   the dashboard offers for the agent app (`src/policy.js`) -- gets applied. Flipping it back off
   reverses every bit of that: restrictions clear, apps come back, the kiosk home-screen takeover
-  stops, and Factory Reset Protection turns off, no factory reset needed. The app itself is never
-  hidden or disabled -- its own "Lockdown" tile is always the first thing on the kiosk home screen,
-  so there's always a way back in to change something, push an update, or turn it off again. A
-  factory reset is only for if the phone is actually lost or stolen, gated by whatever Google
-  account ID is saved as the Factory Reset Protection recovery account -- not the normal way to
-  undo anything here.
+  stops, and Factory Reset Protection turns off. The app itself is never hidden or disabled while
+  this switch is being used -- its own "Lockdown" tile is always the first thing on the kiosk home
+  screen, so there's a way back in to test, change something, or push an update, as many times as
+  needed. Flipping this switch is always undoable; it's for setup and testing, not the final step.
+
+  **"This device is set up for good"** is the real, genuinely one-way step, deliberately separate
+  from the switch above and only reachable once it's on: it disables this app's own launcher
+  component for good, right then, with no more coming back to change anything or push an update
+  from the phone. A factory reset, gated by whatever Google account ID is saved as the Factory
+  Reset Protection recovery account, is the only way back in after that.
 
 ## Release signing
 

@@ -73,6 +73,14 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Defensive only -- by the time this is true, MainActivity's own launcher component is
+        // already disabled, so Android shouldn't be able to start this at all. This is the one and
+        // only irreversible step in this app: everything else (the Lockdown switch) is reversible
+        // any number of times, right up until "This device is set up for good" is pressed.
+        if (prefs().getBoolean("lockedForever", false)) {
+            finish();
+            return;
+        }
         if (!prefs().contains("allowedApps")) {
             Set<String> defaults = new LinkedHashSet<>();
             for (String p : LockdownPolicy.DEFAULT_ALLOWED_APPS) defaults.add(p);
@@ -205,6 +213,44 @@ public class MainActivity extends Activity {
             section = "frp";
             build();
         }), 8);
+
+        LinearLayout finishCard = Ui.card(this, root);
+        finishCard.addView(Ui.titleText(this, "This device is set up for good"));
+        finishCard.addView(Ui.body(this, "A different, one-way step from the switch above -- this one actually "
+                + "can't be undone from the phone. Only press it once everything's been tested with the switch "
+                + "on and is working exactly as wanted: it disables this app itself, for good, so there's no "
+                + "more coming back to change anything, no more updates, nothing -- a factory reset (gated by "
+                + "the recovery account above) is the only way back in after this.", true));
+        Ui.add(finishCard, Ui.button(this, "This device is set up for good", Ui.DANGER, v -> promptFinishForever()), 12);
+    }
+
+    private void promptFinishForever() {
+        if (!isLockdownOn()) {
+            toast("Turn Lockdown on first and confirm everything works the way it's supposed to -- this step can't be undone, so there's nothing to test after.");
+            return;
+        }
+        Ui.alertDialog(this)
+                .setTitle("Set up for good?")
+                .setMessage("This is different from the switch above -- this one really can't be undone. This "
+                        + "app disables itself for good, right now, and there is no more coming back to change "
+                        + "anything or push an update. Only a factory reset, gated by the recovery account, "
+                        + "undoes any of it after this.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Yes, for good", (d, w) -> finishForever())
+                .show();
+    }
+
+    /** The one genuinely irreversible step in this app -- everything else (the Lockdown switch) can
+     * be flipped back and forth any number of times, but this disables MainActivity's own launcher
+     * component for good, the same way the original one-way design always worked. Only reachable
+     * with Lockdown already on, so whatever gets sealed in here has actually been tested first. */
+    private void finishForever() {
+        getPackageManager().setComponentEnabledSetting(
+                new ComponentName(this, MainActivity.class),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP);
+        prefs().edit().putBoolean("lockedForever", true).apply();
+        finishAndRemoveTask();
     }
 
     private void toggleLockdown(boolean on) {

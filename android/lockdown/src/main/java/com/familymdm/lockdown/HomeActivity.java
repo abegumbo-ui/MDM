@@ -85,9 +85,10 @@ public class HomeActivity extends Activity {
 
         int width = (getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3;
         Set<String> settingsCategories = prefs().getStringSet("settingsCategories", new LinkedHashSet<>());
-        // Always first and always shown, admin access back into the setup/admin screen -- this is
-        // what makes the whole lockdown reversible instead of a one-way trap.
-        grid.addView(adminTile(width));
+        // Always first while there's still a setup screen to go back to -- this is what makes the
+        // lockdown reversible instead of a one-way trap. Gone for good once "This device is set up
+        // for good" has run and disabled MainActivity -- there's genuinely nothing left to open.
+        if (!prefs().getBoolean("lockedForever", false)) grid.addView(adminTile(width));
         // Always next if any Settings categories are enabled, same as the agent app's own kiosk
         // home screen -- the only way to reach any part of Settings once locked, so it's not
         // subject to being left out like a regular app.
@@ -117,7 +118,14 @@ public class HomeActivity extends Activity {
         name.setGravity(Gravity.CENTER);
         t.addView(name);
 
-        t.setOnClickListener(v -> startActivity(new Intent(this, MainActivity.class)));
+        t.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(this, MainActivity.class));
+            } catch (Exception e) {
+                // Only happens once "This device is set up for good" has run and disabled
+                // MainActivity's own launcher component -- the expected, final state, not a bug.
+            }
+        });
         return t;
     }
 
