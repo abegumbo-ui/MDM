@@ -326,9 +326,18 @@ export function normalizeWholeAppBlocklist(o) {
 export function normalizeDnsBlocklist(list) {
   const out = new Set();
   for (const raw of Array.isArray(list) ? list : []) {
-    const h = String(raw || "")
+    let h = String(raw || "")
       .trim()
       .toLowerCase();
+    if (!h || h.startsWith("#") || h.startsWith("!")) continue; // a blank or comment line from a pasted list
+    // Pasted blocklists rarely come as bare hostnames -- accept the common export shapes
+    // (AdBlock-style "||host^", a full URL, a "*." wildcard prefix) by reducing them to the
+    // same bare hostname a plain line would be, rather than silently dropping every line that
+    // isn't already in that exact shape.
+    h = h.replace(/^\|\|/, "").replace(/\^$/, "");
+    h = h.replace(/^https?:\/\//, "");
+    h = h.replace(/\/.*$/, "");
+    h = h.replace(/^\*\.?/, "");
     if (/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(h)) out.add(h);
   }
   return [...out].slice(0, 500);
