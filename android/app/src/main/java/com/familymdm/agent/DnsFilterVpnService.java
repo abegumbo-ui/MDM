@@ -81,6 +81,18 @@ public class DnsFilterVpnService extends VpnService {
                 .addDnsServer(FAKE_DNS)
                 .addRoute(FAKE_DNS, 32)
                 .setBlocking(true);
+        // Critical: without this, this app's own network traffic -- including the DNS lookup it
+        // needs to reach the dashboard at all -- gets captured by its own filter too. Any hiccup
+        // in the relay logic above then breaks this app's own connectivity to the server, which
+        // looks exactly like "the dashboard stopped hearing from the phone" (it did: this app
+        // could no longer reach it) rather than like a DNS filter bug. The whole point of the
+        // narrow /32 route above is that only DNS traffic ever enters this tunnel at all; this
+        // makes sure that doesn't include this app's own.
+        try {
+            builder.addDisallowedApplication(getPackageName());
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            throw new IOException("could not exclude this app's own traffic: " + e.getMessage(), e);
+        }
         tun = builder.establish();
         if (tun == null) throw new IOException("establish() returned null -- VPN permission not granted");
     }
