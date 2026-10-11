@@ -178,6 +178,18 @@
             android:name=".AgentService"
             android:exported="false" />
 
+        <!-- A local, DNS-only VPN: see its own class doc for why this shape, not a full traffic
+             proxy, and what it can and can't reach. Only exists/runs while the dashboard's DNS
+             blocklist (PolicyApplier.applyDnsFilter()) is non-empty. -->
+        <service
+            android:name=".DnsFilterVpnService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
         <!-- Instant, recents-safe version of the blocklist bounce; see BlockAccessibilityService's
              own doc comment for why this exists alongside the UsageStatsManager polling in
              AppBlocklist rather than replacing it (it needs a manual one-time grant, so the poller

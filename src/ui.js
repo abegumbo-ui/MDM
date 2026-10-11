@@ -423,6 +423,7 @@ function buildAppsHub(m,dv){
    h('div',{class:'mute'},'Specific screens (exact app components) to bounce away from the instant they open -- set directly on the phone\'s own Administrator screen (Apps → Blocking → Block Apps/Screens). Picking the exact screen needs the phone itself (it offers an autocomplete built from what\'s actually been seen in the foreground there), so this one box stays phone-only.'));
   m.append(bCard);
   renderWholeAppBlocklist(m,dv);
+  renderDnsBlocklist(m,dv);
  } else if(appsSub==='system'){
   const sal=h('div',{class:'card'},h('h2',null,'System apps'),
    h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "Apps on this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
@@ -740,6 +741,19 @@ function renderWholeAppBlocklist(m,dv){
    btn('Remove','danger',async function(){if(!confirm('Remove the whole-app block on '+pkg+'? This un-hides it.'))return;delete dv.config.wholeAppBlocklist[pkg];try{await saveConfigFor(dv,'Removed.')}catch(e){snack(e.message,1)}render()})));
   list.append(row)}
  m.append(list);
+}
+// A different thing from both Block Whole Apps above and the Browser's own site allowlist: this
+// blocks a hostname for every app on the phone, device-wide, via the agent's own always-on local
+// DNS filter (DnsFilterVpnService on the phone).
+function renderDnsBlocklist(m,dv){
+ const card=h('div',{class:'card'},h('h2',null,'DNS Hostname Block'),
+  h('div',{class:'mute'},'Blocks specific hostnames for the whole phone at the network level -- not a per-app block, and not the Browser\'s own site allowlist. One hostname per line; each one also blocks every subdomain of it. Example, to block photos/Street View/video in Google Maps while leaving the map itself working: streetviewpixels-pa.googleapis.com blocks Street View imagery specifically (Maps-only, no side effects elsewhere). lh3.googleusercontent.com, lh4.googleusercontent.com, lh5.googleusercontent.com and lh6.googleusercontent.com block business/user photos -- but those same servers also serve images in Gmail, Drive and Photos, so this affects those too. googlevideo.com blocks in-app video -- but also every YouTube video on the phone, everywhere, not just inside Maps. Turning this on starts the agent\'s own local VPN (always-on, so it can\'t just be disconnected from Settings) -- the phone shows a permanent VPN notification icon the whole time any hostname is listed here. Takes effect within about 5 minutes of saving.'));
+ const ta=h('textarea',{style:'width:100%;min-height:120px;font-family:monospace'},(dv.config.dnsBlocklist||[]).join('\n'));
+ card.append(h('div',{style:'margin-top:8px'},ta));
+ card.append(h('div',{style:'margin-top:8px'},btn('Save','tonal',async function(){
+  dv.config.dnsBlocklist=ta.value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
+  try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
+ m.append(card);
 }
 function renderApps(m,dv){
  const pend=new Map();

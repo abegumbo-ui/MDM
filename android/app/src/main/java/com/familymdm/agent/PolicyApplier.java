@@ -189,6 +189,7 @@ final class PolicyApplier {
         } else {
             WholeAppBlocklist.adopt(c, policy.optJSONObject("wholeAppBlocklist"));
         }
+        applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
@@ -631,6 +632,39 @@ final class PolicyApplier {
         }
     }
 
+    /**
+     * Whether DnsFilterVpnService is running is derived purely from whether the dashboard's
+     * hostname list is non-empty -- no separate on/off flag, same idea as WholeAppBlocklist. Turning
+     * it on also makes it always-on (so the person can't just disconnect it from Settings) and
+     * relies on the existing "Block changing VPN" / "Block changing Private DNS" restrictions,
+     * already offered elsewhere, to close the two ordinary ways around it -- those are a deliberate
+     * admin choice on the Restrictions screen, not forced on here.
+     */
+    private static void applyDnsFilter(Context c, DevicePolicyManager dpm, ComponentName admin, JSONArray hostnames) {
+        Set<String> want = DnsBlocklist.sanitize(hostnames);
+        DnsBlocklist.set(c, want);
+        boolean wanted = !want.isEmpty();
+        boolean applied = Agent.prefs(c).getBoolean("dnsFilterApplied", false);
+        try {
+            if (wanted && !applied) {
+                c.startForegroundService(new Intent(c, DnsFilterVpnService.class));
+                dpm.setAlwaysOnVpnPackage(admin, c.getPackageName(), false);
+                Agent.addEvent(c, "restriction", "DNS filter turned on (" + want.size() + " host(s) blocked)");
+            } else if (!wanted && applied) {
+                dpm.setAlwaysOnVpnPackage(admin, null, false);
+                c.stopService(new Intent(c, DnsFilterVpnService.class));
+                Agent.addEvent(c, "restriction", "DNS filter turned off");
+            }
+            // Already running with a non-empty list: nothing to re-trigger here. The service reads
+            // DnsBlocklist (just updated above) fresh on every lookup, so a changed list takes
+            // effect on the very next DNS query with no restart needed.
+            Agent.prefs(c).edit().putBoolean("dnsFilterApplied", wanted).apply();
+            errorCleared(c, "dnsfilter");
+        } catch (Exception e) {
+            errorOnce(c, "dnsfilter", "Could not change the DNS filter: " + e.getMessage());
+        }
+    }
+
     /** Same on/off switch as the phone's own Add-ons screen (BrowserAddon.setEnabled()), just
      * reachable from the dashboard too -- a no-op when the policy's value already matches what's
      * on the phone, so a local toggle between syncs isn't stomped back and forth needlessly. */
@@ -745,6 +779,13 @@ final class PolicyApplier {
                     dpm.clearUserRestriction(admin, r);
                 } catch (Exception ignored) {
                 }
+            }
+            if (Agent.prefs(c).getBoolean("dnsFilterApplied", false)) {
+                try {
+                    dpm.setAlwaysOnVpnPackage(admin, null, false);
+                } catch (Exception ignored) {
+                }
+                c.stopService(new Intent(c, DnsFilterVpnService.class));
             }
             try {
                 dpm.setUninstallBlocked(admin, c.getPackageName(), false);

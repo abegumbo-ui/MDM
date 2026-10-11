@@ -301,6 +301,9 @@ export function normalizeConfig(input) {
     // same list the phone's own Blocking > Block Whole Apps screen edits, just reachable remotely
     // too. {pkg: {paused: bool}}.
     wholeAppBlocklist: normalizeWholeAppBlocklist(c.wholeAppBlocklist),
+    // The device's own local DNS filter -- see normalizeDnsBlocklist's own doc comment for how
+    // this differs from the Browser's URL-level site allowlist above.
+    dnsBlocklist: normalizeDnsBlocklist(c.dnsBlocklist),
     sites, restrictions };
 }
 
@@ -313,6 +316,22 @@ export function normalizeWholeAppBlocklist(o) {
     if (/^[A-Za-z0-9_.]{1,200}$/.test(pkg)) out[pkg] = { paused: !!(v && v.paused) };
   }
   return out;
+}
+
+/** Hostnames for the device's own local DNS filter (DnsFilterVpnService) -- a different thing
+ * from the Browser's own URL-level site allowlist: this works at the whole-device network level,
+ * blocking a hostname (and every subdomain of it) no matter which app asked for it. Plain strings,
+ * not objects -- nothing per-entry to track (no pause state, no label) the way the whole-app
+ * blocklist has. */
+export function normalizeDnsBlocklist(list) {
+  const out = new Set();
+  for (const raw of Array.isArray(list) ? list : []) {
+    const h = String(raw || "")
+      .trim()
+      .toLowerCase();
+    if (/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(h)) out.add(h);
+  }
+  return [...out].slice(0, 500);
 }
 
 /** Overrides made on the phone itself ({pkg: "allow"|"block"}), sanitized. */
@@ -373,7 +392,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
