@@ -825,10 +825,13 @@ public class AdminActivity extends Activity {
                     v -> { blockingSub = "apps"; build(); }), 12);
             Ui.add(root, Ui.rowTile(this, "Block Whole Apps", R.drawable.ic_shield,
                     v -> { blockingSub = "whole"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "DNS Hostname Block", R.drawable.ic_shield,
+                    v -> { blockingSub = "dns"; build(); }), 8);
             return;
         }
         if ("apps".equals(blockingSub)) buildBlockedComponentsSection(root);
-        else buildBlockedWholeAppsSection(root);
+        else if ("whole".equals(blockingSub)) buildBlockedWholeAppsSection(root);
+        else buildDnsBlocklistSection(root);
     }
 
     private void buildBlockedComponentsSection(LinearLayout root) {
@@ -900,6 +903,50 @@ public class AdminActivity extends Activity {
             Ui.add(wholeAppCard, row, 4);
         }
         action(wholeAppCard, "Add App", Ui.TONAL, v -> promptAddWholeApp());
+    }
+
+    /** Device-wide hostname blocking (DnsFilterVpnService) -- a second way to reach the same list
+     * the dashboard's own "DNS Hostname Block" box edits, directly on the phone. A bulk textarea
+     * rather than one-at-a-time add/remove rows like the sections above, since this list is
+     * normally managed by pasting a whole blocklist in at once, not typing one host at a time. */
+    private void buildDnsBlocklistSection(LinearLayout root) {
+        LinearLayout dnsCard = Ui.card(this, root);
+        dnsCard.addView(Ui.titleText(this, "DNS Hostname Block"));
+        dnsCard.addView(Ui.body(this, "Blocks these hostnames for the whole phone at the network level -- "
+                + "each one also blocks every subdomain of it. One per line; AdBlock-style \"||host^\" lines, "
+                + "full URLs and \"*.\" wildcards are fine too, anything else is dropped. Saves here immediately "
+                + "and applies live; the dashboard picks up the change on the phone's next check-in.", true));
+        android.widget.EditText dnsBox = new android.widget.EditText(this);
+        dnsBox.setMinLines(8);
+        dnsBox.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        dnsBox.setTypeface(android.graphics.Typeface.MONOSPACE);
+        dnsBox.setTextSize(12);
+        StringBuilder dnsText = new StringBuilder();
+        for (String h : DnsBlocklist.list(this)) {
+            if (dnsText.length() > 0) dnsText.append('\n');
+            dnsText.append(h);
+        }
+        dnsBox.setText(dnsText.toString());
+        Ui.add(dnsCard, dnsBox, 8);
+        action(dnsCard, "Save", Ui.TONAL, v -> {
+            if (!unlocked()) return;
+            java.util.Set<String> typed = new java.util.LinkedHashSet<>();
+            for (String line : dnsBox.getText().toString().split("\n")) {
+                String t = line.trim();
+                if (!t.isEmpty()) typed.add(t);
+            }
+            java.util.Set<String> accepted = DnsBlocklist.sanitize(typed);
+            DnsBlocklist.setLocal(this, accepted);
+            Agent.addEvent(this, "local", "Master code on phone: DNS Hostname Block list updated ("
+                    + accepted.size() + " host(s))");
+            AgentService.requestSync();
+            if (!typed.isEmpty() && accepted.size() < typed.size()) {
+                toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
+            } else {
+                toast("Saved.");
+            }
+            build();
+        });
     }
 
     /** Every special/runtime permission this agent actually uses, with its current status and a way

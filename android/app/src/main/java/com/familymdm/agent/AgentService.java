@@ -247,6 +247,11 @@ public class AgentService extends Service {
             body.put("wholeAppBlocklistRev", wabRev);
             body.put("wholeAppBlocklistValue", WholeAppBlocklist.toJson(this));
         }
+        long dnsRev = DnsBlocklist.rev(this);
+        if (dnsRev > 0) {
+            body.put("dnsBlocklistRev", dnsRev);
+            body.put("dnsBlocklistValue", DnsBlocklist.toJson(this));
+        }
         long mRev = Agent.prefs(this).getLong("masterRev", 0);
         if (mRev > 0) {
             body.put("masterRev", mRev);

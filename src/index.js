@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeOverrides, normalizeSites, normalizeWholeAppBlocklist, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsBlocklist, normalizeOverrides, normalizeSites, normalizeWholeAppBlocklist, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -981,6 +981,14 @@ async function agentApi(request, env, url) {
       config.wholeAppBlocklist = normalizeWholeAppBlocklist(body.wholeAppBlocklistValue);
       d.config = config;
       d.wholeAppBlocklistRev = Number(body.wholeAppBlocklistRev);
+      dirty = true;
+    }
+    if (Number(body.dnsBlocklistRev) > (d.dnsBlocklistRev || 0)) {
+      // Same mirroring again, for the DNS Hostname Block list -- edited either on the dashboard
+      // or directly on the phone's own Administrator panel.
+      config.dnsBlocklist = normalizeDnsBlocklist(body.dnsBlocklistValue);
+      d.config = config;
+      d.dnsBlocklistRev = Number(body.dnsBlocklistRev);
       dirty = true;
     }
     if (body.masterValue && Number(body.masterRev) > (d.masterRev || 0)

@@ -641,10 +641,18 @@ final class PolicyApplier {
      * admin choice on the Restrictions screen, not forced on here.
      */
     private static void applyDnsFilter(Context c, DevicePolicyManager dpm, ComponentName admin, JSONArray hostnames) {
-        Set<String> want = DnsBlocklist.sanitize(hostnames);
         Set<String> had = DnsBlocklist.list(c);
+        if (DnsBlocklist.rev(c) == 0 && !had.isEmpty()) {
+            // Same migration-safety reasoning as WholeAppBlocklist's own: a list already set up
+            // locally (this app's own Administrator panel) before the dashboard even offered this
+            // field shouldn't be silently wiped by the dashboard's still-empty default on the very
+            // first sync after updating.
+            DnsBlocklist.seed(c);
+        } else {
+            DnsBlocklist.set(c, DnsBlocklist.sanitize(hostnames));
+        }
+        Set<String> want = DnsBlocklist.list(c);
         boolean listChanged = !had.equals(want);
-        DnsBlocklist.set(c, want);
         boolean wanted = !want.isEmpty();
         boolean applied = Agent.prefs(c).getBoolean("dnsFilterApplied", false);
         try {
