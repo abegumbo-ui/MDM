@@ -510,7 +510,11 @@ async function adminApi(request, env, url, session) {
       const changes = summarizeConfigChange(before, next);
       if (changes.length) d.pushLog = [...(d.pushLog || []), { at: Date.now(), changes }].slice(-30);
       await putJSON(env, key, d);
-      return json({ ok: true });
+      // Echoed back so the dashboard can tell whether every pasted line actually survived
+      // normalization -- a hostname-looking regex silently drops anything that doesn't match
+      // (a stray "*", a "https://" prefix, AdBlock-style "||...^" syntax), with no error, which
+      // looked exactly like a save doing nothing at all when an entire pasted list was rejected.
+      return json({ ok: true, dnsBlocklist: next.dnsBlocklist });
     }
     if (devConfig[2] === "master" && method === "PUT") {
       // The browser derives the hash (PBKDF2), so the code itself never reaches the server.

@@ -224,7 +224,7 @@ async function load(){
  if(state.session.role==='admin')clients=await call('GET','/api/clients');
  render();
  call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
-async function saveConfigFor(d,msg){await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about 5 minutes.')}
+async function saveConfigFor(d,msg){const r=await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about 5 minutes.');return r}
 
 /* ---------- shell ---------- */
 // Everything is sandboxed to its own thing: the top bar only ever says "Devices". Apps and Sites
@@ -751,8 +751,20 @@ function renderDnsBlocklist(m,dv){
  const ta=h('textarea',{style:'width:100%;min-height:120px;font-family:monospace'},(dv.config.dnsBlocklist||[]).join('\n'));
  card.append(h('div',{style:'margin-top:8px'},ta));
  card.append(h('div',{style:'margin-top:8px'},btn('Save','tonal',async function(){
-  dv.config.dnsBlocklist=ta.value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
-  try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
+  const typed=ta.value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
+  dv.config.dnsBlocklist=typed;
+  try{
+   const r=await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.');
+   const acceptedCount=r&&Array.isArray(r.dnsBlocklist)?r.dnsBlocklist.length:null;
+   // A hostname-looking regex silently drops anything that doesn't match -- a "*" wildcard, a
+   // "https://" prefix, AdBlock-style "||...^" syntax -- with no error from the save itself, so a
+   // whole pasted list rejected line-by-line looked exactly like saving nothing at all. This is
+   // the only place that actually says so.
+   if(acceptedCount!==null&&acceptedCount<typed.length){
+    snack('Only '+acceptedCount+' of '+typed.length+' line(s) looked like plain hostnames and were kept -- the rest were dropped (no "*", "https://", or AdBlock-style syntax; just the bare hostname, one per line).',1)
+   }
+  }catch(e){snack(e.message,1)}
+  render()})));
  m.append(card);
 }
 function renderApps(m,dv){
