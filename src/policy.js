@@ -435,5 +435,16 @@ export function summarizeConfigChange(before, after) {
   }
   if (JSON.stringify(before.frpAccounts) !== JSON.stringify(after.frpAccounts)) lines.push("Factory Reset Protection accounts changed");
   if (JSON.stringify(Object.keys(before.sites || {})) !== JSON.stringify(Object.keys(after.sites || {}))) lines.push("Sites list changed");
+  if (JSON.stringify(Object.keys(before.wholeAppBlocklist || {}).sort()) !== JSON.stringify(Object.keys(after.wholeAppBlocklist || {}).sort()))
+    lines.push("Block Whole Apps list changed");
+  if (!sameStringSet(before.dnsBlocklist, after.dnsBlocklist))
+    lines.push("DNS Hostname Block list changed (" + (after.dnsBlocklist || []).length + " host(s))");
   return lines;
+}
+
+/** Order doesn't matter for either list -- only content. */
+function sameStringSet(a, b) {
+  const as = [...new Set(a || [])].sort();
+  const bs = [...new Set(b || [])].sort();
+  return JSON.stringify(as) === JSON.stringify(bs);
 }
