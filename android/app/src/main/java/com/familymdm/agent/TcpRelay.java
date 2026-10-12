@@ -156,7 +156,7 @@ final class TcpRelay {
                 }
                 tcb.sniChecked = true;
                 String hostname = r.status == TlsSni.Status.FOUND ? r.hostname : null;
-                boolean blocked = hostname != null && DnsBlocklist.blocks(context, hostname);
+                boolean blocked = hostname != null && DnsBlocklist.blocks(context, hostname) && !DnsAllowlist.allows(context, hostname);
                 logAndMaybeBlock(tcb, hostname, blocked);
                 if (blocked) return; // logAndMaybeBlock already RST + removed it
             }

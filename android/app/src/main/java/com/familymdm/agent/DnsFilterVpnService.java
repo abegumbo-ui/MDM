@@ -196,7 +196,7 @@ public class DnsFilterVpnService extends VpnService {
         if (dnsLength <= 12 || dnsOffset + dnsLength > len) return; // shorter than a DNS header plus a question
 
         String qname = parseQuestionName(buf, dnsOffset, dnsOffset + dnsLength);
-        boolean blocked = qname != null && DnsBlocklist.blocks(this, qname);
+        boolean blocked = qname != null && DnsBlocklist.blocks(this, qname) && !DnsAllowlist.allows(this, qname);
         logDnsQuery(qname, srcIp, srcPort, dstIp, blocked);
 
         if (blocked) {

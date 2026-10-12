@@ -15,8 +15,10 @@ import java.util.Set;
  * blocklist (that's the Browser app's own, URL-level), just a plain set of names, matched as an
  * exact hostname or any subdomain of one (the same "domain" matching normalizeSite() already uses
  * for the Browser allowlist), checked against both a DNS query's QNAME and a TLS connection's own
- * SNI hostname (TcpRelay). Whether the filter is even running is derived from this list being
- * non-empty, not a separate on/off flag -- see PolicyApplier.applyDnsFilter().
+ * SNI hostname (TcpRelay). A match here is only the first word, not the last: DnsAllowlist can
+ * override it for a more specific hostname still needed under a deliberately broad entry here.
+ * Whether the filter is even running is derived from this list being non-empty, not a separate
+ * on/off flag -- see PolicyApplier.applyDnsFilter().
  *
  * Editable from either side: the dashboard's own DNS Hostname Block box, or this app's own
  * Administrator panel. REV_KEY follows the same local-edit-wins pattern as WholeAppBlocklist --
