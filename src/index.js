@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsBlocklist, normalizeOverrides, normalizeSites, normalizeWholeAppBlocklist, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizeSites, normalizeWholeAppBlocklist, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -516,7 +516,7 @@ async function adminApi(request, env, url, session) {
       // normalization -- a hostname-looking regex silently drops anything that doesn't match
       // (a stray "*", a "https://" prefix, AdBlock-style "||...^" syntax), with no error, which
       // looked exactly like a save doing nothing at all when an entire pasted list was rejected.
-      return json({ ok: true, dnsBlocklist: next.dnsBlocklist });
+      return json({ ok: true, dnsBlocklist: next.dnsBlocklist, dnsAllowlist: next.dnsAllowlist });
     }
     if (devConfig[2] === "master" && method === "PUT") {
       // The browser derives the hash (PBKDF2), so the code itself never reaches the server.
@@ -991,6 +991,13 @@ async function agentApi(request, env, url) {
       config.dnsBlocklist = normalizeDnsBlocklist(body.dnsBlocklistValue);
       d.config = config;
       d.dnsBlocklistRev = Number(body.dnsBlocklistRev);
+      dirty = true;
+    }
+    if (Number(body.dnsAllowlistRev) > (d.dnsAllowlistRev || 0)) {
+      // Same mirroring again, for the DNS Hostname Allow list (overrides DNS Hostname Block).
+      config.dnsAllowlist = normalizeDnsAllowlist(body.dnsAllowlistValue);
+      d.config = config;
+      d.dnsAllowlistRev = Number(body.dnsAllowlistRev);
       dirty = true;
     }
     if (body.masterValue && Number(body.masterRev) > (d.masterRev || 0)

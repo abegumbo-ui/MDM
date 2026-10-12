@@ -304,6 +304,8 @@ export function normalizeConfig(input) {
     // The device's own local DNS filter -- see normalizeDnsBlocklist's own doc comment for how
     // this differs from the Browser's URL-level site allowlist above.
     dnsBlocklist: normalizeDnsBlocklist(c.dnsBlocklist),
+    // Overrides dnsBlocklist for a hostname that matches both -- see normalizeDnsAllowlist's doc.
+    dnsAllowlist: normalizeDnsAllowlist(c.dnsAllowlist),
     sites, restrictions };
 }
 
@@ -323,7 +325,7 @@ export function normalizeWholeAppBlocklist(o) {
  * blocking a hostname (and every subdomain of it) no matter which app asked for it. Plain strings,
  * not objects -- nothing per-entry to track (no pause state, no label) the way the whole-app
  * blocklist has. */
-export function normalizeDnsBlocklist(list) {
+function sanitizeHostnameList(list) {
   const out = new Set();
   for (const raw of Array.isArray(list) ? list : []) {
     let h = String(raw || "")
@@ -341,6 +343,17 @@ export function normalizeDnsBlocklist(list) {
     if (/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(h)) out.add(h);
   }
   return [...out].slice(0, 500);
+}
+export function normalizeDnsBlocklist(list) {
+  return sanitizeHostnameList(list);
+}
+
+/** Overrides normalizeDnsBlocklist for a hostname that matches both -- for when a block entry is
+ * deliberately broad (a whole CDN domain) but one specific host under it is still needed. Same
+ * shape and same tolerant parsing as the block list; the agent checks both the same way
+ * (DnsBlocklist.blocks() && !DnsAllowlist.allows()) and this just mirrors that server-side. */
+export function normalizeDnsAllowlist(list) {
+  return sanitizeHostnameList(list);
 }
 
 /** Overrides made on the phone itself ({pkg: "allow"|"block"}), sanitized. */
@@ -401,7 +414,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
@@ -448,6 +461,8 @@ export function summarizeConfigChange(before, after) {
     lines.push("Block Whole Apps list changed");
   if (!sameStringSet(before.dnsBlocklist, after.dnsBlocklist))
     lines.push("DNS Hostname Block list changed (" + (after.dnsBlocklist || []).length + " host(s))");
+  if (!sameStringSet(before.dnsAllowlist, after.dnsAllowlist))
+    lines.push("DNS Hostname Allow list changed (" + (after.dnsAllowlist || []).length + " host(s))");
   return lines;
 }
 

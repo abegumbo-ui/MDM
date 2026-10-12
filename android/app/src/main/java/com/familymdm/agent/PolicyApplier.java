@@ -190,6 +190,7 @@ final class PolicyApplier {
             WholeAppBlocklist.adopt(c, policy.optJSONObject("wholeAppBlocklist"));
         }
         applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"));
+        applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");
@@ -677,6 +678,17 @@ final class PolicyApplier {
             errorCleared(c, "dnsfilter");
         } catch (Exception e) {
             errorOnce(c, "dnsfilter", "Could not change the DNS filter: " + e.getMessage());
+        }
+    }
+
+    /** DnsAllowlist has no on/off switch of its own to flip (DnsFilterVpnService already reads it
+     * live, same as DnsBlocklist) -- just the list itself, adopted the same migration-safe way. */
+    private static void applyDnsAllowlist(Context c, JSONArray hostnames) {
+        Set<String> had = DnsAllowlist.list(c);
+        if (DnsAllowlist.rev(c) == 0 && !had.isEmpty()) {
+            DnsAllowlist.seed(c);
+        } else {
+            DnsAllowlist.set(c, DnsAllowlist.sanitize(hostnames));
         }
     }
 
