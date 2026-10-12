@@ -424,6 +424,7 @@ function buildAppsHub(m,dv){
   m.append(bCard);
   renderWholeAppBlocklist(m,dv);
   renderDnsBlocklist(m,dv);
+  renderDnsAllowlist(m,dv);
   renderTrafficLog(m,dv);
  } else if(appsSub==='system'){
   const sal=h('div',{class:'card'},h('h2',null,'System apps'),
@@ -761,6 +762,26 @@ function renderDnsBlocklist(m,dv){
    // "https://" prefix, AdBlock-style "||...^" syntax -- with no error from the save itself, so a
    // whole pasted list rejected line-by-line looked exactly like saving nothing at all. This is
    // the only place that actually says so.
+   if(acceptedCount!==null&&acceptedCount<typed.length){
+    snack('Only '+acceptedCount+' of '+typed.length+' line(s) looked like plain hostnames and were kept -- the rest were dropped (no "*", "https://", or AdBlock-style syntax; just the bare hostname, one per line).',1)
+   }
+  }catch(e){snack(e.message,1)}
+  render()})));
+ m.append(card);
+}
+// Overrides DNS Hostname Block above for a hostname that matches both -- for when a block entry
+// is deliberately broad (a whole CDN domain) but one specific host under it is still needed.
+function renderDnsAllowlist(m,dv){
+ const card=h('div',{class:'card'},h('h2',null,'DNS Hostname Allow'),
+  h('div',{class:'mute'},'Overrides DNS Hostname Block above for whatever\'s listed here -- a hostname (or any subdomain of one) that matches both lists is let through. Use this when a block entry is deliberately broad but one specific host under it is still needed. Same format as the block list: one hostname per line. Takes effect within about 5 minutes of saving.'));
+ const ta=h('textarea',{style:'width:100%;min-height:80px;font-family:monospace'},(dv.config.dnsAllowlist||[]).join('\n'));
+ card.append(h('div',{style:'margin-top:8px'},ta));
+ card.append(h('div',{style:'margin-top:8px'},btn('Save','tonal',async function(){
+  const typed=ta.value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
+  dv.config.dnsAllowlist=typed;
+  try{
+   const r=await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.');
+   const acceptedCount=r&&Array.isArray(r.dnsAllowlist)?r.dnsAllowlist.length:null;
    if(acceptedCount!==null&&acceptedCount<typed.length){
     snack('Only '+acceptedCount+' of '+typed.length+' line(s) looked like plain hostnames and were kept -- the rest were dropped (no "*", "https://", or AdBlock-style syntax; just the bare hostname, one per line).',1)
    }

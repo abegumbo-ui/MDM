@@ -584,6 +584,41 @@ test("blocking a whole app from the phone's own Admin screen mirrors into the da
   assert.deepEqual(devices.find((d) => d.id === id).config.wholeAppBlocklist, { "com.example.other": { paused: true } });
 });
 
+test("DNS Hostname Allow overrides/mirrors DNS Hostname Block the same rev-based way", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.deepEqual(devices.find((d) => d.id === id).config.dnsBlocklist, []);
+  assert.deepEqual(devices.find((d) => d.id === id).config.dnsAllowlist, []);
+  await post(
+    "/agent/sync",
+    { dnsBlocklistRev: 100, dnsBlocklistValue: ["lh3.googleusercontent.com"], dnsAllowlistRev: 100, dnsAllowlistValue: ["maps.googleapis.com"] },
+    auth
+  );
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  let d = devices.find((d) => d.id === id);
+  assert.deepEqual(d.config.dnsBlocklist, ["lh3.googleusercontent.com"]);
+  assert.deepEqual(d.config.dnsAllowlist, ["maps.googleapis.com"]);
+  // A stale revision on the allow list is ignored, independently of the block list's own revision.
+  await post("/agent/sync", { dnsAllowlistRev: 50, dnsAllowlistValue: [] }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  d = devices.find((d) => d.id === id);
+  assert.deepEqual(d.config.dnsAllowlist, ["maps.googleapis.com"]);
+  assert.deepEqual(d.config.dnsBlocklist, ["lh3.googleusercontent.com"]);
+  // A newer one wins, and it's a full replace, not a merge.
+  await post("/agent/sync", { dnsAllowlistRev: 200, dnsAllowlistValue: ["streetviewpixels-pa.googleapis.com"] }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  d = devices.find((d) => d.id === id);
+  assert.deepEqual(d.config.dnsAllowlist, ["streetviewpixels-pa.googleapis.com"]);
+  // Editable from the dashboard too, same echo-back-the-accepted-list shape as the block list.
+  const resp = await put(cookie, `/api/devices/${id}/config`, {
+    ...d.config,
+    dnsAllowlist: ["good.example.com", "not a hostname", "*.wild.example.com"],
+  });
+  const r = await resp.json();
+  assert.deepEqual(r.dnsAllowlist, ["good.example.com", "wild.example.com"]);
+});
+
 test("the phone's own Traffic Log (DNS/TLS) mirrors into the dashboard and stays capped", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);

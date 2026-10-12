@@ -957,16 +957,16 @@ public class AdminActivity extends Activity {
 
     /** Overrides DNS Hostname Block for whatever's listed here -- for when a block entry is
      * deliberately broad (a whole CDN domain) but one specific subdomain under it is still
-     * needed. On-device only for now: no dashboard counterpart yet, no sync. Same bulk-textarea
-     * shape as the block list for the same reason -- pasted in, not typed one at a time. */
+     * needed. Same bulk-textarea shape as the block list for the same reason -- pasted in, not
+     * typed one at a time. */
     private void buildDnsAllowlistSection(LinearLayout root) {
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "DNS Hostname Allow"));
         card.addView(Ui.body(this, "Overrides DNS Hostname Block for whatever's listed here -- a hostname "
                 + "(or any subdomain of one) that matches both this list and the block list is let through. "
                 + "Use this when a block entry is deliberately broad but one specific host under it is still "
-                + "needed. Same format as the block list: one hostname per line. On-device only for now -- "
-                + "doesn't sync to the dashboard yet.", true));
+                + "needed. Same format as the block list: one hostname per line. Saves here immediately and "
+                + "applies live; the dashboard picks up the change on the phone's next check-in.", true));
         android.widget.EditText box = new android.widget.EditText(this);
         box.setMinLines(6);
         box.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
@@ -987,9 +987,10 @@ public class AdminActivity extends Activity {
                 if (!t.isEmpty()) typed.add(t);
             }
             java.util.Set<String> accepted = DnsAllowlist.sanitize(typed);
-            DnsAllowlist.set(this, accepted);
+            DnsAllowlist.setLocal(this, accepted);
             Agent.addEvent(this, "local", "Master code on phone: DNS Hostname Allow list updated ("
                     + accepted.size() + " host(s))");
+            AgentService.requestSync();
             if (!typed.isEmpty() && accepted.size() < typed.size()) {
                 toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
             } else {
