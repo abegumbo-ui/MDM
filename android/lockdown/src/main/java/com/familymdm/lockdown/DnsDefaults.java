@@ -157,7 +157,7 @@ final class DnsDefaults {
             "h5games.usercontent.goog",
             "google.com",
             "googleapis.com",
-            "gstatic.com",
+            "gstatic.com"
     ));
 
     static final Set<String> ALLOWLIST = new LinkedHashSet<>(Arrays.asList(
@@ -273,6 +273,6 @@ final class DnsDefaults {
             "gstatic.com",
             "firebaseremoteconfig.googleapis.com",
             "gapi.waze.com",
-            "cbks0.googleapis.com",
+            "cbks0.googleapis.com"
     ));
 }
