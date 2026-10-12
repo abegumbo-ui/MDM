@@ -56,25 +56,52 @@ public class DnsFilterVpnService extends VpnService {
     private TcpRelay tcpRelay;
     private UdpRelay udpRelay;
     private UidResolver uidResolver;
+    private android.os.Handler retryHandler;
+
+    // True only once establish() has actually succeeded and the tunnel is up -- MainActivity's
+    // applyDnsFilterLive() checks this (not just "did we ask the service to start") so a failed
+    // attempt gets retried on the next tap instead of being silently considered done forever.
+    private static final AtomicBoolean active = new AtomicBoolean(false);
+
+    static boolean isActive() {
+        return active.get();
+    }
+
+    // establish() legitimately fails the first time this ever runs: setAlwaysOnVpnPackage()'s own
+    // permission grant and this service's first start can race, so the very first establish() can
+    // see the permission not landed yet. Retrying a handful of times a second apart (rather than
+    // giving up on the first failure) rides out that race without MainActivity needing to notice
+    // and start a whole new service.
+    private static final int MAX_ESTABLISH_ATTEMPTS = 6;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(2, notification());
         if (running.compareAndSet(false, true)) {
-            try {
-                establish();
-                uidResolver = new UidResolver(this);
-                tcpRelay = new TcpRelay(this, this, this::writePacket);
-                udpRelay = new UdpRelay(this, this, this::writePacket);
-                readerThread = new Thread(this::readLoop, "mdm-dns-filter");
-                readerThread.start();
-            } catch (Exception e) {
-                Log.w(TAG, "DNS filter failed to start: " + e);
+            retryHandler = new android.os.Handler(getMainLooper());
+            attemptEstablish(1);
+        }
+        return START_STICKY;
+    }
+
+    private void attemptEstablish(int attempt) {
+        try {
+            establish();
+            active.set(true);
+            uidResolver = new UidResolver(this);
+            tcpRelay = new TcpRelay(this, this, this::writePacket);
+            udpRelay = new UdpRelay(this, this, this::writePacket);
+            readerThread = new Thread(this::readLoop, "mdm-dns-filter");
+            readerThread.start();
+        } catch (Exception e) {
+            Log.w(TAG, "DNS filter failed to start (attempt " + attempt + "/" + MAX_ESTABLISH_ATTEMPTS + "): " + e);
+            if (attempt < MAX_ESTABLISH_ATTEMPTS && running.get()) {
+                retryHandler.postDelayed(() -> attemptEstablish(attempt + 1), 1000);
+            } else {
                 running.set(false);
                 stopSelf();
             }
         }
-        return START_STICKY;
     }
 
     @Override
@@ -85,6 +112,8 @@ public class DnsFilterVpnService extends VpnService {
     @Override
     public void onDestroy() {
         running.set(false);
+        active.set(false);
+        if (retryHandler != null) retryHandler.removeCallbacksAndMessages(null);
         if (readerThread != null) readerThread.interrupt();
         if (tcpRelay != null) tcpRelay.shutdown();
         if (udpRelay != null) udpRelay.shutdown();
