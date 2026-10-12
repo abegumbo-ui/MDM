@@ -35,6 +35,17 @@ final class TcpRelay {
     private static final int SNI_PEEK_CAP = 16384; // a TLS record can't exceed this anyway
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final long IDLE_TIMEOUT_MS = 120_000;
+    // The whole device's traffic starts flowing through here the moment the tunnel comes up --
+    // every app, not just ones actually being filtered -- and every connection gets its own real
+    // OS thread (startConnect()/downlinkLoop() below), with no pool. A real phone reconnecting
+    // everything at once through a brand-new tunnel can open far more of these in a few seconds
+    // than anyone would guess, each one a real thread plus a real socket; with no cap at all, that
+    // burst is a plausible way to exhaust threads or memory fast enough to get the whole process
+    // killed outright, with nothing for any in-process handler to catch. This caps it generously
+    // above anything normal use would need, and a connection that arrives past the cap is just
+    // dropped -- indistinguishable, from the connecting app's side, from the same SYN getting lost
+    // on a congested network; its own TCP stack already retries that the same way either way.
+    private static final int MAX_CONCURRENT_CONNECTIONS = 200;
 
     interface Writer {
         void write(byte[] packet);
@@ -93,6 +104,7 @@ final class TcpRelay {
         if (isSyn && !isAck) {
             Tcb existing = tcbs.get(key);
             if (existing != null) removeAndClose(existing);
+            if (tcbs.size() >= MAX_CONCURRENT_CONNECTIONS) return; // dropped -- see the cap's own doc above
             Tcb tcb = new Tcb(key, srcIp, srcPort, dstIp, dstPort);
             tcb.ack = (seq + 1) & 0xFFFFFFFFL;
             tcb.seq = rand.nextInt(Integer.MAX_VALUE) & 0xFFFFFFFFL;
