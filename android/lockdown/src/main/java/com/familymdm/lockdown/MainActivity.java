@@ -54,6 +54,12 @@ public class MainActivity extends Activity {
     private EditText bulkInput;
     private List<String> bulkWent = new ArrayList<>();
     private List<String> bulkDidnt = new ArrayList<>();
+    // The DNS/TLS filter's own sub-nav, reached from "dnsfilter": null = pick which of the four;
+    // otherwise "block"/"allow"/"network"/"log". "network"'s own per-app allow list is reached by
+    // tapping a blocked package's own row, tracked separately so going back from it returns to the
+    // blocked-apps list rather than all the way out to this picker.
+    private String dnsFilterSub;
+    private String networkAllowlistPkg;
     private static final String ACTION_UNINSTALL_RESULT = "com.familymdm.lockdown.UNINSTALL_RESULT";
     private static final Pattern PACKAGE_NAME = Pattern.compile("\\b[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z][a-zA-Z0-9_]*)+\\b");
     private BroadcastReceiver uninstallReceiver;
@@ -159,6 +165,7 @@ public class MainActivity extends Activity {
         applyRegularAppLiveState();
         applySystemAppLiveState();
         applyNotificationPermissionLive();
+        applyDnsFilterLive();
         if ("regular".equals(section)) {
             buildPicker(true);
         } else if ("system".equals(section)) {
@@ -173,6 +180,8 @@ public class MainActivity extends Activity {
             buildNotificationsPicker();
         } else if ("kiosk".equals(section)) {
             buildKioskPicker();
+        } else if ("dnsfilter".equals(section)) {
+            buildDnsFilterHub();
         } else if ("frp".equals(section)) {
             buildFrpStep();
         } else {
@@ -256,6 +265,7 @@ public class MainActivity extends Activity {
         applyRestrictionsLive();
         applyRegularAppLiveState();
         applySystemAppLiveState();
+        applyDnsFilterLive();
         section = null;
         build();
     }
@@ -265,6 +275,7 @@ public class MainActivity extends Activity {
         applyRestrictionsLive();
         applyRegularAppLiveState();
         applySystemAppLiveState();
+        applyDnsFilterLive();
         if (Build.VERSION.SDK_INT >= 30) {
             try {
                 dpm().setFactoryResetProtectionPolicy(admin(),
@@ -374,6 +385,29 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Same derive-from-the-list-itself shape as the agent app's own applyDnsFilter(): whether
+     * DnsFilterVpnService runs at all comes from DnsBlocklist (or NetworkBlocklist) being
+     * non-empty AND the Lockdown switch being on -- off clears it regardless of what's saved,
+     * same as every other applyXLive() method here. Always-on (lockdownEnabled=false, so apps
+     * excluded from it -- namely this one -- still work normally) once it's running, so it can't
+     * just be disconnected from Settings. */
+    private void applyDnsFilterLive() {
+        boolean wanted = isLockdownOn() && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
+        boolean applied = prefs().getBoolean("dnsFilterApplied", false);
+        if (wanted == applied) return;
+        try {
+            if (wanted) {
+                startForegroundService(new Intent(this, DnsFilterVpnService.class));
+                dpm().setAlwaysOnVpnPackage(admin(), getPackageName(), false);
+            } else {
+                dpm().setAlwaysOnVpnPackage(admin(), null, false);
+                stopService(new Intent(this, DnsFilterVpnService.class));
+            }
+            prefs().edit().putBoolean("dnsFilterApplied", wanted).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
     // ---------- step 2: the hub ----------
     private void buildHub() {
         LinearLayout card = Ui.card(this, root);
@@ -427,6 +461,14 @@ public class MainActivity extends Activity {
             search = "";
             build();
         }), 8);
+        int dnsBlockCount = DnsBlocklist.list(this).size();
+        int netBlockCount = NetworkBlocklist.list(this).size();
+        Ui.add(card, Ui.button(this, "DNS/Network filter (" + dnsBlockCount + " host(s), " + netBlockCount + " app(s) blocked)", Ui.TONAL, v -> {
+            section = "dnsfilter";
+            dnsFilterSub = null;
+            networkAllowlistPkg = null;
+            build();
+        }), 8);
 
         LinearLayout finishCard = Ui.card(this, root);
         finishCard.addView(Ui.titleText(this, "This device is set up for good"));
@@ -439,6 +481,298 @@ public class MainActivity extends Activity {
             section = "frp";
             build();
         }), 12);
+    }
+
+    // ---------- DNS/TLS filter ----------
+    private void buildDnsFilterHub() {
+        LinearLayout header = Ui.card(this, root);
+        Ui.add(header, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            section = null;
+            build();
+        }), 0);
+        if (dnsFilterSub == null) {
+            LinearLayout card = Ui.card(this, root);
+            card.addView(Ui.titleText(this, "DNS/Network filter"));
+            card.addView(Ui.body(this, "Blocks specific hostnames, or an app's entire network, device-wide, once "
+                    + "Lockdown is switched on -- enforced by this app's own local VPN (always-on while any of "
+                    + "it is set, so it can't just be disconnected from Settings). Each screen below explains "
+                    + "what it does and doesn't cover.", true));
+            Ui.add(card, Ui.button(this, "DNS Hostname Block", Ui.TONAL, v -> {
+                dnsFilterSub = "block";
+                build();
+            }), 12);
+            Ui.add(card, Ui.button(this, "DNS Hostname Allow", Ui.TONAL, v -> {
+                dnsFilterSub = "allow";
+                build();
+            }), 8);
+            Ui.add(card, Ui.button(this, "Block Whole Network", Ui.TONAL, v -> {
+                dnsFilterSub = "network";
+                networkAllowlistPkg = null;
+                build();
+            }), 8);
+            Ui.add(card, Ui.button(this, "Traffic Log", Ui.TONAL, v -> {
+                dnsFilterSub = "log";
+                build();
+            }), 8);
+            return;
+        }
+        if ("block".equals(dnsFilterSub)) buildDnsBlockScreen();
+        else if ("allow".equals(dnsFilterSub)) buildDnsAllowScreen();
+        else if ("network".equals(dnsFilterSub)) buildNetworkBlockScreen();
+        else buildTrafficLogScreen();
+    }
+
+    private EditText multilineBox(String prefilled) {
+        EditText box = new EditText(this);
+        box.setMinLines(8);
+        box.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        box.setTypeface(android.graphics.Typeface.MONOSPACE);
+        box.setTextSize(12);
+        box.setText(prefilled);
+        return box;
+    }
+
+    private Set<String> linesOf(EditText box) {
+        Set<String> typed = new LinkedHashSet<>();
+        for (String line : box.getText().toString().split("\n")) {
+            String t = line.trim();
+            if (!t.isEmpty()) typed.add(t);
+        }
+        return typed;
+    }
+
+    /** Device-wide hostname blocking -- a bulk textarea, since this list is normally managed by
+     * pasting a whole blocklist in at once, not typing one host at a time. */
+    private void buildDnsBlockScreen() {
+        LinearLayout back = Ui.card(this, root);
+        Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            dnsFilterSub = null;
+            build();
+        }), 0);
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "DNS Hostname Block"));
+        card.addView(Ui.body(this, "Blocks these hostnames for the whole phone at the network level -- each one "
+                + "also blocks every subdomain of it. One per line; AdBlock-style \"||host^\" lines, full URLs "
+                + "and \"*.\" wildcards are fine too, anything else is dropped. Applies live once the Lockdown "
+                + "switch is on.", true));
+        StringBuilder text = new StringBuilder();
+        for (String h : DnsBlocklist.list(this)) {
+            if (text.length() > 0) text.append('\n');
+            text.append(h);
+        }
+        EditText box = multilineBox(text.toString());
+        Ui.add(card, box, 8);
+        Ui.add(card, Ui.button(this, "Save", Ui.TONAL, v -> {
+            Set<String> typed = linesOf(box);
+            Set<String> accepted = DnsBlocklist.sanitize(typed);
+            DnsBlocklist.set(this, accepted);
+            applyDnsFilterLive();
+            if (!typed.isEmpty() && accepted.size() < typed.size()) {
+                toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
+            } else {
+                toast("Saved.");
+            }
+            build();
+        }), 8);
+    }
+
+    /** Overrides DNS Hostname Block for whatever's listed here. */
+    private void buildDnsAllowScreen() {
+        LinearLayout back = Ui.card(this, root);
+        Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            dnsFilterSub = null;
+            build();
+        }), 0);
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "DNS Hostname Allow"));
+        card.addView(Ui.body(this, "Overrides DNS Hostname Block for whatever's listed here -- a hostname (or "
+                + "any subdomain of one) that matches both lists is let through. Use this when a block entry is "
+                + "deliberately broad but one specific host under it is still needed. Same format as the block "
+                + "list: one hostname per line.", true));
+        StringBuilder text = new StringBuilder();
+        for (String h : DnsAllowlist.list(this)) {
+            if (text.length() > 0) text.append('\n');
+            text.append(h);
+        }
+        EditText box = multilineBox(text.toString());
+        Ui.add(card, box, 8);
+        Ui.add(card, Ui.button(this, "Save", Ui.TONAL, v -> {
+            Set<String> typed = linesOf(box);
+            Set<String> accepted = DnsAllowlist.sanitize(typed);
+            DnsAllowlist.set(this, accepted);
+            if (!typed.isEmpty() && accepted.size() < typed.size()) {
+                toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
+            } else {
+                toast("Saved.");
+            }
+            build();
+        }), 8);
+    }
+
+    /** Cuts an app's network off entirely -- it still runs and opens normally, it just can't
+     * reach anything. A different thing from the Regular/System apps lists above, which stop an
+     * app running at all. Each blocked app gets its own "Allow list" button for hostnames let
+     * through just for it (see buildPerAppAllowScreen()). */
+    private void buildNetworkBlockScreen() {
+        if (networkAllowlistPkg != null) {
+            buildPerAppAllowScreen();
+            return;
+        }
+        LinearLayout back = Ui.card(this, root);
+        Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            dnsFilterSub = null;
+            build();
+        }), 0);
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Block Whole Network"));
+        card.addView(Ui.body(this, "Cuts an app's network off entirely -- it still opens and runs completely "
+                + "normally, it just can't reach anything, DNS included. Each blocked app's own \"Allow list\" "
+                + "lets specific hostnames through just for that app -- DNS Hostname Allow above does NOT apply "
+                + "to a network-blocked app.", true));
+        PackageManager pm = getPackageManager();
+        for (String pkg : NetworkBlocklist.list(this)) {
+            boolean paused = NetworkBlocklist.isPaused(this, pkg);
+            String label = appLabel(pm, pkg);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            TextView t = Ui.body(this, label + " (" + pkg + ")" + (paused ? "  (paused)" : ""), false);
+            t.setTextSize(12);
+            row.addView(t);
+            LinearLayout buttons = new LinearLayout(this);
+            buttons.setOrientation(LinearLayout.HORIZONTAL);
+            buttons.addView(Ui.button(this, "Allow list", Ui.OUTLINED, v -> {
+                networkAllowlistPkg = pkg;
+                build();
+            }));
+            buttons.addView(Ui.button(this, paused ? "Resume" : "Pause", Ui.OUTLINED, v -> {
+                NetworkBlocklist.setPaused(this, pkg, !paused);
+                build();
+            }));
+            buttons.addView(Ui.button(this, "Remove", Ui.OUTLINED, v -> {
+                NetworkBlocklist.remove(this, pkg);
+                build();
+            }));
+            row.addView(buttons);
+            Ui.add(card, row, 10);
+        }
+        Ui.add(card, Ui.button(this, "Add App", Ui.TONAL, v -> buildNetworkBlockAppPicker()), 12);
+    }
+
+    /** Every installed app, plain text, no icons, no search required -- just the full list. */
+    private void buildNetworkBlockAppPicker() {
+        LinearLayout back = Ui.card(this, root);
+        Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> build()), 0);
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Cut off an app's network"));
+        card.addView(Ui.body(this, "Tap an app to cut off its network entirely.", true));
+        PackageManager pm = getPackageManager();
+        Set<String> already = NetworkBlocklist.list(this);
+        List<String[]> apps = new ArrayList<>();
+        for (ApplicationInfo ai : pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+            if (ai.packageName.equals(getPackageName()) || already.contains(ai.packageName)) continue;
+            apps.add(new String[]{appLabel(pm, ai.packageName), ai.packageName});
+        }
+        apps.sort((a, b) -> a[0].compareToIgnoreCase(b[0]));
+        for (String[] a : apps) {
+            String pkg = a[1];
+            TextView row = Ui.body(this, a[0] + " (" + pkg + ")", false);
+            row.setTextSize(13);
+            row.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
+            row.setOnClickListener(v -> {
+                NetworkBlocklist.add(this, pkg);
+                toast("Cut off \"" + a[0] + "\"'s network.");
+                build();
+            });
+            Ui.add(card, row, 2);
+        }
+    }
+
+    private String appLabel(PackageManager pm, String pkg) {
+        try {
+            return pm.getApplicationLabel(pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)).toString();
+        } catch (Exception e) {
+            return pkg;
+        }
+    }
+
+    /** One blocked package's own hostname allow list -- the only exception to its network being
+     * cut off entirely. */
+    private void buildPerAppAllowScreen() {
+        String pkg = networkAllowlistPkg;
+        LinearLayout back = Ui.card(this, root);
+        Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            networkAllowlistPkg = null;
+            build();
+        }), 0);
+        String label = appLabel(getPackageManager(), pkg);
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Allow list for " + label));
+        card.addView(Ui.body(this, pkg + " is network-blocked. Hostnames listed here (or any subdomain of one) "
+                + "are let through just for this app -- nothing else on the device is affected, and DNS Hostname "
+                + "Allow does NOT apply here. One hostname per line.", true));
+        StringBuilder text = new StringBuilder();
+        for (String h : PerAppDnsAllowlist.get(this, pkg)) {
+            if (text.length() > 0) text.append('\n');
+            text.append(h);
+        }
+        EditText box = multilineBox(text.toString());
+        Ui.add(card, box, 8);
+        Ui.add(card, Ui.button(this, "Save", Ui.TONAL, v -> {
+            Set<String> typed = linesOf(box);
+            Set<String> accepted = DnsAllowlist.sanitize(typed);
+            PerAppDnsAllowlist.setFor(this, pkg, accepted);
+            if (!typed.isEmpty() && accepted.size() < typed.size()) {
+                toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
+            } else {
+                toast("Saved.");
+            }
+            build();
+        }), 8);
+    }
+
+    /** Every DNS query and every TLS SNI hostname DnsFilterVpnService has actually seen, newest
+     * first -- which app made it, whether it was blocked, and when. Read-only other than
+     * Clear/Refresh. */
+    private void buildTrafficLogScreen() {
+        LinearLayout back = Ui.card(this, root);
+        Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            dnsFilterSub = null;
+            build();
+        }), 0);
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Traffic Log"));
+        card.addView(Ui.body(this, "Every DNS lookup and every HTTPS connection's hostname the filter has seen, "
+                + "newest first, with the app that made it and whether it was blocked. Only fills in while "
+                + "Lockdown is on and DNS Hostname Block or Block Whole Network is non-empty.", true));
+        List<org.json.JSONObject> entries = TrafficLog.list(this);
+        if (entries.isEmpty()) {
+            card.addView(Ui.body(this, "Nothing logged yet.", true));
+        }
+        int shown = 0;
+        for (org.json.JSONObject entry : entries) {
+            if (shown >= 200) break;
+            shown++;
+            long time = entry.optLong("time", 0);
+            String kind = entry.optString("kind", "");
+            String host = entry.optString("host", "");
+            String app = entry.optString("app", "");
+            boolean blocked = entry.optBoolean("blocked", false);
+            String when = android.text.format.DateFormat.format("MM/dd h:mm:ss a", time).toString();
+            String kindLabel = TrafficLog.KIND_DNS.equals(kind) ? "DNS" : TrafficLog.KIND_NET.equals(kind) ? "NET" : "TLS";
+            TextView t = Ui.body(this, when + "  [" + kindLabel + "]  " + (blocked ? "BLOCKED" : "allowed")
+                    + "\n" + host + "\n" + app, false);
+            t.setTextSize(12);
+            if (blocked) t.setTextColor(0xFFCC4433);
+            Ui.add(card, t, 10);
+        }
+        if (entries.size() > shown) {
+            card.addView(Ui.body(this, "Showing the newest " + shown + " of " + entries.size() + ".", true));
+        }
+        Ui.add(card, Ui.button(this, "Refresh", Ui.OUTLINED, v -> build()), 8);
+        Ui.add(card, Ui.button(this, "Clear log", Ui.OUTLINED, v -> {
+            TrafficLog.clear(this);
+            build();
+        }), 8);
     }
 
     // ---------- the two pickers ----------
@@ -1086,6 +1420,7 @@ public class MainActivity extends Activity {
         applyRegularAppLiveState();
         applySystemAppLiveState();
         applyNotificationPermissionLive();
+        applyDnsFilterLive();
         // Everything that needs to be reachable once locked, whether or not it has a tile:
         // apps with an actual home-screen icon, plus apps only allowed to notify (Android Auto,
         // for instance, has no tile but still needs to be launchable for the notification/car
