@@ -596,30 +596,45 @@ public class MainActivity extends Activity {
      * non-empty AND the Lockdown switch being on -- off clears it regardless of what's saved,
      * same as every other applyXLive() method here.
      *
-     * Deliberately does NOT register as always-on (setAlwaysOnVpnPackage()) any more -- that OS-
-     * level supervision is the prime suspect for the repeated freezes/crashes turning Lockdown on
-     * caused on this device even after every DPM/PackageManager call here was confirmed off the UI
-     * thread. This app manages the same "can't just be turned off" guarantee itself instead: the
-     * kiosk already keeps the real Settings app (and so the system VPN screen) unreachable, and
-     * DnsFilterVpnService's own onRevoke() reconnects immediately rather than stopping if the
-     * connection is ever dropped some other way.
+     * Registers as always-on, with lockdown enabled, via the device-owner API
+     * (setAlwaysOnVpnPackage) -- the real, Google-documented way to make this genuinely
+     * unbypassable: Android itself refuses to route any traffic outside this VPN at all, and the
+     * phone's own user cannot remove or reconfigure it from Settings (that's what pairing this
+     * with the "Block adding or changing a VPN" restriction is for). This was dropped for a while
+     * on the theory that always-on's own OS-level supervision was causing this device's repeated
+     * freezes; it wasn't -- the actual cause was a missing manifest permission, fixed separately
+     * -- so there's no longer a reason not to use the real mechanism built for exactly this.
+     * DnsFilterVpnService's own retry/reconnect logic stays in place underneath this regardless,
+     * as a second line of defense for whatever always-on's own auto-reconnect doesn't catch.
      *
      * Checks the service's own real, live "is a tunnel actually up" flag, not a persisted "did we
      * already ask for this" flag -- a tap that finds it still down (wanted but not up) retries
-     * right here, on the next build(), until it actually connects. startForegroundService() is
-     * still a real call worth keeping off the UI thread regardless. */
+     * right here, on the next build(), until it actually connects. Everything here is a real
+     * Binder call into system_server (and Knox's own layer on top of that on this device), so it
+     * all runs on a background thread, same as every other DPM call in this app. */
     private void applyDnsFilterLive() {
         if (!dnsFilterApplying.compareAndSet(false, true)) return;
         boolean wanted = isLockdownOn() && !prefs().getBoolean("vpnFilterPaused", false)
                 && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
         new Thread(() -> {
             try {
+                boolean registered;
+                try {
+                    registered = getPackageName().equals(dpm().getAlwaysOnVpnPackage(admin()));
+                } catch (Exception e) {
+                    registered = false;
+                }
                 boolean up = DnsFilterVpnService.isActive();
-                if (wanted == up) return;
+                if (wanted == registered && wanted == up) return;
                 try {
                     if (wanted) {
-                        startForegroundService(new Intent(this, DnsFilterVpnService.class));
-                    } else {
+                        // Grant the permission before asking the service to start -- doing it the
+                        // other way around is exactly the race that could leave this never
+                        // actually running.
+                        if (!registered) dpm().setAlwaysOnVpnPackage(admin(), getPackageName(), true);
+                        if (!up) startForegroundService(new Intent(this, DnsFilterVpnService.class));
+                    } else if (registered) {
+                        dpm().setAlwaysOnVpnPackage(admin(), null, false);
                         stopService(new Intent(this, DnsFilterVpnService.class));
                     }
                 } catch (Exception ignored) {
