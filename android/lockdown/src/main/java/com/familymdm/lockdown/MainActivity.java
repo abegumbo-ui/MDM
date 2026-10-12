@@ -540,6 +540,7 @@ public class MainActivity extends Activity {
     }
 
     private static final int REQ_VPN_CONSENT = 4242;
+    private final java.util.concurrent.atomic.AtomicBoolean vpnConsentChecking = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     /** The only interactive step the DNS filter still needs. Without registering as always-on
      * (dropped -- see applyDnsFilterLive()'s own doc for why), there's no other way for a device
@@ -547,18 +548,35 @@ public class MainActivity extends Activity {
      * request" dialog any VPN app shows once, approved here while this is still an ordinary,
      * reachable screen (not yet locked into the kiosk). Android remembers that approval for this
      * app from then on, the same as any other VPN -- this never needs to run again afterward.
-     * VpnService.prepare() itself is a cheap local check, not a Knox-wrapped DPM call, so this is
-     * fine to call directly on the UI thread from build(). */
+     *
+     * VpnService.prepare() was assumed cheap enough to call directly on the UI thread -- it's
+     * usually just a local check, not a Binder call like the DPM/Knox ones everywhere else here
+     * got moved off the UI thread for. That assumption was never actually verified on this
+     * specific device, and this call is new: it didn't exist before always-on was dropped, in the
+     * same change that's been crashing ever since. An actual Android ANR dialog ("isn't
+     * responding") showing up is a real main-thread freeze, not a silent kill -- so this gets the
+     * same treatment as everything else here now, on principle, not because it's confirmed slow:
+     * the whole check runs in the background, and only the activity launch itself (which must be
+     * on the UI thread) hops back to it. */
     private void ensureVpnConsentIfNeeded() {
         if (!isLockdownOn()) return;
-        if (DnsBlocklist.list(this).isEmpty() && NetworkBlocklist.list(this).isEmpty()) return;
-        Intent consent = VpnService.prepare(this);
-        if (consent != null) {
+        if (!vpnConsentChecking.compareAndSet(false, true)) return;
+        new Thread(() -> {
             try {
-                startActivityForResult(consent, REQ_VPN_CONSENT);
-            } catch (Exception ignored) {
+                if (DnsBlocklist.list(this).isEmpty() && NetworkBlocklist.list(this).isEmpty()) return;
+                Intent consent = VpnService.prepare(this);
+                if (consent != null) {
+                    runOnUiThread(() -> {
+                        try {
+                            startActivityForResult(consent, REQ_VPN_CONSENT);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                }
+            } finally {
+                vpnConsentChecking.set(false);
             }
-        }
+        }, "mdm-vpn-consent-check").start();
     }
 
     @Override
