@@ -29,6 +29,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class UdpRelay {
     private static final String TAG = "Lockdown";
     private static final long IDLE_TIMEOUT_MS = 90_000;
+    // Same reasoning as TcpRelay's own MAX_CONCURRENT_CONNECTIONS -- every UDP flow (mainly QUIC)
+    // gets its own real thread here too, with no pool. Capped generously above normal use; a flow
+    // that arrives past the cap is just dropped, the same as a lost packet on a congested network,
+    // which QUIC already tolerates and retries.
+    private static final int MAX_CONCURRENT_FLOWS = 150;
 
     interface Writer {
         void write(byte[] packet);
@@ -77,6 +82,7 @@ final class UdpRelay {
                         return;
                     }
                 }
+                if (entries.size() >= MAX_CONCURRENT_FLOWS) return; // dropped -- see the cap's own doc above
                 DatagramSocket s = new DatagramSocket();
                 service.protect(s);
                 e = new Entry(s, clientIp, clientPort);
