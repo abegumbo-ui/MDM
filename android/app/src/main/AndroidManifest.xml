@@ -8,6 +8,10 @@
          Settings prompt; declaring it here is still required either way. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Lets DnsFilterVpnService ask the OS which app owns a given connection (ConnectivityManager
+         getConnectionOwnerUid), so the Traffic Log can show which app made a request -- normal
+         permission, granted automatically, no prompt. -->
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -178,9 +182,10 @@
             android:name=".AgentService"
             android:exported="false" />
 
-        <!-- A local, DNS-only VPN: see its own class doc for why this shape, not a full traffic
-             proxy, and what it can and can't reach. Only exists/runs while the dashboard's DNS
-             blocklist (PolicyApplier.applyDnsFilter()) is non-empty. -->
+        <!-- The device's DNS blocklist and TLS-SNI traffic log, both in one VPN: see its own class
+             doc for what that means it captures (all IPv4 traffic, not just DNS) and what it can
+             and can't reach. Only exists/runs while the dashboard's DNS blocklist
+             (PolicyApplier.applyDnsFilter()) is non-empty. -->
         <service
             android:name=".DnsFilterVpnService"
             android:exported="true"
