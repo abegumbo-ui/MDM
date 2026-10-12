@@ -55,6 +55,7 @@ public class HomeActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
+        ensureDnsFilterRunning();
         build();
     }
 
@@ -66,7 +67,27 @@ public class HomeActivity extends Activity {
             if (am.getLockTaskModeState() == ActivityManager.LOCK_TASK_MODE_NONE) startLockTask();
         } catch (Exception ignored) {
         }
+        ensureDnsFilterRunning();
         build();
+    }
+
+    /** Once "This device is set up for good" has run, MainActivity -- where every other bit of
+     * "make sure the DNS filter is actually running" logic lives (applyDnsFilterLive(), the retry
+     * loop in DnsFilterVpnService itself) -- gets permanently disabled and never runs again. This
+     * screen is the only thing still running at that point, so it's the only thing left that can
+     * notice the filter isn't up (killed by the OS, or never restarted after a reboot) and bring
+     * it back -- the self-managed equivalent of "stays on," without registering as an OS-level
+     * always-on VPN. Deliberately plain and cheap (a couple of prefs reads, no DPM/Binder calls
+     * now that always-on's own calls are gone) -- safe to run directly here on every resume. */
+    private void ensureDnsFilterRunning() {
+        boolean wanted = prefs().getBoolean("lockdownOn", false) && !prefs().getBoolean("vpnFilterPaused", false)
+                && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
+        if (wanted == DnsFilterVpnService.isActive()) return;
+        try {
+            if (wanted) startForegroundService(new Intent(this, DnsFilterVpnService.class));
+            else stopService(new Intent(this, DnsFilterVpnService.class));
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
