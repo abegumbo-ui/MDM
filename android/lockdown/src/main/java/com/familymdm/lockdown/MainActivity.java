@@ -446,20 +446,39 @@ public class MainActivity extends Activity {
      * non-empty AND the Lockdown switch being on -- off clears it regardless of what's saved,
      * same as every other applyXLive() method here. Always-on (lockdownEnabled=false, so apps
      * excluded from it -- namely this one -- still work normally) once it's running, so it can't
-     * just be disconnected from Settings. */
+     * just be disconnected from Settings.
+     *
+     * Checks the service's own real, live "is a tunnel actually up" flag -- not a persisted
+     * "did we already ask for this" flag, which a previous version of this method used and which
+     * could get stuck forever: establish() can fail the very first time (a real race against
+     * setAlwaysOnVpnPackage() actually granting the permission takes effect), and if it does,
+     * calling startForegroundService()/setAlwaysOnVpnPackage() once was already recorded as
+     * "done," so nothing ever asked again -- the filter silently never actually ran, with no way
+     * to recover short of clearing app data. Comparing against DnsFilterVpnService.isActive()
+     * instead means a tap that finds it still down (wanted but not up) retries right here, on the
+     * next build() -- i.e. the next tap -- until it actually connects. Granting the permission
+     * before starting the service (rather than after) also closes the race itself, not just
+     * recovers from it; see DnsFilterVpnService's own retry loop for the other half of this. */
     private void applyDnsFilterLive() {
         boolean wanted = isLockdownOn() && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
-        boolean applied = prefs().getBoolean("dnsFilterApplied", false);
-        if (wanted == applied) return;
+        boolean registered;
+        try {
+            registered = getPackageName().equals(dpm().getAlwaysOnVpnPackage(admin()));
+        } catch (Exception e) {
+            registered = false;
+        }
+        boolean up = DnsFilterVpnService.isActive();
+        if (wanted == registered && wanted == up) return;
         try {
             if (wanted) {
-                startForegroundService(new Intent(this, DnsFilterVpnService.class));
-                dpm().setAlwaysOnVpnPackage(admin(), getPackageName(), false);
-            } else {
+                // Grant the permission before asking the service to start -- doing it the other
+                // way around is exactly the race that could leave this never actually running.
+                if (!registered) dpm().setAlwaysOnVpnPackage(admin(), getPackageName(), false);
+                if (!up) startForegroundService(new Intent(this, DnsFilterVpnService.class));
+            } else if (registered) {
                 dpm().setAlwaysOnVpnPackage(admin(), null, false);
                 stopService(new Intent(this, DnsFilterVpnService.class));
             }
-            prefs().edit().putBoolean("dnsFilterApplied", wanted).apply();
         } catch (Exception ignored) {
         }
     }
