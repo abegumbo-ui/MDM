@@ -827,6 +827,8 @@ public class AdminActivity extends Activity {
                     v -> { blockingSub = "whole"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "DNS Hostname Block", R.drawable.ic_shield,
                     v -> { blockingSub = "dns"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "DNS Hostname Allow", R.drawable.ic_shield,
+                    v -> { blockingSub = "dnsallow"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "Traffic Log", R.drawable.ic_shield,
                     v -> { blockingSub = "log"; build(); }), 8);
             return;
@@ -834,6 +836,7 @@ public class AdminActivity extends Activity {
         if ("apps".equals(blockingSub)) buildBlockedComponentsSection(root);
         else if ("whole".equals(blockingSub)) buildBlockedWholeAppsSection(root);
         else if ("dns".equals(blockingSub)) buildDnsBlocklistSection(root);
+        else if ("dnsallow".equals(blockingSub)) buildDnsAllowlistSection(root);
         else buildTrafficLogSection(root);
     }
 
@@ -943,6 +946,50 @@ public class AdminActivity extends Activity {
             Agent.addEvent(this, "local", "Master code on phone: DNS Hostname Block list updated ("
                     + accepted.size() + " host(s))");
             AgentService.requestSync();
+            if (!typed.isEmpty() && accepted.size() < typed.size()) {
+                toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
+            } else {
+                toast("Saved.");
+            }
+            build();
+        });
+    }
+
+    /** Overrides DNS Hostname Block for whatever's listed here -- for when a block entry is
+     * deliberately broad (a whole CDN domain) but one specific subdomain under it is still
+     * needed. On-device only for now: no dashboard counterpart yet, no sync. Same bulk-textarea
+     * shape as the block list for the same reason -- pasted in, not typed one at a time. */
+    private void buildDnsAllowlistSection(LinearLayout root) {
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "DNS Hostname Allow"));
+        card.addView(Ui.body(this, "Overrides DNS Hostname Block for whatever's listed here -- a hostname "
+                + "(or any subdomain of one) that matches both this list and the block list is let through. "
+                + "Use this when a block entry is deliberately broad but one specific host under it is still "
+                + "needed. Same format as the block list: one hostname per line. On-device only for now -- "
+                + "doesn't sync to the dashboard yet.", true));
+        android.widget.EditText box = new android.widget.EditText(this);
+        box.setMinLines(6);
+        box.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        box.setTypeface(android.graphics.Typeface.MONOSPACE);
+        box.setTextSize(12);
+        StringBuilder text = new StringBuilder();
+        for (String h : DnsAllowlist.list(this)) {
+            if (text.length() > 0) text.append('\n');
+            text.append(h);
+        }
+        box.setText(text.toString());
+        Ui.add(card, box, 8);
+        action(card, "Save", Ui.TONAL, v -> {
+            if (!unlocked()) return;
+            java.util.Set<String> typed = new java.util.LinkedHashSet<>();
+            for (String line : box.getText().toString().split("\n")) {
+                String t = line.trim();
+                if (!t.isEmpty()) typed.add(t);
+            }
+            java.util.Set<String> accepted = DnsAllowlist.sanitize(typed);
+            DnsAllowlist.set(this, accepted);
+            Agent.addEvent(this, "local", "Master code on phone: DNS Hostname Allow list updated ("
+                    + accepted.size() + " host(s))");
             if (!typed.isEmpty() && accepted.size() < typed.size()) {
                 toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
             } else {
