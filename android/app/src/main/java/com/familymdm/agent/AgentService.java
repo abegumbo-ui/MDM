@@ -259,6 +259,16 @@ public class AgentService extends Service {
             body.put("dnsAllowlistRev", dnsAllowRev);
             body.put("dnsAllowlistValue", DnsAllowlist.toJson(this));
         }
+        long netBlockRev = NetworkBlocklist.rev(this);
+        if (netBlockRev > 0) {
+            body.put("networkBlocklistRev", netBlockRev);
+            body.put("networkBlocklistValue", NetworkBlocklist.toJson(this));
+        }
+        long perAppAllowRev = PerAppDnsAllowlist.rev(this);
+        if (perAppAllowRev > 0) {
+            body.put("perAppDnsAllowlistRev", perAppAllowRev);
+            body.put("perAppDnsAllowlistValue", PerAppDnsAllowlist.toJson(this));
+        }
         long mRev = Agent.prefs(this).getLong("masterRev", 0);
         if (mRev > 0) {
             body.put("masterRev", mRev);

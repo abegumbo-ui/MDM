@@ -96,11 +96,27 @@ final class TcpRelay {
             Tcb tcb = new Tcb(key, srcIp, srcPort, dstIp, dstPort);
             tcb.ack = (seq + 1) & 0xFFFFFFFFL;
             tcb.seq = rand.nextInt(Integer.MAX_VALUE) & 0xFFFFFFFFL;
+            // Only worth resolving the UID at all when some app actually has its network cut off
+            // -- otherwise this is a syscall on every single TCP connection the device makes, for
+            // a feature nobody's using.
+            int uid = -1;
+            if (!NetworkBlocklist.list(context).isEmpty()) {
+                uid = uidResolver.uidFor(NetUtil.IPPROTO_TCP, new InetSocketAddress(ipToInet(srcIp), srcPort), new InetSocketAddress(ipToInet(dstIp), dstPort));
+                tcb.pkg = uidResolver.packageFor(uid);
+                tcb.networkBlocked = NetworkBlocklist.isBlocked(context, tcb.pkg);
+            }
             tcbs.put(key, tcb);
             writer.write(NetUtil.buildTcpPacket(dstIp, srcIp, dstPort, srcPort, tcb.seq, tcb.ack,
                     NetUtil.TCP_SYN | NetUtil.TCP_ACK, 65535, null));
             tcb.seq = (tcb.seq + 1) & 0xFFFFFFFFL;
-            if (dstPort != 443) startConnect(tcb);
+            if (tcb.networkBlocked && dstPort != 443) {
+                // No SNI possible on this port, so no way to check it against the app's own
+                // allow list -- a network-blocked app gets nothing at all outside :443.
+                TrafficLog.add(context, TrafficLog.KIND_NET, ipString(dstIp) + ":" + dstPort, uid, uidResolver.labelFor(uid), true);
+                resetAndRemove(tcb);
+                return;
+            }
+            if (!tcb.networkBlocked && dstPort != 443) startConnect(tcb);
             return;
         }
 
@@ -156,7 +172,15 @@ final class TcpRelay {
                 }
                 tcb.sniChecked = true;
                 String hostname = r.status == TlsSni.Status.FOUND ? r.hostname : null;
-                boolean blocked = hostname != null && DnsBlocklist.blocks(context, hostname) && !DnsAllowlist.allows(context, hostname);
+                boolean blocked;
+                if (tcb.networkBlocked) {
+                    // A network-blocked app only ever gets what's on its own allow list -- the
+                    // device-wide DnsAllowlist does NOT apply here, on purpose (see
+                    // PerAppDnsAllowlist). No SNI at all means no hostname to check, so blocked.
+                    blocked = hostname == null || !PerAppDnsAllowlist.allows(context, tcb.pkg, hostname);
+                } else {
+                    blocked = hostname != null && DnsBlocklist.blocks(context, hostname) && !DnsAllowlist.allows(context, hostname);
+                }
                 logAndMaybeBlock(tcb, hostname, blocked);
                 if (blocked) return; // logAndMaybeBlock already RST + removed it
             }
@@ -300,6 +324,8 @@ final class TcpRelay {
         volatile boolean sniChecked;
         volatile boolean removed;
         volatile long lastActivity = System.currentTimeMillis();
+        volatile String pkg; // only resolved when NetworkBlocklist is non-empty -- see handle()
+        volatile boolean networkBlocked;
         Socket socket;
         OutputStream socketOut;
         final java.io.ByteArrayOutputStream pending = new java.io.ByteArrayOutputStream();

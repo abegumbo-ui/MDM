@@ -36,6 +36,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * query or connection is relayed byte-for-byte to where it was actually headed. TrafficLog.add()
  * records every DNS query and every TLS SNI hostname this sees, blocked or not, for the
  * Administrator panel's own Traffic Log (Blocking > Traffic Log) to show.
+ *
+ * A second, independent layer sits in front of all of that: NetworkBlocklist, keyed by app
+ * instead of hostname. A network-blocked app's queries/connections only ever check against its
+ * own PerAppDnsAllowlist entry, never DnsBlocklist/DnsAllowlist at all -- see TcpRelay's SNI
+ * handling and this class's own DNS handling for exactly where the two layers diverge.
  */
 public class DnsFilterVpnService extends VpnService {
     private static final String TAG = "MdmAgent";
@@ -60,7 +65,7 @@ public class DnsFilterVpnService extends VpnService {
                 establish();
                 uidResolver = new UidResolver(this);
                 tcpRelay = new TcpRelay(this, this, this::writePacket);
-                udpRelay = new UdpRelay(this, this::writePacket);
+                udpRelay = new UdpRelay(this, this, this::writePacket);
                 readerThread = new Thread(this::readLoop, "mdm-dns-filter");
                 readerThread.start();
             } catch (Exception e) {
@@ -196,8 +201,26 @@ public class DnsFilterVpnService extends VpnService {
         if (dnsLength <= 12 || dnsOffset + dnsLength > len) return; // shorter than a DNS header plus a question
 
         String qname = parseQuestionName(buf, dnsOffset, dnsOffset + dnsLength);
-        boolean blocked = qname != null && DnsBlocklist.blocks(this, qname) && !DnsAllowlist.allows(this, qname);
-        logDnsQuery(qname, srcIp, srcPort, dstIp, blocked);
+        int uid = -1;
+        String pkg = null;
+        try {
+            uid = uidResolver.uidFor(NetUtil.IPPROTO_UDP,
+                    new InetSocketAddress(InetAddress.getByAddress(srcIp), srcPort),
+                    new InetSocketAddress(InetAddress.getByAddress(dstIp), 53));
+            pkg = uidResolver.packageFor(uid);
+        } catch (Exception ignored) {
+        }
+        boolean blocked;
+        if (qname == null) {
+            blocked = false;
+        } else if (NetworkBlocklist.isBlocked(this, pkg)) {
+            // A network-blocked app only ever gets what's on its own allow list -- the
+            // device-wide DnsAllowlist does NOT apply here, on purpose (see PerAppDnsAllowlist).
+            blocked = !PerAppDnsAllowlist.allows(this, pkg, qname);
+        } else {
+            blocked = DnsBlocklist.blocks(this, qname) && !DnsAllowlist.allows(this, qname);
+        }
+        if (qname != null) TrafficLog.add(this, TrafficLog.KIND_DNS, qname, uid, uidResolver.labelFor(uid), blocked);
 
         if (blocked) {
             byte[] response = buildNxdomain(buf, dnsOffset, dnsLength);
@@ -214,19 +237,6 @@ public class DnsFilterVpnService extends VpnService {
         System.arraycopy(buf, dnsOffset, query, 0, dnsLength);
         final byte[] origSrcIp = srcIp, origDstIp = dstIp;
         new Thread(() -> forward(origSrcIp, origDstIp, srcPort, dstPort, query), "mdm-dns-relay").start();
-    }
-
-    private void logDnsQuery(String qname, byte[] clientIp, int clientPort, byte[] destIp, boolean blocked) {
-        if (qname == null) return;
-        try {
-            int uid = uidResolver.uidFor(NetUtil.IPPROTO_UDP,
-                    new InetSocketAddress(InetAddress.getByAddress(clientIp), clientPort),
-                    new InetSocketAddress(InetAddress.getByAddress(destIp), 53));
-            String label = uidResolver.labelFor(uid);
-            TrafficLog.add(this, TrafficLog.KIND_DNS, qname, uid, label, blocked);
-        } catch (Exception e) {
-            TrafficLog.add(this, TrafficLog.KIND_DNS, qname, -1, "Unknown app", blocked);
-        }
     }
 
     private void forward(byte[] origSrcIp, byte[] origDstIp, int origSrcPort, int origDstPort, byte[] query) {

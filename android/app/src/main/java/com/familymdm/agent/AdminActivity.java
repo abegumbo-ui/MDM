@@ -40,6 +40,9 @@ public class AdminActivity extends Activity {
     private String settingsMenuSub;
     // Blocking section: null = pick "Block Apps/Screens" or "Block Whole Apps"; otherwise which.
     private String blockingSub;
+    // Block Whole Network section: non-null = which blocked package's own per-app allow list is
+    // open for editing (reached by tapping that package's row); null = the plain blocked-apps list.
+    private String networkAllowlistPkg;
     // Apps hub: null = pick Regular Apps / Home Screen Mode / Blocking; otherwise which one is open
     // -- three top-level tiles that used to be three separate ones, merged into one the same way
     // the dashboard's own "App rules" groups what used to be scattered across several places.
@@ -88,7 +91,12 @@ public class AdminActivity extends Activity {
      * once, which is what showed as two separate "< Back" rows stacked on top of each other. */
     @Override
     public void onBackPressed() {
-        if (settingsMenuSub != null || blockingSub != null) {
+        if (networkAllowlistPkg != null) {
+            // Deepest level of all: one blocked package's own per-app allow list. Pop just that,
+            // stay on the Block Whole Network list it was opened from.
+            networkAllowlistPkg = null;
+            build();
+        } else if (settingsMenuSub != null || blockingSub != null) {
             // Innermost: a sub-section's own further nested picker (e.g. Settings Menu's own
             // "Icon setup" vs "Categories"). Pop just that, stay on the same sub-section.
             settingsMenuSub = null;
@@ -116,6 +124,7 @@ public class AdminActivity extends Activity {
         showingKioskAllowedPicker = false;
         settingsMenuSub = null;
         blockingSub = null;
+        networkAllowlistPkg = null;
         appsSub = null;
         settingsHubSub = null;
     }
@@ -829,6 +838,8 @@ public class AdminActivity extends Activity {
                     v -> { blockingSub = "dns"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "DNS Hostname Allow", R.drawable.ic_shield,
                     v -> { blockingSub = "dnsallow"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "Block Whole Network", R.drawable.ic_shield,
+                    v -> { blockingSub = "network"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "Traffic Log", R.drawable.ic_shield,
                     v -> { blockingSub = "log"; build(); }), 8);
             return;
@@ -837,6 +848,7 @@ public class AdminActivity extends Activity {
         else if ("whole".equals(blockingSub)) buildBlockedWholeAppsSection(root);
         else if ("dns".equals(blockingSub)) buildDnsBlocklistSection(root);
         else if ("dnsallow".equals(blockingSub)) buildDnsAllowlistSection(root);
+        else if ("network".equals(blockingSub)) buildNetworkBlocklistSection(root);
         else buildTrafficLogSection(root);
     }
 
@@ -1000,6 +1012,176 @@ public class AdminActivity extends Activity {
         });
     }
 
+    /** A different thing from Block Whole Apps above: that one stops an app running at all; this
+     * one lets it run completely normally, it just gets no network access -- enforced the same
+     * way DNS Hostname Block is, by DnsFilterVpnService checking every query/connection's owning
+     * app against this list. Tapping a blocked app's own "Allow list" button opens
+     * buildPerAppAllowlistSection for it -- the only way through: specific hostnames just for
+     * that one app, never the device-wide DNS Hostname Allow list (see PerAppDnsAllowlist's own
+     * doc for why). */
+    private void buildNetworkBlocklistSection(LinearLayout root) {
+        if (networkAllowlistPkg != null) {
+            buildPerAppAllowlistSection(root, networkAllowlistPkg);
+            return;
+        }
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Block Whole Network"));
+        card.addView(Ui.body(this, "Cuts an app's network off entirely -- it still opens and runs "
+                + "completely normally, it just can't reach anything, DNS included. A different thing "
+                + "from Block Whole Apps, which stops the app running at all. Each blocked app's own "
+                + "\"Allow list\" lets specific hostnames through just for that app -- the device-wide "
+                + "DNS Hostname Allow list does NOT apply to a network-blocked app.", true));
+        android.content.pm.PackageManager pm = getPackageManager();
+        for (String pkg : NetworkBlocklist.list(this)) {
+            boolean paused = NetworkBlocklist.isPaused(this, pkg);
+            String label = appLabel(pm, pkg);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            TextView t = Ui.body(this, label + " (" + pkg + ")" + (paused ? "  (paused)" : ""), false);
+            t.setTextSize(12);
+            row.addView(t);
+            LinearLayout buttons = new LinearLayout(this);
+            buttons.setOrientation(LinearLayout.HORIZONTAL);
+            buttons.addView(Ui.button(this, "Allow list", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                networkAllowlistPkg = pkg;
+                build();
+            }));
+            buttons.addView(Ui.button(this, paused ? "Resume" : "Pause", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                NetworkBlocklist.setPaused(this, pkg, !paused);
+                Agent.addEvent(this, "local", "Master code on phone: " + (!paused ? "paused" : "resumed")
+                        + " the network block on \"" + pkg + "\"");
+                AgentService.requestSync();
+                build();
+            }));
+            buttons.addView(Ui.button(this, "Remove", Ui.OUTLINED, v -> {
+                if (!unlocked()) return;
+                NetworkBlocklist.remove(this, pkg);
+                Agent.addEvent(this, "local", "Master code on phone: removed the network block on \"" + pkg + "\"");
+                AgentService.requestSync();
+                build();
+            }));
+            row.addView(buttons);
+            Ui.add(card, row, 10);
+        }
+        action(card, "Add App", Ui.TONAL, v -> promptAddNetworkBlock());
+    }
+
+    private void promptAddNetworkBlock() {
+        if (!unlocked()) return;
+        final android.content.pm.PackageManager pm = getPackageManager();
+        final java.util.Map<String, String> byDisplay = new java.util.LinkedHashMap<>();
+        for (android.content.pm.ApplicationInfo ai : pm.getInstalledApplications(0)) {
+            if (ai.packageName.equals(getPackageName())) continue;
+            byDisplay.put(appLabel(pm, ai.packageName) + " (" + ai.packageName + ")", ai.packageName);
+        }
+        final java.util.List<String> suggestions = new java.util.ArrayList<>(byDisplay.keySet());
+        java.util.Collections.sort(suggestions);
+        final android.widget.AutoCompleteTextView input = autoCompleteOver("App name or package", suggestions);
+        Ui.alertDialog(this)
+                .setTitle("Cut off an app's network")
+                .setMessage("Pick an installed app from the list, or type its exact package name.")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Next", (d, w) -> {
+                    String typed = input.getText().toString().trim();
+                    String pkg = byDisplay.get(typed);
+                    if (pkg == null) {
+                        for (String p : byDisplay.values()) {
+                            if (p.equalsIgnoreCase(typed)) {
+                                pkg = p;
+                                break;
+                            }
+                        }
+                    }
+                    if (pkg == null) {
+                        for (java.util.Map.Entry<String, String> e : byDisplay.entrySet()) {
+                            if (e.getKey().equalsIgnoreCase(typed)) {
+                                pkg = e.getValue();
+                                break;
+                            }
+                        }
+                    }
+                    if (pkg == null && !typed.isEmpty()) {
+                        String needle = typed.toLowerCase();
+                        String onlyMatch = null;
+                        int matchCount = 0;
+                        for (java.util.Map.Entry<String, String> e : byDisplay.entrySet()) {
+                            if (e.getKey().toLowerCase().contains(needle)) {
+                                matchCount++;
+                                onlyMatch = e.getValue();
+                            }
+                        }
+                        if (matchCount == 1) pkg = onlyMatch;
+                    }
+                    if (pkg == null) {
+                        toast("Pick a real installed app from the list, or type its exact package name.");
+                        return;
+                    }
+                    final String finalPkg = pkg;
+                    final String label = appLabel(pm, finalPkg);
+                    Ui.alertDialog(this)
+                            .setTitle("Cut off \"" + label + "\"'s network entirely?")
+                            .setMessage("The app keeps running and opening normally -- it just can't reach "
+                                    + "anything, DNS included, until you add hostnames to its own allow list, "
+                                    + "Pause it, or Remove it here.")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Block its network", (d2, w2) -> {
+                                NetworkBlocklist.add(this, finalPkg);
+                                Agent.addEvent(this, "local", "Master code on phone: cut off \"" + finalPkg + "\"'s network");
+                                AgentService.requestSync();
+                                build();
+                            })
+                            .show();
+                })
+                .show();
+    }
+
+    /** One blocked package's own hostname allow list -- the only exception to its network being
+     * cut off entirely. Same bulk-textarea shape as DNS Hostname Allow, scoped to this one
+     * package instead of the whole device. */
+    private void buildPerAppAllowlistSection(LinearLayout root, String pkg) {
+        String label = appLabel(getPackageManager(), pkg);
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Allow list for " + label));
+        card.addView(Ui.body(this, pkg + " is network-blocked. Hostnames listed here (or any "
+                + "subdomain of one) are let through just for this app -- nothing else on the device "
+                + "is affected, and the device-wide DNS Hostname Allow list does NOT apply here. One "
+                + "hostname per line. Saves here immediately and applies live.", true));
+        android.widget.EditText box = new android.widget.EditText(this);
+        box.setMinLines(6);
+        box.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        box.setTypeface(android.graphics.Typeface.MONOSPACE);
+        box.setTextSize(12);
+        StringBuilder text = new StringBuilder();
+        for (String h : PerAppDnsAllowlist.get(this, pkg)) {
+            if (text.length() > 0) text.append('\n');
+            text.append(h);
+        }
+        box.setText(text.toString());
+        Ui.add(card, box, 8);
+        action(card, "Save", Ui.TONAL, v -> {
+            if (!unlocked()) return;
+            java.util.Set<String> typed = new java.util.LinkedHashSet<>();
+            for (String line : box.getText().toString().split("\n")) {
+                String t = line.trim();
+                if (!t.isEmpty()) typed.add(t);
+            }
+            java.util.Set<String> accepted = DnsAllowlist.sanitize(typed);
+            PerAppDnsAllowlist.setLocalFor(this, pkg, accepted);
+            Agent.addEvent(this, "local", "Master code on phone: allow list for \"" + pkg + "\" updated ("
+                    + accepted.size() + " host(s))");
+            AgentService.requestSync();
+            if (!typed.isEmpty() && accepted.size() < typed.size()) {
+                toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
+            } else {
+                toast("Saved.");
+            }
+            build();
+        });
+    }
+
     /** Every DNS query and every TLS SNI hostname DnsFilterVpnService has actually seen, newest
      * first -- which app made it (by UID), whether it was blocked, and when. Read-only other than
      * Clear and Refresh; the log itself is written by the filter service as traffic happens, not
@@ -1026,7 +1208,7 @@ public class AdminActivity extends Activity {
             String app = entry.optString("app", "");
             boolean blocked = entry.optBoolean("blocked", false);
             String when = android.text.format.DateFormat.format("MM/dd h:mm:ss a", time).toString();
-            String kindLabel = TrafficLog.KIND_DNS.equals(kind) ? "DNS" : "TLS";
+            String kindLabel = TrafficLog.KIND_DNS.equals(kind) ? "DNS" : TrafficLog.KIND_NET.equals(kind) ? "NET" : "TLS";
             TextView t = Ui.body(this, when + "  [" + kindLabel + "]  " + (blocked ? "BLOCKED" : "allowed")
                     + "\n" + host + "\n" + app, false);
             t.setTextSize(12);

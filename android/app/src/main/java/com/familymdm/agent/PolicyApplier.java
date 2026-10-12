@@ -191,6 +191,16 @@ final class PolicyApplier {
         }
         applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"));
         applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
+        if (NetworkBlocklist.rev(c) == 0 && !NetworkBlocklist.list(c).isEmpty()) {
+            NetworkBlocklist.seed(c);
+        } else {
+            NetworkBlocklist.adopt(c, policy.optJSONObject("networkBlocklist"));
+        }
+        if (PerAppDnsAllowlist.rev(c) == 0 && !PerAppDnsAllowlist.isEmpty(c)) {
+            PerAppDnsAllowlist.seed(c);
+        } else {
+            PerAppDnsAllowlist.adopt(c, policy.optJSONObject("perAppDnsAllowlist"));
+        }
 
         Set<String> never = neverHide(c);
         Set<String> hiddenByUs = Agent.getSet(c, "hidden");

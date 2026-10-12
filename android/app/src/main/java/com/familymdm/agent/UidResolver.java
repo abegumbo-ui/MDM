@@ -20,6 +20,7 @@ import java.util.Map;
 final class UidResolver {
     private final Context c;
     private final Map<Integer, String> labelCache = new HashMap<>();
+    private final Map<Integer, String> packageCache = new HashMap<>();
 
     UidResolver(Context c) {
         this.c = c.getApplicationContext();
@@ -34,6 +35,23 @@ final class UidResolver {
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    /** The first package name sharing this UID, or null -- for checking a connection's app
+     * against NetworkBlocklist/PerAppDnsAllowlist, which are keyed by package name, not UID
+     * (UIDs aren't stable the way package names are, and the dashboard side will want to show a
+     * package name, not a bare number). */
+    synchronized String packageFor(int uid) {
+        if (uid < 0) return null;
+        if (packageCache.containsKey(uid)) return packageCache.get(uid);
+        String pkg = null;
+        try {
+            String[] pkgs = c.getPackageManager().getPackagesForUid(uid);
+            if (pkgs != null && pkgs.length > 0) pkg = pkgs[0];
+        } catch (Exception ignored) {
+        }
+        packageCache.put(uid, pkg);
+        return pkg;
     }
 
     synchronized String labelFor(int uid) {

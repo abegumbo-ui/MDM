@@ -619,6 +619,42 @@ test("DNS Hostname Allow overrides/mirrors DNS Hostname Block the same rev-based
   assert.deepEqual(r.dnsAllowlist, ["good.example.com", "wild.example.com"]);
 });
 
+test("Block Whole Network and its per-app allow list sync up the same rev-based way, no dashboard editor yet", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.deepEqual(devices.find((d) => d.id === id).config.networkBlocklist, {});
+  assert.deepEqual(devices.find((d) => d.id === id).config.perAppDnsAllowlist, {});
+  await post(
+    "/agent/sync",
+    {
+      networkBlocklistRev: 100,
+      networkBlocklistValue: { "com.google.android.apps.maps": { paused: false } },
+      perAppDnsAllowlistRev: 100,
+      perAppDnsAllowlistValue: { "com.google.android.apps.maps": ["maps.googleapis.com"] },
+    },
+    auth
+  );
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  let d = devices.find((d) => d.id === id);
+  assert.deepEqual(d.config.networkBlocklist, { "com.google.android.apps.maps": { paused: false } });
+  assert.deepEqual(d.config.perAppDnsAllowlist, { "com.google.android.apps.maps": ["maps.googleapis.com"] });
+  // A stale revision is ignored, same as every other rev-synced field.
+  await post("/agent/sync", { networkBlocklistRev: 50, networkBlocklistValue: {} }, auth);
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  d = devices.find((d) => d.id === id);
+  assert.deepEqual(d.config.networkBlocklist, { "com.google.android.apps.maps": { paused: false } });
+  // A newer one wins, and it's a full replace, not a merge -- same as wholeAppBlocklist.
+  await post(
+    "/agent/sync",
+    { perAppDnsAllowlistRev: 200, perAppDnsAllowlistValue: { "com.google.android.apps.maps": ["maps.googleapis.com", "not a hostname"] } },
+    auth
+  );
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  d = devices.find((d) => d.id === id);
+  assert.deepEqual(d.config.perAppDnsAllowlist, { "com.google.android.apps.maps": ["maps.googleapis.com"] });
+});
+
 test("the phone's own Traffic Log (DNS/TLS) mirrors into the dashboard and stays capped", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);

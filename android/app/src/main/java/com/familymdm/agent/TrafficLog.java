@@ -30,6 +30,9 @@ final class TrafficLog {
 
     static final String KIND_DNS = "dns";
     static final String KIND_TLS = "tls";
+    // A network-blocked app's connection refused outright, with no SNI possible to check against
+    // its own allow list (anything not TCP :443) -- see NetworkBlocklist/PerAppDnsAllowlist.
+    static final String KIND_NET = "net";
 
     private TrafficLog() {}
 
