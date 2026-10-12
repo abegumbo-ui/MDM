@@ -56,7 +56,7 @@ public class DnsFilterVpnService extends VpnService {
     private TcpRelay tcpRelay;
     private UdpRelay udpRelay;
     private UidResolver uidResolver;
-    private android.os.Handler retryHandler;
+    private Thread establishThread;
 
     // True only once establish() has actually succeeded and the tunnel is up -- MainActivity's
     // applyDnsFilterLive() checks this (not just "did we ask the service to start") so a failed
@@ -76,14 +76,23 @@ public class DnsFilterVpnService extends VpnService {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // onStartCommand() itself always runs on the main thread -- that's Android's own Service
+        // contract, not something any caller's own threading can change. establish() and its
+        // retries used to run directly in here, meaning every one of them blocked the UI thread
+        // regardless of what thread asked this service to start. Builder.establish() is a real,
+        // possibly slow system call (VPN setup, routed through Knox's own policy layer on this
+        // device) -- kicking the whole thing off on its own thread immediately is what actually
+        // keeps this service's own startup from ever freezing the app.
         startForeground(2, notification());
         if (running.compareAndSet(false, true)) {
-            retryHandler = new android.os.Handler(getMainLooper());
-            attemptEstablish(1);
+            establishThread = new Thread(() -> attemptEstablish(1), "mdm-vpn-establish");
+            establishThread.start();
         }
         return START_STICKY;
     }
 
+    /** Runs entirely on establishThread, including every retry -- Thread.sleep() between attempts
+     * instead of a main-Looper Handler, so nothing here ever touches the UI thread. */
     private void attemptEstablish(int attempt) {
         try {
             establish();
@@ -96,7 +105,12 @@ public class DnsFilterVpnService extends VpnService {
         } catch (Exception e) {
             Log.w(TAG, "DNS filter failed to start (attempt " + attempt + "/" + MAX_ESTABLISH_ATTEMPTS + "): " + e);
             if (attempt < MAX_ESTABLISH_ATTEMPTS && running.get()) {
-                retryHandler.postDelayed(() -> attemptEstablish(attempt + 1), 1000);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) {
+                    return;
+                }
+                if (running.get()) attemptEstablish(attempt + 1);
             } else {
                 running.set(false);
                 stopSelf();
@@ -113,7 +127,7 @@ public class DnsFilterVpnService extends VpnService {
     public void onDestroy() {
         running.set(false);
         active.set(false);
-        if (retryHandler != null) retryHandler.removeCallbacksAndMessages(null);
+        if (establishThread != null) establishThread.interrupt();
         if (readerThread != null) readerThread.interrupt();
         if (tcpRelay != null) tcpRelay.shutdown();
         if (udpRelay != null) udpRelay.shutdown();
