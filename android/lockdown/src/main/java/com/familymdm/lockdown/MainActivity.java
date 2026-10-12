@@ -235,11 +235,7 @@ public class MainActivity extends Activity {
             return;
         }
         buildLockdownSwitch();
-        applyRestrictionsLive();
-        applyRegularAppLiveState();
-        applySystemAppLiveState();
-        applyNotificationPermissionLive();
-        applyDnsFilterLive();
+        applyAllLiveAsync();
         if ("regular".equals(section)) {
             buildPicker(true);
         } else if ("system".equals(section)) {
@@ -336,20 +332,14 @@ public class MainActivity extends Activity {
      * regular launcher as it would once kiosk mode is actually running. */
     private void enableLockdown() {
         prefs().edit().putBoolean("lockdownOn", true).apply();
-        applyRestrictionsLive();
-        applyRegularAppLiveState();
-        applySystemAppLiveState();
-        applyDnsFilterLive();
+        // build(), right below, calls applyAllLiveAsync() itself -- no need to duplicate it here.
         section = null;
         build();
     }
 
     private void disableLockdown() {
         prefs().edit().putBoolean("lockdownOn", false).apply();
-        applyRestrictionsLive();
-        applyRegularAppLiveState();
-        applySystemAppLiveState();
-        applyDnsFilterLive();
+        // build(), below, calls applyAllLiveAsync() itself -- no need to duplicate it here.
         if (Build.VERSION.SDK_INT >= 30) {
             try {
                 dpm().setFactoryResetProtectionPolicy(admin(),
@@ -393,6 +383,39 @@ public class MainActivity extends Activity {
     private static Set<String> lastAppliedSystemBlocked;
     private static Boolean lastAppliedNotifOn;
     private static Set<String> lastAppliedNotifAllowed;
+
+    private final java.util.concurrent.atomic.AtomicBoolean liveApplyRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /** Runs all four of the apply*Live() methods below together, on a background thread, guarded
+     * against piling up overlapping runs across rapid taps -- the single entry point build(),
+     * enableLockdown() and disableLockdown() now use instead of calling each one directly.
+     *
+     * These used to run directly on the UI thread, one after another, every single build() (i.e.
+     * on basically every tap). Each one makes a real DPM/PackageManager call per restriction key
+     * or per installed app it touches -- applyRegularAppLiveState() and
+     * applyNotificationPermissionLive() in particular loop over every launchable or every
+     * installed app on the phone. The caching each one already does means most taps are a no-op,
+     * but the very first time Lockdown turns on, none of that cache applies yet, and the full
+     * pass runs: possibly 100+ synchronous Binder calls into system_server back to back, each one
+     * going through Knox's own policy layer on top of that on this device. That's a real,
+     * multi-second stretch of the UI thread being completely unresponsive -- an ANR, not a crash
+     * with a stack trace, which is exactly why nothing showed up in the crash screen. Moving the
+     * whole batch off the UI thread means it can take however long it actually takes without
+     * ever freezing the app or racing the VPN service's own foreground-start deadline. */
+    private void applyAllLiveAsync() {
+        if (!liveApplyRunning.compareAndSet(false, true)) return;
+        new Thread(() -> {
+            try {
+                applyRestrictionsLive();
+                applyRegularAppLiveState();
+                applySystemAppLiveState();
+                applyNotificationPermissionLive();
+                applyDnsFilterLive();
+            } finally {
+                liveApplyRunning.set(false);
+            }
+        }, "mdm-apply-live").start();
+    }
 
     /** Every Device restrictions toggle's real, right-now state is kept in sync with the Lockdown
      * switch and what's saved, on every build() -- off clears every restriction regardless of what
