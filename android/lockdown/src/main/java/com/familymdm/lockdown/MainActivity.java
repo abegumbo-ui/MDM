@@ -96,6 +96,17 @@ public class MainActivity extends Activity {
             finish();
             return;
         }
+        // If the last run crashed, show ONLY that -- not the normal startup path below, which is
+        // exactly what might have crashed last time. If whatever's wrong keeps happening on every
+        // single launch (lockdownOn=true persisted to disk before the crash, so every fresh
+        // launch immediately re-triggers the same apply*Live() call that crashed), going through
+        // the normal path again here would crash again before the screen ever has a chance to
+        // draw -- the crash trace would be recorded but never actually seen. This minimal screen
+        // can't itself trigger that same bug, so it's guaranteed to actually render.
+        if (prefs().contains("lastCrash")) {
+            buildCrashRecoveryScreen();
+            return;
+        }
         // Regular/System apps start with nothing blocked -- blocking an app outright (as opposed
         // to just muting its notifications or leaving it off the kiosk home screen) is a real
         // risk of breaking something the phone depends on, so it's opt-in only, never a default.
@@ -174,6 +185,45 @@ public class MainActivity extends Activity {
         allow.addAll(DnsDefaults.ALLOWLIST);
         DnsAllowlist.set(this, allow);
         prefs().edit().putBoolean("dnsDefaultsSeeded", true).apply();
+    }
+
+    /** The only thing shown when LockdownApplication's own crash handler saved a stack trace from
+     * last time this process died -- the only way to see what actually crashed without a computer
+     * or logcat access. Deliberately does none of the normal onCreate()/build() setup, so it
+     * cannot itself hit whatever just crashed; if that bug fires on every single launch (e.g.
+     * lockdownOn=true already persisted to disk, so every fresh start immediately redoes the
+     * apply*Live() call that crashed), this screen is the only thing that's actually guaranteed to
+     * render instead of crashing again before the screen ever draws. */
+    private void buildCrashRecoveryScreen() {
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        int pad = Ui.dp(this, 16);
+        root.setPadding(pad, pad, pad, pad);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(root);
+        setContentView(scroll);
+
+        Ui.add(root, Ui.banner(this, "Lockdown Setup"), 0);
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "This app crashed last time it closed"));
+        card.addView(Ui.body(this, "Long-press the text below to select it, copy it, and send it to whoever's "
+                + "helping with this.", true));
+        TextView trace = Ui.body(this, prefs().getString("lastCrash", ""), false);
+        trace.setTextIsSelectable(true);
+        trace.setTextSize(10);
+        trace.setTypeface(android.graphics.Typeface.MONOSPACE);
+        Ui.add(card, trace, 8);
+        card.addView(Ui.body(this, "If the Lockdown switch was just turned on, that's the likely trigger -- "
+                + "this turns it back off directly (nothing else touched) without redoing whatever crashed, "
+                + "then goes back to the app as normal.", true));
+        Ui.add(card, Ui.button(this, "Force Lockdown OFF and continue", Ui.DANGER, v -> {
+            prefs().edit().putBoolean("lockdownOn", false).remove("lastCrash").apply();
+            recreate();
+        }), 8);
+        Ui.add(card, Ui.button(this, "Clear and continue without changing anything", Ui.OUTLINED, v -> {
+            prefs().edit().remove("lastCrash").apply();
+            recreate();
+        }), 8);
     }
 
     private void build() {
