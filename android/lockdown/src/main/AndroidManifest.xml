@@ -7,7 +7,7 @@
          This app still never talks to a server of its own; nothing here adds an address for it to
          reach or any code that would try. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Required just to call Service.startForeground() at all, since Android 9 -- without it,
+    <!-- Required just to call Service.startForeground() at all, since Android 9. Without it,
          DnsFilterVpnService.onStartCommand() throws a SecurityException the instant it tries,
          every single time, which is exactly what was crashing this app every time the DNS filter
          turned on. A normal permission, granted automatically; the agent app's own manifest
