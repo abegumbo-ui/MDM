@@ -592,7 +592,8 @@ public class MainActivity extends Activity {
      * still a real call worth keeping off the UI thread regardless. */
     private void applyDnsFilterLive() {
         if (!dnsFilterApplying.compareAndSet(false, true)) return;
-        boolean wanted = isLockdownOn() && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
+        boolean wanted = isLockdownOn() && !prefs().getBoolean("vpnFilterPaused", false)
+                && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
         new Thread(() -> {
             try {
                 boolean up = DnsFilterVpnService.isActive();
@@ -666,7 +667,9 @@ public class MainActivity extends Activity {
         }), 8);
         int dnsBlockCount = DnsBlocklist.list(this).size();
         int netBlockCount = NetworkBlocklist.list(this).size();
-        Ui.add(card, Ui.button(this, "DNS/Network filter (" + dnsBlockCount + " host(s), " + netBlockCount + " app(s) blocked)", Ui.TONAL, v -> {
+        String dnsFilterLabel = "DNS/Network filter (" + dnsBlockCount + " host(s), " + netBlockCount + " app(s) blocked)"
+                + (prefs().getBoolean("vpnFilterPaused", false) ? " -- PAUSED" : "");
+        Ui.add(card, Ui.button(this, dnsFilterLabel, Ui.TONAL, v -> {
             section = "dnsfilter";
             dnsFilterSub = null;
             networkAllowlistPkg = null;
@@ -697,9 +700,16 @@ public class MainActivity extends Activity {
             LinearLayout card = Ui.card(this, root);
             card.addView(Ui.titleText(this, "DNS/Network filter"));
             card.addView(Ui.body(this, "Blocks specific hostnames, or an app's entire network, device-wide, once "
-                    + "Lockdown is switched on -- enforced by this app's own local VPN (always-on while any of "
-                    + "it is set, so it can't just be disconnected from Settings). Each screen below explains "
-                    + "what it does and doesn't cover.", true));
+                    + "Lockdown is switched on -- enforced by this app's own local VPN. Each screen below "
+                    + "explains what it does and doesn't cover.", true));
+            Ui.add(card, Ui.checkRow(this, "Pause the VPN filter",
+                    "For testing only -- stops just the VPN/DNS filter without touching anything else Lockdown "
+                            + "enforces (restrictions, blocked apps, kiosk). Everything above stays exactly as "
+                            + "configured; this just answers \"is it the VPN specifically.\"",
+                    prefs().getBoolean("vpnFilterPaused", false), (box, checked) -> {
+                        prefs().edit().putBoolean("vpnFilterPaused", checked).apply();
+                        applyDnsFilterLive();
+                    }), 12);
             Ui.add(card, Ui.button(this, "DNS Hostname Block", Ui.TONAL, v -> {
                 dnsFilterSub = "block";
                 search = "";
