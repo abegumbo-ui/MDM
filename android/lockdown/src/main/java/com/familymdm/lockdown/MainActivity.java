@@ -17,6 +17,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -60,6 +61,14 @@ public class MainActivity extends Activity {
     // blocked-apps list rather than all the way out to this picker.
     private String dnsFilterSub;
     private String networkAllowlistPkg;
+    // The DNS Hostname Block/Allow screens' own working copy while they're open -- a stable id
+    // per row (not the row's position) so editing or filtering one entry's text never shifts or
+    // loses any other, including ones currently hidden by the search box. null means "not loaded
+    // for this visit yet"; reset to null on leaving the screen so the next visit re-reads
+    // whatever was actually saved.
+    private Map<Long, String> dnsBlockWorking;
+    private Map<Long, String> dnsAllowWorking;
+    private long dnsWorkingSeq;
     private static final String ACTION_UNINSTALL_RESULT = "com.familymdm.lockdown.UNINSTALL_RESULT";
     private static final Pattern PACKAGE_NAME = Pattern.compile("\\b[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z][a-zA-Z0-9_]*)+\\b");
     private BroadcastReceiver uninstallReceiver;
@@ -106,6 +115,7 @@ public class MainActivity extends Activity {
             defaults.add("connected");
             prefs().edit().putStringSet("settingsCategories", defaults).apply();
         }
+        seedDnsDefaultsIfNeeded();
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 16);
@@ -150,6 +160,20 @@ public class MainActivity extends Activity {
 
     private boolean showProtectedApps() {
         return prefs().getBoolean("showProtectedApps", false);
+    }
+
+    /** Loads DnsDefaults' starting Block/Allow lists exactly once, ever -- the first time this
+     * app runs after this feature shipped. After that it's a normal flag, so removing one of
+     * these entries on the picker removes it for good; it won't reappear on the next launch. */
+    private void seedDnsDefaultsIfNeeded() {
+        if (prefs().getBoolean("dnsDefaultsSeeded", false)) return;
+        Set<String> block = new LinkedHashSet<>(DnsBlocklist.list(this));
+        block.addAll(DnsDefaults.BLOCKLIST);
+        DnsBlocklist.set(this, block);
+        Set<String> allow = new LinkedHashSet<>(DnsAllowlist.list(this));
+        allow.addAll(DnsDefaults.ALLOWLIST);
+        DnsAllowlist.set(this, allow);
+        prefs().edit().putBoolean("dnsDefaultsSeeded", true).apply();
     }
 
     private void build() {
@@ -301,6 +325,25 @@ public class MainActivity extends Activity {
         }
     }
 
+    // Every applyXLive() below runs on basically every tap in the app (build() calls all of them
+    // unconditionally). Each dpm() call is a blocking Binder IPC into system_server (and on
+    // Samsung/Knox, an extra policy layer on top of that) -- re-asserting ~70 restrictions and
+    // every installed app's state on every single tap was the real cause of the whole app
+    // lagging a few seconds on every button press, regardless of which screen was open, nothing
+    // to do with the DNS/VPN filter. These caches remember what was last actually sent to the
+    // DPM, so a tap that didn't change anything here does zero IPCs instead of ~70 (or one per
+    // installed app) every time. Static so the cache survives this Activity being recreated
+    // (rotation, re-launch); a fresh process starts with it empty, so the very next build() after
+    // a cold start still does one real, correct full pass.
+    private static Set<String> lastAppliedRestrictions;
+    private static Boolean lastAppliedRegularOn;
+    private static Boolean lastAppliedShowProtected;
+    private static Set<String> lastAppliedRegularBlocked;
+    private static Boolean lastAppliedSystemOn;
+    private static Set<String> lastAppliedSystemBlocked;
+    private static Boolean lastAppliedNotifOn;
+    private static Set<String> lastAppliedNotifAllowed;
+
     /** Every Device restrictions toggle's real, right-now state is kept in sync with the Lockdown
      * switch and what's saved, on every build() -- off clears every restriction regardless of what
      * boxes are checked below; on applies exactly those boxes. Nothing drifts out of sync with what
@@ -309,6 +352,7 @@ public class MainActivity extends Activity {
         boolean on = isLockdownOn();
         Set<String> enabled = on ? prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS)
                 : java.util.Collections.emptySet();
+        if (enabled.equals(lastAppliedRestrictions)) return;
         for (String key : LockdownPolicy.RESTRICTIONS.keySet()) {
             try {
                 if (enabled.contains(key)) dpm().addUserRestriction(admin(), key);
@@ -316,6 +360,7 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
         }
+        lastAppliedRestrictions = new LinkedHashSet<>(enabled);
     }
 
     /** Same idea as applyRestrictionsLive() for the Regular apps list, but as a block-list, not an
@@ -326,8 +371,10 @@ public class MainActivity extends Activity {
     private void applyRegularAppLiveState() {
         boolean on = isLockdownOn();
         boolean showProtected = showProtectedApps();
-        PackageManager pm = getPackageManager();
         Set<String> blocked = prefs().getStringSet("blockedRegularApps", new LinkedHashSet<>());
+        if (Boolean.valueOf(on).equals(lastAppliedRegularOn) && Boolean.valueOf(showProtected).equals(lastAppliedShowProtected)
+                && blocked.equals(lastAppliedRegularBlocked)) return;
+        PackageManager pm = getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         for (ResolveInfo ri : pm.queryIntentActivities(main, PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
             String pkg = ri.activityInfo.packageName;
@@ -341,6 +388,9 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
         }
+        lastAppliedRegularOn = on;
+        lastAppliedShowProtected = showProtected;
+        lastAppliedRegularBlocked = new LinkedHashSet<>(blocked);
     }
 
     /** Same idea again for the System apps list -- only unhides/hides the packages actually saved
@@ -348,12 +398,15 @@ public class MainActivity extends Activity {
     private void applySystemAppLiveState() {
         boolean on = isLockdownOn();
         Set<String> blocked = prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>());
+        if (Boolean.valueOf(on).equals(lastAppliedSystemOn) && blocked.equals(lastAppliedSystemBlocked)) return;
         for (String pkg : blocked) {
             try {
                 dpm().setApplicationHidden(admin(), pkg, on);
             } catch (Exception ignored) {
             }
         }
+        lastAppliedSystemOn = on;
+        lastAppliedSystemBlocked = new LinkedHashSet<>(blocked);
     }
 
     private static final String POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS";
@@ -371,6 +424,7 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT < 33) return;
         boolean on = isLockdownOn();
         Set<String> allowed = prefs().getStringSet("allowedNotificationPackages", new LinkedHashSet<>());
+        if (Boolean.valueOf(on).equals(lastAppliedNotifOn) && allowed.equals(lastAppliedNotifAllowed)) return;
         PackageManager pm = getPackageManager();
         for (ApplicationInfo ai : pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
             String pkg = ai.packageName;
@@ -383,6 +437,8 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
         }
+        lastAppliedNotifOn = on;
+        lastAppliedNotifAllowed = new LinkedHashSet<>(allowed);
     }
 
     /** Same derive-from-the-list-itself shape as the agent app's own applyDnsFilter(): whether
@@ -499,10 +555,12 @@ public class MainActivity extends Activity {
                     + "what it does and doesn't cover.", true));
             Ui.add(card, Ui.button(this, "DNS Hostname Block", Ui.TONAL, v -> {
                 dnsFilterSub = "block";
+                search = "";
                 build();
             }), 12);
             Ui.add(card, Ui.button(this, "DNS Hostname Allow", Ui.TONAL, v -> {
                 dnsFilterSub = "allow";
+                search = "";
                 build();
             }), 8);
             Ui.add(card, Ui.button(this, "Block Whole Network", Ui.TONAL, v -> {
@@ -541,72 +599,165 @@ public class MainActivity extends Activity {
         return typed;
     }
 
-    /** Device-wide hostname blocking -- a bulk textarea, since this list is normally managed by
-     * pasting a whole blocklist in at once, not typing one host at a time. */
+    private Map<Long, String> toDnsWorkingMap(Set<String> hosts) {
+        Map<Long, String> m = new LinkedHashMap<>();
+        for (String h : hosts) m.put(dnsWorkingSeq++, h);
+        return m;
+    }
+
+    /** Device-wide hostname blocking. Can still take a whole pasted list at once via "Add" (one
+     * host per line, same tolerant formats as before), but each entry is then its own row here --
+     * searchable, individually editable, individually removable -- rather than one big textarea,
+     * since the list only grows from here and scrolling a single text box to find one entry in a
+     * couple hundred doesn't work. */
     private void buildDnsBlockScreen() {
+        if (dnsBlockWorking == null) dnsBlockWorking = toDnsWorkingMap(DnsBlocklist.list(this));
         LinearLayout back = Ui.card(this, root);
         Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
             dnsFilterSub = null;
+            dnsBlockWorking = null;
+            search = "";
             build();
         }), 0);
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "DNS Hostname Block"));
         card.addView(Ui.body(this, "Blocks these hostnames for the whole phone at the network level -- each one "
-                + "also blocks every subdomain of it. One per line; AdBlock-style \"||host^\" lines, full URLs "
-                + "and \"*.\" wildcards are fine too, anything else is dropped. Applies live once the Lockdown "
-                + "switch is on.", true));
-        StringBuilder text = new StringBuilder();
-        for (String h : DnsBlocklist.list(this)) {
-            if (text.length() > 0) text.append('\n');
-            text.append(h);
-        }
-        EditText box = multilineBox(text.toString());
-        Ui.add(card, box, 8);
+                + "also blocks every subdomain of it. Search to find one, edit it in place, or remove it. "
+                + "\"Add\" also takes a whole pasted list at once (one per line; AdBlock-style \"||host^\" lines, "
+                + "full URLs and \"*.\" wildcards are fine too). Nothing here is applied to the phone until "
+                + "\"Save\" is pressed, and then only while the Lockdown switch is on.", true));
+        buildDnsSearchField(card, () -> fillDnsListRows(dnsBlockWorking));
+        buildDnsAddField(card, DnsBlocklist::sanitize, dnsBlockWorking, () -> fillDnsListRows(dnsBlockWorking));
+        pickerList = new LinearLayout(this);
+        pickerList.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(card, pickerList, 8);
+        fillDnsListRows(dnsBlockWorking);
         Ui.add(card, Ui.button(this, "Save", Ui.TONAL, v -> {
-            Set<String> typed = linesOf(box);
-            Set<String> accepted = DnsBlocklist.sanitize(typed);
+            Set<String> accepted = DnsBlocklist.sanitize(dnsBlockWorking.values());
             DnsBlocklist.set(this, accepted);
             applyDnsFilterLive();
-            if (!typed.isEmpty() && accepted.size() < typed.size()) {
-                toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
-            } else {
-                toast("Saved.");
-            }
-            build();
-        }), 8);
+            toast("Saved " + accepted.size() + " host(s).");
+            dnsBlockWorking = toDnsWorkingMap(accepted);
+            fillDnsListRows(dnsBlockWorking);
+        }), 12);
     }
 
-    /** Overrides DNS Hostname Block for whatever's listed here. */
+    /** Overrides DNS Hostname Block for whatever's listed here. Same searchable/editable row shape
+     * as the block list above. */
     private void buildDnsAllowScreen() {
+        if (dnsAllowWorking == null) dnsAllowWorking = toDnsWorkingMap(DnsAllowlist.list(this));
         LinearLayout back = Ui.card(this, root);
         Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
             dnsFilterSub = null;
+            dnsAllowWorking = null;
+            search = "";
             build();
         }), 0);
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "DNS Hostname Allow"));
         card.addView(Ui.body(this, "Overrides DNS Hostname Block for whatever's listed here -- a hostname (or "
                 + "any subdomain of one) that matches both lists is let through. Use this when a block entry is "
-                + "deliberately broad but one specific host under it is still needed. Same format as the block "
-                + "list: one hostname per line.", true));
-        StringBuilder text = new StringBuilder();
-        for (String h : DnsAllowlist.list(this)) {
-            if (text.length() > 0) text.append('\n');
-            text.append(h);
-        }
-        EditText box = multilineBox(text.toString());
-        Ui.add(card, box, 8);
+                + "deliberately broad but one specific host under it is still needed. Search to find one, edit "
+                + "it in place, or remove it; \"Add\" also takes a whole pasted list at once.", true));
+        buildDnsSearchField(card, () -> fillDnsListRows(dnsAllowWorking));
+        buildDnsAddField(card, DnsAllowlist::sanitize, dnsAllowWorking, () -> fillDnsListRows(dnsAllowWorking));
+        pickerList = new LinearLayout(this);
+        pickerList.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(card, pickerList, 8);
+        fillDnsListRows(dnsAllowWorking);
         Ui.add(card, Ui.button(this, "Save", Ui.TONAL, v -> {
-            Set<String> typed = linesOf(box);
-            Set<String> accepted = DnsAllowlist.sanitize(typed);
+            Set<String> accepted = DnsAllowlist.sanitize(dnsAllowWorking.values());
             DnsAllowlist.set(this, accepted);
-            if (!typed.isEmpty() && accepted.size() < typed.size()) {
-                toast("Only " + accepted.size() + " of " + typed.size() + " line(s) looked like plain hostnames and were kept.");
-            } else {
-                toast("Saved.");
+            toast("Saved " + accepted.size() + " host(s).");
+            dnsAllowWorking = toDnsWorkingMap(accepted);
+            fillDnsListRows(dnsAllowWorking);
+        }), 12);
+    }
+
+    private interface DnsSanitizer {
+        Set<String> sanitize(Iterable<String> rawLines);
+    }
+
+    private void buildDnsSearchField(LinearLayout card, Runnable refill) {
+        EditText searchField = Ui.field(this, "Search");
+        searchField.setText(search);
+        searchField.setSelection(search.length());
+        searchField.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable s) {
+                search = s.toString();
+                refill.run();
             }
-            build();
+        });
+        Ui.add(card, searchField, 8);
+    }
+
+    /** Takes either one hostname or a whole pasted list, one per line -- same tolerant formats
+     * DnsBlocklist.sanitize()/DnsAllowlist.sanitize() already accept. */
+    private void buildDnsAddField(LinearLayout card, DnsSanitizer sanitizer, Map<Long, String> working, Runnable refill) {
+        EditText addField = Ui.multilineField(this, "Add a hostname, or paste a whole list (one per line)");
+        addField.setMinLines(2);
+        Ui.add(card, addField, 8);
+        Ui.add(card, Ui.button(this, "Add", Ui.OUTLINED, v -> {
+            List<String> typed = new ArrayList<>();
+            for (String line : addField.getText().toString().split("\n")) typed.add(line);
+            Set<String> accepted = sanitizer.sanitize(typed);
+            if (accepted.isEmpty()) {
+                toast("That doesn't look like a plain hostname.");
+                return;
+            }
+            Set<String> already = new LinkedHashSet<>(working.values());
+            int added = 0;
+            for (String h : accepted) {
+                if (already.add(h)) {
+                    working.put(dnsWorkingSeq++, h);
+                    added++;
+                }
+            }
+            addField.setText("");
+            toast(added + " added" + (accepted.size() > added ? " (" + (accepted.size() - added) + " already there)" : "") + ".");
+            refill.run();
         }), 8);
+    }
+
+    /** Repopulates pickerList with whichever working map is currently open, filtered by the
+     * search box -- same "refill the list, leave everything else alone" shape as the app
+     * pickers' own fillPickerList()/fillNotificationsList(). Each row's own EditText edits that
+     * row's entry directly in the working map, by its stable id, so filtering never loses an
+     * in-progress edit to a row that's scrolled off or currently hidden by the search box. */
+    private void fillDnsListRows(Map<Long, String> working) {
+        pickerList.removeAllViews();
+        String needle = search.trim().toLowerCase(java.util.Locale.ROOT);
+        int shown = 0;
+        for (Map.Entry<Long, String> entry : new ArrayList<>(working.entrySet())) {
+            long id = entry.getKey();
+            String host = entry.getValue();
+            if (!needle.isEmpty() && !host.toLowerCase(java.util.Locale.ROOT).contains(needle)) continue;
+            shown++;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            EditText line = Ui.field(this, "");
+            line.setText(host);
+            line.setTextSize(12);
+            line.setTypeface(android.graphics.Typeface.MONOSPACE);
+            line.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void afterTextChanged(Editable s) {
+                    working.put(id, s.toString());
+                }
+            });
+            row.addView(line, new LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            Button remove = Ui.button(this, "Remove", Ui.OUTLINED, v -> {
+                working.remove(id);
+                fillDnsListRows(working);
+            });
+            row.addView(remove);
+            Ui.add(pickerList, row, 6);
+        }
+        if (shown == 0) Ui.add(pickerList, Ui.body(this, "No matches.", true), 8);
     }
 
     /** Cuts an app's network off entirely -- it still runs and opens normally, it just can't
