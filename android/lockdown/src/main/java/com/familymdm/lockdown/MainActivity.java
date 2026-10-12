@@ -13,6 +13,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.net.VpnService;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
@@ -127,6 +128,7 @@ public class MainActivity extends Activity {
             prefs().edit().putStringSet("settingsCategories", defaults).apply();
         }
         seedDnsDefaultsIfNeeded();
+        clearStaleAlwaysOnVpnIfNeeded();
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 16);
@@ -187,6 +189,28 @@ public class MainActivity extends Activity {
         prefs().edit().putBoolean("dnsDefaultsSeeded", true).apply();
     }
 
+    /** One-time migration: earlier versions of this app registered the DNS filter as an always-on
+     * VPN (setAlwaysOnVpnPackage()), since dropped in favor of managing the connection itself --
+     * see applyDnsFilterLive()'s own doc for why. A phone updated from one of those earlier
+     * versions still has that registration sitting at the OS level; left alone, it would keep
+     * fighting with this app's own management of the same service. Checked and cleared once, in
+     * the background (the DPM calls involved are the same slow Knox-wrapped ones everything else
+     * here was moved off the UI thread for) -- a phone that was never on an always-on version has
+     * nothing to clear, and this becomes a no-op forever after the first run. */
+    private void clearStaleAlwaysOnVpnIfNeeded() {
+        if (prefs().getBoolean("alwaysOnVpnCleared", false)) return;
+        new Thread(() -> {
+            try {
+                if (getPackageName().equals(dpm().getAlwaysOnVpnPackage(admin()))) {
+                    dpm().setAlwaysOnVpnPackage(admin(), null, false);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                prefs().edit().putBoolean("alwaysOnVpnCleared", true).apply();
+            }
+        }, "mdm-clear-alwayson").start();
+    }
+
     /** The only thing shown when LockdownApplication's own crash handler saved a stack trace from
      * last time this process died -- the only way to see what actually crashed without a computer
      * or logcat access. Deliberately does none of the normal onCreate()/build() setup, so it
@@ -235,6 +259,7 @@ public class MainActivity extends Activity {
             return;
         }
         buildLockdownSwitch();
+        ensureVpnConsentIfNeeded();
         applyAllLiveAsync();
         if ("regular".equals(section)) {
             buildPicker(true);
@@ -514,61 +539,68 @@ public class MainActivity extends Activity {
         lastAppliedNotifAllowed = new LinkedHashSet<>(allowed);
     }
 
-    /** Same derive-from-the-list-itself shape as the agent app's own applyDnsFilter(): whether
-     * DnsFilterVpnService runs at all comes from DnsBlocklist (or NetworkBlocklist) being
-     * non-empty AND the Lockdown switch being on -- off clears it regardless of what's saved,
-     * same as every other applyXLive() method here. Always-on (lockdownEnabled=false, so apps
-     * excluded from it -- namely this one -- still work normally) once it's running, so it can't
-     * just be disconnected from Settings.
-     *
-     * Checks the service's own real, live "is a tunnel actually up" flag -- not a persisted
-     * "did we already ask for this" flag, which a previous version of this method used and which
-     * could get stuck forever: establish() can fail the very first time (a real race against
-     * setAlwaysOnVpnPackage() actually granting the permission takes effect), and if it does,
-     * calling startForegroundService()/setAlwaysOnVpnPackage() once was already recorded as
-     * "done," so nothing ever asked again -- the filter silently never actually ran, with no way
-     * to recover short of clearing app data. Comparing against DnsFilterVpnService.isActive()
-     * instead means a tap that finds it still down (wanted but not up) retries right here, on the
-     * next build() -- i.e. the next tap -- until it actually connects. Granting the permission
-     * before starting the service (rather than after) also closes the race itself, not just
-     * recovers from it; see DnsFilterVpnService's own retry loop for the other half of this. */
+    private static final int REQ_VPN_CONSENT = 4242;
+
+    /** The only interactive step the DNS filter still needs. Without registering as always-on
+     * (dropped -- see applyDnsFilterLive()'s own doc for why), there's no other way for a device
+     * owner to silently grant itself VPN permission; this is the same standard system "Connection
+     * request" dialog any VPN app shows once, approved here while this is still an ordinary,
+     * reachable screen (not yet locked into the kiosk). Android remembers that approval for this
+     * app from then on, the same as any other VPN -- this never needs to run again afterward.
+     * VpnService.prepare() itself is a cheap local check, not a Knox-wrapped DPM call, so this is
+     * fine to call directly on the UI thread from build(). */
+    private void ensureVpnConsentIfNeeded() {
+        if (!isLockdownOn()) return;
+        if (DnsBlocklist.list(this).isEmpty() && NetworkBlocklist.list(this).isEmpty()) return;
+        Intent consent = VpnService.prepare(this);
+        if (consent != null) {
+            try {
+                startActivityForResult(consent, REQ_VPN_CONSENT);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_VPN_CONSENT) build();
+    }
+
     // Guards against piling up overlapping background checks -- build() calls
     // applyDnsFilterLive() on basically every tap, and the check itself now runs in the
     // background (see below), so a slow check from one tap shouldn't queue up a second one
     // before the first even finishes.
     private final java.util.concurrent.atomic.AtomicBoolean dnsFilterApplying = new java.util.concurrent.atomic.AtomicBoolean(false);
 
-    /** Everything this touches -- getAlwaysOnVpnPackage(), setAlwaysOnVpnPackage() -- is a
-     * synchronous Binder call into system_server, and on this device specifically, VPN-policy
-     * calls through Knox's own layer on top of that are a known source of real, multi-second
-     * stalls. Called from build(), which runs on the UI thread on basically every tap: a slow
-     * call here used to mean a frozen, unresponsive app with nothing for any exception handler to
-     * catch -- not a crash with a stack trace, an ANR (Android's own "stop responding" timeout
-     * kicking in and killing the app), which is consistent with there being no crash recorded at
-     * all. Doing the whole check and whatever follows from it on a background thread means none
-     * of it can ever block the UI thread, no matter how slow system_server/Knox is being. */
+    /** Same derive-from-the-list-itself shape as the agent app's own applyDnsFilter(): whether
+     * DnsFilterVpnService runs at all comes from DnsBlocklist (or NetworkBlocklist) being
+     * non-empty AND the Lockdown switch being on -- off clears it regardless of what's saved,
+     * same as every other applyXLive() method here.
+     *
+     * Deliberately does NOT register as always-on (setAlwaysOnVpnPackage()) any more -- that OS-
+     * level supervision is the prime suspect for the repeated freezes/crashes turning Lockdown on
+     * caused on this device even after every DPM/PackageManager call here was confirmed off the UI
+     * thread. This app manages the same "can't just be turned off" guarantee itself instead: the
+     * kiosk already keeps the real Settings app (and so the system VPN screen) unreachable, and
+     * DnsFilterVpnService's own onRevoke() reconnects immediately rather than stopping if the
+     * connection is ever dropped some other way.
+     *
+     * Checks the service's own real, live "is a tunnel actually up" flag, not a persisted "did we
+     * already ask for this" flag -- a tap that finds it still down (wanted but not up) retries
+     * right here, on the next build(), until it actually connects. startForegroundService() is
+     * still a real call worth keeping off the UI thread regardless. */
     private void applyDnsFilterLive() {
         if (!dnsFilterApplying.compareAndSet(false, true)) return;
         boolean wanted = isLockdownOn() && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
         new Thread(() -> {
             try {
-                boolean registered;
-                try {
-                    registered = getPackageName().equals(dpm().getAlwaysOnVpnPackage(admin()));
-                } catch (Exception e) {
-                    registered = false;
-                }
                 boolean up = DnsFilterVpnService.isActive();
-                if (wanted == registered && wanted == up) return;
+                if (wanted == up) return;
                 try {
                     if (wanted) {
-                        // Grant the permission before asking the service to start -- doing it the
-                        // other way around is exactly the race that could leave this never
-                        // actually running.
-                        if (!registered) dpm().setAlwaysOnVpnPackage(admin(), getPackageName(), false);
-                        if (!up) startForegroundService(new Intent(this, DnsFilterVpnService.class));
-                    } else if (registered) {
-                        dpm().setAlwaysOnVpnPackage(admin(), null, false);
+                        startForegroundService(new Intent(this, DnsFilterVpnService.class));
+                    } else {
                         stopService(new Intent(this, DnsFilterVpnService.class));
                     }
                 } catch (Exception ignored) {

@@ -67,11 +67,11 @@ public class DnsFilterVpnService extends VpnService {
         return active.get();
     }
 
-    // establish() legitimately fails the first time this ever runs: setAlwaysOnVpnPackage()'s own
-    // permission grant and this service's first start can race, so the very first establish() can
-    // see the permission not landed yet. Retrying a handful of times a second apart (rather than
-    // giving up on the first failure) rides out that race without MainActivity needing to notice
-    // and start a whole new service.
+    // establish() can still fail the first time this ever runs -- MainActivity's own one-time VPN
+    // consent flow (ensureVpnConsentIfNeeded()) and this service's first start can race, so the
+    // very first establish() can see the permission not landed yet. Retrying a handful of times a
+    // second apart (rather than giving up on the first failure) rides out that race without
+    // MainActivity needing to notice and start a whole new service.
     private static final int MAX_ESTABLISH_ATTEMPTS = 6;
 
     @Override
@@ -118,9 +118,23 @@ public class DnsFilterVpnService extends VpnService {
         }
     }
 
+    /** No longer registered with Android as always-on -- that OS-level supervision (auto-
+     * reconnect, the persistent "disconnected" banner) is specifically what's being dropped here,
+     * on the theory that it's interacting badly with this device's Knox layer. Self-managing the
+     * same guarantee means this can't just stop: a revoke (someone taps "Disconnect" on the
+     * notification, or the OS pulls the permission for its own reasons) is treated as "reconnect
+     * immediately," the same self-healing attemptEstablish() already does for a failed first
+     * connection. Lockdown's kiosk already keeps the real Settings app -- and so the system VPN
+     * screen -- unreachable; this is the other path the connection could otherwise be dropped
+     * through, so it gets the same treatment. */
     @Override
     public void onRevoke() {
-        stopSelf();
+        active.set(false);
+        closeTun();
+        if (running.get()) {
+            establishThread = new Thread(() -> attemptEstablish(1), "mdm-vpn-reconnect");
+            establishThread.start();
+        }
     }
 
     @Override
