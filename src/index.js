@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizeSites, normalizeWholeAppBlocklist, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -998,6 +998,23 @@ async function agentApi(request, env, url) {
       config.dnsAllowlist = normalizeDnsAllowlist(body.dnsAllowlistValue);
       d.config = config;
       d.dnsAllowlistRev = Number(body.dnsAllowlistRev);
+      dirty = true;
+    }
+    if (Number(body.networkBlocklistRev) > (d.networkBlocklistRev || 0)) {
+      // Same mirroring again, for Block Whole Network (cuts an app's network off entirely,
+      // unlike wholeAppBlocklist which stops it running at all). No dashboard editor for this
+      // yet -- phone-only -- but the sync plumbing is here now so adding one later is pure UI.
+      config.networkBlocklist = normalizeWholeAppBlocklist(body.networkBlocklistValue);
+      d.config = config;
+      d.networkBlocklistRev = Number(body.networkBlocklistRev);
+      dirty = true;
+    }
+    if (Number(body.perAppDnsAllowlistRev) > (d.perAppDnsAllowlistRev || 0)) {
+      // The only exception to networkBlocklist, per package. Same no-dashboard-editor-yet note
+      // as above.
+      config.perAppDnsAllowlist = normalizePerAppDnsAllowlist(body.perAppDnsAllowlistValue);
+      d.config = config;
+      d.perAppDnsAllowlistRev = Number(body.perAppDnsAllowlistRev);
       dirty = true;
     }
     if (body.masterValue && Number(body.masterRev) > (d.masterRev || 0)

@@ -1,5 +1,6 @@
 package com.familymdm.agent;
 
+import android.content.Context;
 import android.net.VpnService;
 import android.util.Log;
 
@@ -7,6 +8,7 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -19,6 +21,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * here to decide on or to show in the Traffic Log -- only TCP connections on :443 are. Needed
  * regardless, once the VPN captures every destination: without it, QUIC traffic would simply stop
  * working rather than fall back to TCP the way it does on a network that blocks it outright.
+ *
+ * The one exception: a NetworkBlocklist app gets no UDP relay at all, the same "nothing without a
+ * hostname to check" rule TcpRelay applies to any non-:443 TCP connection -- QUIC's own hostname
+ * is encrypted, so there's never one to check here either.
  */
 final class UdpRelay {
     private static final String TAG = "MdmAgent";
@@ -29,14 +35,18 @@ final class UdpRelay {
     }
 
     private final VpnService service;
+    private final Context context;
     private final Writer writer;
+    private final UidResolver uidResolver;
     private final ConcurrentHashMap<Integer, Entry> entries = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private Thread sweepThread;
 
-    UdpRelay(VpnService service, Writer writer) {
+    UdpRelay(VpnService service, Context context, Writer writer) {
         this.service = service;
+        this.context = context;
         this.writer = writer;
+        this.uidResolver = new UidResolver(context);
         sweepThread = new Thread(this::sweepLoop, "mdm-udp-relay-sweep");
         sweepThread.setDaemon(true);
         sweepThread.start();
@@ -53,6 +63,20 @@ final class UdpRelay {
         try {
             Entry e = entries.get(clientPort);
             if (e == null) {
+                // Only worth checking at all when some app actually has its network cut off --
+                // otherwise this is a syscall on every single new UDP flow for a feature nobody's
+                // using. No per-port "already known blocked" cache: a blocked app's own QUIC
+                // retry/backoff already keeps this from being a tight loop in practice.
+                if (!NetworkBlocklist.list(context).isEmpty()) {
+                    int uid = uidResolver.uidFor(NetUtil.IPPROTO_UDP,
+                            new InetSocketAddress(InetAddress.getByAddress(clientIp), clientPort),
+                            new InetSocketAddress(InetAddress.getByAddress(destIp), destPort));
+                    String pkg = uidResolver.packageFor(uid);
+                    if (NetworkBlocklist.isBlocked(context, pkg)) {
+                        TrafficLog.add(context, TrafficLog.KIND_NET, ipString(destIp) + ":" + destPort, uid, uidResolver.labelFor(uid), true);
+                        return;
+                    }
+                }
                 DatagramSocket s = new DatagramSocket();
                 service.protect(s);
                 e = new Entry(s, clientIp, clientPort);
@@ -70,6 +94,10 @@ final class UdpRelay {
             // Dropped, same as any lost packet on a flaky network -- the app's own UDP protocol
             // (QUIC included) already has to tolerate that.
         }
+    }
+
+    private static String ipString(byte[] ip) {
+        return (ip[0] & 0xFF) + "." + (ip[1] & 0xFF) + "." + (ip[2] & 0xFF) + "." + (ip[3] & 0xFF);
     }
 
     private void startReader(Entry e) {

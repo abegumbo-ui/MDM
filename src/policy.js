@@ -306,6 +306,17 @@ export function normalizeConfig(input) {
     dnsBlocklist: normalizeDnsBlocklist(c.dnsBlocklist),
     // Overrides dnsBlocklist for a hostname that matches both -- see normalizeDnsAllowlist's doc.
     dnsAllowlist: normalizeDnsAllowlist(c.dnsAllowlist),
+    // Cuts an app's network off entirely (it still runs, just can't reach anything) -- a
+    // different thing from wholeAppBlocklist above, which stops the app running at all. No
+    // dashboard editor for this one yet, phone-only (Blocking > Block Whole Network), but the
+    // sync plumbing is built now so the dashboard side is a pure UI addition later. {pkg:
+    // {paused: bool}}, same shape as wholeAppBlocklist.
+    networkBlocklist: normalizeWholeAppBlocklist(c.networkBlocklist),
+    // The only exception to networkBlocklist: hostnames listed per-package here are let through
+    // for that app specifically. {pkg: [host, ...]}. Deliberately NOT the same list as
+    // dnsAllowlist above -- see PerAppDnsAllowlist's own doc comment on the phone for why a
+    // network-blocked app doesn't get the device-wide allow list too.
+    perAppDnsAllowlist: normalizePerAppDnsAllowlist(c.perAppDnsAllowlist),
     sites, restrictions };
 }
 
@@ -354,6 +365,18 @@ export function normalizeDnsBlocklist(list) {
  * (DnsBlocklist.blocks() && !DnsAllowlist.allows()) and this just mirrors that server-side. */
 export function normalizeDnsAllowlist(list) {
   return sanitizeHostnameList(list);
+}
+
+/** {pkg: [host, ...]} -- the only exception to networkBlocklist, per package. Each package's own
+ * hostname list goes through the same tolerant parsing as dnsBlocklist/dnsAllowlist. */
+export function normalizePerAppDnsAllowlist(o) {
+  const out = {};
+  for (const [pkg, list] of Object.entries(o && typeof o === "object" ? o : {})) {
+    if (!/^[A-Za-z0-9_.]{1,200}$/.test(pkg)) continue;
+    const hosts = sanitizeHostnameList(list);
+    if (hosts.length) out[pkg] = hosts;
+  }
+  return out;
 }
 
 /** Overrides made on the phone itself ({pkg: "allow"|"block"}), sanitized. */
@@ -414,7 +437,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, sites: normalizeSites(cfg.sites) };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites) };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
@@ -463,6 +486,10 @@ export function summarizeConfigChange(before, after) {
     lines.push("DNS Hostname Block list changed (" + (after.dnsBlocklist || []).length + " host(s))");
   if (!sameStringSet(before.dnsAllowlist, after.dnsAllowlist))
     lines.push("DNS Hostname Allow list changed (" + (after.dnsAllowlist || []).length + " host(s))");
+  if (JSON.stringify(Object.keys(before.networkBlocklist || {}).sort()) !== JSON.stringify(Object.keys(after.networkBlocklist || {}).sort()))
+    lines.push("Block Whole Network list changed");
+  if (JSON.stringify(before.perAppDnsAllowlist || {}) !== JSON.stringify(after.perAppDnsAllowlist || {}))
+    lines.push("Per-app DNS Hostname Allow changed");
   return lines;
 }
 
