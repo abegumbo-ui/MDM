@@ -11,11 +11,12 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Hostnames DnsFilterVpnService refuses to resolve -- not a general-purpose site blocklist (that's
- * the Browser app's own, URL-level), just a plain set of DNS names, matched as an exact hostname or
- * any subdomain of one (the same "domain" matching normalizeSite() already uses for the Browser
- * allowlist). Whether the filter is even running is derived from this list being non-empty, not a
- * separate on/off flag -- see PolicyApplier.applyDnsFilter().
+ * Hostnames DnsFilterVpnService refuses to resolve OR connect to -- not a general-purpose site
+ * blocklist (that's the Browser app's own, URL-level), just a plain set of names, matched as an
+ * exact hostname or any subdomain of one (the same "domain" matching normalizeSite() already uses
+ * for the Browser allowlist), checked against both a DNS query's QNAME and a TLS connection's own
+ * SNI hostname (TcpRelay). Whether the filter is even running is derived from this list being
+ * non-empty, not a separate on/off flag -- see PolicyApplier.applyDnsFilter().
  *
  * Editable from either side: the dashboard's own DNS Hostname Block box, or this app's own
  * Administrator panel. REV_KEY follows the same local-edit-wins pattern as WholeAppBlocklist --

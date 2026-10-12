@@ -48,6 +48,7 @@ const imageResponse = (b64) =>
 const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this is a safety cap
 const MASTER_ITERATIONS = 10000; // 10k, not 100k: cheap flip-phone CPUs took ~5s to check a code at 100k
 const MAX_EVENTS = 60;
+const MAX_TRAFFIC_LOG = 150;
 const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser", "freebrowse"]);
 const MAX_FREEBROWSE_MINUTES = 240;
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
@@ -196,6 +197,7 @@ const publicDevice = (d) => ({
   inflight: d.inflight || [],
   results: (d.results || []).slice(-15),
   events: (d.events || []).slice(-40),
+  trafficLog: (d.trafficLog || []).slice(-150),
   overrides: d.overrides || {},
   wifiNetworks: d.wifiNetworks || [],
   appCode: d.appCode || null,
@@ -1021,6 +1023,23 @@ async function agentApi(request, env, url) {
     }
     if (Array.isArray(body.events) && body.events.length) {
       d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
+      dirty = true;
+    }
+    if (Array.isArray(body.trafficLog) && body.trafficLog.length) {
+      // Every DNS query and TLS SNI hostname DnsFilterVpnService saw, mirrored up from the
+      // phone's own Traffic Log (Blocking > Traffic Log) so it's visible from the dashboard too,
+      // not just on the phone itself.
+      d.trafficLog = [
+        ...(d.trafficLog || []),
+        ...body.trafficLog.slice(0, 60).map((e) => ({
+          time: Number(e.time) || now,
+          kind: String(e.kind || "").slice(0, 10),
+          host: String(e.host || "").slice(0, 255),
+          uid: Number.isFinite(Number(e.uid)) ? Number(e.uid) : -1,
+          app: String(e.app || "").slice(0, 200),
+          blocked: !!e.blocked,
+        })),
+      ].slice(-MAX_TRAFFIC_LOG);
       dirty = true;
     }
     if (Array.isArray(body.siteRequests) && body.siteRequests.length) {

@@ -584,6 +584,38 @@ test("blocking a whole app from the phone's own Admin screen mirrors into the da
   assert.deepEqual(devices.find((d) => d.id === id).config.wholeAppBlocklist, { "com.example.other": { paused: true } });
 });
 
+test("the phone's own Traffic Log (DNS/TLS) mirrors into the dashboard and stays capped", async () => {
+  const cookie = await login();
+  const { auth, id } = await enrolledDevice(cookie);
+  let devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  assert.deepEqual(devices.find((d) => d.id === id).trafficLog, []);
+  await post(
+    "/agent/sync",
+    {
+      trafficLog: [
+        { time: 1000, kind: "dns", host: "streetviewpixels-pa.googleapis.com", uid: 10123, app: "Google Maps (com.google.android.apps.maps)", blocked: true },
+        { time: 1001, kind: "tls", host: "maps.googleapis.com", uid: 10123, app: "Google Maps (com.google.android.apps.maps)", blocked: false },
+      ],
+    },
+    auth
+  );
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  let log = devices.find((d) => d.id === id).trafficLog;
+  assert.equal(log.length, 2);
+  assert.equal(log[0].host, "streetviewpixels-pa.googleapis.com");
+  assert.equal(log[0].blocked, true);
+  assert.equal(log[1].blocked, false);
+  // Appends across syncs rather than replacing, and stays capped at the server's own limit.
+  const more = Array.from({ length: 200 }, (_, i) => ({ time: 2000 + i, kind: "dns", host: "example" + i + ".com", uid: -1, app: "Unknown app", blocked: false }));
+  for (let i = 0; i < more.length; i += 60) {
+    await post("/agent/sync", { trafficLog: more.slice(i, i + 60) }, auth);
+  }
+  devices = await (await req("/api/devices", { headers: { cookie } })).json();
+  log = devices.find((d) => d.id === id).trafficLog;
+  assert.ok(log.length <= 150, "trafficLog should stay capped");
+  assert.equal(log[log.length - 1].host, "example199.com");
+});
+
 test("PIN commands validate the PIN and never echo it back in the device record", async () => {
   const cookie = await login();
   const { auth, id } = await enrolledDevice(cookie);

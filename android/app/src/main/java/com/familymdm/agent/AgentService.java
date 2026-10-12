@@ -216,6 +216,8 @@ public class AgentService extends Service {
         body.put("siteRequests", siteRequests);
         JSONArray messages = Agent.peekMessages(this);
         body.put("messages", messages);
+        JSONArray trafficLog = TrafficLog.peekPending(this);
+        body.put("trafficLog", trafficLog);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
         body.put("restrictionOverrides", Agent.getRestrictionOverrides(this));
@@ -270,6 +272,7 @@ public class AgentService extends Service {
         Agent.dropEvents(this, events.length());
         Agent.dropSiteRequests(this, siteRequests.length());
         Agent.dropMessages(this, messages.length());
+        TrafficLog.dropPending(this, trafficLog.length());
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
         Agent.adoptRestrictionOverrides(this, reply.optJSONObject("restrictionOverrides"), reply.optLong("restrictionOverridesRev", 0));
         Master.store(this, reply.optJSONObject("master"));

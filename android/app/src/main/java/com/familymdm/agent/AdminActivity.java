@@ -827,11 +827,14 @@ public class AdminActivity extends Activity {
                     v -> { blockingSub = "whole"; build(); }), 8);
             Ui.add(root, Ui.rowTile(this, "DNS Hostname Block", R.drawable.ic_shield,
                     v -> { blockingSub = "dns"; build(); }), 8);
+            Ui.add(root, Ui.rowTile(this, "Traffic Log", R.drawable.ic_shield,
+                    v -> { blockingSub = "log"; build(); }), 8);
             return;
         }
         if ("apps".equals(blockingSub)) buildBlockedComponentsSection(root);
         else if ("whole".equals(blockingSub)) buildBlockedWholeAppsSection(root);
-        else buildDnsBlocklistSection(root);
+        else if ("dns".equals(blockingSub)) buildDnsBlocklistSection(root);
+        else buildTrafficLogSection(root);
     }
 
     private void buildBlockedComponentsSection(LinearLayout root) {
@@ -945,6 +948,52 @@ public class AdminActivity extends Activity {
             } else {
                 toast("Saved.");
             }
+            build();
+        });
+    }
+
+    /** Every DNS query and every TLS SNI hostname DnsFilterVpnService has actually seen, newest
+     * first -- which app made it (by UID), whether it was blocked, and when. Read-only other than
+     * Clear and Refresh; the log itself is written by the filter service as traffic happens, not
+     * by anything here. */
+    private void buildTrafficLogSection(LinearLayout root) {
+        LinearLayout logCard = Ui.card(this, root);
+        logCard.addView(Ui.titleText(this, "Traffic Log"));
+        logCard.addView(Ui.body(this, "Every DNS lookup and every HTTPS connection's hostname the DNS "
+                + "filter has seen, newest first, with the app that made it and whether it was blocked. "
+                + "Only fills in while the DNS Hostname Block list is non-empty (that's what keeps the "
+                + "filter running at all). A connection with no SNI line shown either wasn't HTTPS, or its "
+                + "hostname couldn't be read from its first packet.", true));
+        java.util.List<JSONObject> entries = TrafficLog.list(this);
+        if (entries.isEmpty()) {
+            logCard.addView(Ui.body(this, "Nothing logged yet.", true));
+        }
+        int shown = 0;
+        for (JSONObject entry : entries) {
+            if (shown >= 200) break;
+            shown++;
+            long time = entry.optLong("time", 0);
+            String kind = entry.optString("kind", "");
+            String host = entry.optString("host", "");
+            String app = entry.optString("app", "");
+            boolean blocked = entry.optBoolean("blocked", false);
+            String when = android.text.format.DateFormat.format("MM/dd h:mm:ss a", time).toString();
+            String kindLabel = TrafficLog.KIND_DNS.equals(kind) ? "DNS" : "TLS";
+            TextView t = Ui.body(this, when + "  [" + kindLabel + "]  " + (blocked ? "BLOCKED" : "allowed")
+                    + "\n" + host + "\n" + app, false);
+            t.setTextSize(12);
+            if (blocked) t.setTextColor(0xFFCC4433);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.addView(t);
+            Ui.add(logCard, row, 10);
+        }
+        if (entries.size() > shown) {
+            logCard.addView(Ui.body(this, "Showing the newest " + shown + " of " + entries.size() + ".", true));
+        }
+        action(logCard, "Refresh", Ui.OUTLINED, v -> build());
+        action(logCard, "Clear log", Ui.OUTLINED, v -> {
+            TrafficLog.clear(this);
             build();
         });
     }

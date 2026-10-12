@@ -424,6 +424,7 @@ function buildAppsHub(m,dv){
   m.append(bCard);
   renderWholeAppBlocklist(m,dv);
   renderDnsBlocklist(m,dv);
+  renderTrafficLog(m,dv);
  } else if(appsSub==='system'){
   const sal=h('div',{class:'card'},h('h2',null,'System apps'),
    h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "Apps on this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
@@ -765,6 +766,21 @@ function renderDnsBlocklist(m,dv){
    }
   }catch(e){snack(e.message,1)}
   render()})));
+ m.append(card);
+}
+// Mirrors the phone's own Administrator panel (Blocking > Traffic Log) -- the phone uploads its
+// newest entries on every sync, this just shows what's arrived. Read-only; there's nothing to
+// configure here, and Clear is on the phone itself (clearing the phone's local log doesn't touch
+// what already made it up here).
+function renderTrafficLog(m,dv){
+ const log=dv.trafficLog||[];
+ const card=h('div',{class:'card'},h('h2',null,'Traffic Log'),
+  h('div',{class:'mute'},'Every DNS lookup and every HTTPS connection\'s hostname the DNS filter has seen on the phone, newest first, with the app that made it and whether it was blocked. Uploaded from the phone\'s own Administrator panel (Blocking > Traffic Log) on each sync -- only fills in while the DNS Hostname Block list above is non-empty, since that\'s what keeps the filter running at all.'));
+ if(!log.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing logged yet.'));
+ for(const e of log.slice().reverse()){
+  const row=h('div',{class:'act'},(e.blocked?'⛔ ':'• ')+'['+(e.kind==='dns'?'DNS':'TLS')+'] '+(e.host||'(no hostname)')+' · '+ago(e.time));
+  row.append(h('div',{class:'mute small',style:'margin-left:20px'},e.app||('uid '+e.uid)));
+  card.append(row)}
  m.append(card);
 }
 function renderApps(m,dv){

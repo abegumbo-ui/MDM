@@ -659,18 +659,19 @@ final class PolicyApplier {
             if (wanted && !applied) {
                 c.startForegroundService(new Intent(c, DnsFilterVpnService.class));
                 dpm.setAlwaysOnVpnPackage(admin, c.getPackageName(), false);
-                Agent.addEvent(c, "restriction", "DNS filter turned on (" + want.size() + " host(s) blocked)");
+                Agent.addEvent(c, "restriction", "DNS/TLS filter turned on (" + want.size() + " host(s) blocked) -- see Traffic Log");
             } else if (!wanted && applied) {
                 dpm.setAlwaysOnVpnPackage(admin, null, false);
                 c.stopService(new Intent(c, DnsFilterVpnService.class));
-                Agent.addEvent(c, "restriction", "DNS filter turned off");
+                Agent.addEvent(c, "restriction", "DNS/TLS filter turned off");
             } else if (wanted && listChanged) {
                 // Already running: no restart needed, the service reads DnsBlocklist (just updated
                 // above) fresh on every lookup, so the new list takes effect on the very next DNS
-                // query. But a content-only change here used to log nothing at all, which looked
-                // exactly like the edit never arrived -- same silent-failure shape as the Browser
-                // config push once had, same fix: say so, every time it actually changes.
-                Agent.addEvent(c, "restriction", "DNS filter list updated (" + want.size() + " host(s) blocked)");
+                // query or TLS handshake. But a content-only change here used to log nothing at
+                // all, which looked exactly like the edit never arrived -- same silent-failure
+                // shape as the Browser config push once had, same fix: say so, every time it
+                // actually changes.
+                Agent.addEvent(c, "restriction", "DNS/TLS filter list updated (" + want.size() + " host(s) blocked)");
             }
             Agent.prefs(c).edit().putBoolean("dnsFilterApplied", wanted).apply();
             errorCleared(c, "dnsfilter");

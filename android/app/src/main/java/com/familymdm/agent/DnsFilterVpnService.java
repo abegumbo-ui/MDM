@@ -14,22 +14,28 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * A local, DNS-only VPN -- not a general traffic proxy. Android is told this is the device's DNS
- * server; only packets addressed to that one fake address are routed into this tunnel at all, so
- * no other app traffic -- the actual content of any connection -- ever reaches this code. That's
- * deliberate: the only thing a bug here can break is DNS resolution itself, never anything already
- * connected or any data in flight.
+ * The device's DNS blocklist AND its TLS-SNI-aware traffic log, both in one VPN -- not two
+ * separate services, because both need the same thing: a look at traffic before it leaves the
+ * phone. Captures every IPv4 route (0.0.0.0/0), which is a real change from this class's first
+ * version (DNS-only, one fake address, nothing else could ever reach it) -- now a bug here CAN
+ * affect any other app's connectivity, the tradeoff that came with being able to see a TLS
+ * handshake's SNI hostname at all (it's sent for any HTTPS connection to any destination, not
+ * just ones this already resolved through its own DNS sinkhole). See TcpRelay and UdpRelay for
+ * the actual relaying; this class is the TUN read loop and the DNS sinkhole itself.
  *
- * A query for a hostname on DnsBlocklist gets an immediate NXDOMAIN, synthesized right here, no
- * network round trip. Every other query is relayed byte-for-byte to a real public resolver and the
- * real answer relayed back, so nothing other than the blocked names is ever affected.
+ * What's NOT covered: IPv6 (no IPv6 address was added to the tun, so IPv6 traffic bypasses this
+ * filter entirely -- not logged, not blockable), ICMP (ping stops working while this runs), and
+ * QUIC/HTTP3's own SNI-equivalent (UdpRelay relays it, but doesn't decode it -- see its own doc).
  *
- * IPv4 and UDP only, which covers the overwhelming majority of ordinary app DNS lookups -- not
- * every possible shape DNS traffic could take (see DnsBlocklist's own class doc for what that does
- * and doesn't reach).
+ * A query/connection whose hostname matches DnsBlocklist is stopped before it ever reaches its
+ * destination -- an NXDOMAIN for DNS, a connection that's never even opened for TLS. Every other
+ * query or connection is relayed byte-for-byte to where it was actually headed. TrafficLog.add()
+ * records every DNS query and every TLS SNI hostname this sees, blocked or not, for the
+ * Administrator panel's own Traffic Log (Blocking > Traffic Log) to show.
  */
 public class DnsFilterVpnService extends VpnService {
     private static final String TAG = "MdmAgent";
@@ -42,6 +48,9 @@ public class DnsFilterVpnService extends VpnService {
     private ParcelFileDescriptor tun;
     private Thread readerThread;
     private final Object writeLock = new Object();
+    private TcpRelay tcpRelay;
+    private UdpRelay udpRelay;
+    private UidResolver uidResolver;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -49,6 +58,9 @@ public class DnsFilterVpnService extends VpnService {
         if (running.compareAndSet(false, true)) {
             try {
                 establish();
+                uidResolver = new UidResolver(this);
+                tcpRelay = new TcpRelay(this, this, this::writePacket);
+                udpRelay = new UdpRelay(this, this::writePacket);
                 readerThread = new Thread(this::readLoop, "mdm-dns-filter");
                 readerThread.start();
             } catch (Exception e) {
@@ -69,6 +81,8 @@ public class DnsFilterVpnService extends VpnService {
     public void onDestroy() {
         running.set(false);
         if (readerThread != null) readerThread.interrupt();
+        if (tcpRelay != null) tcpRelay.shutdown();
+        if (udpRelay != null) udpRelay.shutdown();
         closeTun();
         super.onDestroy();
     }
@@ -79,15 +93,13 @@ public class DnsFilterVpnService extends VpnService {
                 .setMtu(MTU)
                 .addAddress(TUN_ADDRESS, 30)
                 .addDnsServer(FAKE_DNS)
-                .addRoute(FAKE_DNS, 32)
+                .addRoute("0.0.0.0", 0)
                 .setBlocking(true);
         // Critical: without this, this app's own network traffic -- including the DNS lookup it
         // needs to reach the dashboard at all -- gets captured by its own filter too. Any hiccup
         // in the relay logic above then breaks this app's own connectivity to the server, which
         // looks exactly like "the dashboard stopped hearing from the phone" (it did: this app
-        // could no longer reach it) rather than like a DNS filter bug. The whole point of the
-        // narrow /32 route above is that only DNS traffic ever enters this tunnel at all; this
-        // makes sure that doesn't include this app's own.
+        // could no longer reach it) rather than like a DNS filter bug.
         try {
             builder.addDisallowedApplication(getPackageName());
         } catch (android.content.pm.PackageManager.NameNotFoundException e) {
@@ -129,8 +141,19 @@ public class DnsFilterVpnService extends VpnService {
                 if (running.get()) Log.w(TAG, "DNS filter read failed: " + e);
             } catch (Exception e) {
                 // Never let one bad packet kill the loop -- the worst case for a parse failure is
-                // one unanswered query, same as a dropped packet on a flaky network.
+                // one unanswered query or one dropped connection, same as a hiccup on any flaky
+                // network, not an outage for anything else.
                 Log.w(TAG, "DNS filter packet handling failed: " + e);
+            }
+        }
+    }
+
+    private void writePacket(byte[] packet) {
+        synchronized (writeLock) {
+            try (FileOutputStream out = new FileOutputStream(tun.getFileDescriptor())) {
+                out.write(packet);
+            } catch (IOException e) {
+                Log.w(TAG, "DNS filter write failed: " + e);
             }
         }
     }
@@ -138,28 +161,48 @@ public class DnsFilterVpnService extends VpnService {
     private void handlePacket(byte[] buf, int len) {
         if (len < 20) return; // shorter than any valid IPv4 header
         int version = (buf[0] >> 4) & 0xF;
-        if (version != 4) return; // IPv6 not handled in this version
+        if (version != 4) return; // IPv6 not handled -- see class doc
         int ihl = (buf[0] & 0xF) * 4;
-        if (ihl < 20 || len < ihl + 8) return;
+        if (ihl < 20 || len < ihl) return;
         int protocol = buf[9] & 0xFF;
-        if (protocol != 17) return; // UDP only -- and per the route above, essentially the only thing that ever arrives here anyway
-        int udpOffset = ihl;
-        int srcPort = ((buf[udpOffset] & 0xFF) << 8) | (buf[udpOffset + 1] & 0xFF);
-        int dstPort = ((buf[udpOffset + 2] & 0xFF) << 8) | (buf[udpOffset + 3] & 0xFF);
-        int udpLength = ((buf[udpOffset + 4] & 0xFF) << 8) | (buf[udpOffset + 5] & 0xFF);
-        if (dstPort != 53) return;
-        int dnsOffset = udpOffset + 8;
-        int dnsLength = udpLength - 8;
-        if (dnsLength <= 12 || dnsOffset + dnsLength > len) return; // shorter than a DNS header plus a question
 
         byte[] srcIp = {buf[12], buf[13], buf[14], buf[15]};
         byte[] dstIp = {buf[16], buf[17], buf[18], buf[19]};
 
+        if (protocol == NetUtil.IPPROTO_TCP) {
+            tcpRelay.handle(buf, ihl, len, srcIp, dstIp);
+            return;
+        }
+        if (protocol != NetUtil.IPPROTO_UDP) return; // ICMP and anything else: not handled, see class doc
+        if (len < ihl + 8) return;
+
+        int udpOffset = ihl;
+        int srcPort = ((buf[udpOffset] & 0xFF) << 8) | (buf[udpOffset + 1] & 0xFF);
+        int dstPort = ((buf[udpOffset + 2] & 0xFF) << 8) | (buf[udpOffset + 3] & 0xFF);
+        int udpLength = ((buf[udpOffset + 4] & 0xFF) << 8) | (buf[udpOffset + 5] & 0xFF);
+
+        if (dstPort != 53) {
+            // Not a DNS query -- plain NAT relay (QUIC on :443 is the common case).
+            int payloadLen = Math.min(udpLength, len - udpOffset) - 8;
+            if (payloadLen <= 0) return;
+            byte[] payload = new byte[payloadLen];
+            System.arraycopy(buf, udpOffset + 8, payload, 0, payloadLen);
+            udpRelay.handle(srcIp, dstIp, srcPort, dstPort, payload);
+            return;
+        }
+
+        int dnsOffset = udpOffset + 8;
+        int dnsLength = udpLength - 8;
+        if (dnsLength <= 12 || dnsOffset + dnsLength > len) return; // shorter than a DNS header plus a question
+
         String qname = parseQuestionName(buf, dnsOffset, dnsOffset + dnsLength);
-        if (qname != null && DnsBlocklist.blocks(this, qname)) {
+        boolean blocked = qname != null && DnsBlocklist.blocks(this, qname);
+        logDnsQuery(qname, srcIp, srcPort, dstIp, blocked);
+
+        if (blocked) {
             byte[] response = buildNxdomain(buf, dnsOffset, dnsLength);
-            // Reply's source is what the query was addressed to (the fake DNS server); its
-            // destination is what the query came from (the querying app).
+            // Reply's source is what the query was addressed to; its destination is what the
+            // query came from (the querying app).
             if (response != null) writeDnsReply(dstIp, srcIp, dstPort, srcPort, response);
             return;
         }
@@ -171,6 +214,19 @@ public class DnsFilterVpnService extends VpnService {
         System.arraycopy(buf, dnsOffset, query, 0, dnsLength);
         final byte[] origSrcIp = srcIp, origDstIp = dstIp;
         new Thread(() -> forward(origSrcIp, origDstIp, srcPort, dstPort, query), "mdm-dns-relay").start();
+    }
+
+    private void logDnsQuery(String qname, byte[] clientIp, int clientPort, byte[] destIp, boolean blocked) {
+        if (qname == null) return;
+        try {
+            int uid = uidResolver.uidFor(NetUtil.IPPROTO_UDP,
+                    new InetSocketAddress(InetAddress.getByAddress(clientIp), clientPort),
+                    new InetSocketAddress(InetAddress.getByAddress(destIp), 53));
+            String label = uidResolver.labelFor(uid);
+            TrafficLog.add(this, TrafficLog.KIND_DNS, qname, uid, label, blocked);
+        } catch (Exception e) {
+            TrafficLog.add(this, TrafficLog.KIND_DNS, qname, -1, "Unknown app", blocked);
+        }
     }
 
     private void forward(byte[] origSrcIp, byte[] origDstIp, int origSrcPort, int origDstPort, byte[] query) {
@@ -193,63 +249,7 @@ public class DnsFilterVpnService extends VpnService {
 
     /** Builds a full IPv4+UDP packet and writes it into the tunnel as a reply. */
     private void writeDnsReply(byte[] replySrcIp, byte[] replyDstIp, int replySrcPort, int replyDstPort, byte[] dnsMessage) {
-        byte[] packet = buildIpv4UdpPacket(replySrcIp, replyDstIp, replySrcPort, replyDstPort, dnsMessage);
-        synchronized (writeLock) {
-            try (FileOutputStream out = new FileOutputStream(tun.getFileDescriptor())) {
-                out.write(packet);
-            } catch (IOException e) {
-                Log.w(TAG, "DNS filter write failed: " + e);
-            }
-        }
-    }
-
-    private static byte[] buildIpv4UdpPacket(byte[] srcIp, byte[] dstIp, int srcPort, int dstPort, byte[] payload) {
-        int udpLen = 8 + payload.length;
-        int totalLen = 20 + udpLen;
-        byte[] p = new byte[totalLen];
-
-        p[0] = 0x45; // version 4, IHL 5 (20-byte header, no options)
-        p[1] = 0;
-        p[2] = (byte) (totalLen >> 8);
-        p[3] = (byte) totalLen;
-        p[4] = 0;
-        p[5] = 0; // identification
-        p[6] = 0x40; // flags: don't fragment
-        p[7] = 0;
-        p[8] = 64; // TTL
-        p[9] = 17; // protocol: UDP
-        p[10] = 0;
-        p[11] = 0; // header checksum, filled below
-        System.arraycopy(srcIp, 0, p, 12, 4);
-        System.arraycopy(dstIp, 0, p, 16, 4);
-        int ipChecksum = checksum(p, 0, 20);
-        p[10] = (byte) (ipChecksum >> 8);
-        p[11] = (byte) ipChecksum;
-
-        int u = 20;
-        p[u] = (byte) (srcPort >> 8);
-        p[u + 1] = (byte) srcPort;
-        p[u + 2] = (byte) (dstPort >> 8);
-        p[u + 3] = (byte) dstPort;
-        p[u + 4] = (byte) (udpLen >> 8);
-        p[u + 5] = (byte) udpLen;
-        p[u + 6] = 0;
-        p[u + 7] = 0; // checksum 0 ("not used") is explicitly valid for UDP over IPv4, per RFC 768
-
-        System.arraycopy(payload, 0, p, u + 8, payload.length);
-        return p;
-    }
-
-    /** Standard 16-bit ones'-complement checksum over [offset, offset+len). */
-    private static int checksum(byte[] buf, int offset, int len) {
-        long sum = 0;
-        for (int i = offset; i < offset + len; i += 2) {
-            int word = (buf[i] & 0xFF) << 8;
-            if (i + 1 < offset + len) word |= (buf[i + 1] & 0xFF);
-            sum += word;
-        }
-        while ((sum >> 16) != 0) sum = (sum & 0xFFFF) + (sum >> 16);
-        return (int) (~sum & 0xFFFF);
+        writePacket(NetUtil.buildUdpPacket(replySrcIp, replyDstIp, replySrcPort, replyDstPort, dnsMessage));
     }
 
     /** The first (and, for ordinary app lookups, only) question's QNAME, dotted and lowercased.
