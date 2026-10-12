@@ -509,28 +509,51 @@ public class MainActivity extends Activity {
      * next build() -- i.e. the next tap -- until it actually connects. Granting the permission
      * before starting the service (rather than after) also closes the race itself, not just
      * recovers from it; see DnsFilterVpnService's own retry loop for the other half of this. */
+    // Guards against piling up overlapping background checks -- build() calls
+    // applyDnsFilterLive() on basically every tap, and the check itself now runs in the
+    // background (see below), so a slow check from one tap shouldn't queue up a second one
+    // before the first even finishes.
+    private final java.util.concurrent.atomic.AtomicBoolean dnsFilterApplying = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /** Everything this touches -- getAlwaysOnVpnPackage(), setAlwaysOnVpnPackage() -- is a
+     * synchronous Binder call into system_server, and on this device specifically, VPN-policy
+     * calls through Knox's own layer on top of that are a known source of real, multi-second
+     * stalls. Called from build(), which runs on the UI thread on basically every tap: a slow
+     * call here used to mean a frozen, unresponsive app with nothing for any exception handler to
+     * catch -- not a crash with a stack trace, an ANR (Android's own "stop responding" timeout
+     * kicking in and killing the app), which is consistent with there being no crash recorded at
+     * all. Doing the whole check and whatever follows from it on a background thread means none
+     * of it can ever block the UI thread, no matter how slow system_server/Knox is being. */
     private void applyDnsFilterLive() {
+        if (!dnsFilterApplying.compareAndSet(false, true)) return;
         boolean wanted = isLockdownOn() && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
-        boolean registered;
-        try {
-            registered = getPackageName().equals(dpm().getAlwaysOnVpnPackage(admin()));
-        } catch (Exception e) {
-            registered = false;
-        }
-        boolean up = DnsFilterVpnService.isActive();
-        if (wanted == registered && wanted == up) return;
-        try {
-            if (wanted) {
-                // Grant the permission before asking the service to start -- doing it the other
-                // way around is exactly the race that could leave this never actually running.
-                if (!registered) dpm().setAlwaysOnVpnPackage(admin(), getPackageName(), false);
-                if (!up) startForegroundService(new Intent(this, DnsFilterVpnService.class));
-            } else if (registered) {
-                dpm().setAlwaysOnVpnPackage(admin(), null, false);
-                stopService(new Intent(this, DnsFilterVpnService.class));
+        new Thread(() -> {
+            try {
+                boolean registered;
+                try {
+                    registered = getPackageName().equals(dpm().getAlwaysOnVpnPackage(admin()));
+                } catch (Exception e) {
+                    registered = false;
+                }
+                boolean up = DnsFilterVpnService.isActive();
+                if (wanted == registered && wanted == up) return;
+                try {
+                    if (wanted) {
+                        // Grant the permission before asking the service to start -- doing it the
+                        // other way around is exactly the race that could leave this never
+                        // actually running.
+                        if (!registered) dpm().setAlwaysOnVpnPackage(admin(), getPackageName(), false);
+                        if (!up) startForegroundService(new Intent(this, DnsFilterVpnService.class));
+                    } else if (registered) {
+                        dpm().setAlwaysOnVpnPackage(admin(), null, false);
+                        stopService(new Intent(this, DnsFilterVpnService.class));
+                    }
+                } catch (Exception ignored) {
+                }
+            } finally {
+                dnsFilterApplying.set(false);
             }
-        } catch (Exception ignored) {
-        }
+        }, "mdm-dnsfilter-apply").start();
     }
 
     // ---------- step 2: the hub ----------
