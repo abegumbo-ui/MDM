@@ -984,13 +984,36 @@ public class MainActivity extends Activity {
         Ui.add(card, Ui.button(this, "Add App", Ui.TONAL, v -> buildNetworkBlockAppPicker()), 12);
     }
 
-    /** Every installed app, plain text, no icons, no search required -- just the full list. */
+    /** Every installed app, plain text. */
     private void buildNetworkBlockAppPicker() {
         LinearLayout back = Ui.card(this, root);
-        Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> build()), 0);
+        Ui.add(back, Ui.button(this, "< Back", Ui.OUTLINED, v -> {
+            search = "";
+            build();
+        }), 0);
         LinearLayout card = Ui.card(this, root);
         card.addView(Ui.titleText(this, "Cut off an app's network"));
         card.addView(Ui.body(this, "Tap an app to cut off its network entirely.", true));
+        EditText searchField = Ui.field(this, "Search");
+        searchField.setText(search);
+        searchField.setSelection(search.length());
+        searchField.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable s) {
+                search = s.toString();
+                fillNetworkBlockAppPickerList();
+            }
+        });
+        Ui.add(card, searchField, 8);
+        pickerList = new LinearLayout(this);
+        pickerList.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(card, pickerList, 8);
+        fillNetworkBlockAppPickerList();
+    }
+
+    private void fillNetworkBlockAppPickerList() {
+        pickerList.removeAllViews();
         PackageManager pm = getPackageManager();
         Set<String> already = NetworkBlocklist.list(this);
         List<String[]> apps = new ArrayList<>();
@@ -999,8 +1022,13 @@ public class MainActivity extends Activity {
             apps.add(new String[]{appLabel(pm, ai.packageName), ai.packageName});
         }
         apps.sort((a, b) -> a[0].compareToIgnoreCase(b[0]));
+        String needle = search.trim().toLowerCase(java.util.Locale.ROOT);
+        int shown = 0;
         for (String[] a : apps) {
             String pkg = a[1];
+            if (!needle.isEmpty() && !a[0].toLowerCase(java.util.Locale.ROOT).contains(needle)
+                    && !pkg.toLowerCase(java.util.Locale.ROOT).contains(needle)) continue;
+            shown++;
             TextView row = Ui.body(this, a[0] + " (" + pkg + ")", false);
             row.setTextSize(13);
             row.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
@@ -1009,8 +1037,9 @@ public class MainActivity extends Activity {
                 toast("Cut off \"" + a[0] + "\"'s network.");
                 build();
             });
-            Ui.add(card, row, 2);
+            Ui.add(pickerList, row, 2);
         }
+        if (shown == 0) Ui.add(pickerList, Ui.body(this, "No matches.", true), 8);
     }
 
     private String appLabel(PackageManager pm, String pkg) {
