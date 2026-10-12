@@ -127,14 +127,41 @@ public class DnsFilterVpnService extends VpnService {
      * connection. Lockdown's kiosk already keeps the real Settings app -- and so the system VPN
      * screen -- unreachable; this is the other path the connection could otherwise be dropped
      * through, so it gets the same treatment. */
+    // If something keeps revoking the tunnel right after it connects (this device's Knox layer,
+    // or Android's own network validation, not liking it for some reason), reconnecting instantly
+    // every single time is itself a risk: onCreate()/onStartCommand()/onRevoke() are all Service
+    // callbacks Android dispatches on the UI thread, no way around that, and a tight connect-
+    // revoke-reconnect loop would hammer it with those back to back -- not one long block, but
+    // possibly enough rapid-fire UI-thread work to trip the same "isn't responding" watchdog
+    // anyway. This caps how many revokes get an instant reconnect before backing off instead of
+    // spinning.
+    private int revokeCount;
+    private long revokeWindowStart;
+    private static final int MAX_REVOKES_PER_WINDOW = 5;
+    private static final long REVOKE_WINDOW_MS = 30_000;
+
     @Override
     public void onRevoke() {
         active.set(false);
         closeTun();
-        if (running.get()) {
-            establishThread = new Thread(() -> attemptEstablish(1), "mdm-vpn-reconnect");
-            establishThread.start();
+        if (!running.get()) return;
+        long now = System.currentTimeMillis();
+        synchronized (this) {
+            if (now - revokeWindowStart > REVOKE_WINDOW_MS) {
+                revokeWindowStart = now;
+                revokeCount = 0;
+            }
+            revokeCount++;
         }
+        if (revokeCount > MAX_REVOKES_PER_WINDOW) {
+            Log.w(TAG, "Revoked " + revokeCount + " times in " + (REVOKE_WINDOW_MS / 1000)
+                    + "s -- backing off instead of reconnecting instantly");
+            running.set(false);
+            stopSelf();
+            return;
+        }
+        establishThread = new Thread(() -> attemptEstablish(1), "mdm-vpn-reconnect");
+        establishThread.start();
     }
 
     @Override
