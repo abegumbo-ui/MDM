@@ -2,6 +2,8 @@ package com.familymdm.lockdown;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.admin.DevicePolicyManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -41,6 +43,14 @@ public class HomeActivity extends Activity {
         return getSharedPreferences("lockdown", MODE_PRIVATE);
     }
 
+    private DevicePolicyManager dpm() {
+        return (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+    }
+
+    private ComponentName admin() {
+        return new ComponentName(this, AdminReceiver.class);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -75,19 +85,33 @@ public class HomeActivity extends Activity {
      * "make sure the DNS filter is actually running" logic lives (applyDnsFilterLive(), the retry
      * loop in DnsFilterVpnService itself) -- gets permanently disabled and never runs again. This
      * screen is the only thing still running at that point, so it's the only thing left that can
-     * notice the filter isn't up (killed by the OS, or never restarted after a reboot) and bring
-     * it back -- the self-managed equivalent of "stays on," without registering as an OS-level
-     * always-on VPN. Deliberately plain and cheap (a couple of prefs reads, no DPM/Binder calls
-     * now that always-on's own calls are gone) -- safe to run directly here on every resume. */
+     * notice the filter isn't registered as always-on, or isn't up (killed by the OS, or never
+     * restarted after a reboot), and bring it back. Same shape as MainActivity's own
+     * applyDnsFilterLive(): real Binder calls into system_server/Knox, so this runs on a
+     * background thread rather than directly on this resume/create callback. */
     private void ensureDnsFilterRunning() {
         boolean wanted = prefs().getBoolean("lockdownOn", false) && !prefs().getBoolean("vpnFilterPaused", false)
                 && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
-        if (wanted == DnsFilterVpnService.isActive()) return;
-        try {
-            if (wanted) startForegroundService(new Intent(this, DnsFilterVpnService.class));
-            else stopService(new Intent(this, DnsFilterVpnService.class));
-        } catch (Exception ignored) {
-        }
+        new Thread(() -> {
+            boolean registered;
+            try {
+                registered = getPackageName().equals(dpm().getAlwaysOnVpnPackage(admin()));
+            } catch (Exception e) {
+                registered = false;
+            }
+            boolean up = DnsFilterVpnService.isActive();
+            if (wanted == registered && wanted == up) return;
+            try {
+                if (wanted) {
+                    if (!registered) dpm().setAlwaysOnVpnPackage(admin(), getPackageName(), true);
+                    if (!up) startForegroundService(new Intent(this, DnsFilterVpnService.class));
+                } else if (registered) {
+                    dpm().setAlwaysOnVpnPackage(admin(), null, false);
+                    stopService(new Intent(this, DnsFilterVpnService.class));
+                }
+            } catch (Exception ignored) {
+            }
+        }, "mdm-home-dnsfilter").start();
     }
 
     @Override
