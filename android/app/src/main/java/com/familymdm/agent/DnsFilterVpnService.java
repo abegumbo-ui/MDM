@@ -126,10 +126,10 @@ public class DnsFilterVpnService extends VpnService {
 
     private Notification notification() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel("dnsfilter", "DNS filter", NotificationManager.IMPORTANCE_LOW));
+        nm.createNotificationChannel(new NotificationChannel("dnsfilter", "DNS filter", NotificationManager.IMPORTANCE_MIN));
         return new Notification.Builder(this, "dnsfilter")
-                .setContentTitle("MDM DNS filter")
-                .setContentText("Filtering blocked hostnames")
+                .setContentTitle("MDM filter")
+                .setContentText("Keeping you safe")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .build();
     }
