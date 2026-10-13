@@ -210,8 +210,8 @@ public class DnsFilterVpnService extends VpnService {
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel("dnsfilter", "DNS filter", NotificationManager.IMPORTANCE_MIN));
         return new Notification.Builder(this, "dnsfilter")
-                .setContentTitle("Keeping you safe")
-                .setContentText("Protection is active")
+                .setContentTitle("MDM filter")
+                .setContentText("Keeping you safe")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .build();
     }
