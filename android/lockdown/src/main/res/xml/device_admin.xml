@@ -4,4 +4,8 @@
         <force-lock />
         <wipe-data />
     </uses-policies>
+    <!-- Lets the agent app hand device-owner status to this app via
+         DevicePolicyManager.transferOwnership(), from its own "Transfer device owner" button,
+         without a factory reset. -->
+    <support-transfer-ownership />
 </device-admin>

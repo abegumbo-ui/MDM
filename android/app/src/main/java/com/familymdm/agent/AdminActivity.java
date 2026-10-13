@@ -27,6 +27,8 @@ import java.io.InputStream;
 public class AdminActivity extends Activity {
     private static final int PICK_APK = 1;
     private static final int CONFIRM_CREDENTIAL = 2;
+    private static final int REQUEST_ADD_ADMIN = 3;
+    private android.content.ComponentName pendingTransferTarget;
 
     private LinearLayout root;
     private TextView status;
@@ -1454,7 +1456,63 @@ public class AdminActivity extends Activity {
                 "Release this phone? All restrictions are removed.", () -> release(false)));
         action(device, "Stop managing and remove this app", Ui.OUTLINED, v -> confirm(
                 "Release this phone and uninstall the agent?", () -> release(true)));
+        action(device, "Transfer device owner...", Ui.OUTLINED, v -> promptTransferOwner());
         action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
+    }
+
+    /** Hands device-owner status to another admin app already installed on this phone --
+     * e.g. the Lockdown app -- without a factory reset. Android's DevicePolicyManager supports
+     * this directly (transferOwnership()); it only works between two apps that both declare
+     * support for it, which is why Lockdown's device_admin.xml carries the same
+     * &lt;support-transfer-ownership /&gt; tag this app's own does. */
+    private void promptTransferOwner() {
+        java.util.List<android.content.ComponentName> targets = new java.util.ArrayList<>();
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        android.content.Intent probe = new android.content.Intent("android.app.action.DEVICE_ADMIN_ENABLED");
+        for (android.content.pm.ResolveInfo ri : getPackageManager().queryBroadcastReceivers(probe, 0)) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName())) continue;
+            targets.add(new android.content.ComponentName(pkg, ri.activityInfo.name));
+            labels.add(ri.loadLabel(getPackageManager()) + " (" + pkg + ")");
+        }
+        if (targets.isEmpty()) {
+            toast("No other device admin app found on this phone.");
+            return;
+        }
+        Ui.alertDialog(this)
+                .setTitle("Transfer device owner to...")
+                .setItems(labels.toArray(new String[0]), (d, which) -> confirmTransferOwner(targets.get(which), labels.get(which)))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void confirmTransferOwner(android.content.ComponentName target, String label) {
+        confirm("Make " + label + " the device owner instead of this app? This app loses device-owner control right away.", () -> {
+            android.app.admin.DevicePolicyManager dpm = Agent.dpm(this);
+            if (dpm.isAdminActive(target)) {
+                doTransferOwnership(target);
+                return;
+            }
+            pendingTransferTarget = target;
+            android.content.Intent i = new android.content.Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+            i.putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, target);
+            i.putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                    "Needed before device owner can be transferred to " + target.getPackageName() + ".");
+            try {
+                startActivityForResult(i, REQUEST_ADD_ADMIN);
+            } catch (Exception e) {
+                pendingTransferTarget = null;
+                toast("Could not open the activation screen: " + e.getMessage());
+            }
+        });
+    }
+
+    private void doTransferOwnership(android.content.ComponentName target) {
+        run(() -> {
+            Agent.dpm(this).transferOwnership(Agent.admin(this), target, null);
+            build();
+            return "transferred device owner to " + target.getPackageName();
+        });
     }
 
     /** On or off, nothing in between -- see AdminActivity's buildKioskSection() callers. Same
@@ -2188,6 +2246,16 @@ public class AdminActivity extends Activity {
         if (requestCode == CONFIRM_CREDENTIAL) {
             toast(resultCode == RESULT_OK ? "PIN control activated." : "Not confirmed.");
             refreshStatus();
+            return;
+        }
+        if (requestCode == REQUEST_ADD_ADMIN) {
+            android.content.ComponentName target = pendingTransferTarget;
+            pendingTransferTarget = null;
+            if (resultCode == RESULT_OK && target != null) {
+                doTransferOwnership(target);
+            } else {
+                toast("Activation was not completed.");
+            }
             return;
         }
         if (requestCode != PICK_APK || resultCode != RESULT_OK || data == null || data.getData() == null) return;
