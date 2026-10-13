@@ -1509,7 +1509,7 @@ public class AdminActivity extends Activity {
 
     private void doTransferOwnership(android.content.ComponentName target) {
         run(() -> {
-            Agent.dpm(this).transferOwnership(Agent.admin(this), target, null);
+            PolicyApplier.transferOwnershipTo(this, target);
             build();
             return "transferred device owner to " + target.getPackageName();
         });
