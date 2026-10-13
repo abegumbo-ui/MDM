@@ -801,40 +801,61 @@ final class PolicyApplier {
     /** Undo everything this agent changed, then give up device-owner status. */
     static void release(Context c) {
         DevicePolicyManager dpm = Agent.dpm(c);
-        ComponentName admin = Agent.admin(c);
         if (dpm.isDeviceOwnerApp(c.getPackageName())) {
-            Kiosk.clear(c);
-            Kiosk.syncPreferredActivities(c, false, false);
-            for (String pkg : Agent.getSet(c, "hidden")) {
-                try {
-                    dpm.setApplicationHidden(admin, pkg, false);
-                } catch (Exception ignored) {
-                }
-            }
-            for (String r : Agent.getSet(c, "restrictions")) {
-                try {
-                    dpm.clearUserRestriction(admin, r);
-                } catch (Exception ignored) {
-                }
-            }
-            if (Agent.prefs(c).getBoolean("dnsFilterApplied", false)) {
-                try {
-                    dpm.setAlwaysOnVpnPackage(admin, null, false);
-                } catch (Exception ignored) {
-                }
-                c.stopService(new Intent(c, DnsFilterVpnService.class));
-            }
-            try {
-                dpm.setUninstallBlocked(admin, c.getPackageName(), false);
-                if (Build.VERSION.SDK_INT >= 30) {
-                    dpm.setUserControlDisabledPackages(admin, new ArrayList<String>());
-                }
-            } catch (Exception ignored) {
-            }
+            releaseManagedState(c, dpm, Agent.admin(c));
         }
         Agent.prefs(c).edit().clear().apply();
         if (dpm.isDeviceOwnerApp(c.getPackageName())) {
             dpm.clearDeviceOwnerApp(c.getPackageName());
+        }
+    }
+
+    /** Hands device-owner status to another admin app already active on this phone (AdminActivity's
+     * "Transfer device owner" button), instead of giving it up outright. Clears this app's own
+     * self-protection and policy state first -- otherwise its uninstall-block, disabled-controls
+     * flag, kiosk lock, VPN registration and restrictions would all migrate to the new owner as
+     * orphaned state nobody here is managing anymore -- then transfers, which is the one part only
+     * the current device owner can do. */
+    static void transferOwnershipTo(Context c, ComponentName target) throws Exception {
+        DevicePolicyManager dpm = Agent.dpm(c);
+        ComponentName admin = Agent.admin(c);
+        if (dpm.isDeviceOwnerApp(c.getPackageName())) {
+            releaseManagedState(c, dpm, admin);
+        }
+        dpm.transferOwnership(admin, target, null);
+        Agent.prefs(c).edit().clear().apply();
+    }
+
+    /** The policy-cleanup half of release() -- everything except actually giving up device-owner
+     * status, which release() and transferOwnershipTo() each finish differently. */
+    private static void releaseManagedState(Context c, DevicePolicyManager dpm, ComponentName admin) {
+        Kiosk.clear(c);
+        Kiosk.syncPreferredActivities(c, false, false);
+        for (String pkg : Agent.getSet(c, "hidden")) {
+            try {
+                dpm.setApplicationHidden(admin, pkg, false);
+            } catch (Exception ignored) {
+            }
+        }
+        for (String r : Agent.getSet(c, "restrictions")) {
+            try {
+                dpm.clearUserRestriction(admin, r);
+            } catch (Exception ignored) {
+            }
+        }
+        if (Agent.prefs(c).getBoolean("dnsFilterApplied", false)) {
+            try {
+                dpm.setAlwaysOnVpnPackage(admin, null, false);
+            } catch (Exception ignored) {
+            }
+            c.stopService(new Intent(c, DnsFilterVpnService.class));
+        }
+        try {
+            dpm.setUninstallBlocked(admin, c.getPackageName(), false);
+            if (Build.VERSION.SDK_INT >= 30) {
+                dpm.setUserControlDisabledPackages(admin, new ArrayList<String>());
+            }
+        } catch (Exception ignored) {
         }
     }
 
