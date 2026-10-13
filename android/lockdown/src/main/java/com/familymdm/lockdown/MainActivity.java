@@ -540,6 +540,8 @@ public class MainActivity extends Activity {
     }
 
     private static final int REQ_VPN_CONSENT = 4242;
+    private static final int REQ_ADD_ADMIN = 4243;
+    private android.content.ComponentName pendingTransferTarget;
     private final java.util.concurrent.atomic.AtomicBoolean vpnConsentChecking = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     /** The only interactive step the DNS filter still needs. Without registering as always-on
@@ -583,6 +585,12 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQ_VPN_CONSENT) build();
+        if (requestCode == REQ_ADD_ADMIN) {
+            android.content.ComponentName target = pendingTransferTarget;
+            pendingTransferTarget = null;
+            if (resultCode == RESULT_OK && target != null) doTransferOwnership(target);
+            else toast("Activation was not completed.");
+        }
     }
 
     // Guards against piling up overlapping background checks -- build() calls
@@ -709,6 +717,14 @@ public class MainActivity extends Activity {
             build();
         }), 8);
 
+        LinearLayout transferCard = Ui.card(this, root);
+        transferCard.addView(Ui.titleText(this, "Transfer device owner"));
+        transferCard.addView(Ui.body(this, "Hands device-owner status to another admin app already on this "
+                + "phone -- the MDM Agent, for instance -- with no factory reset. Turns Lockdown off and "
+                + "releases everything it's enforcing first, same as the switch above, so the other app "
+                + "doesn't inherit anything orphaned.", true));
+        Ui.add(transferCard, Ui.button(this, "Transfer device owner...", Ui.OUTLINED, v -> promptTransferOwner()), 12);
+
         LinearLayout finishCard = Ui.card(this, root);
         finishCard.addView(Ui.titleText(this, "This device is set up for good"));
         finishCard.addView(Ui.body(this, "A different, one-way step from the Lockdown switch above -- this one "
@@ -720,6 +736,94 @@ public class MainActivity extends Activity {
             section = "frp";
             build();
         }), 12);
+    }
+
+    /** Lists every other app on the phone with a registered device admin receiver -- the agent
+     * app, typically -- so device-owner status can be handed to it via
+     * DevicePolicyManager.transferOwnership(), no factory reset needed. Mirrors the agent app's
+     * own "Transfer device owner" button. */
+    private void promptTransferOwner() {
+        java.util.List<android.content.ComponentName> targets = new java.util.ArrayList<>();
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        Intent probe = new Intent("android.app.action.DEVICE_ADMIN_ENABLED");
+        for (ResolveInfo ri : getPackageManager().queryBroadcastReceivers(probe, 0)) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName())) continue;
+            targets.add(new android.content.ComponentName(pkg, ri.activityInfo.name));
+            labels.add(ri.loadLabel(getPackageManager()) + " (" + pkg + ")");
+        }
+        if (targets.isEmpty()) {
+            toast("No other device admin app found on this phone.");
+            return;
+        }
+        Ui.alertDialog(this)
+                .setTitle("Transfer device owner to...")
+                .setItems(labels.toArray(new String[0]), (d, which) -> confirmTransferOwner(targets.get(which), labels.get(which)))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void confirmTransferOwner(android.content.ComponentName target, String label) {
+        Ui.alertDialog(this)
+                .setTitle("Transfer device owner?")
+                .setMessage("Make " + label + " the device owner instead of Lockdown? Lockdown turns off and "
+                        + "releases everything it's enforcing first; this app loses device-owner control right away.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Transfer", (d, w) -> {
+                    if (dpm().isAdminActive(target)) {
+                        doTransferOwnership(target);
+                        return;
+                    }
+                    pendingTransferTarget = target;
+                    Intent i = new Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+                    i.putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, target);
+                    i.putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                            "Needed before device owner can be transferred to " + target.getPackageName() + ".");
+                    try {
+                        startActivityForResult(i, REQ_ADD_ADMIN);
+                    } catch (Exception e) {
+                        pendingTransferTarget = null;
+                        toast("Could not open the activation screen: " + e.getMessage());
+                    }
+                })
+                .show();
+    }
+
+    /** Turns Lockdown off (same cleanup disableLockdown() does: clears restrictions, hidden apps,
+     * notification limits, the lock task allowlist, FRP policy) and releases the DNS filter's own
+     * always-on VPN registration, all synchronously, before transferring -- otherwise the new
+     * owner would inherit this app's enforcement as orphaned state nobody is managing anymore,
+     * the same bug the agent app's own transfer button had. */
+    private void doTransferOwnership(android.content.ComponentName target) {
+        toast("Transferring...");
+        new Thread(() -> {
+            String msg;
+            try {
+                prefs().edit().putBoolean("lockdownOn", false).apply();
+                if (Build.VERSION.SDK_INT >= 30) {
+                    try {
+                        dpm().setFactoryResetProtectionPolicy(admin(),
+                                new android.app.admin.FactoryResetProtectionPolicy.Builder().setFactoryResetProtectionEnabled(false).build());
+                    } catch (Exception ignored) {
+                    }
+                }
+                Kiosk.deactivate(this, dpm(), admin());
+                applyRestrictionsLive();
+                applyRegularAppLiveState();
+                applySystemAppLiveState();
+                applyNotificationPermissionLive();
+                applyDnsFilterLive();
+                dpm().transferOwnership(admin(), target, null);
+                msg = "Transferred device owner to " + target.getPackageName() + ".";
+            } catch (Exception e) {
+                msg = "Transfer failed: " + (e.getMessage() == null ? e.toString() : e.getMessage());
+            }
+            final String text = msg;
+            runOnUiThread(() -> {
+                toast(text);
+                build();
+            });
+        }, "mdm-transfer-owner").start();
     }
 
     // ---------- DNS/TLS filter ----------
