@@ -167,8 +167,12 @@ public class MainActivity extends Activity {
         Toast.makeText(this, s, Toast.LENGTH_LONG).show();
     }
 
+    /** Every apply*Live() method below treats this as the single source of truth, so the
+     * emergency unlock file (see EmergencyUnlock) only needs to be checked here: the moment it's
+     * present, everything downstream of this method already behaves exactly like the Lockdown
+     * switch being off, with zero changes needed anywhere else. */
     private boolean isLockdownOn() {
-        return prefs().getBoolean("lockdownOn", false);
+        return prefs().getBoolean("lockdownOn", false) && !EmergencyUnlock.isActive(this);
     }
 
     private boolean showProtectedApps() {
@@ -725,6 +729,30 @@ public class MainActivity extends Activity {
                 + "doesn't inherit anything orphaned.", true));
         Ui.add(transferCard, Ui.button(this, "Transfer device owner...", Ui.OUTLINED, v -> promptTransferOwner()), 12);
 
+        LinearLayout emergency = Ui.card(this, root);
+        emergency.addView(Ui.titleText(this, "Emergency unlock"));
+        boolean euConfigured = EmergencyUnlock.isConfigured(this);
+        emergency.addView(Ui.body(this, euConfigured
+                ? "Set up: a file named \"" + EmergencyUnlock.fileName(this) + "\" with the right content, "
+                        + "placed at " + emergencyUnlockDir() + ", clears everything Lockdown is enforcing "
+                        + "while it stays device owner -- works even after \"This device is set up for good\" "
+                        + "has run and this screen is disabled. Nothing is lost; removing the file brings "
+                        + "everything back."
+                : "Not set up. A phone-local escape hatch for when nothing else on the phone is reachable: "
+                        + "pick a file name and what it must say, and placing that file on the phone clears "
+                        + "everything Lockdown is enforcing while it stays device owner.", true));
+        Ui.add(emergency, Ui.button(this, euConfigured ? "Change" : "Set up", Ui.TONAL, v -> askEmergencyUnlock()), 12);
+        if (euConfigured) {
+            Ui.add(emergency, Ui.button(this, "Remove", Ui.OUTLINED, v -> Ui.alertDialog(this)
+                    .setTitle("Remove the emergency unlock setup?")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Remove", (d, w) -> {
+                        EmergencyUnlock.clear(this);
+                        build();
+                    })
+                    .show()), 8);
+        }
+
         LinearLayout finishCard = Ui.card(this, root);
         finishCard.addView(Ui.titleText(this, "This device is set up for good"));
         finishCard.addView(Ui.body(this, "A different, one-way step from the Lockdown switch above -- this one "
@@ -824,6 +852,40 @@ public class MainActivity extends Activity {
                 build();
             });
         }, "mdm-transfer-owner").start();
+    }
+
+    private String emergencyUnlockDir() {
+        java.io.File dir = EmergencyUnlock.directory(this);
+        return dir == null ? "this app's external files folder" : dir.getAbsolutePath();
+    }
+
+    private void askEmergencyUnlock() {
+        final EditText name = Ui.field(this, "File name (e.g. unlock.txt)");
+        final EditText content = Ui.field(this, "What the file must say");
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Ui.dp(this, 16);
+        box.setPadding(pad, pad, pad, pad);
+        Ui.add(box, name, 0);
+        Ui.add(box, content, 12);
+        Ui.alertDialog(this)
+                .setTitle("Emergency unlock")
+                .setMessage("Saved as a one-way hash, not in plain text -- this screen can't show it back to "
+                        + "you later. File goes at: " + emergencyUnlockDir())
+                .setView(box)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    String n = name.getText().toString().trim();
+                    String ct = content.getText().toString();
+                    if (n.isEmpty() || ct.trim().isEmpty()) {
+                        toast("Fill in both fields.");
+                        return;
+                    }
+                    EmergencyUnlock.configure(this, n, ct);
+                    build();
+                    toast("Saved. Place the file at: " + emergencyUnlockDir());
+                })
+                .show();
     }
 
     // ---------- DNS/TLS filter ----------
