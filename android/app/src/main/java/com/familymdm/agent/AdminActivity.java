@@ -1458,6 +1458,55 @@ public class AdminActivity extends Activity {
                 "Release this phone and uninstall the agent?", () -> release(true)));
         action(device, "Transfer device owner...", Ui.OUTLINED, v -> promptTransferOwner());
         action(device, "Erase everything (factory reset)", Ui.DANGER, v -> promptWipe());
+
+        LinearLayout emergency = Ui.card(this, root);
+        emergency.addView(Ui.titleText(this, "Emergency unlock"));
+        boolean euConfigured = EmergencyUnlock.isConfigured(this);
+        emergency.addView(Ui.body(this, euConfigured
+                ? "Set up: a file named \"" + EmergencyUnlock.fileName(this) + "\" with the right content, "
+                        + "placed at " + emergencyUnlockDir() + ", clears every restriction while this app "
+                        + "stays device owner -- nothing is lost, and everything reapplies the moment the "
+                        + "file is removed again."
+                : "Not set up. A phone-local escape hatch for when the dashboard and every on-phone control "
+                        + "are both stuck: pick a file name and what it must say, and placing that file on "
+                        + "the phone clears every restriction while this app stays device owner.", true));
+        action(emergency, euConfigured ? "Change" : "Set up", Ui.TONAL, v -> askEmergencyUnlock());
+        if (euConfigured) {
+            action(emergency, "Remove", Ui.OUTLINED, v -> confirm("Remove the emergency unlock setup?", () -> {
+                EmergencyUnlock.clear(this);
+                Agent.addEvent(this, "local", "Master code on phone: removed the emergency unlock setup");
+                build();
+            }));
+        }
+    }
+
+    private String emergencyUnlockDir() {
+        java.io.File dir = EmergencyUnlock.directory(this);
+        return dir == null ? "this app's external files folder" : dir.getAbsolutePath();
+    }
+
+    private void askEmergencyUnlock() {
+        final EditText name = Ui.field(this, "File name (e.g. unlock.txt)");
+        final EditText content = Ui.field(this, "What the file must say");
+        Ui.alertDialog(this)
+                .setTitle("Emergency unlock")
+                .setMessage("Saved as a one-way hash, not in plain text -- this screen can't show it back to "
+                        + "you later. File goes at: " + emergencyUnlockDir())
+                .setView(form(name, content))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    String n = name.getText().toString().trim();
+                    String ct = content.getText().toString();
+                    if (n.isEmpty() || ct.trim().isEmpty()) {
+                        toast("Fill in both fields.");
+                    } else if (unlocked()) {
+                        EmergencyUnlock.configure(this, n, ct);
+                        Agent.addEvent(this, "local", "Master code on phone: set up the emergency unlock");
+                        build();
+                        toast("Saved. Place the file at: " + emergencyUnlockDir());
+                    }
+                })
+                .show();
     }
 
     /** Hands device-owner status to another admin app already installed on this phone --

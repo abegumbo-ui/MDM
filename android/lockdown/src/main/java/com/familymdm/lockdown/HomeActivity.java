@@ -7,11 +7,16 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Drawable;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.widget.GridLayout;
 import android.widget.ImageView;
@@ -21,6 +26,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -65,20 +71,46 @@ public class HomeActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
-        ensureDnsFilterRunning();
         build();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        periodicTick();
+        build();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        periodicHandler.removeCallbacks(periodicTick);
+    }
+
+    private final Handler periodicHandler = new Handler(Looper.getMainLooper());
+    private static final long PERIODIC_MS = 30_000;
+
+    /** Re-run every 30s while this screen is resumed (not just on create/resume themselves), so
+     * the emergency unlock file (see EmergencyUnlock) is noticed even if nobody presses Home --
+     * the whole point of it is working when nothing else on the phone is reachable. Also what the
+     * DNS filter's own self-heal (ensureDnsFilterRunning()) already needed, folded in here instead
+     * of its own separate timer. */
+    private final Runnable periodicTick = this::periodicTick;
+
+    private void periodicTick() {
         try {
             ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
-            if (am.getLockTaskModeState() == ActivityManager.LOCK_TASK_MODE_NONE) startLockTask();
+            boolean pinned = am.getLockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE;
+            if (EmergencyUnlock.isActive(this)) {
+                if (pinned) stopLockTask();
+            } else if (!pinned) {
+                startLockTask();
+            }
         } catch (Exception ignored) {
         }
         ensureDnsFilterRunning();
-        build();
+        applyFullPolicyLive();
+        periodicHandler.postDelayed(periodicTick, PERIODIC_MS);
     }
 
     /** Once "This device is set up for good" has run, MainActivity -- where every other bit of
@@ -90,7 +122,8 @@ public class HomeActivity extends Activity {
      * applyDnsFilterLive(): real Binder calls into system_server/Knox, so this runs on a
      * background thread rather than directly on this resume/create callback. */
     private void ensureDnsFilterRunning() {
-        boolean wanted = prefs().getBoolean("lockdownOn", false) && !prefs().getBoolean("vpnFilterPaused", false)
+        boolean wanted = prefs().getBoolean("lockdownOn", false) && !EmergencyUnlock.isActive(this)
+                && !prefs().getBoolean("vpnFilterPaused", false)
                 && (!DnsBlocklist.list(this).isEmpty() || !NetworkBlocklist.list(this).isEmpty());
         new Thread(() -> {
             boolean registered;
@@ -112,6 +145,80 @@ public class HomeActivity extends Activity {
             } catch (Exception ignored) {
             }
         }, "mdm-home-dnsfilter").start();
+    }
+
+    private static final String POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS";
+
+    // Same reasoning as MainActivity's own lastApplied* fields: without this, every 30s tick
+    // would re-issue a Binder/Knox call per restriction key and per installed app, continuously,
+    // for as long as this screen is the active kiosk home -- effectively forever. One combined
+    // signature of everything this method reads is enough to skip the whole pass when nothing
+    // relevant has changed since the last tick.
+    private static List<Object> lastAppliedSignature;
+
+    /** The only thing still running once "This device is set up for good" has disabled
+     * MainActivity for good, so this is also the only place left that can react to the emergency
+     * unlock file (see EmergencyUnlock) once that's happened. Mirrors MainActivity's own
+     * applyRestrictionsLive()/applyRegularAppLiveState()/applySystemAppLiveState()/
+     * applyNotificationPermissionLive(). Runs the same either direction: with the file absent
+     * this re-asserts every block exactly as configured, same as it always did; with it present,
+     * every one of those same calls instead clears. */
+    private void applyFullPolicyLive() {
+        boolean on = prefs().getBoolean("lockdownOn", false) && !EmergencyUnlock.isActive(this);
+        Set<String> enabled = new LinkedHashSet<>(on
+                ? prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS) : Collections.emptySet());
+        boolean showProtected = prefs().getBoolean("showProtectedApps", false);
+        Set<String> blockedRegular = new LinkedHashSet<>(prefs().getStringSet("blockedRegularApps", new LinkedHashSet<>()));
+        Set<String> blockedSystem = new LinkedHashSet<>(prefs().getStringSet("blockedSystemApps", new LinkedHashSet<>()));
+        Set<String> allowedNotif = new LinkedHashSet<>(prefs().getStringSet("allowedNotificationPackages", new LinkedHashSet<>()));
+        List<Object> signature = Arrays.asList(on, enabled, showProtected, blockedRegular, blockedSystem, allowedNotif);
+        if (signature.equals(lastAppliedSignature)) return;
+        lastAppliedSignature = signature;
+        new Thread(() -> {
+            try {
+                for (String key : LockdownPolicy.RESTRICTIONS.keySet()) {
+                    try {
+                        if (enabled.contains(key)) dpm().addUserRestriction(admin(), key);
+                        else dpm().clearUserRestriction(admin(), key);
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                PackageManager pm = getPackageManager();
+                Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+                for (ResolveInfo ri : pm.queryIntentActivities(main, PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+                    String pkg = ri.activityInfo.packageName;
+                    if (pkg.equals(getPackageName())) continue;
+                    if (!showProtected && LockdownPolicy.isProtected(pkg)) continue;
+                    try {
+                        dpm().setApplicationHidden(admin(), pkg, on && blockedRegular.contains(pkg));
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                for (String pkg : blockedSystem) {
+                    try {
+                        dpm().setApplicationHidden(admin(), pkg, on);
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                if (Build.VERSION.SDK_INT >= 33) {
+                    for (ApplicationInfo ai : pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+                        String pkg = ai.packageName;
+                        if (pkg.equals(getPackageName()) || pkg.equals("android")) continue;
+                        try {
+                            dpm().setPermissionGrantState(admin(), pkg, POST_NOTIFICATIONS,
+                                    on && !allowedNotif.contains(pkg)
+                                            ? DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED
+                                            : DevicePolicyManager.PERMISSION_GRANT_STATE_DEFAULT);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }, "mdm-home-policy").start();
     }
 
     @Override

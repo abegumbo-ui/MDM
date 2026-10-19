@@ -163,6 +163,10 @@ final class PolicyApplier {
         if (!dpm.isDeviceOwnerApp(c.getPackageName())) return;
 
         protectSelf(c, dpm, admin);
+        if (EmergencyUnlock.isActive(c)) {
+            releaseManagedState(c, dpm, admin);
+            return;
+        }
         applyFrp(c, dpm, admin, policy.optJSONArray("frpAccounts"));
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
         applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
