@@ -110,7 +110,32 @@ public class HomeActivity extends Activity {
         }
         ensureDnsFilterRunning();
         applyFullPolicyLive();
+        applyMainActivityReachability();
         periodicHandler.postDelayed(periodicTick, PERIODIC_MS);
+    }
+
+    /** "This device is set up for good" disables MainActivity's launcher component for good --
+     * the one genuinely irreversible step in this app, by design. The emergency unlock file (see
+     * EmergencyUnlock) is the one deliberate exception: while it's present, this re-enables
+     * MainActivity so the admin tile above actually opens it again, with its own onCreate() guard
+     * (see MainActivity) updated to match; once the file's gone, this disables it again, same as
+     * finishForever() originally did, so the lock-in really is back in full once the file's
+     * removed. A no-op before finishForever() has ever run (lockedForever isn't set yet, so
+     * MainActivity's already enabled the normal way and nothing here needs to touch it). */
+    private void applyMainActivityReachability() {
+        if (!prefs().getBoolean("lockedForever", false)) return;
+        ComponentName mainActivity = new ComponentName(this, MainActivity.class);
+        boolean wantEnabled = EmergencyUnlock.isActive(this);
+        boolean isEnabled = getPackageManager().getComponentEnabledSetting(mainActivity)
+                == PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
+        if (wantEnabled == isEnabled) return;
+        try {
+            getPackageManager().setComponentEnabledSetting(mainActivity,
+                    wantEnabled ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP);
+            runOnUiThread(this::build);
+        } catch (Exception ignored) {
+        }
     }
 
     /** Once "This device is set up for good" has run, MainActivity -- where every other bit of
@@ -249,9 +274,11 @@ public class HomeActivity extends Activity {
         int width = (getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)) / 3;
         Set<String> settingsCategories = prefs().getStringSet("settingsCategories", new LinkedHashSet<>());
         // Always first while there's still a setup screen to go back to -- this is what makes the
-        // lockdown reversible instead of a one-way trap. Gone for good once "This device is set up
-        // for good" has run and disabled MainActivity -- there's genuinely nothing left to open.
-        if (!prefs().getBoolean("lockedForever", false)) grid.addView(adminTile(width));
+        // lockdown reversible instead of a one-way trap. Normally gone for good once "This device
+        // is set up for good" has run and disabled MainActivity -- except while the emergency
+        // unlock file is present (see EmergencyUnlock and applyMainActivityReachability()), which
+        // re-enables it specifically so there's still a way back in.
+        if (!prefs().getBoolean("lockedForever", false) || EmergencyUnlock.isActive(this)) grid.addView(adminTile(width));
         // Always next if any Settings categories are enabled, same as the agent app's own kiosk
         // home screen -- the only way to reach any part of Settings once locked, so it's not
         // subject to being left out like a regular app.
@@ -286,8 +313,11 @@ public class HomeActivity extends Activity {
             try {
                 startActivity(new Intent(this, MainActivity.class));
             } catch (Exception e) {
-                // Only happens once "This device is set up for good" has run and disabled
-                // MainActivity's own launcher component -- the expected, final state, not a bug.
+                // Only happens if this tile is tapped in the instant between MainActivity being
+                // disabled again and this grid rebuilding without it -- see
+                // applyMainActivityReachability(). Otherwise this tile isn't shown at all once
+                // "This device is set up for good" has run, unless the emergency unlock file is
+                // active, in which case MainActivity really is reachable.
             }
         });
         return t;
