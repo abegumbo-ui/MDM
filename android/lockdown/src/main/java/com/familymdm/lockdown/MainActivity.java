@@ -89,11 +89,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Defensive only -- by the time this is true, MainActivity's own launcher component is
-        // already disabled, so Android shouldn't be able to start this at all. This is the one and
-        // only irreversible step in this app: everything else (the Lockdown switch) is reversible
-        // any number of times, right up until "This device is set up for good" is pressed.
-        if (prefs().getBoolean("lockedForever", false)) {
+        // Normally defensive only -- by the time lockedForever is true, MainActivity's own
+        // launcher component is disabled, so Android shouldn't be able to start this at all. The
+        // one deliberate exception: HomeActivity re-enables this component while the emergency
+        // unlock file (see EmergencyUnlock) is present, specifically so there's still a way back
+        // into this screen -- without the file, this guard still applies exactly as before.
+        if (prefs().getBoolean("lockedForever", false) && !EmergencyUnlock.isActive(this)) {
             finish();
             return;
         }
