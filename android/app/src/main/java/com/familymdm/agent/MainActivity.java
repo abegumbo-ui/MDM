@@ -65,6 +65,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         checkAppLock();
         if (locked) return;
+        seedDnsDefaultsIfNeeded();
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 16);
@@ -189,6 +190,23 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
         }
+    }
+
+    /** The starting DNS Hostname Block/Allow lists (see DnsDefaults), same ones the Lockdown app
+     * seeds on its own first run -- seeded here into this app's own DnsBlocklist/DnsAllowlist,
+     * guarded so it only ever runs once per phone. Left as plain set() calls (not setLocal()), so
+     * PolicyApplier.applyDnsFilter()/applyDnsAllowlist()'s existing rev==0-and-non-empty check is
+     * what actually hands this up to the dashboard on the very first sync -- the same seed-guard
+     * pattern already used for WholeAppBlocklist/NetworkBlocklist/PerAppDnsAllowlist, not a new one. */
+    private void seedDnsDefaultsIfNeeded() {
+        if (Agent.prefs(this).getBoolean("dnsDefaultsSeeded", false)) return;
+        java.util.Set<String> block = new java.util.LinkedHashSet<>(DnsBlocklist.list(this));
+        block.addAll(DnsDefaults.BLOCKLIST);
+        DnsBlocklist.set(this, block);
+        java.util.Set<String> allow = new java.util.LinkedHashSet<>(DnsAllowlist.list(this));
+        allow.addAll(DnsDefaults.ALLOWLIST);
+        DnsAllowlist.set(this, allow);
+        Agent.prefs(this).edit().putBoolean("dnsDefaultsSeeded", true).apply();
     }
 
     @Override
