@@ -100,10 +100,15 @@ public class AgentService extends Service {
         registerReceiver(packageReceiver, f);
     }
 
+    /** Channel ID "agent2", not "agent" -- Android ignores importance on a channel ID that
+     * already exists (by design, so a user's own manual override is never silently clobbered),
+     * so the "agent" channel from before this app ever set IMPORTANCE_MIN would otherwise stay
+     * stuck at its original IMPORTANCE_LOW forever on an already-enrolled phone. A fresh ID is
+     * the standard way around that -- the old "agent" channel is simply left unused. */
     private Notification notification() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel("agent", "MDM agent", NotificationManager.IMPORTANCE_LOW));
-        return new Notification.Builder(this, "agent")
+        nm.createNotificationChannel(new NotificationChannel("agent2", "MDM agent", NotificationManager.IMPORTANCE_MIN));
+        return new Notification.Builder(this, "agent2")
                 .setContentTitle("MDM agent")
                 .setContentText("Connected to your dashboard")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
@@ -233,6 +238,16 @@ public class AgentService extends Service {
         if (hiaRev > 0) {
             body.put("hideAppIconRev", hiaRev);
             body.put("hideAppIconValue", Agent.prefs(this).getBoolean("hideAppIconValue", false));
+        }
+        long dntRev = Agent.prefs(this).getLong("dnsFilterNotifTitleRev", 0);
+        if (dntRev > 0) {
+            body.put("dnsFilterNotifTitleRev", dntRev);
+            body.put("dnsFilterNotifTitleValue", Agent.prefs(this).getString("dnsFilterNotifTitleValue", ""));
+        }
+        long dnxRev = Agent.prefs(this).getLong("dnsFilterNotifTextRev", 0);
+        if (dnxRev > 0) {
+            body.put("dnsFilterNotifTextRev", dnxRev);
+            body.put("dnsFilterNotifTextValue", Agent.prefs(this).getString("dnsFilterNotifTextValue", ""));
         }
         long hkaRev = Agent.prefs(this).getLong("hideKioskAdminRev", 0);
         if (hkaRev > 0) {

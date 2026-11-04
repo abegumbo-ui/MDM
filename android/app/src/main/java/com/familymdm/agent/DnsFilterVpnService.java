@@ -127,11 +127,18 @@ public class DnsFilterVpnService extends VpnService {
     /** Title/text are admin-editable (AdminActivity's own "Notification text" setting) so the
      * filter's always-visible notification can say whatever the admin wants instead of a fixed
      * default -- the notification itself still can't be hidden (Android requires one for any
-     * running foreground service), just worded however's wanted. */
+     * running foreground service), just worded however's wanted.
+     *
+     * Channel ID "dnsfilter2", not "dnsfilter" -- Android ignores importance on a channel ID that
+     * already exists (by design, so a user's own manual override is never silently clobbered), so
+     * the original "dnsfilter" channel (created back when this was IMPORTANCE_LOW) never actually
+     * picked up IMPORTANCE_MIN on an already-enrolled phone, despite that change having shipped.
+     * A fresh ID is the standard way around that -- the old "dnsfilter" channel is simply left
+     * unused. */
     private Notification notification() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel("dnsfilter", "DNS filter", NotificationManager.IMPORTANCE_MIN));
-        return new Notification.Builder(this, "dnsfilter")
+        nm.createNotificationChannel(new NotificationChannel("dnsfilter2", "DNS filter", NotificationManager.IMPORTANCE_MIN));
+        return new Notification.Builder(this, "dnsfilter2")
                 .setContentTitle(Agent.prefs(this).getString("dnsFilterNotifTitle", "MDM filter"))
                 .setContentText(Agent.prefs(this).getString("dnsFilterNotifText", "Keeping you safe"))
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
