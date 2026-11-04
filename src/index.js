@@ -964,6 +964,20 @@ async function agentApi(request, env, url) {
       d.hideAppIconRev = Number(body.hideAppIconRev);
       dirty = true;
     }
+    if (Number(body.dnsFilterNotifTitleRev) > (d.dnsFilterNotifTitleRev || 0)) {
+      // Same mirroring again, for the DNS filter notification's title.
+      config.dnsFilterNotifTitle = String(body.dnsFilterNotifTitleValue || "").slice(0, 100);
+      d.config = config;
+      d.dnsFilterNotifTitleRev = Number(body.dnsFilterNotifTitleRev);
+      dirty = true;
+    }
+    if (Number(body.dnsFilterNotifTextRev) > (d.dnsFilterNotifTextRev || 0)) {
+      // Same mirroring again, for the DNS filter notification's own text.
+      config.dnsFilterNotifText = String(body.dnsFilterNotifTextValue || "").slice(0, 100);
+      d.config = config;
+      d.dnsFilterNotifTextRev = Number(body.dnsFilterNotifTextRev);
+      dirty = true;
+    }
     if (Number(body.hideKioskAdminRev) > (d.hideKioskAdminRev || 0)) {
       // Same mirroring again, for home screen mode's own Administrator-button hide/show toggle.
       config.hideKioskAdmin = !!body.hideKioskAdminValue;

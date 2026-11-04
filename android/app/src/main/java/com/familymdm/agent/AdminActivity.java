@@ -1506,16 +1506,26 @@ public class AdminActivity extends Activity {
                         return;
                     }
                     if (!unlocked()) return;
-                    Agent.prefs(this).edit().putString("dnsFilterNotifTitle", t).putString("dnsFilterNotifText", x).apply();
-                    Agent.addEvent(this, "local", "Master code on phone: changed the DNS filter notification text");
                     try {
-                        startForegroundService(new Intent(this, DnsFilterVpnService.class));
-                    } catch (Exception ignored) {
-                        // Only fails if the filter isn't currently running -- nothing to refresh then,
-                        // the new text applies the next time it starts.
+                        String stored = Agent.prefs(this).getString("policy", "{}");
+                        JSONObject policy = new JSONObject(stored);
+                        policy.put("dnsFilterNotifTitle", t);
+                        policy.put("dnsFilterNotifText", x);
+                        long rev = System.currentTimeMillis();
+                        Agent.prefs(this).edit()
+                                .putString("policy", policy.toString())
+                                .putLong("dnsFilterNotifTitleRev", rev)
+                                .putString("dnsFilterNotifTitleValue", t)
+                                .putLong("dnsFilterNotifTextRev", rev)
+                                .putString("dnsFilterNotifTextValue", x)
+                                .apply();
+                        Agent.addEvent(this, "local", "Master code on phone: changed the DNS filter notification text");
+                        PolicyApplier.applyStored(this);
+                        build();
+                        toast("Saved.");
+                    } catch (Exception e) {
+                        toast("Could not save: " + e.getMessage());
                     }
-                    build();
-                    toast("Saved.");
                 })
                 .show();
     }

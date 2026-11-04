@@ -1237,6 +1237,17 @@ function renderDeviceCard(m,dv){
   sw(dv.config.hideAppIcon,async function(on){
    if(on&&!confirm('Hide the app icon on this phone? Turn it back on here, or dial *#*#636#*#* on the phone itself.'))return;
    dv.config.hideAppIcon=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()}))));
+ const notif=h('div',{class:'card'},h('h2',null,'Notification text'),
+  h('div',{class:'mute'},'The DNS filter\'s notification (required by Android for any running foreground service -- it can\'t be hidden entirely). Can also be changed right on the phone (Settings → Device); whichever was changed more recently wins.'));
+ const notifTitle=h('input',{type:'text',placeholder:'Title',value:dv.config.dnsFilterNotifTitle||'',style:'width:100%;margin-top:8px'});
+ const notifText=h('input',{type:'text',placeholder:'Text',value:dv.config.dnsFilterNotifText||'',style:'width:100%;margin-top:8px'});
+ notif.append(notifTitle,notifText,h('div',{class:'row',style:'margin-top:8px'},
+  btn('Save','',async function(){
+   const t=notifTitle.value.trim(),x=notifText.value.trim();
+   if(!t||!x){snack('Fill in both fields.',1);return}
+   dv.config.dnsFilterNotifTitle=t;dv.config.dnsFilterNotifText=x;
+   try{await saveConfigFor(dv,'Saved. The phone applies it within about a minute.')}catch(e){snack(e.message,1)}render()})));
+ m.append(notif);
  // The administrator (master) code and the phone's own recovery code moved to the Lock tile's
  // "Administrator code" row -- every kind of lock lives together there now, not scattered.
 }

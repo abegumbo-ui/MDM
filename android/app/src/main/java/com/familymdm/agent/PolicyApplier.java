@@ -5,6 +5,7 @@ import android.app.admin.FactoryResetProtectionPolicy;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.location.LocationManager;
@@ -176,6 +177,7 @@ final class PolicyApplier {
         // recovery path either way (dialing *#*#636#*#* brings the icon straight back), with the
         // dashboard as a second, remote way back for a non-standalone phone.
         applyHideAppIcon(c, policy.optBoolean("hideAppIcon", false));
+        applyDnsFilterNotifText(c, policy.optString("dnsFilterNotifTitle", null), policy.optString("dnsFilterNotifText", null));
         // Seed guards: the Browser add-on and the whole-app blocklist both existed as phone-local
         // features for a long time before either became syncable. Without this, the very first
         // sync on an already-updated phone would see the dashboard's brand new, still-empty/false
@@ -644,6 +646,28 @@ final class PolicyApplier {
             Agent.addEvent(c, "restriction", wanted ? "The app icon is now hidden (dial *#*#636#*#* to bring it back)" : "The app icon is visible again");
         } catch (Exception e) {
             errorOnce(c, "hideicon", "Could not change whether the app icon shows: " + e.getMessage());
+        }
+    }
+
+    /** The DNS filter notification's title/text (DnsFilterVpnService.notification() reads these
+     * same two flat prefs keys) -- editable from either side, dashboard or AdminActivity's own
+     * "Notification text" setting, same local-edit-wins-until-the-dashboard-sends-something-newer
+     * pattern as hideAppIcon. Empty/missing means "use the built-in default", so a device that was
+     * never touched keeps the original wording. Restarts the running service (a no-op if it isn't
+     * running) so an already-visible notification updates immediately, not just on its next start. */
+    private static void applyDnsFilterNotifText(Context c, String title, String text) {
+        SharedPreferences prefs = Agent.prefs(c);
+        String curTitle = prefs.getString("dnsFilterNotifTitle", "MDM filter");
+        String curText = prefs.getString("dnsFilterNotifText", "Keeping you safe");
+        String newTitle = (title == null || title.trim().isEmpty()) ? "MDM filter" : title.trim();
+        String newText = (text == null || text.trim().isEmpty()) ? "Keeping you safe" : text.trim();
+        if (newTitle.equals(curTitle) && newText.equals(curText)) return;
+        prefs.edit().putString("dnsFilterNotifTitle", newTitle).putString("dnsFilterNotifText", newText).apply();
+        try {
+            c.startForegroundService(new Intent(c, DnsFilterVpnService.class));
+        } catch (Exception ignored) {
+            // Only fails if the filter isn't currently running -- nothing to refresh then, the new
+            // text applies the next time it starts.
         }
     }
 
