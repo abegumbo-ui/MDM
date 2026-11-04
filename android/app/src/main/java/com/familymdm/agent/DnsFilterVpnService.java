@@ -124,12 +124,16 @@ public class DnsFilterVpnService extends VpnService {
         }
     }
 
+    /** Title/text are admin-editable (AdminActivity's own "Notification text" setting) so the
+     * filter's always-visible notification can say whatever the admin wants instead of a fixed
+     * default -- the notification itself still can't be hidden (Android requires one for any
+     * running foreground service), just worded however's wanted. */
     private Notification notification() {
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel("dnsfilter", "DNS filter", NotificationManager.IMPORTANCE_MIN));
         return new Notification.Builder(this, "dnsfilter")
-                .setContentTitle("MDM filter")
-                .setContentText("Keeping you safe")
+                .setContentTitle(Agent.prefs(this).getString("dnsFilterNotifTitle", "MDM filter"))
+                .setContentText(Agent.prefs(this).getString("dnsFilterNotifText", "Keeping you safe"))
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .build();
     }

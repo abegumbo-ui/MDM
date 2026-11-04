@@ -1478,6 +1478,46 @@ public class AdminActivity extends Activity {
                 build();
             }));
         }
+
+        LinearLayout notif = Ui.card(this, root);
+        notif.addView(Ui.titleText(this, "Notification text"));
+        String notifTitle = Agent.prefs(this).getString("dnsFilterNotifTitle", "MDM filter");
+        String notifText = Agent.prefs(this).getString("dnsFilterNotifText", "Keeping you safe");
+        notif.addView(Ui.body(this, "The DNS filter's notification (required by Android for any running "
+                + "foreground service -- it can't be hidden entirely) currently reads \"" + notifTitle + " / "
+                + notifText + "\". Change the wording to whatever's wanted.", true));
+        action(notif, "Change", Ui.TONAL, v -> askNotificationText());
+    }
+
+    private void askNotificationText() {
+        final EditText title = Ui.field(this, "Title");
+        title.setText(Agent.prefs(this).getString("dnsFilterNotifTitle", "MDM filter"));
+        final EditText text = Ui.field(this, "Text");
+        text.setText(Agent.prefs(this).getString("dnsFilterNotifText", "Keeping you safe"));
+        Ui.alertDialog(this)
+                .setTitle("Notification text")
+                .setView(form(title, text))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    String t = title.getText().toString().trim();
+                    String x = text.getText().toString().trim();
+                    if (t.isEmpty() || x.isEmpty()) {
+                        toast("Fill in both fields.");
+                        return;
+                    }
+                    if (!unlocked()) return;
+                    Agent.prefs(this).edit().putString("dnsFilterNotifTitle", t).putString("dnsFilterNotifText", x).apply();
+                    Agent.addEvent(this, "local", "Master code on phone: changed the DNS filter notification text");
+                    try {
+                        startForegroundService(new Intent(this, DnsFilterVpnService.class));
+                    } catch (Exception ignored) {
+                        // Only fails if the filter isn't currently running -- nothing to refresh then,
+                        // the new text applies the next time it starts.
+                    }
+                    build();
+                    toast("Saved.");
+                })
+                .show();
     }
 
     private String emergencyUnlockDir() {
