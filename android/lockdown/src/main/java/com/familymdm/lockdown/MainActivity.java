@@ -754,6 +754,15 @@ public class MainActivity extends Activity {
                     .show()), 8);
         }
 
+        LinearLayout notif = Ui.card(this, root);
+        notif.addView(Ui.titleText(this, "Notification text"));
+        String notifTitle = prefs().getString("dnsFilterNotifTitle", "MDM filter");
+        String notifText = prefs().getString("dnsFilterNotifText", "Keeping you safe");
+        notif.addView(Ui.body(this, "The DNS filter's notification (required by Android for any running "
+                + "foreground service -- it can't be hidden entirely) currently reads \"" + notifTitle + " / "
+                + notifText + "\". Change the wording to whatever's wanted.", true));
+        Ui.add(notif, Ui.button(this, "Change", Ui.TONAL, v -> askNotificationText()), 12);
+
         LinearLayout finishCard = Ui.card(this, root);
         finishCard.addView(Ui.titleText(this, "This device is set up for good"));
         finishCard.addView(Ui.body(this, "A different, one-way step from the Lockdown switch above -- this one "
@@ -853,6 +862,41 @@ public class MainActivity extends Activity {
                 build();
             });
         }, "mdm-transfer-owner").start();
+    }
+
+    private void askNotificationText() {
+        final EditText title = Ui.field(this, "Title");
+        title.setText(prefs().getString("dnsFilterNotifTitle", "MDM filter"));
+        final EditText text = Ui.field(this, "Text");
+        text.setText(prefs().getString("dnsFilterNotifText", "Keeping you safe"));
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Ui.dp(this, 16);
+        box.setPadding(pad, pad, pad, pad);
+        Ui.add(box, title, 0);
+        Ui.add(box, text, 12);
+        Ui.alertDialog(this)
+                .setTitle("Notification text")
+                .setView(box)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    String t = title.getText().toString().trim();
+                    String x = text.getText().toString().trim();
+                    if (t.isEmpty() || x.isEmpty()) {
+                        toast("Fill in both fields.");
+                        return;
+                    }
+                    prefs().edit().putString("dnsFilterNotifTitle", t).putString("dnsFilterNotifText", x).apply();
+                    try {
+                        startForegroundService(new Intent(this, DnsFilterVpnService.class));
+                    } catch (Exception ignored) {
+                        // Only fails if the filter isn't currently running -- nothing to refresh then,
+                        // the new text applies the next time it starts.
+                    }
+                    build();
+                    toast("Saved.");
+                })
+                .show();
     }
 
     private String emergencyUnlockDir() {
