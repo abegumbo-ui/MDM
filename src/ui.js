@@ -993,6 +993,9 @@ function appRow(a,dv,opts){
  row.append(img,body);return row}
 
 /* ---------- sites (browser allowlist) ---------- */
+function ytHostOf(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.toLowerCase().replace(/^www\./,'')}catch(e){return null}}
+function isYoutubeUrl(u){const h=ytHostOf(u);return h==='youtube.com'||h==='m.youtube.com'||h==='music.youtube.com'||h==='youtu.be'||h==='youtube-nocookie.com'}
+function ytChannelOf(u){try{const x=new URL(u.includes('://')?u:'https://'+u);const h=x.hostname.toLowerCase().replace(/^www\./,'');if(h!=='youtube.com'&&h!=='m.youtube.com')return null;const m=/^\/(@[A-Za-z0-9._-]{3,30})(?:\/|$)/.exec(x.pathname);return m?m[1].toLowerCase():null}catch(e){return null}}
 function hostOfUrl(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.replace(/^www\./,'')}catch(e){return u}}
 function renderRequestsCard(m,reqs,dv){
  if(!reqs.length)return;
@@ -1035,7 +1038,12 @@ function renderSitesEditor(m,dv){
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
  const type=h('select',null,new Option('Whole site','domain'),new Option('Exact page only','exact'));
  top.append(h('div',{class:'row',style:'margin-top:8px'},url,type,btn('Add','tonal',async function(){
-  if(!url.value.trim())return;await addSite(dv,{type:type.value,url:url.value.trim(),label:hostOfUrl(url.value.trim())});url.value=''})));
+  const link=url.value.trim();if(!link)return;
+  const channel=ytChannelOf(link);
+  if(channel){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+channel,id:channel,label:'YouTube channel '+channel});url.value='';return}
+  if(isYoutubeUrl(link)&&type.value==='domain'&&!confirm('This would allow ALL of YouTube, including its home page, search and every video. To allow only one channel, paste the channel\'s @handle link instead; to allow one video, paste the video link and choose "Exact page only". Allow all of YouTube anyway?'))return;
+  await addSite(dv,{type:type.value,url:link,label:hostOfUrl(link)});url.value=''})));
+ top.append(h('div',{class:'mute small',style:'margin-top:8px'},'YouTube: paste a channel link like youtube.com/@channelname to allow that channel\'s videos only, or a video link (with "Exact page only") to allow just that video. Anything else on YouTube stays blocked.'));
  m.append(top);
 
  const list=h('div',{class:'card'});
@@ -1046,13 +1054,13 @@ function renderSitesEditor(m,dv){
   const s=sites[key];
   const row=h('div',{class:'app'});
   row.append(h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.label||s.url),
-   h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='domain'?'Whole site: ':'Exact page: ')+s.url),
-   h('div',null,h('span',{class:'chip'},s.type==='domain'?'subpages + subdomains':'this page only'),
+   h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='youtube'?'YouTube channel: ':s.type==='domain'?'Whole site: ':'Exact page: ')+s.url),
+   h('div',null,h('span',{class:'chip'},s.type==='youtube'?'this channel\'s videos only':s.type==='domain'?'subpages + subdomains':'this page only'),
     s.blockImages?h('span',{class:'chip warn'},'images blocked'):null,
     s.installable===false?h('span',{class:'chip'},'no home-screen shortcut'):null)));
   const col=h('div',{style:'display:flex;flex-direction:column;gap:6px;align-items:flex-end'});
-  col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.blockImages?true:false,onchange:async function(e){s.blockImages=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Block images'));
-  col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.installable===false?false:true,onchange:async function(e){s.installable=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Allow home-screen shortcut'));
+  if(s.type!=='youtube')col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.blockImages?true:false,onchange:async function(e){s.blockImages=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Block images'));
+  if(s.type!=='youtube')col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.installable===false?false:true,onchange:async function(e){s.installable=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Allow home-screen shortcut'));
   col.append(btn('Remove','danger',async function(){if(!confirm('Remove '+(s.label||s.url)+' from the allowlist?'))return;delete dv.config.sites[key];await saveConfigFor(dv,'Removed.')}));
   row.append(col);list.append(row)}
  m.append(list);
@@ -1069,9 +1077,9 @@ function renderSites(m,dv){
  renderSitesEditor(m,dv);
 }
 async function addSite(dv,entry){
- const key=(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
+ const key=entry.type==='youtube'?'youtube:'+entry.id:(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  dv.config.sites=dv.config.sites||{};
- dv.config.sites[key]={type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true};
+ dv.config.sites[key]=entry.type==='youtube'?{type:'youtube',kind:'channel',id:entry.id,url:entry.url,label:entry.label,blockImages:false,installable:false}:{type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true};
  await saveConfigFor(dv,'Added '+(entry.label||entry.url)+'. Phones pick it up within about 5 minutes.');
 }
 /** Copies another device's (or browser's) whole config -- or just its sites, into a browser -- over this one's. */

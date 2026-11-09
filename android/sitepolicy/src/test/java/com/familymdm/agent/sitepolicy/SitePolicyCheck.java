@@ -57,6 +57,37 @@ public class SitePolicyCheck {
         check(!SitePolicy.isBlockedAdult("https://notpornhub.com/"), "a look-alike domain is not swept in");
         check(!SitePolicy.isBlockedAdult("https://nytimes.com/"), "an ordinary site is not blocked");
 
+        // ---- YouTube: the same cases test/youtube.test.js checks on the server side ----
+        String v = "dQw4w9WgXcQ";
+        for (String u : new String[] {
+                "https://www.youtube.com/watch?v=" + v, "https://youtube.com/watch?v=" + v + "&t=42s&list=PLabc",
+                "https://m.youtube.com/watch?v=" + v, "https://youtu.be/" + v, "https://youtu.be/" + v + "?si=zzz",
+                "https://www.youtube.com/shorts/" + v, "https://www.youtube.com/embed/" + v,
+                "https://www.youtube-nocookie.com/embed/" + v, "https://www.youtube.com/live/" + v + "?feature=share"}) {
+            check(v.equals(SitePolicy.youtubeVideoId(u)), "video id from " + u);
+        }
+        for (String u : new String[] {"https://www.youtube.com/", "https://www.youtube.com/watch", "https://www.youtube.com/watch?v=short",
+                "https://www.youtube.com/results?search_query=x", "https://example.com/watch?v=" + v, "https://www.youtube.com/@someone"}) {
+            check(SitePolicy.youtubeVideoId(u) == null, "no video id in " + u);
+        }
+        check("@aishdotcom".equals(SitePolicy.youtubeChannelHandle("https://www.youtube.com/@AishDotCom")), "channel handle, lower-cased");
+        check("@aishdotcom".equals(SitePolicy.youtubeChannelHandle("https://m.youtube.com/@AishDotCom/videos")), "channel handle from a sub-page");
+        check(SitePolicy.youtubeChannelHandle("https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx") == null, "/channel/ links are not accepted");
+        check(SitePolicy.youtubeChannelHandle("https://example.com/@handle") == null, "@handle on another site is not a channel");
+
+        List<SitePolicy.Site> yt = SitePolicy.parse(sites(
+                "{\"type\":\"exact\",\"url\":\"https://www.youtube.com/watch?v=" + v + "\"}",
+                "{\"type\":\"youtube\",\"kind\":\"channel\",\"id\":\"@AishDotCom\",\"url\":\"https://www.youtube.com/@aishdotcom\"}"));
+        check(yt.size() == 2, "a video entry and a channel entry both parse");
+        check(SitePolicy.allowed("https://youtu.be/" + v, yt), "one allowed video is allowed however it is written");
+        check(!SitePolicy.allowed("https://www.youtube.com/watch?v=AAAAAAAAAAA", yt), "a different video is NOT allowed by that entry");
+        check(!SitePolicy.allowed("https://www.youtube.com/@aishdotcom", yt), "a channel entry never matches by address (the Browser decides)");
+        check(SitePolicy.hasYoutubeChannels(yt), "the channel entry is noticed");
+        check(SitePolicy.youtubeChannelAllowed("@AishDotCom", yt) && !SitePolicy.youtubeChannelAllowed("@someoneelse", yt), "only the listed channel is allowed");
+        check(!SitePolicy.youtubeChannelAllowed(null, yt), "no channel is never allowed");
+        check(SitePolicy.parse(sites("{\"type\":\"youtube\",\"kind\":\"channel\",\"id\":\"nohandle\"}")).isEmpty(), "a channel entry without a real @handle is dropped");
+        check(!SitePolicy.hasYoutubeChannels(SitePolicy.parse(sites("{\"type\":\"domain\",\"url\":\"example.com\"}"))), "no channel entries means none noticed");
+
         System.out.println(failures == 0 ? "ALL PASSED" : failures + " FAILED");
         if (failures > 0) System.exit(1);
     }

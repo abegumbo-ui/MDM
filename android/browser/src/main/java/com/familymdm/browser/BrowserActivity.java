@@ -534,7 +534,19 @@ public class BrowserActivity extends Activity {
             }
 
             @Override
+            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+                super.doUpdateVisitedHistory(view, url, isReload);
+                if (url == null || t.webView != view || !SitePolicy.isYoutubeHost(SitePolicy.hostOf(url))) return;
+                // YouTube switches video or page in place (no page load), so this is the only signal.
+                if (!allowedOrBlock(t, url)) {
+                    view.stopLoading();
+                    view.loadUrl("about:blank"); // otherwise the video keeps playing sound under the blocked screen
+                }
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
+                if ("about:blank".equals(url)) return; // the blank page used to stop a blocked video; keep the real address shown
                 t.url = url;
                 if (t == current()) syncToolbar();
             }
@@ -576,8 +588,17 @@ public class BrowserActivity extends Activity {
             showSetupRequired(t, url);
             return false;
         }
-        SitePolicy.Site match = SitePolicy.matching(url, currentSites(mode));
+        List<SitePolicy.Site> sitesNow = currentSites(mode);
+        SitePolicy.Site match = SitePolicy.matching(url, sitesNow);
         if (match == null) {
+            // Allowed YouTube channels: their pages and their videos open, the rest of YouTube does not.
+            int yt = youtubeCheck(t, url, sitesNow);
+            if (yt == YT_PENDING) return false;
+            if (yt == YT_ALLOW) {
+                t.webView.getSettings().setBlockNetworkImage(false);
+                t.webView.getSettings().setLoadsImagesAutomatically(true);
+                return true;
+            }
             if (mode == Mode.AGENT && browseWindowActive()) {
                 reportNewHostOnce(url);
                 t.webView.getSettings().setBlockNetworkImage(false);
@@ -600,6 +621,44 @@ public class BrowserActivity extends Activity {
         t.webView.getSettings().setBlockNetworkImage(match.blockImages);
         t.webView.getSettings().setLoadsImagesAutomatically(!match.blockImages);
         return true;
+    }
+
+    private static final int YT_NO = 0, YT_ALLOW = 1, YT_PENDING = 2;
+
+    /**
+     * YouTube channel entries: a channel's own pages are allowed, and a video is allowed when YouTube
+     * says it belongs to an allowed channel. Everything else on YouTube (home, search, shorts feed,
+     * other channels' videos) is not decided here and falls through to the normal "not allowed".
+     */
+    private int youtubeCheck(final Tab t, final String url, List<SitePolicy.Site> sites) {
+        String host = SitePolicy.hostOf(url);
+        if (!SitePolicy.isYoutubeHost(host) || !SitePolicy.hasYoutubeChannels(sites)) return YT_NO;
+        String handle = SitePolicy.youtubeChannelHandle(url);
+        if (handle != null) return SitePolicy.youtubeChannelAllowed(handle, sites) ? YT_ALLOW : YT_NO;
+        String video = SitePolicy.youtubeVideoId(url);
+        if (video == null) return YT_NO;
+        String known = YoutubeLookup.cached(this, video);
+        if (known == null) {
+            YoutubeLookup.start(this, video, () -> runOnUiThread(() -> {
+                if (!isFinishing()) load(t, url); // now the channel is known, so this decides for real
+            }));
+            showChecking(t);
+            return YT_PENDING;
+        }
+        return SitePolicy.youtubeChannelAllowed(known, sites) ? YT_ALLOW : YT_NO;
+    }
+
+    private void showChecking(final Tab t) {
+        t.webView.setVisibility(View.GONE);
+        if (t.homeView != null) t.homeView.setVisibility(View.GONE);
+        ensureOverlay(t);
+        t.overlay.setVisibility(View.VISIBLE);
+        t.overlay.removeAllViews();
+        t.overlay.addView(title("Checking this video…"));
+        TextView sub = body("Making sure it is from an allowed channel.");
+        sub.setPadding(0, dp(8), 0, dp(16));
+        t.overlay.addView(sub);
+        if (t == current()) syncToolbar();
     }
 
     /** "Browse freely for a while" (a code redeemed on the agent's main screen): true until it expires. */

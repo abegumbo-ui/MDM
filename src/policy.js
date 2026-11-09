@@ -151,7 +151,45 @@ function hostOf(u) {
   }
 }
 
+const YOUTUBE_HOSTS = new Set(["youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com", "youtu.be"]);
+
+/** The 11-character id of the video this address plays (watch, youtu.be, shorts, embed, live), or null. Mirrors SitePolicy.youtubeVideoId. */
+export function youtubeVideoId(u) {
+  try {
+    const url = new URL(u.includes("://") ? u : "https://" + u);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    if (!YOUTUBE_HOSTS.has(host)) return null;
+    let id = null;
+    if (host === "youtu.be") id = url.pathname.split("/")[1] || null;
+    else if (url.pathname === "/watch") id = url.searchParams.get("v");
+    else {
+      const m = /^\/(?:shorts|embed|live|v)\/([^/?#]+)/.exec(url.pathname);
+      if (m) id = m[1];
+    }
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The "@handle" (lower case) of the channel page this address is, or null. Mirrors SitePolicy.youtubeChannelHandle. */
+export function youtubeChannelHandle(u) {
+  try {
+    const url = new URL(u.includes("://") ? u : "https://" + u);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    if (host !== "youtube.com" && host !== "m.youtube.com") return null;
+    const m = /^\/(@[A-Za-z0-9._-]{3,30})(?:\/|$)/.exec(url.pathname);
+    return m ? m[1].toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 function pathKeyOf(u) {
+  // Every YouTube video shares the address "youtube.com/watch": only ?v= tells them apart. Without
+  // this, allowing one video "page" would quietly allow every video.
+  const video = youtubeVideoId(u);
+  if (video) return "youtube.com/watch?v=" + video;
   try {
     const url = new URL(u.includes("://") ? u : "https://" + u);
     const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -180,6 +218,22 @@ export function isBlockedAdultHost(host) {
 /** One allowlist entry: a whole domain (with subpages/subdomains) or one exact page. */
 export function normalizeSite(raw) {
   if (!raw || typeof raw !== "object") return null;
+  if (raw.type === "youtube") {
+    // A whole YouTube channel, given as its "@handle" page address (or the handle itself). Everything
+    // else on YouTube (home, search, other channels' videos) stays blocked.
+    const handle = youtubeChannelHandle(String(raw.url || "")) || (/^@[A-Za-z0-9._-]{3,30}$/.test(String(raw.id || "")) ? String(raw.id).toLowerCase() : null);
+    if (!handle) return null;
+    return {
+      type: "youtube",
+      kind: "channel",
+      id: handle,
+      url: "https://www.youtube.com/" + handle,
+      host: "youtube.com",
+      label: String(raw.label || "YouTube " + handle).slice(0, 80),
+      blockImages: false,
+      installable: false,
+    };
+  }
   const type = raw.type === "exact" ? "exact" : raw.type === "domain" ? "domain" : null;
   const url = String(raw.url || "").trim();
   if (!type || !url) return null;
@@ -202,7 +256,7 @@ export function normalizeSites(raw) {
   for (const v of Object.values(raw && typeof raw === "object" ? raw : {})) {
     const s = normalizeSite(v);
     if (!s) continue;
-    const key = s.type + ":" + (s.type === "domain" ? s.host : pathKeyOf(s.url));
+    const key = s.type + ":" + (s.type === "domain" ? s.host : s.type === "youtube" ? s.id : pathKeyOf(s.url));
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(s);
@@ -216,7 +270,7 @@ export function siteAllowed(url, sites) {
   const path = pathKeyOf(url);
   if (!host) return false;
   return sites.some(
-    (s) => (s.type === "domain" && (host === s.host || host.endsWith("." + s.host))) || (s.type === "exact" && path === pathKeyOf(s.url)),
+    (s) => s.type !== "youtube" && (s.type === "domain" && (host === s.host || host.endsWith("." + s.host))) || (s.type === "exact" && path === pathKeyOf(s.url)),
   );
 }
 
