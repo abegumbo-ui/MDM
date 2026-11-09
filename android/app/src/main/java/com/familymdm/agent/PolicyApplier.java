@@ -790,13 +790,15 @@ final class PolicyApplier {
             // Category filter level (off / moderate / strict) and where the Browser downloads its lists.
             String filterTier = policy.optString("browserFilter", "off");
             String filterBase = policy.optString("browserFilterBase", "");
-            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase;
+            String youtubeMode = policy.optString("youtubeMode", "channels");
+            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode;
             if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
             b.putLong("browseUntil", browseUntil);
             b.putString("filterTier", filterTier);
             b.putString("filterBase", filterBase);
+            b.putString("youtubeMode", youtubeMode);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
             errorCleared(c, "browserConfig");

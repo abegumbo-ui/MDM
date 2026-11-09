@@ -17,6 +17,7 @@ import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import com.familymdm.agent.sitepolicy.SitePolicy;
+import com.familymdm.agent.sitepolicy.YoutubeRestricted;
 
 import org.json.JSONObject;
 
@@ -91,6 +92,9 @@ public class BrowserAddonActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                if (url != null && WebFilter.youtubeRestricted(BrowserAddonActivity.this) && isYoutubeAddress(url)) {
+                    view.evaluateJavascript(YoutubeRestricted.HIDE_SCRIPT, null);
+                }
                 if (!HOME_URL.equals(url) && !"about:blank".equals(url)) addressBar.setText(url);
             }
         });
@@ -107,8 +111,10 @@ public class BrowserAddonActivity extends Activity {
         try {
             JSONObject policy = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
             WebFilter.setPolicy(this, policy.optString("browserFilter", "off"), policy.optString("browserFilterBase", ""));
+            WebFilter.setYoutubeMode(this, policy.optString("youtubeMode", "channels"));
         } catch (Exception e) {
             WebFilter.setPolicy(this, "off", "");
+            WebFilter.setYoutubeMode(this, "channels");
         }
     }
 
@@ -154,7 +160,14 @@ public class BrowserAddonActivity extends Activity {
             addressBar.setText("");
             return;
         }
-        webView.loadUrl(url.contains("://") ? url : "https://" + url);
+        String full = url.contains("://") ? url : "https://" + url;
+        if (WebFilter.youtubeRestricted(this) && isYoutubeAddress(full)) {
+            java.util.Map<String, String> headers = new java.util.HashMap<>();
+            headers.put(YoutubeRestricted.RESTRICT_HEADER, YoutubeRestricted.RESTRICT_VALUE);
+            webView.loadUrl(full, headers);
+        } else {
+            webView.loadUrl(full);
+        }
     }
 
     /** Returns true (meaning "I handled it, don't load it") when the page is blocked. */
@@ -165,6 +178,25 @@ public class BrowserAddonActivity extends Activity {
         }
         if (SitePolicy.isBlockedAdult(url)) {
             showAdultBlocked();
+            return true;
+        }
+        if (WebFilter.youtubeRestricted(this) && isYoutubeAddress(url)) {
+            int kind = SitePolicy.youtubeKind(url);
+            if (kind == SitePolicy.YT_HOME) {
+                hideOverlay();
+                webView.loadDataWithBaseURL(null, YoutubeRestricted.searchPageHtml(), "text/html", "utf-8", null);
+                return true;
+            }
+            if (SitePolicy.youtubeRestrictedAllows(url)) {
+                hideOverlay();
+                return false;
+            }
+            webView.setVisibility(View.GONE);
+            ensureOverlay();
+            overlay.removeAllViews();
+            overlay.addView(Ui.titleText(this, "Not available"));
+            overlay.addView(Ui.body(this, "This part of YouTube isn't available.", true));
+            overlay.addView(Ui.button(this, "Go to the start page", Ui.TONAL, v -> load(HOME_URL)));
             return true;
         }
         List<SitePolicy.Site> sites = currentSites();
@@ -194,6 +226,11 @@ public class BrowserAddonActivity extends Activity {
         }
         showBlocked(url);
         return true;
+    }
+
+    private static boolean isYoutubeAddress(String url) {
+        String host = SitePolicy.hostOf(url);
+        return SitePolicy.isYoutubeHost(host) || "consent.youtube.com".equals(host) || "accounts.youtube.com".equals(host);
     }
 
     private static final int YT_NO = 0, YT_ALLOW = 1, YT_PENDING = 2;

@@ -174,6 +174,48 @@ public final class SitePolicy {
         }
     }
 
+    // What kind of YouTube page an address is, for the "restricted YouTube" setting.
+    public static final int YT_OTHER = 0;   // not allowed: Shorts, feeds, trending, hashtags, anything unrecognised
+    public static final int YT_HOME = 1;    // the home page: replaced by a plain search page, never the recommendation feed
+    public static final int YT_SEARCH = 2;  // search results
+    public static final int YT_VIDEO = 3;   // one video (watch, youtu.be, embed, live)
+    public static final int YT_CHANNEL = 4; // a channel or playlist page
+    public static final int YT_SYSTEM = 5;  // YouTube's own consent / sign-in screens
+
+    /** Classifies an address on a YouTube host. Anything not clearly one of the allowed kinds is YT_OTHER. */
+    public static int youtubeKind(String u) {
+        String host = hostOf(u);
+        if (host == null) return YT_OTHER;
+        if (host.equals("consent.youtube.com") || host.equals("accounts.youtube.com")) return YT_SYSTEM;
+        if (!isYoutubeHost(host)) return YT_OTHER;
+        if (youtubeVideoId(u) != null) {
+            // Shorts have a video id too, but are not offered in restricted mode.
+            try {
+                String p = new URI(u.contains("://") ? u : "https://" + u).getPath();
+                if (p != null && p.startsWith("/shorts")) return YT_OTHER;
+            } catch (URISyntaxException e) {
+                return YT_OTHER;
+            }
+            return YT_VIDEO;
+        }
+        try {
+            String path = new URI(u.contains("://") ? u : "https://" + u).getPath();
+            if (path == null || path.isEmpty() || path.equals("/")) return YT_HOME;
+            if (path.equals("/results")) return YT_SEARCH;
+            if (path.equals("/playlist")) return YT_CHANNEL;
+            if (path.matches("^/(@[^/]+|channel/[^/]+|c/[^/]+|user/[^/]+)(/.*)?$")) return YT_CHANNEL;
+        } catch (URISyntaxException e) {
+            return YT_OTHER;
+        }
+        return YT_OTHER;
+    }
+
+    /** True for the kinds of YouTube page restricted mode lets through (not the home page, which is replaced). */
+    public static boolean youtubeRestrictedAllows(String u) {
+        int k = youtubeKind(u);
+        return k == YT_SEARCH || k == YT_VIDEO || k == YT_CHANNEL || k == YT_SYSTEM;
+    }
+
     public static boolean hasYoutubeChannels(List<Site> sites) {
         for (Site s : sites) if (s.type.equals("youtube")) return true;
         return false;

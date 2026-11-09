@@ -85,6 +85,15 @@ final class FilterStore {
         return l != null && BlockList.anyBlocks(l, host);
     }
 
+    /** The YouTube setting from the dashboard: "restricted" (search, no recommendations) or "channels" (default). */
+    static void setYoutubeMode(Context c, String mode) {
+        prefs(c).edit().putString("youtubeMode", "restricted".equals(mode) ? "restricted" : "channels").apply();
+    }
+
+    static boolean youtubeRestricted(Context c) {
+        return "restricted".equals(prefs(c).getString("youtubeMode", "channels"));
+    }
+
     // ---------- loading what is already on disk ----------
 
     private static File dir(Context c) {
