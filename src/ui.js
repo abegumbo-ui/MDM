@@ -431,7 +431,8 @@ function renderDevices(m){
   let n=0;
   for(const r of rows){const v=visible(r);r.el.style.display=v?'':'none';if(v)n++}
   none.style.display=n?'none':'block';
-  document.getElementById('devcount').textContent=(n===total?total:n+' of '+total)+(total===1?' device':' devices');\n  drawBulk()};
+  document.getElementById('devcount').textContent=(n===total?total:n+' of '+total)+(total===1?' device':' devices');
+  drawBulk()};
  q.oninput=function(){devSearch=q.value;apply()};
  f.onchange=function(){devFilter=f.value;apply()};
  t.addEventListener('selchange',drawBulk);
