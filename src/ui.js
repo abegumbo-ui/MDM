@@ -379,7 +379,7 @@ function resetCard(d){
   :[2,'Bootloader state unknown','The phone did not report it.']);
  rows.push(i.frpSupported===false?[0,'Android is too old for reset protection','Android 11 or newer is needed.']
   :i.frpAccounts>0?[1,'Reset protection is set','After a reset from recovery mode, setup demands '+i.frpAccounts+' Google account(s) you chose.']
-  :[0,'Reset protection is not set','Add your Google account ID under Settings → Factory Reset Protection.']);
+  :[0,'Reset protection is not set','Add your Google account ID under Device → Controls → Factory Reset Protection.']);
  rows.push(rs.indexOf('no_factory_reset')>=0?[1,'Reset from Settings is blocked','']:[0,'Reset from Settings is not blocked','Turn on "Block factory reset from Settings".']);
  rows.push(rs.indexOf('no_safe_boot')>=0?[1,'Safe Mode is blocked','']:[0,'Safe Mode is not blocked','Turn on "Block Safe Mode".']);
  rows.push(rs.indexOf('no_debugging_features')>=0?[1,'Developer options and USB debugging are blocked','']:[0,'Developer options / USB debugging are not blocked','Turn on "Block Developer options and USB debugging" when you are done setting up.']);
@@ -404,7 +404,7 @@ function buildAppsHub(m,dv){
   // fighting over the same config.apps, with no way to tell here that Home screen mode is why an
   // app looks different than expected.
   if(dv.config.homeScreen){
-   const note=h('div',{class:'card'},h('div',{class:'mute'},'Home screen mode is on. Apps can only be allowed or blocked from the Allowed Apps list in the Home Screen Mode tab while it\'s on.'));
+   const note=h('div',{class:'card'},h('div',{class:'mute'},'Home screen mode is on. Apps can only be allowed or blocked from the Allowed Apps list in the Home screen tab while it\'s on.'));
    note.append(h('div',{style:'margin-top:10px'},btn('Turn off Home screen mode','outline',async function(){
     if(!confirm('Turn off Home screen mode on this phone?'))return;
     dv.config.homeScreen=false;
@@ -425,7 +425,7 @@ function buildAppsHub(m,dv){
   ar.append(file,btn('Upload APK from this computer…','',async function(){file.click()}));
   ar.append(btn('Install from link…','',async function(){const url=prompt('Direct https:// link to an APK file');if(!url)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'install',args:{url:url}});snack('Install queued. The phone runs it at its next check-in (within about 5 minutes).');load()}));
   ar.append(btn('Uninstall by package…','',async function(){const p=prompt('Package name to uninstall');if(!p)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:p}});snack('Uninstall queued. The phone runs it at its next check-in (within about 5 minutes).');load()}));
-  appBox.append(ar,h('div',{class:'mute small',style:'margin-top:8px'},'Uploads are kept for a week and limited to 24 MB. For bigger apps use a link, or let the person install from the Play Store with approval mode (Settings → Device).'));
+  appBox.append(ar,h('div',{class:'mute small',style:'margin-top:8px'},'Uploads are kept for a week and limited to 24 MB. For bigger apps use a link, or let the person install from the Play Store with approval mode (Device → Controls).'));
   m.append(appBox);
 
   const codeBox=h('div',{class:'card'},h('h2',null,'Codes for this phone'),
@@ -447,7 +447,7 @@ function buildAppsHub(m,dv){
   hsCard.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
    h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons, plus a "Settings" tile that always shows regardless of the Allow list (see Settings Menu below -- it\'s the only way to reach any part of Settings while this is on). An app set to Block is fully switched off, same as always; one left at Default or set to Soft block just has no icon here and stays installed and running in the background. Calls and texts still work. On or off, nothing in between: the master code on the phone (Administrator) can turn it off there too, and that reaches this switch on the next sync, same as every other setting here.')),
    sw(dv.config.homeScreen,async function(on){
-    if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the Regular Apps box, because only those will appear.')){render();return}
+    if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the Apps tab, because only those will appear.')){render();return}
     dv.config.homeScreen=on;
     // Soft block only means anything while this switch is on; off a leftover "soft" app would be
     // stuck invisible in App rules (no button shows it as selected) instead of back at Default.
@@ -458,10 +458,10 @@ function buildAppsHub(m,dv){
    sw(dv.config.hideKioskAdmin,async function(on){dv.config.hideKioskAdmin=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
   m.append(hsCard);
   const smCard=h('div',{class:'card'},h('h2',null,'Settings Menu'),
-   h('div',{class:'mute'},'The disguised "Settings" tile home screen mode always shows, whatever the Allow list says -- the only way to reach any part of Settings while it\'s on. Which categories it shows and where each one links to is set up on the phone itself (most need no setup at all; a few manufacturer-only screens need a one-time "Learn" there). Same place as Settings → Settings Menu, shown here too since it\'s part of how home screen mode actually works.'));
+   h('div',{class:'mute'},'The disguised "Settings" tile home screen mode always shows, whatever the Allow list says -- the only way to reach any part of Settings while it\'s on. Which categories it shows and where each one links to is set up on the phone itself (most need no setup at all; a few manufacturer-only screens need a one-time "Learn" there). Same place as Device → Settings menu, shown here too since it\'s part of how home screen mode actually works.'));
   smCard.append(h('div',{style:'margin-top:8px'},btn('Open Device → Settings menu','outline',function(){goTo('device','menu')})));
   m.append(smCard);
-  m.append(h('div',{class:'card'},h('h2',null,'Allowed Apps'),h('div',{class:'mute'},'Same Default / Allow / Block / Schedule controls as Regular Apps -- set to Allow whatever should appear while Home screen mode is on, before turning it on above.')));
+  m.append(h('div',{class:'card'},h('h2',null,'Allowed Apps'),h('div',{class:'mute'},'Same Default / Allow / Block / Schedule controls as the Apps tab -- set to Allow whatever should appear while Home screen mode is on, before turning it on above.')));
   renderAppEditor(m,dv);
  } else if(appsSub==='blocking'){
   const bCard=h('div',{class:'card'},h('h2',null,'Block Apps/Screens'),
@@ -586,7 +586,7 @@ function renderDeviceDetail(m,d){
   cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
   cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
   lockBox.append(lr);
-  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Settings → Device.'));
+  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Device → Controls.'));
   lk.append(lockBox);
  } else if(lockSub==='applock'){
   const appLockOn=!!d.info.appLock;
@@ -598,7 +598,7 @@ function renderDeviceDetail(m,d){
     if(!pin)return;await queue('App lock','setAppLockPin',{pin:pin})}));
   if(appLockOn)alRow.append(btn('Turn off App lock','outline',async function(){
     if(!confirm('Turn off App lock on this phone?'))return;await queue('App lock','clearAppLockPin',{})}));
-  alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Needs an agent build that knows setAppLockPin/clearAppLockPin -- if the phone replies "unknown command", update the agent first (Settings → Device → Update agent) and try again once it has checked in. Applies within about 5 minutes.'));
+  alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Needs an agent build that knows setAppLockPin/clearAppLockPin -- if the phone replies "unknown command", update the agent first (Device → Controls → Update agent) and try again once it has checked in. Applies within about 5 minutes.'));
   lk.append(alBox);
  } else if(lockSub==='restrictions'){
   renderPermissions(lk,d);
@@ -1151,7 +1151,7 @@ function renderPermissions(m,dv){
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},state.restrictions[k].label),
    sw(dv.config.restrictions[k],async function(on){dv.config.restrictions[k]=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}})))}
  m.append(card,h('div',{class:'card'},h('h2',null,'Good to know'),
-  h('div',{class:'mute'},'Blocking Developer options also turns off USB debugging, so adb stops working. If you need to get back in, send "Release device" from Settings → Device (or use recovery mode).')));
+  h('div',{class:'mute'},'Blocking Developer options also turns off USB debugging, so adb stops working. If you need to get back in, send "Release device" from Device → Controls (or use recovery mode).')));
 }
 function renderNetworkSection(m,dv){
  const wl=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
@@ -1186,7 +1186,7 @@ function renderUpdatesSection(m,dv){
    card.append(row)}}
  m.append(card);
  m.append(h('div',{class:'card'},h('h2',null,'Agent updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Update the agent automatically'),
-  h('div',{class:'mute'},'The phone checks GitHub for a newer build every 6 hours and installs it itself. You can always update it yourself from Settings → Device, or from the phone\'s admin panel.')),
+  h('div',{class:'mute'},'The phone checks GitHub for a newer build every 6 hours and installs it itself. You can always update it yourself from Device → Controls, or from the phone\'s admin panel.')),
   sw(dv.config.autoUpdate,async function(on){dv.config.autoUpdate=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('h2',null,'System updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Freeze Android system updates'),
   h('div',{class:'mute'},'Android will not let any app block OTA updates completely -- a freeze can only last up to 90 days at a time, with a mandatory 60-day gap before the next one. This sets the most freeze Android allows, back to back, which covers most of the year but leaves about two months of it open to an update landing. There is no setting that closes that gap; this is a limit of Android itself, not this app.')),
