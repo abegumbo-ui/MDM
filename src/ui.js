@@ -102,7 +102,7 @@ pre.cmd{background:var(--surface-3);border-radius:10px;padding:12px;white-space:
 /* device list (table) */
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .table{background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:16px}
-.trow{display:grid;grid-template-columns:minmax(200px,2.2fr) 1fr 1fr 1.2fr 24px;gap:12px;align-items:center;padding:14px 18px;border-top:1px solid var(--outline-variant);cursor:pointer}
+.trow{display:grid;grid-template-columns:28px minmax(200px,2.2fr) 1fr 1fr 1.2fr 24px;gap:12px;align-items:center;padding:14px 18px;border-top:1px solid var(--outline-variant);cursor:pointer}
 .trow:first-child{border-top:0}
 .trow.thead{cursor:default;background:var(--surface-2);color:var(--on-surface-variant);font-size:12px;font-weight:500;padding:10px 18px;text-transform:uppercase;letter-spacing:.04em}
 .trow:not(.thead):hover{background:var(--surface-2)}
@@ -112,6 +112,14 @@ pre.cmd{background:var(--surface-3);border-radius:10px;padding:12px;white-space:
 .avatar{width:36px;height:36px;border-radius:10px;background:var(--primary-container);color:var(--on-primary-container);display:flex;align-items:center;justify-content:center;flex:none}
 .avatar svg{width:18px;height:18px}
 .empty{padding:40px 20px;text-align:center}
+.trow input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:pointer}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.filters input[type=text]{flex:1;min-width:180px}
+.bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--primary-container);color:var(--on-primary-container);border-radius:10px;padding:10px 14px;margin-bottom:12px}
+.bulk b{font-weight:600;margin-right:auto}
+.tbl{width:100%;border-collapse:collapse}
+.tbl td,.tbl th{padding:10px 12px;border-top:1px solid var(--outline-variant);text-align:left;vertical-align:top;font-size:13px}
+.tbl th{border-top:0;color:var(--on-surface-variant);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 /* device page: sidebar + content */
 .shell{display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;align-items:start}
 .side{position:sticky;top:76px;display:flex;flex-direction:column;gap:2px}
@@ -138,7 +146,7 @@ section.cols>.card{margin:0}
   .shell{grid-template-columns:minmax(0,1fr);gap:12px}
   .side{position:static;flex-direction:row;overflow-x:auto;gap:4px;padding-bottom:4px}
   .side button.nav{width:auto;white-space:nowrap}
-  .trow{grid-template-columns:minmax(0,1fr) auto 20px}
+  .trow{grid-template-columns:28px minmax(0,1fr) auto 20px}
   .trow .c-batt,.trow .c-seen{display:none}
   .trow.thead{display:none}
   .bar .who{display:none}
@@ -149,16 +157,20 @@ section.cols>.card{margin:0}
 
 export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#F6F7F9"><title>MDM Login</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
 <style>${STYLE}</style></head>
 <body><div class="login"><div class="card"><h2 style="font-size:20px;margin-bottom:16px">Sign in to MDM</h2>
 <form method="post" action="/login">
 <input type="text" name="loginName" placeholder="Client login name (leave empty if you're the administrator)" style="width:100%;margin-bottom:8px" autocapitalize="off" autocorrect="off">
+<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Authenticator code (only if two-step login is on)" style="width:100%;margin-bottom:8px">
 <div class="row"><input class="grow" type="password" name="password" placeholder="Password" autofocus required>
 <button class="btn">Sign in</button></div>${error ? `<p class="mute" style="color:var(--error)">${error}</p>` : ""}</form></div></div></body></html>`;
 
 export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#F6F7F9"><title>MDM Dashboard</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>${STYLE}</style></head>
@@ -296,12 +308,13 @@ function render(){
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){setCrumbs([['Devices','devices'],[d.name]]);renderDeviceDetail(m,d);return}openId=null}
  if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){setCrumbs([['Devices','devices'],[b.name]]);renderBrowserDetail(m,b);return}openBrowserId=null}
  if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){setCrumbs([['Devices','devices'],[w.name]]);renderWinDetail(m,w);return}openWinId=null}
- if(tab==='codes'||tab==='settings'||tab==='clients'){
-  const T={codes:'Codes',clients:'Clients',settings:'Settings'}[tab];
+ if(tab==='codes'||tab==='settings'||tab==='clients'||tab==='audit'){
+  const T={codes:'Codes',clients:'Clients',settings:'Settings',audit:'Activity'}[tab];
   setCrumbs([['Devices','devices'],[T]]);
   pageHead(m,T);
   if(tab==='codes')renderCodes(m);
   else if(tab==='clients')renderClients(m);
+  else if(tab==='audit')renderAudit(m);
   else renderSettings(m);
   return}
  setCrumbs([['Devices']]);
@@ -334,28 +347,47 @@ function chipsFor(d,full){
  if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'Update available'));
  const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn',title:pendingApps(d).map(function(p){return p.l||p.p}).join(', ')},n+' changes pending'));
  return c}
-function trow(icon,name,subtitle,statusEl,batt,seen,hash){
+let devSearch='',devFilter='all';
+const bulkSel=new Set();
+function trow(icon,name,subtitle,statusEl,batt,seen,hash,checkId){
  const r=h('div',{class:'trow'});
  r.onclick=function(){location.hash=hash};
- r.append(h('div',{class:'who'},h('div',{class:'avatar'},svgIcon(icon,'currentColor')),h('div',null,h('div',{class:'name'},name),h('div',{class:'mute small'},subtitle))),
+ let box=h('div');
+ if(checkId){
+  const cb=h('input',{type:'checkbox',title:'Select'});cb.checked=bulkSel.has(checkId);
+  cb.onclick=function(e){e.stopPropagation()};
+  cb.onchange=function(){cb.checked?bulkSel.add(checkId):bulkSel.delete(checkId);r.dispatchEvent(new CustomEvent('selchange',{bubbles:true}))};
+  box=cb}
+ r.append(box,h('div',{class:'who'},h('div',{class:'avatar'},svgIcon(icon,'currentColor')),h('div',null,h('div',{class:'name'},name),h('div',{class:'mute small'},subtitle))),
   statusEl,h('div',{class:'c-batt mute'},batt),h('div',{class:'c-seen mute'},seen),h('div',{class:'mute'},'›'));
  return r}
 function renderDevices(m){
  const total=devices.length+browsers.length+windevices.length;
- const head=h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,'Devices'),h('div',{class:'sub'},total+(total===1?' device':' devices'))));
+ const head=h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,'Devices'),h('div',{class:'sub',id:'devcount'},total+(total===1?' device':' devices'))));
  const bar=h('div',{class:'toolbar'});
  bar.append(btn('Refresh','tonal',load));
  const codes=h('button',{class:'btn'},'Add device');codes.onclick=function(){location.hash='codes'};bar.append(codes);
  if(state.session.role==='admin'){
+  const act=h('button',{class:'btn tonal'},'Activity');act.onclick=function(){location.hash='audit'};
   const clients=h('button',{class:'btn tonal'},'Clients');clients.onclick=function(){location.hash='clients'};
   const settings=h('button',{class:'btn tonal'},'Settings');settings.onclick=function(){location.hash='settings'};
-  bar.append(clients,settings)}
+  bar.append(act,clients,settings)}
  head.append(bar);m.append(head);
  if(!total){
   m.append(h('div',{class:'card empty'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Press "Add device" to get a code for a phone or a Browser.')));
   return}
+
+ // search + filter (filters rows in place, so typing never loses its place)
+ const q=h('input',{type:'text',placeholder:'Search devices…',value:devSearch});
+ const f=h('select');
+ for(const o of [['all','All devices'],['online','Online'],['offline','Offline'],['update','Needs an update'],['locked','Locked now']])f.append(new Option(o[1],o[0]));
+ f.value=devFilter;
+ m.append(h('div',{class:'filters'},q,f));
+ const bulk=h('div',{class:'bulk'});bulk.style.display='none';m.append(bulk);
+
+ const rows=[];
  const t=h('div',{class:'table'});
- t.append(h('div',{class:'trow thead'},h('div',null,'Device'),h('div',null,'Status'),h('div',null,'Battery'),h('div',null,'Last seen'),h('div')));
+ t.append(h('div',{class:'trow thead'},h('div'),h('div',null,'Device'),h('div',null,'Status'),h('div',null,'Battery'),h('div',null,'Last seen'),h('div')));
  for(const d of devices){
   const st=h('div',null);
   if(d.syncPaused)st.append(h('span',{class:'chip warn'},'Paused'));
@@ -364,10 +396,46 @@ function renderDevices(m){
   if(needsUpdate(d))st.append(h('span',{class:'chip warn'},'Update'));
   const bat=d.info.battery;
   const sub=(state.session.role==='admin'&&d.ownerId)?d.ownerId:'Android phone';
-  t.append(trow('device',d.name,sub,st,bat?bat.pct+'%'+(bat.charging?' · charging':''):'—',ago(d.lastSeen),'device/'+d.id))}
- for(const b of browsers)t.append(trow('globe','Browser',b.name+' · no MDM on this phone',h('div',null,h('span',{class:'chip'},'Browser')),'—',b.lastSeen?ago(b.lastSeen):'—','browser/'+b.id));
- for(const w of windevices)t.append(trow('device',w.name,(w.info.hostname||'LockGuard')+' · Windows',h('div',null,h('span',{class:'chip '+(w.enabled?'ok':'')},w.enabled?'Locked down':'Not locked down')),'—',w.lastSeen?ago(w.lastSeen):'—','win/'+w.id));
+  const row=trow('device',d.name,sub,st,bat?bat.pct+'%'+(bat.charging?' · charging':''):'—',ago(d.lastSeen),'device/'+d.id,d.id);
+  rows.push({el:row,text:(d.name+' '+sub).toLowerCase(),phone:d});t.append(row)}
+ for(const b of browsers){
+  const row=trow('globe','Browser',b.name+' · no MDM on this phone',h('div',null,h('span',{class:'chip'},'Browser')),'—',b.lastSeen?ago(b.lastSeen):'—','browser/'+b.id);
+  rows.push({el:row,text:('browser '+b.name).toLowerCase(),phone:null});t.append(row)}
+ for(const w of windevices){
+  const row=trow('device',w.name,(w.info.hostname||'LockGuard')+' · Windows',h('div',null,h('span',{class:'chip '+(w.enabled?'ok':'')},w.enabled?'Locked down':'Not locked down')),'—',w.lastSeen?ago(w.lastSeen):'—','win/'+w.id);
+  rows.push({el:row,text:(w.name+' windows '+(w.info.hostname||'')).toLowerCase(),phone:null});t.append(row)}
+ const none=h('div',{class:'empty mute'},'No devices match.');none.style.display='none';
+ t.append(none);
  m.append(t);
+
+ const visible=function(r){
+  if(devSearch&&!r.text.includes(devSearch.toLowerCase()))return false;
+  if(devFilter==='all')return true;
+  const d=r.phone;if(!d)return false;
+  return devFilter==='online'?isOnline(d)&&!d.syncPaused:devFilter==='offline'?!isOnline(d):devFilter==='update'?needsUpdate(d):devFilter==='locked'?lockedNow(d):true};
+ const drawBulk=function(){
+  const ids=rows.filter(function(r){return r.phone&&bulkSel.has(r.phone.id)&&visible(r)}).map(function(r){return r.phone.id});
+  bulk.textContent='';
+  if(!ids.length){bulk.style.display='none';return}
+  bulk.style.display='flex';
+  bulk.append(h('b',null,ids.length+(ids.length===1?' phone selected':' phones selected')));
+  const send=async function(label,type,args,confirmMsg){
+   if(confirmMsg&&!confirm(confirmMsg))return;
+   let ok=0,bad=0;
+   for(const id of ids){try{await call('POST','/api/devices/'+id+'/command',{type:type,args:args||{}});ok++}catch(e){bad++}}
+   snack(label+' queued for '+ok+(ok===1?' phone':' phones')+(bad?' ('+bad+' failed)':'')+'. Each runs it at its next check-in.',bad>0);load()};
+  bulk.append(btn('Sync now','tonal',function(){return send('Sync','sync')}),
+   btn('Lock screen','tonal',function(){return send('Lock','lock',{minutes:0},'Lock the screen on '+ids.length+(ids.length===1?' phone?':' phones?'))}),
+   btn('Clear','outline',async function(){bulkSel.clear();for(const c of t.querySelectorAll('input[type=checkbox]'))c.checked=false;drawBulk()}))};
+ const apply=function(){
+  let n=0;
+  for(const r of rows){const v=visible(r);r.el.style.display=v?'':'none';if(v)n++}
+  none.style.display=n?'none':'block';
+  document.getElementById('devcount').textContent=(n===total?total:n+' of '+total)+(total===1?' device':' devices');\n  drawBulk()};
+ q.oninput=function(){devSearch=q.value;apply()};
+ f.onchange=function(){devFilter=f.value;apply()};
+ t.addEventListener('selchange',drawBulk);
+ apply();drawBulk();
 }
 
 function kv(k,v){return h('div',{class:'kv'},h('span',{class:'mute'},k),h('b',null,v))}
@@ -1102,6 +1170,73 @@ function renderCodes(m){
    m.append(qrCard)}}
 }
 
+/* ---------- activity: who changed what ---------- */
+function renderAudit(m){
+ if(state.session.role!=='admin'){m.append(h('div',{class:'card'},h('div',{class:'mute'},'Only the administrator can see this.')));return}
+ const card=h('div',{class:'card'},h('h2',null,'Recent activity'),h('div',{class:'mute'},'Sign-ins and every change made from the dashboard, newest first. It records what was done, never PINs or codes.'));
+ const box=h('div',{style:'margin-top:12px;overflow-x:auto'},h('div',{class:'mute'},'Loading…'));card.append(box);m.append(card);
+ const nameOf=function(t){
+  if(!t)return '';
+  const list=t.kind==='browsers'?browsers:t.kind==='windevices'?windevices:devices;
+  const x=list.find(function(d){return d.id===t.id});return x?x.name:'(removed device)'};
+ call('GET','/api/audit').then(function(r){
+  box.textContent='';
+  if(!r.entries.length){box.append(h('div',{class:'mute'},'Nothing recorded yet.'));return}
+  const tb=h('table',{class:'tbl'},h('tr',null,h('th',null,'When'),h('th',null,'Who'),h('th',null,'What'),h('th',null,'Device')));
+  for(const e of r.entries.slice(0,150))tb.append(h('tr',null,h('td',{class:'mute',style:'white-space:nowrap'},new Date(e.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})),h('td',null,e.who||''),h('td',null,e.text||''),h('td',null,nameOf(e.target))));
+  box.append(tb)}).catch(function(e){box.textContent='';box.append(h('div',{class:'mute'},e.message))})}
+
+/* ---------- settings: two-step login + alerts ---------- */
+function renderTwoStep(m){
+ const card=h('div',{class:'card'},h('h2',null,'Two-step login'),
+  h('div',{class:'mute'},'After your password, ask for a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password and similar). Strongly recommended: the dashboard can lock and wipe phones. If you ever lose the app there is deliberately no way around it from this page: the owner of the Cloudflare account has to delete the "admin:totp" entry from the STATE storage.'));
+ const body=h('div',{style:'margin-top:12px'});card.append(body);m.append(card);
+ const draw=async function(){
+  body.textContent='';
+  let st;try{st=await call('GET','/api/2fa')}catch(e){body.append(h('div',{class:'mute'},e.message));return}
+  if(st.enabled){
+   body.append(h('div',null,h('span',{class:'chip ok'},'On')));
+   const code=h('input',{type:'text',placeholder:'Current 6-digit code',inputmode:'numeric',maxlength:7,style:'margin-top:10px;width:200px'});
+   body.append(code,h('div',{style:'margin-top:8px'},btn('Turn off','danger',async function(){
+    await call('POST','/api/2fa/disable',{code:code.value});snack('Two-step login is off.');draw()})))}
+  else{
+   body.append(h('div',null,h('span',{class:'chip'},'Off')),h('div',{style:'margin-top:10px'},btn('Set up…','',async function(){
+    const r=await call('POST','/api/2fa/start',{});
+    body.textContent='';
+    const qr=qrcode(0,'M');qr.addData(r.uri);qr.make();
+    body.append(h('div',{class:'mute'},'1. In your authenticator app, add an account by scanning this code (or typing the key).'),
+     h('img',{src:qr.createDataURL(5,8),alt:'Two-step login QR code',style:'background:#fff;padding:4px;border-radius:10px;display:block;margin:10px 0'}),
+     h('div',{class:'mute small'},'Key: '),h('div',{class:'mono',style:'word-break:break-all;margin-bottom:10px'},r.secret),
+     h('div',{class:'mute'},'2. Type the 6-digit code it shows to turn two-step login on.'));
+    const code=h('input',{type:'text',placeholder:'6-digit code',inputmode:'numeric',maxlength:7,style:'margin-top:8px;width:200px'});
+    body.append(code,h('div',{style:'margin-top:8px'},btn('Turn on','',async function(){
+     await call('POST','/api/2fa/enable',{code:code.value});snack('Two-step login is on. You will be asked for a code next time you sign in.');draw()})))})))}};
+ draw()}
+function renderAlerts(m){
+ const card=h('div',{class:'card'},h('h2',null,'Alerts'),
+  h('div',{class:'mute'},'Get a message on your phone when something needs attention. Paste the address of a notification service. Easiest: install the free ntfy app, pick a private topic name, and use https://ntfy.sh/your-topic-name . Discord, Slack and Teams webhook addresses also work. Nothing is sent until you add one.'));
+ const body=h('div',{style:'margin-top:12px'},h('div',{class:'mute'},'Loading…'));card.append(body);m.append(card);
+ call('GET','/api/alerts').then(function(a){
+  body.textContent='';
+  const save=async function(patch,msg){try{a=await call('PUT','/api/alerts',patch);snack(msg||'Saved.')}catch(e){snack(e.message,1)}};
+  const url=h('input',{type:'text',placeholder:a.urlSet?'Saved ('+a.urlHint+'). Paste a new address to replace it':'https://ntfy.sh/your-private-topic',style:'width:100%'});
+  body.append(url,h('div',{class:'row',style:'margin-top:8px'},
+   btn('Save address','',async function(){if(!url.value.trim()){snack('Paste an address first.',1);return}await save({url:url.value.trim()},'Address saved.');url.value='';render()}),
+   btn('Send a test','tonal',async function(){try{await call('POST','/api/alerts/test',{});snack('Test sent. Check your phone.')}catch(e){snack(e.message,1)}}),
+   a.urlSet?btn('Remove address','outline',async function(){await save({url:''},'Address removed.');render()}):null));
+  const opt=function(key,label,extra){
+   const row=h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},label)),extra||null,sw(a[key],function(on){const p={};p[key]=on;save(p)}));
+   body.append(row)};
+  const hours=h('select');for(const n of [1,2,3,6,12,24])hours.append(new Option(n+(n===1?' hour':' hours'),n));hours.value=String(a.offlineHours);
+  hours.onchange=function(){save({offlineHours:parseInt(hours.value,10)})};
+  const pct=h('select');for(const n of [10,15,20,30])pct.append(new Option(n+'%',n));pct.value=String(a.batteryPct);
+  pct.onchange=function(){save({batteryPct:parseInt(pct.value,10)})};
+  opt('offline','A phone has not checked in for',hours);
+  opt('battery','A phone battery is at or below',pct);
+  opt('requests','A phone asks to open a site or sends you a message');
+  opt('tamper','The Agent notices something security related on a phone');
+ }).catch(function(e){body.textContent='';body.append(h('div',{class:'mute'},e.message))})}
+
 /* ---------- settings ---------- */
 /** The only things left that aren't a specific phone's own: branding shown on every phone. */
 function renderSettings(m){
@@ -1112,6 +1247,7 @@ function renderSettings(m){
   btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up within about 5 minutes.');render()}),
   btn('Remove logo','outline',async function(){await call('DELETE','/api/logo');iconVer.__logo=Date.now();snack('Logo removed.');render()})));
  m.append(logoCard);
+ if(state.session.role==='admin'){renderTwoStep(m);renderAlerts(m)}
  m.append(h('div',{class:'card'},h('h2',null,'Everything else moved'),
   h('div',{class:'mute'},'New-apps approval, Factory Reset Protection, Home screen mode, auto-update, Wi-Fi reporting, the master code, and every restriction switch are now each phone\'s own — open a phone and look for its Settings box.')));
 }
