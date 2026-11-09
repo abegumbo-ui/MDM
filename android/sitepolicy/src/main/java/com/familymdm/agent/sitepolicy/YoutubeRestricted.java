@@ -33,11 +33,20 @@ public final class YoutubeRestricted {
      * from time to time. The pages that matter most (home, feeds, Shorts) are also blocked outright
      * by SitePolicy.youtubeKind, so this is cleanup, not the only protection.
      */
+    /** The page-structure selectors for what to hide (plain CSS). */
+    public static final String HIDE_CSS = String.join(",",
+            "#related", "ytd-watch-next-secondary-results-renderer", "ytd-comments", "#comments",
+            "ytm-watch-next-secondary-results-renderer", "ytm-comments-entry-point-header-renderer", "ytm-comment-section-renderer",
+            ".ytp-endscreen-content", ".ytp-ce-element", ".ytp-autonav-endscreen-countdown-container",
+            "ytd-reel-shelf-renderer", "ytm-reel-shelf-renderer", "ytm-shorts-lockup-view-model", "a[href^=\"/shorts\"]",
+            "ytd-browse[page-subtype=\"home\"] ytd-rich-grid-renderer") + "{display:none !important}";
+
+    private static String jsString(String s) {
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    /** The same rules as a script a browser can run once a page has loaded. */
     public static final String HIDE_SCRIPT = "(function(){if(window.__mdmYt)return;window.__mdmYt=true;"
-            + "var css=['#related','ytd-watch-next-secondary-results-renderer','ytd-comments','#comments',"
-            + "'ytm-watch-next-secondary-results-renderer','ytm-comments-entry-point-header-renderer','ytm-comment-section-renderer',"
-            + "'.ytp-endscreen-content','.ytp-ce-element','.ytp-autonav-endscreen-countdown-container',"
-            + "'ytd-reel-shelf-renderer','ytm-reel-shelf-renderer','ytm-shorts-lockup-view-model','a[href^=\"/shorts\"]',"
-            + "'ytd-browse[page-subtype=\"home\"] ytd-rich-grid-renderer'].join(',')+'{display:none !important}';"
-            + "var st=document.createElement('style');st.textContent=css;(document.head||document.documentElement).appendChild(st);})();";
+            + "var st=document.createElement('style');st.textContent=" + jsString(HIDE_CSS)
+            + ";(document.head||document.documentElement).appendChild(st);})();";
 }
