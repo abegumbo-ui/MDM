@@ -37,6 +37,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.familymdm.agent.sitepolicy.SitePolicy;
+import com.familymdm.agent.sitepolicy.YoutubeRestricted;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -157,10 +158,12 @@ public class BrowserActivity extends Activity {
                 RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
                 Bundle b = rm == null ? null : rm.getApplicationRestrictions();
                 FilterStore.setPolicy(this, b == null ? "off" : b.getString("filterTier", "off"), b == null ? "" : b.getString("filterBase", ""));
+                FilterStore.setYoutubeMode(this, b == null ? "channels" : b.getString("youtubeMode", "channels"));
             } else if (m == Mode.ONLINE) {
                 FilterStore.refreshAsync(this, false);
             } else {
                 FilterStore.setPolicy(this, "off", "");
+                FilterStore.setYoutubeMode(this, "channels");
             }
             filterModeOk = (m == Mode.AGENT || m == Mode.ONLINE) && !"off".equals(FilterStore.tier(this));
         } catch (Exception e) {
@@ -547,6 +550,9 @@ public class BrowserActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 if ("about:blank".equals(url)) return; // the blank page used to stop a blocked video; keep the real address shown
+                if (url != null && filterModeOk && FilterStore.youtubeRestricted(BrowserActivity.this) && isYoutubeAddress(url)) {
+                    view.evaluateJavascript(YoutubeRestricted.HIDE_SCRIPT, null);
+                }
                 t.url = url;
                 if (t == current()) syncToolbar();
             }
@@ -574,7 +580,15 @@ public class BrowserActivity extends Activity {
         url = withSafeSearch(url);
         if (!allowedOrBlock(t, url)) return;
         showWeb(t);
-        t.webView.loadUrl(url);
+        Mode m = mode();
+        if ((m == Mode.AGENT || m == Mode.ONLINE) && FilterStore.youtubeRestricted(this) && isYoutubeAddress(url)) {
+            // Ask YouTube itself to filter strictly too (best effort, on this first request of the page).
+            java.util.Map<String, String> headers = new java.util.HashMap<>();
+            headers.put(YoutubeRestricted.RESTRICT_HEADER, YoutubeRestricted.RESTRICT_VALUE);
+            t.webView.loadUrl(url, headers);
+        } else {
+            t.webView.loadUrl(url);
+        }
     }
 
     /** True if `url` may load; otherwise shows the right screen for the current mode and returns false. */
@@ -586,6 +600,20 @@ public class BrowserActivity extends Activity {
         Mode mode = mode();
         if (mode == Mode.UNCONFIGURED) {
             showSetupRequired(t, url);
+            return false;
+        }
+        if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.youtubeRestricted(this) && isYoutubeAddress(url)) {
+            int kind = SitePolicy.youtubeKind(url);
+            if (kind == SitePolicy.YT_HOME) {
+                showYoutubeSearch(t);
+                return false;
+            }
+            if (SitePolicy.youtubeRestrictedAllows(url)) {
+                t.webView.getSettings().setBlockNetworkImage(false);
+                t.webView.getSettings().setLoadsImagesAutomatically(true);
+                return true;
+            }
+            showNotAvailable(t, "This part of YouTube isn't available.");
             return false;
         }
         List<SitePolicy.Site> sitesNow = currentSites(mode);
@@ -621,6 +649,31 @@ public class BrowserActivity extends Activity {
         t.webView.getSettings().setBlockNetworkImage(match.blockImages);
         t.webView.getSettings().setLoadsImagesAutomatically(!match.blockImages);
         return true;
+    }
+
+    private static boolean isYoutubeAddress(String url) {
+        String host = SitePolicy.hostOf(url);
+        return SitePolicy.isYoutubeHost(host) || "consent.youtube.com".equals(host) || "accounts.youtube.com".equals(host);
+    }
+
+    /** Restricted YouTube's home page: just a search box, never the recommendation feed. */
+    private void showYoutubeSearch(final Tab t) {
+        showWeb(t);
+        t.webView.loadDataWithBaseURL(null, YoutubeRestricted.searchPageHtml(), "text/html", "utf-8", null);
+    }
+
+    private void showNotAvailable(final Tab t, String message) {
+        t.webView.setVisibility(View.GONE);
+        if (t.homeView != null) t.homeView.setVisibility(View.GONE);
+        ensureOverlay(t);
+        t.overlay.setVisibility(View.VISIBLE);
+        t.overlay.removeAllViews();
+        t.overlay.addView(title("Not available"));
+        TextView sub = body(message);
+        sub.setPadding(0, dp(8), 0, dp(16));
+        t.overlay.addView(sub);
+        add(t.overlay, button("Go to the start page", v -> load(t, HOME_URL)));
+        if (t == current()) syncToolbar();
     }
 
     private static final int YT_NO = 0, YT_ALLOW = 1, YT_PENDING = 2;
@@ -767,6 +820,7 @@ public class BrowserActivity extends Activity {
                 JSONObject filter = reply.optJSONObject("filter");
                 if (filter != null) FilterStore.setPolicy(this, filter.optString("tier", "off"), filter.optString("base", ""));
                 else FilterStore.setPolicy(this, "off", ""); // an older dashboard that does not know about filtering
+                FilterStore.setYoutubeMode(this, filter == null ? "channels" : filter.optString("youtube", "channels"));
                 filterModeOk = !"off".equals(FilterStore.tier(this));
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list

@@ -88,6 +88,25 @@ public class SitePolicyCheck {
         check(SitePolicy.parse(sites("{\"type\":\"youtube\",\"kind\":\"channel\",\"id\":\"nohandle\"}")).isEmpty(), "a channel entry without a real @handle is dropped");
         check(!SitePolicy.hasYoutubeChannels(SitePolicy.parse(sites("{\"type\":\"domain\",\"url\":\"example.com\"}"))), "no channel entries means none noticed");
 
+        // ---- restricted YouTube: which kinds of page get through ----
+        check(SitePolicy.youtubeKind("https://www.youtube.com/") == SitePolicy.YT_HOME, "home page is HOME");
+        check(SitePolicy.youtubeKind("https://m.youtube.com") == SitePolicy.YT_HOME, "bare mobile host is HOME");
+        check(SitePolicy.youtubeKind("https://www.youtube.com/results?search_query=torah") == SitePolicy.YT_SEARCH, "search results");
+        check(SitePolicy.youtubeKind("https://www.youtube.com/watch?v=" + v) == SitePolicy.YT_VIDEO, "a video");
+        check(SitePolicy.youtubeKind("https://youtu.be/" + v) == SitePolicy.YT_VIDEO, "a youtu.be video");
+        check(SitePolicy.youtubeKind("https://www.youtube.com/embed/" + v) == SitePolicy.YT_VIDEO, "an embed");
+        check(SitePolicy.youtubeKind("https://www.youtube.com/shorts/" + v) == SitePolicy.YT_OTHER, "Shorts are not offered");
+        check(SitePolicy.youtubeKind("https://www.youtube.com/@aishdotcom/videos") == SitePolicy.YT_CHANNEL, "a channel page");
+        check(SitePolicy.youtubeKind("https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx") == SitePolicy.YT_CHANNEL, "a /channel page");
+        check(SitePolicy.youtubeKind("https://www.youtube.com/playlist?list=PLabc") == SitePolicy.YT_CHANNEL, "a playlist page");
+        check(SitePolicy.youtubeKind("https://consent.youtube.com/m?continue=x") == SitePolicy.YT_SYSTEM, "the consent screen still works");
+        for (String bad : new String[] {"https://www.youtube.com/feed/subscriptions", "https://www.youtube.com/feed/trending", "https://www.youtube.com/gaming",
+                "https://www.youtube.com/hashtag/x", "https://www.youtube.com/premium", "https://www.youtube.com/shorts", "https://www.youtube.com/watch", "https://www.youtube.com/anything"}) {
+            check(SitePolicy.youtubeKind(bad) == SitePolicy.YT_OTHER && !SitePolicy.youtubeRestrictedAllows(bad), "not allowed: " + bad);
+        }
+        check(!SitePolicy.youtubeRestrictedAllows("https://www.youtube.com/") && SitePolicy.youtubeRestrictedAllows("https://www.youtube.com/results?search_query=a"), "home is replaced, search is allowed");
+        check(SitePolicy.youtubeKind("https://example.com/results") == SitePolicy.YT_OTHER, "other sites are not YouTube");
+
         System.out.println(failures == 0 ? "ALL PASSED" : failures + " FAILED");
         if (failures > 0) System.exit(1);
     }

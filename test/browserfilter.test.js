@@ -49,3 +49,21 @@ test("a dashboard-connected Browser is told its filter level and where to downlo
   assert.match(s.filter.base, /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/download\/blocklists$/);
   assert.deepEqual(s.sites, [], "the allowlist is untouched");
 });
+
+test("the YouTube setting defaults to allowed-channels-only and only accepts known values", async () => {
+  assert.equal(normalizeConfig({}).youtubeMode, "channels");
+  assert.equal(normalizeConfig({ youtubeMode: "restricted" }).youtubeMode, "restricted");
+  for (const bad of ["Restricted", "open", "", null, 1, "restricted "]) assert.equal(normalizeConfig({ youtubeMode: bad }).youtubeMode, "channels", String(bad));
+  assert.equal(buildAgentPolicy(normalizeConfig({ youtubeMode: "restricted" }), []).youtubeMode, "restricted");
+  assert.deepEqual(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ youtubeMode: "restricted" })).filter((l) => l.startsWith("YouTube")), ["YouTube in the Browser: restricted"]);
+
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const reg = await (await req("/browser/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ info: { model: "Y" } }) })).json();
+  const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
+  const sync = async () => await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json();
+  assert.equal((await sync()).filter.youtube, "channels");
+  const id = reg.token.split(".")[0]; // this Browser's own id, not whichever happens to be first in the list
+  await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ youtubeMode: "restricted" }) });
+  assert.equal((await sync()).filter.youtube, "restricted");
+});
