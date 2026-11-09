@@ -1,0 +1,33 @@
+name: Build browser blocklists
+
+# Rebuilds the Browser's category blocklists once a week (and on demand) from open-source lists,
+# and publishes them to a fixed "blocklists" release that the phones download from.
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/build-blocklists.mjs"
+      - ".github/workflows/blocklists.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build the lists
+        run: node tools/build-blocklists.mjs out
+      - name: Publish to the "blocklists" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view blocklists >/dev/null 2>&1 || gh release create blocklists --title "Browser blocklists" --notes "Automatically rebuilt category blocklists for the Browser app. Do not edit by hand." --latest=false
+          gh release upload blocklists out/*.bin out/manifest.json --clobber

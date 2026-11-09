@@ -25,6 +25,7 @@ import android.view.inputmethod.EditorInfo;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
@@ -40,7 +41,9 @@ import com.familymdm.agent.sitepolicy.SitePolicy;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -69,6 +72,11 @@ public class BrowserActivity extends Activity {
     private final List<Tab> tabs = new ArrayList<>();
     private int currentIndex = -1;
     private volatile boolean syncing;
+    // True while the mode is one the dashboard/agent controls (AGENT or ONLINE) and a filter level is
+    // set. Kept as a plain flag so checking every image and script a page loads stays cheap.
+    private volatile boolean filterModeOk;
+    private volatile List<SitePolicy.Site> interceptSites = new ArrayList<>();
+    private volatile long interceptSitesAt;
     // A session-only toggle from the shortcut menu (not persisted, like Chrome's own "Desktop site"
     // switch) -- applies to every tab, current and future, until turned off again.
     private boolean desktopMode;
@@ -134,7 +142,30 @@ public class BrowserActivity extends Activity {
     protected void onResume() {
         super.onResume();
         registerReceiver(restrictionsChanged, new IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED));
+        applyFilterPolicy();
         if (mode() == Mode.ONLINE) maybeSyncOnline(false);
+    }
+
+    /**
+     * The category filter (Moderate / Strict) only ever applies where a dashboard or the agent is in
+     * charge (AGENT and ONLINE). OFFLINE and UNCONFIGURED stay on "approved sites only".
+     */
+    private void applyFilterPolicy() {
+        try {
+            Mode m = mode();
+            if (m == Mode.AGENT) {
+                RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
+                Bundle b = rm == null ? null : rm.getApplicationRestrictions();
+                FilterStore.setPolicy(this, b == null ? "off" : b.getString("filterTier", "off"), b == null ? "" : b.getString("filterBase", ""));
+            } else if (m == Mode.ONLINE) {
+                FilterStore.refreshAsync(this, false);
+            } else {
+                FilterStore.setPolicy(this, "off", "");
+            }
+            filterModeOk = (m == Mode.AGENT || m == Mode.ONLINE) && !"off".equals(FilterStore.tier(this));
+        } catch (Exception e) {
+            filterModeOk = false;
+        }
     }
 
     @Override
@@ -485,6 +516,24 @@ public class BrowserActivity extends Activity {
             }
 
             @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                try {
+                    if (!filterModeOk || !FilterStore.active(BrowserActivity.this)) return null;
+                    String url = request.getUrl().toString();
+                    String host = SitePolicy.hostOf(url);
+                    if (host == null || !FilterStore.blocks(BrowserActivity.this, host)) return null;
+                    // Something in a blocked category: still allowed if it is on the approved list, or during a free-browsing window.
+                    Mode m = mode();
+                    if (SitePolicy.matching(url, interceptSitesNow(m)) != null) return null;
+                    if (m == Mode.AGENT && browseWindowActive()) return null;
+                    if (request.isForMainFrame()) runOnUiThread(() -> allowedOrBlock(t, url));
+                    return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<String, String>(), new ByteArrayInputStream(new byte[0]));
+                } catch (Exception e) {
+                    return null; // never break a page because the filter hit a problem
+                }
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 t.url = url;
                 if (t == current()) syncToolbar();
@@ -534,6 +583,16 @@ public class BrowserActivity extends Activity {
                 t.webView.getSettings().setBlockNetworkImage(false);
                 t.webView.getSettings().setLoadsImagesAutomatically(true);
                 return true;
+            }
+            // Moderate / Strict filter: everything is open except the blocked categories. Only once the
+            // lists are downloaded and verified; until then this stays "approved sites only".
+            if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.active(this)) {
+                String host = SitePolicy.hostOf(url);
+                if (host != null && !FilterStore.blocks(this, host)) {
+                    t.webView.getSettings().setBlockNetworkImage(false);
+                    t.webView.getSettings().setLoadsImagesAutomatically(true);
+                    return true;
+                }
             }
             showBlocked(t, url, mode);
             return false;
@@ -595,6 +654,15 @@ public class BrowserActivity extends Activity {
         }
     }
 
+    private List<SitePolicy.Site> interceptSitesNow(Mode mode) {
+        long now = System.currentTimeMillis();
+        if (now - interceptSitesAt > 3000) {
+            interceptSites = currentSites(mode);
+            interceptSitesAt = now;
+        }
+        return interceptSites;
+    }
+
     private List<SitePolicy.Site> currentSites(Mode mode) {
         try {
             switch (mode) {
@@ -637,6 +705,10 @@ public class BrowserActivity extends Activity {
                 BrowserState.dropSiteRequests(this, requests.length());
                 JSONArray sites = reply.optJSONArray("sites");
                 BrowserState.setCachedSites(this, sites != null ? sites : new JSONArray());
+                JSONObject filter = reply.optJSONObject("filter");
+                if (filter != null) FilterStore.setPolicy(this, filter.optString("tier", "off"), filter.optString("base", ""));
+                else FilterStore.setPolicy(this, "off", ""); // an older dashboard that does not know about filtering
+                filterModeOk = !"off".equals(FilterStore.tier(this));
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list
             } finally {

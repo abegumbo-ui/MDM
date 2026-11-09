@@ -636,7 +636,9 @@ async function adminApiInner(request, env, url, session) {
       return json({ ok: true });
     }
     if (brConfig[2] === "config" && method === "PUT") {
-      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing });
+      // An omitted browserFilter becomes "off" (allowlist-only), the stricter setting, so a stale
+      // dashboard tab can never accidentally open the web.
+      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter });
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -867,6 +869,9 @@ async function adminApiInner(request, env, url, session) {
 }
 
 // ---- agent API (per-device bearer token) ----
+// Where the Browser downloads its category blocklists from (the fixed "blocklists" release the weekly job publishes).
+const filterFor = (env, config) => ({ tier: config.browserFilter || "off", base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
+
 async function agentApi(request, env, url, ctx) {
   const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);
   if (apk && request.method === "GET") {
@@ -1212,6 +1217,7 @@ async function agentApi(request, env, url, ctx) {
     }
 
     const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
+    policy.browserFilterBase = filterFor(env, config).base;
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
     const master = d.master || null;
     const logoRev = await cachedLogoRev(env);
@@ -1274,7 +1280,7 @@ async function browserApi(request, env, url) {
     const { cfg: config, seeded } = await configOf(env, d);
     if (seeded) dirty = true;
     if (dirty) await putJSON(env, key, d);
-    return json({ sites: normalizeSites(config.sites), restrictBrowsing: config.restrictBrowsing, pollSeconds: POLL_SECONDS });
+    return json({ sites: normalizeSites(config.sites), restrictBrowsing: config.restrictBrowsing, filter: filterFor(env, config), pollSeconds: POLL_SECONDS });
   }
   return json({ error: "Not found" }, 404);
 }

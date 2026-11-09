@@ -1009,7 +1009,27 @@ function renderRequestsCard(m,reqs,dv){
      await addSite(dv,{type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}),
     btn('Dismiss','outline',dismiss)))))}
  m.append(rc)}
+/** How much of the web this browser may open: only the allowlist (default), or the open web minus blocked categories. */
+function renderWebAccess(m,dv){
+ const cur=dv.config.browserFilter||'off';
+ const card=h('div',{class:'card'},h('h2',null,'Web access'),
+  h('div',{class:'mute'},'Choose what this browser may open. Sites on the allowed list below are always allowed, whichever you pick. This applies to the separate Browser app; the Browser add-on built into the Agent always stays on approved sites only.'));
+ const opts=[
+  ['off','Approved sites only','Nothing opens unless it is on the allowed list below. The strictest setting, and what every browser starts with.'],
+  ['moderate','Moderate filter','Opens the rest of the web, but blocks adult sites, gambling, drugs and vaping, scams and phishing, and piracy.'],
+  ['strict','Strict filter','Everything in Moderate, plus social media (Facebook, Instagram, TikTok, X).']];
+ for(const o of opts){
+  const r=h('input',{type:'radio',name:'webaccess-'+dv.id,value:o[0]});r.checked=cur===o[0];
+  r.onchange=async function(){
+   if(o[0]!=='off'&&cur==='off'&&!confirm('This opens the whole web on this browser, except the blocked categories. Filters only know about sites that are already on public lists, so they cannot catch everything. Continue?')){render();return}
+   dv.config.browserFilter=o[0];
+   try{await saveConfigFor(dv,'Saved. '+(o[0]==='off'?'Approved sites only.':'The browser downloads the lists the next time it checks in, and stays on approved sites only until it has them.'))}catch(e){snack(e.message,1)}
+   render()};
+  card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow'},h('div',{style:'font-weight:500'},o[1]),h('div',{class:'mute'},o[2]))))}
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists it stays on approved sites only.'));
+ m.append(card)}
 function renderSitesEditor(m,dv){
+ renderWebAccess(m,dv);
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
