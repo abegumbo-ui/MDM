@@ -29,6 +29,8 @@ jobs:
           javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SitePolicyCheck.java
           java -cp json.jar:out com.familymdm.agent.LocalPolicyCheck
           java -cp json.jar:out com.familymdm.agent.sitepolicy.SitePolicyCheck
+          javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockList.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/BlockListCheck.java
+          java -cp out com.familymdm.agent.sitepolicy.BlockListCheck
       - name: Restore the release signing key
         # Not committed to the repo -- RELEASE_KEYSTORE_B64 is the keystore file, base64-encoded,
         # stored as a GitHub Actions secret. See android/README.md for how to generate/set it.

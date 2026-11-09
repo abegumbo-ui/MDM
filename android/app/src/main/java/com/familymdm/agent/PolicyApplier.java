@@ -787,11 +787,16 @@ final class PolicyApplier {
             // "Browse freely for a while" (a redeemed one-time code): Browser bypasses the allowlist
             // until this time, reporting every new site it lands on for approval afterward.
             long browseUntil = Agent.prefs(c).getLong("browseUntil", 0);
-            String cacheKey = json + "|" + browseUntil;
+            // Category filter level (off / moderate / strict) and where the Browser downloads its lists.
+            String filterTier = policy.optString("browserFilter", "off");
+            String filterBase = policy.optString("browserFilterBase", "");
+            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase;
             if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
             b.putLong("browseUntil", browseUntil);
+            b.putString("filterTier", filterTier);
+            b.putString("filterBase", filterBase);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
             errorCleared(c, "browserConfig");
