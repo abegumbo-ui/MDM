@@ -8,6 +8,8 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.webkit.WebView;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -60,8 +62,36 @@ public class BrowserAddonActivity extends Activity {
             }
 
             @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                try {
+                    if (!WebFilter.active(BrowserAddonActivity.this)) return null;
+                    String url = request.getUrl().toString();
+                    String host = SitePolicy.hostOf(url);
+                    if (host == null || !WebFilter.blocks(BrowserAddonActivity.this, host)) return null;
+                    // In a blocked category: still fine if it is on the approved list or during a free-browsing window.
+                    if (SitePolicy.allowed(url, currentSites()) || browseWindowActive()) return null;
+                    if (request.isForMainFrame()) runOnUiThread(() -> navigateTo(url));
+                    return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new java.util.HashMap<String, String>(),
+                            new java.io.ByteArrayInputStream(new byte[0]));
+                } catch (Exception e) {
+                    return null; // never break a page because the filter hit a problem
+                }
+            }
+
+            @Override
+            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+                super.doUpdateVisitedHistory(view, url, isReload);
+                if (url == null || !SitePolicy.isYoutubeHost(SitePolicy.hostOf(url))) return;
+                // YouTube switches video or page in place (no page load), so this is the only signal.
+                if (navigateTo(url)) {
+                    view.stopLoading();
+                    view.loadUrl("about:blank"); // otherwise the video keeps playing sound under the blocked screen
+                }
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
-                if (!HOME_URL.equals(url)) addressBar.setText(url);
+                if (!HOME_URL.equals(url) && !"about:blank".equals(url)) addressBar.setText(url);
             }
         });
         contentHost.addView(webView, new FrameLayout.LayoutParams(
@@ -69,6 +99,17 @@ public class BrowserAddonActivity extends Activity {
 
         setContentView(root);
         load(HOME_URL);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        try {
+            JSONObject policy = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
+            WebFilter.setPolicy(this, policy.optString("browserFilter", "off"), policy.optString("browserFilterBase", ""));
+        } catch (Exception e) {
+            WebFilter.setPolicy(this, "off", "");
+        }
     }
 
     @Override
@@ -109,9 +150,7 @@ public class BrowserAddonActivity extends Activity {
     private void load(String url) {
         hideOverlay();
         if (HOME_URL.equals(url) || url.isEmpty()) {
-            webView.loadData("<html><body style='font-family:sans-serif;padding:24px'>"
-                    + "<h2>Browser</h2><p>Type an address above, or open a page you already have a link to.</p>"
-                    + "</body></html>", "text/html", "utf-8");
+            webView.loadDataWithBaseURL(null, homeHtml(), "text/html", "utf-8", null);
             addressBar.setText("");
             return;
         }
@@ -133,13 +172,74 @@ public class BrowserAddonActivity extends Activity {
             hideOverlay();
             return false;
         }
+        int yt = youtubeCheck(url, sites);
+        if (yt == YT_ALLOW) {
+            hideOverlay();
+            return false;
+        }
+        if (yt == YT_PENDING) return true;
         if (browseWindowActive()) {
             reportNewHostOnce(url);
             hideOverlay();
             return false;
         }
+        // Moderate / Strict filter: everything opens except blocked categories, but only once the lists
+        // are downloaded and verified; until then this stays "approved sites only".
+        if (WebFilter.active(this)) {
+            String host = SitePolicy.hostOf(url);
+            if (host != null && !WebFilter.blocks(this, host)) {
+                hideOverlay();
+                return false;
+            }
+        }
         showBlocked(url);
         return true;
+    }
+
+    private static final int YT_NO = 0, YT_ALLOW = 1, YT_PENDING = 2;
+
+    /**
+     * Allowed YouTube channels: a channel's own pages open, and a video opens when YouTube says it
+     * belongs to an allowed channel. Everything else on YouTube is not decided here.
+     */
+    private int youtubeCheck(final String url, List<SitePolicy.Site> sites) {
+        String host = SitePolicy.hostOf(url);
+        if (!SitePolicy.isYoutubeHost(host) || !SitePolicy.hasYoutubeChannels(sites)) return YT_NO;
+        String handle = SitePolicy.youtubeChannelHandle(url);
+        if (handle != null) return SitePolicy.youtubeChannelAllowed(handle, sites) ? YT_ALLOW : YT_NO;
+        String video = SitePolicy.youtubeVideoId(url);
+        if (video == null) return YT_NO;
+        String known = YoutubeLookup.cached(this, video);
+        if (known == null) {
+            YoutubeLookup.start(this, video, () -> runOnUiThread(() -> {
+                if (!isFinishing()) load(url); // now the channel is known, so this decides for real
+            }));
+            webView.setVisibility(View.GONE);
+            ensureOverlay();
+            overlay.removeAllViews();
+            overlay.addView(Ui.titleText(this, "Checking this video…"));
+            overlay.addView(Ui.body(this, "Making sure it is from an allowed channel.", true));
+            return YT_PENDING;
+        }
+        return SitePolicy.youtubeChannelAllowed(known, sites) ? YT_ALLOW : YT_NO;
+    }
+
+    /** The start page: every allowed site and channel as a big button, nothing else. */
+    private String homeHtml() {
+        StringBuilder sb = new StringBuilder("<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+                + "<body style='font-family:sans-serif;padding:24px'><h2>Browser</h2>");
+        List<SitePolicy.Site> sites = currentSites();
+        if (sites.isEmpty()) {
+            sb.append("<p>No sites are allowed yet.</p>");
+        } else {
+            sb.append("<p>Allowed sites:</p>");
+            for (SitePolicy.Site s : sites) {
+                sb.append("<a href=\"").append(android.text.Html.escapeHtml(s.url)).append("\" style='display:block;padding:16px;margin:10px 0;"
+                        + "background:#eceff1;border-radius:12px;color:#000;text-decoration:none;font-size:17px'>")
+                        .append(android.text.Html.escapeHtml(s.label)).append("</a>");
+            }
+        }
+        return sb.append("</body></html>").toString();
     }
 
     private List<SitePolicy.Site> currentSites() {
