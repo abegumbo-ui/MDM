@@ -195,7 +195,7 @@ function saveSubs(){try{sessionStorage.setItem('subs',JSON.stringify(subs))}catc
 const GROUPS=[
  {key:'overview',label:'Overview',icon:'home',subs:[['status','Status'],['messages','Messages'],['log','Activity log']]},
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['browser','Browser']]},
- {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['traffic','Traffic log']]},
+ {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['traffic','Traffic log'],['inspect','Browser inspection']]},
  {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
  {key:'device',label:'Device',icon:'device',subs:[['menu','Settings menu'],['updates','Updates'],['device','Controls']]}];
 function getSub(g){const G=GROUPS.find(function(x){return x.key===g});const v=subs[g];return G.subs.some(function(x){return x[0]===v})?v:G.subs[0][0]}
@@ -568,6 +568,7 @@ function buildInternetGroup(m,dv){
  if(sub==='network')renderNetworkSection(m,dv);
  else if(sub==='dns'){renderDnsBlocklist(m,dv);renderDnsAllowlist(m,dv)}
  else if(sub==='traffic')renderTrafficLog(m,dv);
+ else if(sub==='inspect')renderInspection(m,dv);
 }
 function buildDeviceGroup(m,dv){
  const sub=getSub('device');
@@ -736,7 +737,7 @@ function renderDeviceDetail(m,d){
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
   ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser: allowed sites','apps','browser'],
-  ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],
+  ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','internet','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
  const sWrap=h('div',{class:'search',style:'margin:0;width:260px;max-width:100%'});
@@ -1040,6 +1041,29 @@ function renderWebAccess(m,dv){
  card.append(h('div',{class:'setting',style:'display:block;margin-top:12px'},h('div',{style:'font-weight:500'},'YouTube'),
   h('div',{class:'mute'},'Allowed channels and videos work either way. Restricted YouTube behaves like a filtered YouTube: he can search for a video, but sees no recommendation feed, no Shorts and no trending page.'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists it stays on approved sites only.'));
+ m.append(card)}
+/** Optional: the phone gets its own certificate and a local proxy, so browsers' secure pages can be filtered by their content. */
+function renderInspection(m,dv){
+ if(dv.isBrowser){m.append(h('div',{class:'card'},h('div',{class:'mute'},'This only applies to phones managed by the Agent app.')));return}
+ const on=!!dv.config.tlsInspection;
+ const card=h('div',{class:'card'},h('div',{class:'row'},h('h2',{class:'grow'},'Browser inspection (advanced)'),h('span',{class:'chip '+(on?'warn':'')},on?'On':'Off')),
+  h('div',{class:'mute'},'Lets this phone filter what is on a web page, not just which site it is, in Chrome and other browsers (not only our own). Today that means Restricted YouTube everywhere: set it under Apps → Browser → Web access, and it then also applies in Chrome.'));
+ const row=h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Look inside browsers\' secure pages on this phone'),
+  h('div',{class:'mute'},'The Agent gives this phone its own certificate and runs a small filter inside the Agent. The phone shows a permanent "network may be monitored" notice while it is on.')),
+  sw(on,async function(v){
+   if(v&&!confirm('Turn on browser inspection for this phone?\n\n• The Agent installs a certificate of its own, made on this phone. Its key cannot be copied off the phone.\n• While on, the filter can see everything in browsers on this phone, including passwords typed on web pages, except sites on the skip list below.\n• Some sites and apps may stop working or show certificate warnings. Apps other than browsers are mostly not affected.\n• Turning it off removes the certificate again.\n\nThis is untested on real phones so far: try it on one phone first.')){render();return}
+   dv.config.tlsInspection=v;
+   try{await saveConfigFor(dv,v?'Saved. The Agent turns it on at its next check-in.':'Saved. The Agent turns it off and removes the certificate at its next check-in.')}catch(e){snack(e.message,1)}
+   render()}));
+ card.append(row);
+ const ta=h('textarea',{rows:4,style:'width:100%;margin-top:8px',placeholder:'one site per line, e.g. mybank.com'});
+ ta.value=(dv.config.inspectBypass||[]).join('\n');
+ card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Never look inside these sites'),
+  h('div',{class:'mute'},'Banks, payment sites and anything that stops working when inspected. Common bank and payment sites (Chase, Bank of America, Wells Fargo, PayPal, Venmo, Zelle, IRS and others) are already skipped; add more here.'),ta,
+  h('div',{style:'margin-top:8px'},btn('Save list','tonal',async function(){
+   dv.config.inspectBypass=ta.value.split(/\s+/).map(function(x){return x.trim().toLowerCase()}).filter(Boolean);
+   await saveConfigFor(dv,'Saved. The Agent picks it up at its next check-in.');render()})));
+ card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Needs the phone to be managed by the Agent (device owner). Check Activity → Phone log for "Browser inspection turned on". If browsing ever fails on the phone, turn this off.'));
  m.append(card)}
 function renderSitesEditor(m,dv){
  renderWebAccess(m,dv);
