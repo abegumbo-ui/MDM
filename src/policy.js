@@ -333,6 +333,11 @@ export function normalizeConfig(input) {
     // "moderate" and "strict" open the web but block whole categories (see tools/build-blocklists.mjs).
     browserFilter: BROWSER_FILTERS.includes(c.browserFilter) ? c.browserFilter : "off",
     youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "channels",
+    // Optional: the Agent installs a certificate of its own and runs a local proxy, so browsers' secure
+    // pages can be filtered by what is on them (see TlsInspection.java). Off unless chosen, per phone.
+    tlsInspection: c.tlsInspection === true,
+    // Sites never looked inside even when inspection is on (banks and the like), added to the Agent's built-in list.
+    inspectBypass: normalizeDnsAllowlist(c.inspectBypass),
     // Android caps any single freeze at 90 days and forces a 60-day gap before the next one --
     // there's no API for a true permanent block. This is the closest legal approximation.
     freezeUpdates: c.freezeUpdates === true,
@@ -505,7 +510,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: cfg.youtubeMode, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: cfg.youtubeMode, tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
@@ -547,6 +552,7 @@ export function summarizeConfigChange(before, after) {
     if (b !== a) lines.push((afterApps[pkg]?.label || beforeApps[pkg]?.label || pkg) + ": " + (a || "default"));
   }
   if ((before.browserFilter || "off") !== (after.browserFilter || "off")) lines.push("Browser filter: " + (after.browserFilter || "off"));
+  if (!!before.tlsInspection !== !!after.tlsInspection) lines.push("Browser inspection: " + (after.tlsInspection ? "on" : "off"));
   if ((before.youtubeMode || "channels") !== (after.youtubeMode || "channels")) lines.push("YouTube in the Browser: " + (after.youtubeMode || "channels"));
   if (JSON.stringify(before.frpAccounts) !== JSON.stringify(after.frpAccounts)) lines.push("Factory Reset Protection accounts changed");
   if (JSON.stringify(Object.keys(before.sites || {})) !== JSON.stringify(Object.keys(after.sites || {}))) lines.push("Sites list changed");

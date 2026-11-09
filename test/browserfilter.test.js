@@ -67,3 +67,17 @@ test("the YouTube setting defaults to allowed-channels-only and only accepts kno
   await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ youtubeMode: "restricted" }) });
   assert.equal((await sync()).filter.youtube, "restricted");
 });
+
+test("browser inspection is off unless exactly true, and its skip list is sanitized", () => {
+  assert.equal(normalizeConfig({}).tlsInspection, false);
+  assert.equal(normalizeConfig({ tlsInspection: true }).tlsInspection, true);
+  for (const bad of ["true", 1, "yes", null]) assert.equal(normalizeConfig({ tlsInspection: bad }).tlsInspection, false, String(bad));
+  // Tolerant on purpose (pasted links and wildcards become plain hostnames); junk is dropped; always lower-case.
+  assert.deepEqual(normalizeConfig({ inspectBypass: ["MyBank.com", "bad host!", "https://x.com/y", "pay.example.org", "*.wild.com"] }).inspectBypass.sort(),
+    ["mybank.com", "pay.example.org", "wild.com", "x.com"]);
+  const p = buildAgentPolicy(normalizeConfig({ tlsInspection: true, inspectBypass: ["mybank.com"] }), []);
+  assert.equal(p.tlsInspection, true);
+  assert.deepEqual(p.inspectBypass, ["mybank.com"]);
+  assert.equal(buildAgentPolicy(normalizeConfig({}), []).tlsInspection, false);
+  assert.deepEqual(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ tlsInspection: true })).filter((l) => l.startsWith("Browser inspection")), ["Browser inspection: on"]);
+});

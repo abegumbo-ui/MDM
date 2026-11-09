@@ -285,6 +285,7 @@ final class PolicyApplier {
         Kiosk.syncPreferredActivities(c, Kiosk.active(c), policy.optBoolean("restrictBrowsing", false));
         Kiosk.announceChange(c);
         pushBrowserConfig(c, dpm, admin, policy);
+        TlsInspection.apply(c, dpm, admin, policy); // optional browser inspection; off unless the dashboard turned it on
 
         Set<String> wanted = new HashSet<>();
         for (String r : strings(policy.optJSONArray("restrictions"))) {
@@ -864,6 +865,7 @@ final class PolicyApplier {
     /** The policy-cleanup half of release() -- everything except actually giving up device-owner
      * status, which release() and transferOwnershipTo() each finish differently. */
     private static void releaseManagedState(Context c, DevicePolicyManager dpm, ComponentName admin) {
+        TlsInspection.release(c, dpm, admin); // first: stop pointing browsers at the proxy and remove its certificate
         Kiosk.clear(c);
         Kiosk.syncPreferredActivities(c, false, false);
         for (String pkg : Agent.getSet(c, "hidden")) {

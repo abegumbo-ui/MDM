@@ -174,9 +174,14 @@ public final class InspectProxy implements Closeable {
         };
     }
 
-    /** Starts listening on 127.0.0.1 and returns the port. */
+    /** Starts listening on 127.0.0.1 on any free port and returns it. */
     public int start() throws IOException {
-        server = new ServerSocket(0, 64, InetAddress.getByName("127.0.0.1"));
+        return start(0);
+    }
+
+    /** Starts listening on 127.0.0.1 on this port (0 = any free port) and returns the port. */
+    public int start(int port) throws IOException {
+        server = new ServerSocket(port, 64, InetAddress.getByName("127.0.0.1"));
         pool.execute(() -> {
             while (!server.isClosed()) {
                 try {
