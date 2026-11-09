@@ -1,5 +1,8 @@
 import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
+import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
+import { auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY } from "./alerts.js";
+import { ICON_192, ICON_512 } from "./icons.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
 // How often an online phone checks in on its own. A command queued from the dashboard only
@@ -390,9 +393,80 @@ async function authDevice(request, env) {
 }
 
 // ---- admin API (cookie auth) ----
+// Wraps every dashboard action so that anything that CHANGES something is written to the change
+// history (who, what, which device) -- never the contents, so no PIN or code ever lands there.
 async function adminApi(request, env, url, session) {
+  const method = request.method;
+  let body = null;
+  if (method !== "GET" && method !== "HEAD" && (request.headers.get("content-type") || "").includes("json")) {
+    body = await request.clone().json().catch(() => null);
+  }
+  const res = await adminApiInner(request, env, url, session);
+  if (method !== "GET" && method !== "HEAD" && res.ok) {
+    const change = describeChange(method, url.pathname, body);
+    if (change) {
+      await auditAdd(env, {
+        who: session.role === "admin" ? "Administrator" : `Client "${session.name}"`,
+        text: change.text,
+        ...(change.target && { target: change.target }),
+      });
+    }
+  }
+  return res;
+}
+
+async function adminApiInner(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
+
+  // ---- admin-only security pages: change history, two-step login, alerts ----
+  if (path === "/api/audit" || path.startsWith("/api/2fa") || path.startsWith("/api/alerts")) {
+    if (!isAdmin(session)) return json({ error: "Administrator only" }, 403);
+    if (path === "/api/audit" && method === "GET") return json({ entries: await auditList(env) });
+    if (path === "/api/2fa" && method === "GET") return json({ enabled: !!(await getJSON(env, "admin:totp", null)) });
+    if (path === "/api/2fa/start" && method === "POST") {
+      if (await getJSON(env, "admin:totp", null)) return json({ error: "Two-step login is already on. Turn it off first to set it up again." }, 409);
+      const secret = newTotpSecret();
+      await putJSON(env, "admin:totp:pending", { secret, at: Date.now() }, { expirationTtl: 15 * 60 });
+      return json({ secret, uri: totpUri(secret, "Administrator", "MDM Dashboard") });
+    }
+    if (path === "/api/2fa/enable" && method === "POST") {
+      const b = await request.json().catch(() => ({}));
+      const pending = await getJSON(env, "admin:totp:pending", null);
+      if (!pending) return json({ error: "That set-up expired. Start again." }, 400);
+      const step = await totpVerify(pending.secret, b.code, 0);
+      if (!step) return json({ error: "That code is not right. Check the code in your authenticator app and try again." }, 400);
+      await putJSON(env, "admin:totp", { secret: pending.secret, step, at: Date.now() });
+      await env.STATE.delete("admin:totp:pending");
+      return json({ ok: true });
+    }
+    if (path === "/api/2fa/disable" && method === "POST") {
+      const b = await request.json().catch(() => ({}));
+      const cur = await getJSON(env, "admin:totp", null);
+      if (!cur) return json({ ok: true });
+      const step = await totpVerify(cur.secret, b.code, cur.step || 0);
+      if (!step) return json({ error: "That code is not right." }, 400);
+      await env.STATE.delete("admin:totp");
+      return json({ ok: true });
+    }
+    if (path === "/api/alerts" && method === "GET") return json(publicAlerts(await getAlerts(env)));
+    if (path === "/api/alerts" && method === "PUT") {
+      const b = await request.json().catch(() => ({}));
+      let next;
+      try {
+        next = mergeAlerts(await getAlerts(env), b || {});
+      } catch (e) {
+        return json({ error: e.message }, 400);
+      }
+      await putJSON(env, ALERTS_KEY, next);
+      return json(publicAlerts(next));
+    }
+    if (path === "/api/alerts/test" && method === "POST") {
+      const r = await sendAlert(env, "MDM test alert", "If you can read this, alerts are working.");
+      return r.ok ? json({ ok: true }) : json({ error: r.error }, 400);
+    }
+    return json({ error: "Not found" }, 404);
+  }
 
   if (path === "/api/apk" && method === "PUT") {
     // Raw APK bytes from the dashboard's file picker. Stored for a week, fetched once by the phone.
@@ -793,7 +867,7 @@ async function adminApi(request, env, url, session) {
 }
 
 // ---- agent API (per-device bearer token) ----
-async function agentApi(request, env, url) {
+async function agentApi(request, env, url, ctx) {
   const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);
   if (apk && request.method === "GET") {
     if (!(await authDevice(request, env))) return json({ error: "Unauthorized" }, 401);
@@ -870,6 +944,7 @@ async function agentApi(request, env, url) {
     }
 
     let dirty = false;
+    const toAlert = []; // things worth telling the administrator about, sent once the record is saved
     const now = Date.now();
     if (now - (d.lastSeen || 0) > LAST_SEEN_WRITE_MS) dirty = true;
     d.lastSeen = now;
@@ -1060,6 +1135,9 @@ async function agentApi(request, env, url) {
       dirty = true;
     }
     if (Array.isArray(body.events) && body.events.length) {
+      for (const e of body.events.slice(0, 40)) {
+        if (e && (e.k === "security" || e.k === "watchdog")) toAlert.push({ kind: "tamper", text: String(e.m || "").slice(0, 200) });
+      }
       d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
       dirty = true;
     }
@@ -1091,6 +1169,7 @@ async function agentApi(request, env, url) {
         .map((url) => ({ url, at: now }));
       if (added.length) {
         d.siteRequests = [...existing, ...added].slice(-30);
+        for (const r of added) toAlert.push({ kind: "requests", text: `Asked to open ${r.url}` });
         dirty = true;
       }
     }
@@ -1103,6 +1182,7 @@ async function agentApi(request, env, url) {
         .map((msg) => ({ id: randomHex(6), msg, at: now }));
       if (added.length) {
         d.messages = [...(d.messages || []), ...added].slice(-20);
+        for (const m of added) toAlert.push({ kind: "requests", text: `Message: ${m.msg.slice(0, 300)}` });
         dirty = true;
       }
     }
@@ -1121,6 +1201,15 @@ async function agentApi(request, env, url) {
       }
     }
     if (dirty) await putJSON(env, key, d);
+    if (toAlert.length) {
+      const a = await getAlerts(env);
+      const lines = toAlert.filter((x) => a[x.kind]).map((x) => x.text);
+      if (a.url && lines.length) {
+        const p = sendAlert(env, d.name, lines.join("\n"), a);
+        if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
+        else await p;
+      }
+    }
 
     const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
@@ -1244,7 +1333,7 @@ async function windowsApi(request, env, url) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (!env.ADMIN_PASSWORD) {
       // Names only, never values: helps diagnose a missing binding.
@@ -1252,25 +1341,74 @@ export default {
     }
 
     try {
-      if (url.pathname.startsWith("/agent/")) return await agentApi(request, env, url);
+      if (url.pathname.startsWith("/agent/")) return await agentApi(request, env, url, ctx);
       if (url.pathname.startsWith("/browser/")) return await browserApi(request, env, url);
       if (url.pathname.startsWith("/windows/")) return await windowsApi(request, env, url);
+
+      // Public, harmless files that let the dashboard be installed to a phone's home screen.
+      if (url.pathname === "/manifest.webmanifest") {
+        return new Response(
+          JSON.stringify({
+            name: "MDM Dashboard",
+            short_name: "MDM",
+            start_url: "/",
+            scope: "/",
+            display: "standalone",
+            background_color: "#F6F7F9",
+            theme_color: "#4F46E5",
+            icons: [
+              { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+              { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+            ],
+          }),
+          { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" } }
+        );
+      }
+      const iconM = /^\/icon-(192|512)\.png$/.exec(url.pathname);
+      if (iconM) {
+        const bin = Uint8Array.from(atob(iconM[1] === "192" ? ICON_192 : ICON_512), (c) => c.charCodeAt(0));
+        return new Response(bin, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
+      }
 
       if (url.pathname === "/login" && request.method === "POST") {
         const form = await request.formData();
         const password = String(form.get("password") || "");
         const loginName = String(form.get("loginName") || "").trim().toLowerCase();
+        const code = String(form.get("code") || "");
+        const who = loginName || "administrator";
+        const plural = (n) => `${n} minute${n === 1 ? "" : "s"}`;
+        // Five wrong tries from the same address locks that address out of this login for 15 minutes.
+        const lock = await lockStatus(env, request, loginName);
+        if (lock.locked) return html(loginPage(`Too many wrong tries. Try again in ${plural(lock.minutes)}.`), 429);
+        const failed = async (message) => {
+          const r = await recordFailure(env, request, loginName);
+          if (r.justLocked) await auditAdd(env, { who: "Sign-in", text: `Locked sign-in for ${who} after repeated wrong tries (from ${clientIp(request)})` });
+          return r.locked ? html(loginPage(`Too many wrong tries. Try again in ${plural(r.minutes)}.`), 429) : html(loginPage(message), 401);
+        };
+        const succeeded = async (tag, label) => {
+          await clearFailures(env, request, loginName);
+          await auditAdd(env, { who: label, text: "Signed in" });
+          return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookieFor(env, tag) } });
+        };
         if (!loginName) {
-          if (!safeEqual(password, env.ADMIN_PASSWORD)) return html(loginPage("Wrong password."), 401);
-          return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookieFor(env, "admin") } });
+          if (!safeEqual(password, env.ADMIN_PASSWORD)) return failed("Wrong password.");
+          const totp = await getJSON(env, "admin:totp", null);
+          if (totp) {
+            // Password was right but two-step is on: a missing code is just a prompt, a wrong one counts as a try.
+            if (!code.trim()) return html(loginPage("Enter the 6-digit code from your authenticator app."), 401);
+            const step = await totpVerify(totp.secret, code, totp.step || 0);
+            if (!step) return failed("Wrong code.");
+            await putJSON(env, "admin:totp", { ...totp, step }); // that code can never be used again
+          }
+          return succeeded("admin", "Administrator");
         }
         // A client login name is public-ish (shared with them to log in at all), so this path
         // can't use safeEqual's constant-time comparison to hide "no such account" -- the KV
         // lookup itself already takes a different amount of time depending on whether the key
         // exists. That's fine: it's no worse than any login form ever is about that.
         const c = await getJSON(env, `client:${loginName}`, null);
-        if (!c || !(await verifyClientPassword(password, c))) return html(loginPage("Wrong login name or password."), 401);
-        return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookieFor(env, `client:${loginName}`) } });
+        if (!c || !(await verifyClientPassword(password, c))) return failed("Wrong login name or password.");
+        return succeeded(`client:${loginName}`, `Client "${c.name}"`);
       }
       if (url.pathname === "/logout") {
         return new Response(null, { status: 303, headers: { location: "/", "set-cookie": "sess=; Max-Age=0; Path=/" } });
@@ -1288,5 +1426,18 @@ export default {
         ? json({ error: msg }, 500)
         : html(`Error: ${msg}`, 500);
     }
+  },
+
+  // Runs every 15 minutes (see wrangler.toml). Looks for phones that have gone quiet or whose
+  // battery is nearly flat -- things nothing arrives to announce.
+  async scheduled(event, env, ctx) {
+    const work = (async () => {
+      try {
+        await checkDevices(env, await listDevices(env));
+      } catch {
+        // A failed check just means no alert this round; the next one tries again.
+      }
+    })();
+    ctx.waitUntil(work);
   },
 };
