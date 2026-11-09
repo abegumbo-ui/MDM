@@ -26,14 +26,23 @@ public final class SitePolicy {
         public final String label;
         public final boolean blockImages;
         public final boolean installable;
+        /** Only for type "youtube": what kind of entry ("channel") and its id (the "@handle", lower case). */
+        public final String kind;
+        public final String id;
 
         public Site(String type, String url, String host, String label, boolean blockImages, boolean installable) {
+            this(type, url, host, label, blockImages, installable, null, null);
+        }
+
+        public Site(String type, String url, String host, String label, boolean blockImages, boolean installable, String kind, String id) {
             this.type = type;
             this.url = url;
             this.host = host;
             this.label = label;
             this.blockImages = blockImages;
             this.installable = installable;
+            this.kind = kind;
+            this.id = id;
         }
     }
 
@@ -54,6 +63,10 @@ public final class SitePolicy {
     public static String pathKeyOf(String u) {
         String host = hostOf(u);
         if (host == null) return null;
+        // Every YouTube video shares the address "youtube.com/watch" -- only the ?v= part tells them apart.
+        // Without this, allowing one video "page" would quietly allow every video.
+        String video = youtubeVideoId(u);
+        if (video != null) return "youtube.com/watch?v=" + video;
         try {
             URI uri = new URI(u.contains("://") ? u : "https://" + u);
             String path = uri.getPath();
@@ -74,6 +87,12 @@ public final class SitePolicy {
             if (o == null) continue;
             String type = o.optString("type", "");
             String url = o.optString("url", "");
+            if (type.equals("youtube")) {
+                String id = o.optString("id", "").toLowerCase(Locale.ROOT);
+                if (!o.optString("kind", "").equals("channel") || !id.matches("@[a-z0-9._-]{3,30}")) continue;
+                out.add(new Site("youtube", url, "youtube.com", o.optString("label", "YouTube " + id), false, false, "channel", id));
+                continue;
+            }
             if (!type.equals("domain") && !type.equals("exact")) continue;
             String host = hostOf(url);
             if (host == null) continue;
@@ -92,10 +111,80 @@ public final class SitePolicy {
         if (host == null) return null;
         String path = pathKeyOf(url);
         for (Site s : sites) {
+            if (s.type.equals("youtube")) continue; // channel entries are decided by the Browser (see youtubeChannelAllowed)
             if (s.type.equals("domain") && (host.equals(s.host) || host.endsWith("." + s.host))) return s;
             if (s.type.equals("exact") && path != null && path.equals(pathKeyOf(s.url))) return s;
         }
         return null;
+    }
+
+    // ---------- YouTube ----------
+
+    private static final Set<String> YOUTUBE_HOSTS = new HashSet<>(Arrays.asList(
+            "youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com", "youtu.be"));
+
+    public static boolean isYoutubeHost(String host) {
+        return host != null && YOUTUBE_HOSTS.contains(host.toLowerCase(Locale.ROOT));
+    }
+
+    private static String queryParam(URI uri, String name) {
+        String q = uri.getRawQuery();
+        if (q == null) return null;
+        for (String pair : q.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && pair.substring(0, eq).equals(name)) return pair.substring(eq + 1);
+        }
+        return null;
+    }
+
+    /** The 11-character id of the video this address plays (watch, youtu.be, shorts, embed, live), or null. */
+    public static String youtubeVideoId(String u) {
+        String host = hostOf(u);
+        if (!isYoutubeHost(host)) return null;
+        try {
+            URI uri = new URI(u.contains("://") ? u : "https://" + u);
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            String id = null;
+            if (host.equals("youtu.be")) {
+                String[] seg = path.split("/");
+                id = seg.length > 1 ? seg[1] : null;
+            } else if (path.equals("/watch")) {
+                id = queryParam(uri, "v");
+            } else {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^/(?:shorts|embed|live|v)/([^/?#]+)").matcher(path);
+                if (m.find()) id = m.group(1);
+            }
+            return id != null && id.matches("[A-Za-z0-9_-]{11}") ? id : null;
+        } catch (URISyntaxException e) {
+            return null;
+        }
+    }
+
+    /** The "@handle" (lower case) of the channel page this address is, or null. */
+    public static String youtubeChannelHandle(String u) {
+        String host = hostOf(u);
+        if (host == null || !(host.equals("youtube.com") || host.equals("m.youtube.com"))) return null;
+        try {
+            URI uri = new URI(u.contains("://") ? u : "https://" + u);
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^/(@[A-Za-z0-9._-]{3,30})(?:/|$)").matcher(path);
+            return m.find() ? m.group(1).toLowerCase(Locale.ROOT) : null;
+        } catch (URISyntaxException e) {
+            return null;
+        }
+    }
+
+    public static boolean hasYoutubeChannels(List<Site> sites) {
+        for (Site s : sites) if (s.type.equals("youtube")) return true;
+        return false;
+    }
+
+    /** True if this channel handle is one of the allowed YouTube channels. */
+    public static boolean youtubeChannelAllowed(String handle, List<Site> sites) {
+        if (handle == null) return false;
+        String h = handle.toLowerCase(Locale.ROOT);
+        for (Site s : sites) if (s.type.equals("youtube") && h.equals(s.id)) return true;
+        return false;
     }
 
     /**
