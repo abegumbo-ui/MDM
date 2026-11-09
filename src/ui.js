@@ -1016,7 +1016,7 @@ function renderRequestsCard(m,reqs,dv){
 function renderWebAccess(m,dv){
  const cur=dv.config.browserFilter||'off';
  const card=h('div',{class:'card'},h('h2',null,'Web access'),
-  h('div',{class:'mute'},'Choose what this browser may open. Sites on the allowed list below are always allowed, whichever you pick. This applies to the separate Browser app; the Browser add-on built into the Agent always stays on approved sites only.'));
+  h('div',{class:'mute'},'Choose what this browser may open. Sites on the allowed list below are always allowed, whichever you pick. This applies to the separate Browser app and to the Browser add-on built into the Agent app.'));
  const opts=[
   ['off','Approved sites only','Nothing opens unless it is on the allowed list below. The strictest setting, and what every browser starts with.'],
   ['moderate','Moderate filter','Opens the rest of the web, but blocks adult sites, gambling, drugs and vaping, scams and phishing, and piracy.'],
