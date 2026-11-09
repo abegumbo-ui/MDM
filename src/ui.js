@@ -1,123 +1,169 @@
 // Dashboard pages. Material 3 styling with plain CSS and vanilla JS (no build step, no libraries).
 
 const STYLE = String.raw`
-/* Same dark red theme as the phone app itself (see android/app/src/main/res/values/colors.xml) --
-   one fixed theme, not light/dark depending on the system, same as the app only ever has the one. */
+/* Neutral, professional console look (light by default, dark when the device is set to dark).
+   Every colour lives in these variables, so the whole dashboard can be re-themed from here. */
 :root{
-  --primary:#C62828;--on-primary:#fff;--primary-container:#3A0A0A;--on-primary-container:#FFCDD2;
-  --secondary-container:#262626;--on-secondary-container:#fff;
-  --surface:#0D0D0D;--surface-1:#171717;--surface-2:#1c1c1c;--surface-3:#222222;
-  --on-surface:#fff;--on-surface-variant:#B0B0B0;--outline:#3A3A3A;--outline-variant:#2A2A2A;
-  --error:#FF5252;--error-container:#4a1515;--ok:#7fd99a;--ok-container:#0f3d1c;--warn:#ffb95c;--warn-container:#4a2f00;
+  color-scheme:light;
+  --primary:#4F46E5;--on-primary:#fff;--primary-container:#EEF0FF;--on-primary-container:#3730A3;
+  --secondary-container:#F2F4F7;--on-secondary-container:#1D2939;
+  --surface:#F6F7F9;--surface-1:#FFFFFF;--surface-2:#FAFBFC;--surface-3:#F2F4F7;
+  --on-surface:#101828;--on-surface-variant:#667085;--outline:#D0D5DD;--outline-variant:#E4E7EC;
+  --error:#B42318;--error-container:#FEF3F2;--ok:#067647;--ok-container:#ECFDF3;--warn:#B54708;--warn-container:#FFFAEB;
+  --shadow:0 1px 2px rgba(16,24,40,.05);
 }
+@media (prefers-color-scheme:dark){:root{
+  color-scheme:dark;
+  --primary:#6366F1;--on-primary:#fff;--primary-container:#23264F;--on-primary-container:#C7D2FE;
+  --secondary-container:#1D222C;--on-secondary-container:#E4E7EC;
+  --surface:#0B0D12;--surface-1:#12151C;--surface-2:#161A22;--surface-3:#1D222C;
+  --on-surface:#F2F4F7;--on-surface-variant:#98A2B3;--outline:#333A47;--outline-variant:#232833;
+  --error:#F97066;--error-container:#3A1613;--ok:#47CD89;--ok-container:#0F2E20;--warn:#FDB022;--warn-container:#3A2A07;
+  --shadow:none;
+}}
 *{box-sizing:border-box}
 html{background:var(--surface)}
-body{margin:0;background:var(--surface);color:var(--on-surface);font:14px/1.5 Roboto,system-ui,sans-serif;overscroll-behavior-y:none}
-header.bar{position:sticky;top:0;z-index:5;background:var(--surface-2);padding:12px 16px 0}
-.bar .top{display:flex;align-items:center;gap:12px;max-width:960px;margin:0 auto}
-.bar h1{font-size:22px;font-weight:500;margin:0;flex:1}
-.bar a{color:var(--on-surface-variant);text-decoration:none;font-size:13px}
-nav.tabs{display:flex;max-width:960px;margin:8px auto 0;overflow-x:auto}
-nav.tabs button{flex:1;min-width:84px;background:none;border:0;border-bottom:3px solid transparent;color:var(--on-surface-variant);padding:12px 8px;font:500 14px Roboto,system-ui,sans-serif;cursor:pointer}
-nav.tabs button.on{color:var(--primary);border-bottom-color:var(--primary)}
-main{max-width:960px;margin:0 auto;padding:16px}
-h2{font-size:16px;font-weight:500;margin:0 0 4px}
-.card{background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:16px;padding:16px;margin-bottom:12px}
+body{margin:0;background:var(--surface);color:var(--on-surface);font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--primary)}
+/* top bar */
+header.bar{position:sticky;top:0;z-index:5;background:var(--surface-1);border-bottom:1px solid var(--outline-variant)}
+.bar .top{display:flex;align-items:center;gap:14px;max-width:1180px;margin:0 auto;padding:0 20px;height:56px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;color:var(--on-surface);text-decoration:none;cursor:pointer}
+.brand .logo{width:28px;height:28px;border-radius:8px;background:var(--primary);display:flex;align-items:center;justify-content:center}
+.brand .logo svg{width:16px;height:16px}
+.crumbs{display:flex;align-items:center;gap:8px;color:var(--on-surface-variant);font-size:14px;min-width:0;flex:1;overflow:hidden;white-space:nowrap}
+.crumbs .sep{opacity:.5}.crumbs a{color:var(--on-surface-variant);text-decoration:none;cursor:pointer}.crumbs a:hover{color:var(--on-surface)}
+.crumbs b{color:var(--on-surface);font-weight:500;overflow:hidden;text-overflow:ellipsis}
+.bar .who{color:var(--on-surface-variant);font-size:13px}
+.bar a.out{color:var(--on-surface-variant);text-decoration:none;font-size:13px;padding:6px 10px;border-radius:8px}
+.bar a.out:hover{background:var(--surface-3);color:var(--on-surface)}
+main{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
+/* page header */
+.pagehead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.pagehead h1{font-size:24px;font-weight:600;margin:0;letter-spacing:-.01em}
+.pagehead .sub{color:var(--on-surface-variant);font-size:14px}
+h2{font-size:15px;font-weight:600;margin:0 0 4px}
+.card{background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:12px;padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.grow{flex:1;min-width:0}
 .mute{color:var(--on-surface-variant);font-size:13px}.small{font-size:12px}
-.mono{font-family:ui-monospace,Menlo,monospace}
-button.btn{font:500 14px Roboto,system-ui,sans-serif;border:0;border-radius:20px;padding:9px 18px;cursor:pointer;background:var(--primary);color:var(--on-primary)}
-button.btn.tonal{background:var(--secondary-container);color:var(--on-secondary-container)}
-button.btn.outline{background:none;color:var(--primary);border:1px solid var(--outline)}
-button.btn.danger{background:none;color:var(--error);border:1px solid var(--error)}
-button.btn:disabled{opacity:.38;cursor:default}
-input[type=text],input[type=time],input[type=password]{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--outline);border-radius:8px;padding:10px 12px;min-width:0}
-input:focus{outline:2px solid var(--primary);border-color:transparent}
-.chip{display:inline-flex;align-items:center;gap:4px;border-radius:8px;padding:2px 8px;font-size:12px;background:var(--surface-3);color:var(--on-surface-variant);margin-right:4px}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+/* buttons */
+button.btn{font:500 13px/1 Inter,system-ui,sans-serif;border:1px solid transparent;border-radius:8px;padding:10px 14px;cursor:pointer;background:var(--primary);color:var(--on-primary);transition:filter .12s,background .12s}
+button.btn:hover{filter:brightness(1.08)}
+button.btn.tonal{background:var(--surface-1);color:var(--on-surface);border-color:var(--outline);box-shadow:var(--shadow)}
+button.btn.tonal:hover{background:var(--surface-3);filter:none}
+button.btn.outline{background:transparent;color:var(--on-surface);border-color:var(--outline)}
+button.btn.outline:hover{background:var(--surface-3);filter:none}
+button.btn.danger{background:transparent;color:var(--error);border-color:var(--error)}
+button.btn:disabled{opacity:.45;cursor:default}
+input[type=text],input[type=time],input[type=password],select,textarea{font:inherit;color:inherit;background:var(--surface-1);border:1px solid var(--outline);border-radius:8px;padding:9px 12px;min-width:0}
+input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(--primary) 45%,transparent);border-color:var(--primary)}
+/* status chips */
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:500;background:var(--surface-3);color:var(--on-surface-variant);margin:0 6px 0 0}
 .chip svg{width:13px;height:13px;flex:none}
 .chip.ok{background:var(--ok-container);color:var(--ok)}.chip.bad{background:var(--error-container);color:var(--error)}.chip.warn{background:var(--warn-container);color:var(--warn)}
-.seg{display:inline-flex;border:1px solid var(--outline);border-radius:20px;overflow:hidden}
-.seg button{background:none;border:0;border-right:1px solid var(--outline);padding:6px 14px;color:var(--on-surface);font:500 13px Roboto,system-ui,sans-serif;cursor:pointer}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+.seg{display:inline-flex;border:1px solid var(--outline);border-radius:8px;overflow:hidden}
+.seg button{background:var(--surface-1);border:0;border-right:1px solid var(--outline);padding:6px 12px;color:var(--on-surface);font:500 13px Inter,system-ui,sans-serif;cursor:pointer}
 .seg button:last-child{border-right:0}
-.seg button.on{background:var(--secondary-container);color:var(--on-secondary-container)}
+.seg button.on{background:var(--primary-container);color:var(--on-primary-container)}
 .seg button.on.block{background:var(--error-container);color:var(--error)}
 .app{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--outline-variant)}
 .app:first-child{border-top:0}
 .app img,.app .ph{width:40px;height:40px;border-radius:10px;flex:none;background:var(--surface-3)}
-.sw{position:relative;width:52px;height:32px;flex:none}
+/* toggle switch */
+.sw{position:relative;width:40px;height:22px;flex:none}
 .sw input{opacity:0;position:absolute;inset:0;margin:0;cursor:pointer;z-index:1}
-.sw i{position:absolute;inset:0;border-radius:16px;border:2px solid var(--outline);background:var(--surface-3);transition:.15s}
-.sw i::after{content:"";position:absolute;top:6px;left:6px;width:16px;height:16px;border-radius:50%;background:var(--outline);transition:.15s}
-.sw input:checked+i{background:var(--primary);border-color:var(--primary)}
-.sw input:checked+i::after{left:26px;top:4px;width:24px;height:24px;background:var(--on-primary)}
-.sw input:checked+i::after{width:20px;height:20px;left:26px;top:6px}
-.setting{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--outline-variant)}
+.sw i{position:absolute;inset:0;border-radius:11px;background:var(--outline);transition:.15s}
+.sw i::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:.15s}
+.sw input:checked+i{background:var(--primary)}
+.sw input:checked+i::after{left:20px}
+.setting{display:flex;gap:16px;align-items:center;padding:12px 0;border-top:1px solid var(--outline-variant)}
 .setting:first-child{border-top:0}
-.act{padding:6px 0;border-top:1px solid var(--outline-variant);font-size:13px}
+.act{padding:8px 0;border-top:1px solid var(--outline-variant);font-size:13px}
 .act:first-child{border-top:0}
-.code{font:600 30px ui-monospace,Menlo,monospace;letter-spacing:4px;background:var(--surface-3);border-radius:12px;padding:10px 16px;display:inline-block;margin:8px 0}
-pre.cmd{background:var(--surface-3);border-radius:12px;padding:12px;white-space:pre-wrap;word-break:break-all;font:12px ui-monospace,Menlo,monospace;margin:8px 0}
+.code{font:600 28px ui-monospace,Menlo,Consolas,monospace;letter-spacing:4px;background:var(--surface-3);border-radius:10px;padding:10px 16px;display:inline-block;margin:8px 0}
+pre.cmd{background:var(--surface-3);border-radius:10px;padding:12px;white-space:pre-wrap;word-break:break-all;font:12px ui-monospace,Menlo,Consolas,monospace;margin:8px 0}
 .days{display:flex;gap:4px;margin:8px 0}
 .days button{width:34px;height:34px;border-radius:50%;border:1px solid var(--outline);background:none;color:var(--on-surface);cursor:pointer;font-weight:500}
 .days button.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
-.sched{background:var(--surface-2);border-radius:12px;padding:10px 12px;margin-top:8px}
-#snack{position:fixed;left:12px;right:12px;bottom:16px;max-width:520px;margin:auto;background:var(--on-surface);color:var(--surface);border-radius:8px;padding:12px 16px;display:none;z-index:9}
-.m3dlg{border:0;border-radius:28px;background:var(--surface-3);color:var(--on-surface);padding:24px;max-width:420px;width:calc(100% - 32px)}
-.m3dlg::backdrop{background:rgba(0,0,0,.45)}
-.m3dlg h2{font-size:22px;font-weight:400;margin-bottom:12px}
-.m3dlg label{display:block;margin:10px 0 4px;font-size:12px;color:var(--on-surface-variant)}
-.m3dlg input,.m3dlg select{width:100%;font:inherit;color:inherit;background:var(--surface);border:1px solid var(--outline);border-radius:8px;padding:10px 12px}
+.sched{background:var(--surface-3);border-radius:10px;padding:10px 12px;margin-top:8px}
+#snack{position:fixed;left:12px;right:12px;bottom:20px;max-width:520px;margin:auto;background:#101828;color:#fff;border-radius:10px;padding:12px 16px;display:none;z-index:99;box-shadow:0 8px 24px rgba(16,24,40,.25)}
+.m3dlg{border:1px solid var(--outline-variant);border-radius:14px;background:var(--surface-1);color:var(--on-surface);padding:24px;max-width:440px;width:calc(100% - 32px);box-shadow:0 20px 48px rgba(16,24,40,.25)}
+.m3dlg::backdrop{background:rgba(16,24,40,.5)}
+.m3dlg h2{font-size:18px;font-weight:600;margin-bottom:12px}
+.m3dlg label{display:block;margin:12px 0 4px;font-size:12px;font-weight:500;color:var(--on-surface-variant)}
+.m3dlg input,.m3dlg select{width:100%}
 .m3dlg .row{justify-content:flex-end;margin-top:20px}
-.dev{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}
-.dev:hover{background:var(--surface-2)}
-.dev .ico{width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
-.dev .name{font-weight:500;font-size:16px}
-.kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--outline-variant)}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--outline-variant)}
 .kv:first-child{border-top:0}.kv b{font-weight:500;text-align:right;word-break:break-word}
-.login{max-width:360px;margin:16vh auto 0;padding:0 16px}
-/* Big 2-column home-screen tile grid -- same shape, same 2 columns, same solid red squares with a
-   white icon and a label underneath, as the phone app's own Administrator home grid (Ui.tile /
-   Ui.tileGrid, 96dp squares, 20dp corners, icon at 42% of the square). */
-.tilegrid-lg{display:grid;grid-template-columns:repeat(2,1fr);gap:22px 8px;margin:16px 0}
-.tilegrid-lg .tile{justify-self:center;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;background:none;border:0;color:var(--on-surface);font:500 15px Roboto,system-ui,sans-serif;text-align:center;padding:0;width:100%}
-.tilegrid-lg .tile .ico{width:96px;height:96px;max-width:100%;border-radius:20px;background:var(--primary);display:flex;align-items:center;justify-content:center}
-.tilegrid-lg .tile:hover .ico{filter:brightness(1.1)}
-.tilegrid-lg .tile svg{width:42%;height:42%}
-/* Small icon-plus-label row -- same shape as the phone app's own Ui.rowTile, used for the
-   second-level pickers inside Apps and Settings (Regular Apps / Home Screen Mode / ... and
-   Settings Menu / Permissions / ...). */
-.hubrow{display:flex;align-items:center;gap:14px;padding:12px;border-radius:14px;background:var(--surface-1);border:1px solid var(--outline-variant);cursor:pointer;margin-bottom:8px}
-.hubrow:hover{background:var(--surface-2)}
-.hubrow .ico{width:44px;height:44px;border-radius:12px;background:var(--primary);display:flex;align-items:center;justify-content:center;flex:none}
-.hubrow .ico svg{width:22px;height:22px}
-.hubrow .label{font-size:15px;font-weight:500}
+.login{max-width:380px;margin:14vh auto 0;padding:0 16px}
+.login .card{padding:28px}
+/* device list (table) */
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.table{background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:16px}
+.trow{display:grid;grid-template-columns:minmax(200px,2.2fr) 1fr 1fr 1.2fr 24px;gap:12px;align-items:center;padding:14px 18px;border-top:1px solid var(--outline-variant);cursor:pointer}
+.trow:first-child{border-top:0}
+.trow.thead{cursor:default;background:var(--surface-2);color:var(--on-surface-variant);font-size:12px;font-weight:500;padding:10px 18px;text-transform:uppercase;letter-spacing:.04em}
+.trow:not(.thead):hover{background:var(--surface-2)}
+.trow .name{font-weight:500;font-size:14px}
+.trow .who{display:flex;align-items:center;gap:12px;min-width:0}
+.trow .who>div{min-width:0}
+.avatar{width:36px;height:36px;border-radius:10px;background:var(--primary-container);color:var(--on-primary-container);display:flex;align-items:center;justify-content:center;flex:none}
+.avatar svg{width:18px;height:18px}
+.empty{padding:40px 20px;text-align:center}
+/* device page: sidebar + content */
+.shell{display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;align-items:start}
+.side{position:sticky;top:76px;display:flex;flex-direction:column;gap:2px}
+.side button.nav{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:9px 12px;color:var(--on-surface-variant);font:500 14px Inter,system-ui,sans-serif;cursor:pointer}
+.side button.nav svg{width:18px;height:18px;flex:none}
+.side button.nav:hover{background:var(--surface-3);color:var(--on-surface)}
+.side button.nav.on{background:var(--primary-container);color:var(--on-primary-container)}
+.side .badge{margin-left:auto;background:var(--primary);color:#fff;border-radius:999px;font-size:11px;padding:1px 7px}
+.pills{display:flex;gap:4px;overflow-y:hidden;border-bottom:1px solid var(--outline-variant);margin-bottom:20px;overflow-x:auto}
+.pills button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:10px 12px;color:var(--on-surface-variant);font:500 14px Inter,system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.pills button:hover{color:var(--on-surface)}
+.pills button.on{color:var(--primary);border-bottom-color:var(--primary)}
+section.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start}
+section.cols>.card{margin:0}
 .search{position:relative;margin:12px 0}
-.search input{width:100%;padding-left:36px}
-.search .ico{position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--on-surface-variant)}
-.search-results{background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:12px;margin-top:4px;overflow:hidden}
-.search-results div{padding:10px 14px;cursor:pointer;border-top:1px solid var(--outline-variant)}
+.search input{width:100%;padding-left:34px}
+.search .ico{position:absolute;left:10px;top:11px;pointer-events:none;color:var(--on-surface-variant);width:16px;height:16px}
+.search .ico svg{width:16px;height:16px}
+.search-results{position:absolute;left:0;right:0;top:100%;z-index:6;background:var(--surface-1);border:1px solid var(--outline);border-radius:10px;margin-top:4px;overflow:hidden;box-shadow:0 8px 24px rgba(16,24,40,.15);min-width:260px}
+.search-results div{padding:9px 14px;cursor:pointer;border-top:1px solid var(--outline-variant);font-size:13px}
 .search-results div:first-child{border-top:0}
-.search-results div:hover{background:var(--surface-2)}
+.search-results div:hover{background:var(--surface-3)}
+@media (max-width:820px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:12px}
+  .side{position:static;flex-direction:row;overflow-x:auto;gap:4px;padding-bottom:4px}
+  .side button.nav{width:auto;white-space:nowrap}
+  .trow{grid-template-columns:minmax(0,1fr) auto 20px}
+  .trow .c-batt,.trow .c-seen{display:none}
+  .trow.thead{display:none}
+  .bar .who{display:none}
+  main{padding:16px 14px 60px}
+  section.cols{grid-template-columns:minmax(0,1fr)}
+}
 `;
 
 export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0D0D0D"><title>MDM Login</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#F6F7F9"><title>MDM Login</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
 <style>${STYLE}</style></head>
-<body><div class="login"><div class="card"><h2 style="font-size:22px;margin-bottom:12px">MDM Dashboard</h2>
+<body><div class="login"><div class="card"><h2 style="font-size:20px;margin-bottom:16px">Sign in to MDM</h2>
 <form method="post" action="/login">
 <input type="text" name="loginName" placeholder="Client login name (leave empty if you're the administrator)" style="width:100%;margin-bottom:8px" autocapitalize="off" autocorrect="off">
 <div class="row"><input class="grow" type="password" name="password" placeholder="Password" autofocus required>
 <button class="btn">Sign in</button></div>${error ? `<p class="mute" style="color:var(--error)">${error}</p>` : ""}</form></div></div></body></html>`;
 
 export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0D0D0D"><title>MDM Dashboard</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#F6F7F9"><title>MDM Dashboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>${STYLE}</style></head>
 <body>
-<header class="bar"><div class="top"><h1>MDM Dashboard</h1><a href="/logout">Sign out</a></div>
-<nav class="tabs" id="tabs"></nav></header>
+<header class="bar"><div class="top"><a class="brand" href="#devices"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z"/></svg></span>MDM</a><div class="crumbs" id="crumbs"></div><span class="who" id="who"></span><a class="out" href="/logout">Sign out</a></div></header>
 <main id="main">Loading…</main>
 <div id="snack"></div>
 <script>
@@ -129,13 +175,19 @@ const DAYS=['S','M','T','W','T','F','S'];
 let deviceSection=sessionStorage.getItem('deviceSection')||null,lastOpenId=sessionStorage.getItem('lastOpenId')||null;
 function setDeviceSection(v){deviceSection=v;try{v?sessionStorage.setItem('deviceSection',v):sessionStorage.removeItem('deviceSection')}catch(e){}}
 let deviceSearch='';
-// Second-level picker inside the Apps and Settings tabs, same hub-in-front-of-a-sub-section idiom
-// the phone app itself uses (AdminActivity's buildAppsHub/buildSettingsHub) -- null means "show the
-// picker", a key means "show that one section, with a Back button".
-let appsSub=sessionStorage.getItem('appsSub')||null,settingsSub=sessionStorage.getItem('settingsSub')||null,lockSub=sessionStorage.getItem('lockSub')||null;
-function setAppsSub(v){appsSub=v;try{v?sessionStorage.setItem('appsSub',v):sessionStorage.removeItem('appsSub')}catch(e){}}
-function setSettingsSub(v){settingsSub=v;try{v?sessionStorage.setItem('settingsSub',v):sessionStorage.removeItem('settingsSub')}catch(e){}}
-function setLockSub(v){lockSub=v;try{v?sessionStorage.setItem('lockSub',v):sessionStorage.removeItem('lockSub')}catch(e){}}
+// A device page has 5 groups in a side menu, and each group has a few tabs along the top. Both the
+// group and the tab are remembered (also in sessionStorage -- a phone browser backgrounded for a
+// minute often throws the tab away and reloads it, which looked like "it goes back by itself").
+let subs={};try{subs=JSON.parse(sessionStorage.getItem('subs')||'{}')||{}}catch(e){subs={}}
+function saveSubs(){try{sessionStorage.setItem('subs',JSON.stringify(subs))}catch(e){}}
+const GROUPS=[
+ {key:'overview',label:'Overview',icon:'home',subs:[['status','Status'],['messages','Messages'],['log','Activity log']]},
+ {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['browser','Browser']]},
+ {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['traffic','Traffic log']]},
+ {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
+ {key:'device',label:'Device',icon:'device',subs:[['menu','Settings menu'],['updates','Updates'],['device','Controls']]}];
+function getSub(g){const G=GROUPS.find(function(x){return x.key===g});const v=subs[g];return G.subs.some(function(x){return x[0]===v})?v:G.subs[0][0]}
+function goTo(g,sub){setDeviceSection(g);if(sub){subs[g]=sub;saveSubs()}render()}
 let state=null,devices=[],browsers=[],windevices=[],clients=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
 function route(){const x=(location.hash||'#devices').slice(1);
  if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null;openWinId=null}
@@ -167,6 +219,7 @@ const ICONS={
  wifi:'M1,9l2,2c4.97,-4.97 13.03,-4.97 18,0l2,-2C16.93,2.93 7.08,2.93 1,9zM9,17l3,3 3,-3C13.35,15.34 10.66,15.34 9,17zM5,13l2,2c2.76,-2.76 7.24,-2.76 10,0l2,-2C15.14,9.14 8.87,9.14 5,13z',
  update:'M19,13c0,3.87 -3.13,7 -7,7 -3.87,0 -7,-3.13 -7,-7 0,-3.83 3.08,-6.94 6.9,-7l0,2.02c-2.7,0.07 -4.9,2.3 -4.9,4.98 0,2.76 2.24,5 5,5 2.76,0 5,-2.24 5,-5 0,-1.27 -0.49,-2.42 -1.27,-3.3l-1.48,1.48 0,-5.5 5.5,0 -1.69,1.69c1.17,1.28 1.94,2.96 1.94,4.63z',
  doc:'M14,2H6c-1.1,0 -1.99,0.9 -1.99,2L4,20c0,1.1 0.89,2 1.99,2H18c1.1,0 2,-0.9 2,-2L20,8l-6,-6zM13,9L13,3.5L18.5,9L13,9z',
+ search:'M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z',
  battery:'M15.67,4H14V2h-4v2H8.33C7.6,4,7,4.6,7,5.33v15.33C7,21.4,7.6,22,8.33,22h7.33c0.74,0,1.34,-0.6,1.34,-1.33V5.33C17,4.6,16.4,4,15.67,4z'};
 function svgIcon(name,fill){const s=document.createElementNS(SVGNS,'svg');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('fill',fill||'#fff');
  const p=document.createElementNS(SVGNS,'path');p.setAttribute('d',ICONS[name]||'');s.append(p);return s}
@@ -231,22 +284,27 @@ async function saveConfigFor(d,msg){const r=await call('PUT',(d.isBrowser?'/api/
 // live inside each device's (or Browser's) own page, scoped to it. Codes and Settings are the only
 // truly account-wide things with nowhere specific to live, so they're reached from a button on the
 // bare list instead of a permanent tab.
+function setCrumbs(parts){
+ const c=document.getElementById('crumbs');c.textContent='';
+ parts.forEach(function(p,i){
+  if(i)c.append(h('span',{class:'sep'},'/'));
+  if(p[1]){const a=h('a',null,p[0]);a.onclick=function(){location.hash=p[1]};c.append(a)}else c.append(h('b',null,p[0]))})}
+function pageHead(m,title,sub){m.append(h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,title),sub?h('div',{class:'sub'},sub):null)))}
 function render(){
- const tabs=document.getElementById('tabs');tabs.textContent='';
- const home=h('button',{class:(tab==='devices'&&!openId&&!openBrowserId)?'on':''},'Devices');
- home.onclick=function(){location.hash='devices'};
- tabs.append(home);
  const m=document.getElementById('main');m.textContent='';
- if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){renderDeviceDetail(m,d);return}openId=null}
- if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){renderBrowserDetail(m,b);return}openBrowserId=null}
- if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){renderWinDetail(m,w);return}openWinId=null}
+ const who=document.getElementById('who');if(who&&state&&state.session)who.textContent=state.session.role==='admin'?'Administrator':'Client account';
+ if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){setCrumbs([['Devices','devices'],[d.name]]);renderDeviceDetail(m,d);return}openId=null}
+ if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){setCrumbs([['Devices','devices'],[b.name]]);renderBrowserDetail(m,b);return}openBrowserId=null}
+ if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){setCrumbs([['Devices','devices'],[w.name]]);renderWinDetail(m,w);return}openWinId=null}
  if(tab==='codes'||tab==='settings'||tab==='clients'){
-  const back=h('button',{class:'btn outline'},'‹ Devices');back.onclick=function(){location.hash='devices'};
-  m.append(h('div',{class:'row'},back));
+  const T={codes:'Codes',clients:'Clients',settings:'Settings'}[tab];
+  setCrumbs([['Devices','devices'],[T]]);
+  pageHead(m,T);
   if(tab==='codes')renderCodes(m);
   else if(tab==='clients')renderClients(m);
   else renderSettings(m);
   return}
+ setCrumbs([['Devices']]);
  renderDevices(m)}
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
@@ -260,58 +318,58 @@ function needsUpdate(d){return latest&&d.info.versionCode&&d.info.versionCode<la
 function pendingApps(d){const want=new Set(d.applied.hide);return d.packages.filter(function(p){return want.has(p.p)!==p.h})}
 function pendingCount(d){return pendingApps(d).length}
 function chipsFor(d,full){
- const c=h('div',{style:'margin-top:6px'});
- if(d.syncPaused)c.append(h('span',{class:'chip warn'},'⏸️ Not connected (paused on the phone)'));
- else c.append(h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},isOnline(d)?'Online':'Offline'));
+ const c=h('div',{style:'margin-top:6px;display:flex;flex-wrap:wrap;gap:6px 0'});
+ if(d.syncPaused)c.append(h('span',{class:'chip warn'},'Not connected (paused on the phone)'));
+ else c.append(h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},h('span',{class:'dot'}),isOnline(d)?'Online':'Offline'));
  const bat=d.info.battery;
- if(bat)c.append(h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},svgIcon('battery','currentColor'),bat.pct+'%'+(bat.charging?' ⚡':'')));
+ if(bat)c.append(h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},svgIcon('battery','currentColor'),bat.pct+'%'+(bat.charging?' · charging':'')));
  const wf=d.info.wifi;
  if(wf)c.append(h('span',{class:'chip'},svgIcon(wf.transport==='wifi'?'wifi':'device','currentColor'),
   wf.transport==='wifi'?(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?('SIM card'+(wf.carrier?' — '+wf.carrier:'')):'No connection'));
- if(d.inflight.some(function(x){return x.type==='lock'})||d.pending)c.append(h('span',{class:'chip warn'},'⏳ Command on its way'));
- if(lockedNow(d))c.append(h('span',{class:'chip warn'},'🔒 Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
- if(browsingFreely(d))c.append(h('span',{class:'chip warn'},'🌐 Free browsing until '+new Date(d.info.browseUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
- if(d.info.kiosk)c.append(h('span',{class:'chip ok'},'🏠 Home screen mode'));
+ if(d.inflight.some(function(x){return x.type==='lock'})||d.pending)c.append(h('span',{class:'chip warn'},'Command pending'));
+ if(lockedNow(d))c.append(h('span',{class:'chip warn'},'Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+ if(browsingFreely(d))c.append(h('span',{class:'chip warn'},'Free browsing until '+new Date(d.info.browseUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+ if(d.info.kiosk)c.append(h('span',{class:'chip ok'},'Home screen mode'));
  if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
- if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'⬆️ Update available'));
+ if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'Update available'));
  const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn',title:pendingApps(d).map(function(p){return p.l||p.p}).join(', ')},n+' changes pending'));
  return c}
+function trow(icon,name,subtitle,statusEl,batt,seen,hash){
+ const r=h('div',{class:'trow'});
+ r.onclick=function(){location.hash=hash};
+ r.append(h('div',{class:'who'},h('div',{class:'avatar'},svgIcon(icon,'currentColor')),h('div',null,h('div',{class:'name'},name),h('div',{class:'mute small'},subtitle))),
+  statusEl,h('div',{class:'c-batt mute'},batt),h('div',{class:'c-seen mute'},seen),h('div',{class:'mute'},'›'));
+ return r}
 function renderDevices(m){
- if(!devices.length&&!browsers.length&&!windevices.length){
-  m.append(h('div',{class:'card'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Get a code below to add a phone or a Browser.')));
- }else{
-  for(const d of devices){
-   const card=h('div',{class:'card dev'});
-   card.onclick=function(){location.hash='device/'+d.id};
-   const nameCol=h('div',{class:'grow'},h('div',{class:'name'},d.name));
-   if(state.session.role==='admin'&&d.ownerId)nameCol.append(h('div',{class:'mute small'},d.ownerId));
-   card.append(h('div',{class:'ico'},'📱'),nameCol,h('div',{class:'mute',style:'font-size:22px'},'›'));
-   m.append(card)}
-  for(const b of browsers){
-   const card=h('div',{class:'card dev'});
-   card.onclick=function(){location.hash='browser/'+b.id};
-   card.append(h('div',{class:'ico'},'🌐'),h('div',{class:'grow'},h('div',{class:'name'},'Browser'),h('div',{class:'mute small'},b.name+' · no MDM on this phone')),h('div',{class:'mute',style:'font-size:22px'},'›'));
-   m.append(card)}
-  for(const w of windevices){
-   const card=h('div',{class:'card dev'});
-   card.onclick=function(){location.hash='win/'+w.id};
-   card.append(h('div',{class:'ico'},'💻'),h('div',{class:'grow'},h('div',{class:'name'},w.name),h('div',{class:'mute small'},(w.info.hostname||'LockGuard')+' · '+(w.enabled?'Locked down':'Not locked down'))),h('div',{class:'mute',style:'font-size:22px'},'›'));
-   m.append(card)}
-  m.append(h('div',{class:'mute small',style:'margin:4px 4px 12px'},'Tap one to see everything and control it — apps, sites, and all its own controls live there.'));
- }
- const row=h('div',{class:'row'});
- row.append(btn('Refresh','tonal',load));
- const codes=h('button',{class:'btn outline'},'Codes');codes.onclick=function(){location.hash='codes'};
- row.append(codes);
- // The logo is the only thing left here, and it's admin-only (see renderSettings) -- a client
- // would find nothing behind this button, so it doesn't show one at all.
+ const total=devices.length+browsers.length+windevices.length;
+ const head=h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,'Devices'),h('div',{class:'sub'},total+(total===1?' device':' devices'))));
+ const bar=h('div',{class:'toolbar'});
+ bar.append(btn('Refresh','tonal',load));
+ const codes=h('button',{class:'btn'},'Add device');codes.onclick=function(){location.hash='codes'};bar.append(codes);
  if(state.session.role==='admin'){
-  const settings=h('button',{class:'btn outline'},'Settings');settings.onclick=function(){location.hash='settings'};
-  const clients=h('button',{class:'btn outline'},'Clients');clients.onclick=function(){location.hash='clients'};
-  row.append(settings,clients);
- }
- m.append(row);
+  const clients=h('button',{class:'btn tonal'},'Clients');clients.onclick=function(){location.hash='clients'};
+  const settings=h('button',{class:'btn tonal'},'Settings');settings.onclick=function(){location.hash='settings'};
+  bar.append(clients,settings)}
+ head.append(bar);m.append(head);
+ if(!total){
+  m.append(h('div',{class:'card empty'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Press "Add device" to get a code for a phone or a Browser.')));
+  return}
+ const t=h('div',{class:'table'});
+ t.append(h('div',{class:'trow thead'},h('div',null,'Device'),h('div',null,'Status'),h('div',null,'Battery'),h('div',null,'Last seen'),h('div')));
+ for(const d of devices){
+  const st=h('div',null);
+  if(d.syncPaused)st.append(h('span',{class:'chip warn'},'Paused'));
+  else st.append(h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},h('span',{class:'dot'}),isOnline(d)?'Online':'Offline'));
+  if(lockedNow(d))st.append(h('span',{class:'chip warn'},'Locked'));
+  if(needsUpdate(d))st.append(h('span',{class:'chip warn'},'Update'));
+  const bat=d.info.battery;
+  const sub=(state.session.role==='admin'&&d.ownerId)?d.ownerId:'Android phone';
+  t.append(trow('device',d.name,sub,st,bat?bat.pct+'%'+(bat.charging?' · charging':''):'—',ago(d.lastSeen),'device/'+d.id))}
+ for(const b of browsers)t.append(trow('globe','Browser',b.name+' · no MDM on this phone',h('div',null,h('span',{class:'chip'},'Browser')),'—',b.lastSeen?ago(b.lastSeen):'—','browser/'+b.id));
+ for(const w of windevices)t.append(trow('device',w.name,(w.info.hostname||'LockGuard')+' · Windows',h('div',null,h('span',{class:'chip '+(w.enabled?'ok':'')},w.enabled?'Locked down':'Not locked down')),'—',w.lastSeen?ago(w.lastSeen):'—','win/'+w.id));
+ m.append(t);
 }
+
 function kv(k,v){return h('div',{class:'kv'},h('span',{class:'mute'},k),h('b',null,v))}
 function resetCard(d){
  const i=d.info,rs=i.restrictions||[];
@@ -321,7 +379,7 @@ function resetCard(d){
   :[2,'Bootloader state unknown','The phone did not report it.']);
  rows.push(i.frpSupported===false?[0,'Android is too old for reset protection','Android 11 or newer is needed.']
   :i.frpAccounts>0?[1,'Reset protection is set','After a reset from recovery mode, setup demands '+i.frpAccounts+' Google account(s) you chose.']
-  :[0,'Reset protection is not set','Add your Google account ID under Settings → Factory Reset Protection.']);
+  :[0,'Reset protection is not set','Add your Google account ID under Device → Controls → Factory Reset Protection.']);
  rows.push(rs.indexOf('no_factory_reset')>=0?[1,'Reset from Settings is blocked','']:[0,'Reset from Settings is not blocked','Turn on "Block factory reset from Settings".']);
  rows.push(rs.indexOf('no_safe_boot')>=0?[1,'Safe Mode is blocked','']:[0,'Safe Mode is not blocked','Turn on "Block Safe Mode".']);
  rows.push(rs.indexOf('no_debugging_features')>=0?[1,'Developer options and USB debugging are blocked','']:[0,'Developer options / USB debugging are not blocked','Turn on "Block Developer options and USB debugging" when you are done setting up.']);
@@ -333,25 +391,12 @@ function resetCard(d){
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No phone protection is unbreakable. This checks the known ways around a reset: resetting from Settings, Safe Mode, USB debugging, an unlocked bootloader, an old system, and simply setting the phone up again.'));
  return card}
 
-/* ---------- hub picker: same idiom as the phone app's own Apps/Settings hubs ---------- */
-function hubPicker(m,options){
- // Same shape as the phone app's own Ui.rowTile: a small red icon square on the left, the label
- // next to it, stacked full-width rows -- not a grid of big tiles (that's reserved for the
- // Administrator home screen itself, see renderDeviceDetail's section picker below).
- for(const [key,label,setSub,icon] of options){
-  const row=h('div',{class:'hubrow'},h('div',{class:'ico'},svgIcon(icon)),h('div',{class:'label'},label));
-  row.onclick=function(){setSub(key);render()};
-  m.append(row)}}
 function phoneLocalNote(m,text){
  m.append(h('div',{class:'card'},h('div',{class:'mute'},text)))}
 
 /* ---------- Apps hub: Regular Apps / Home Screen Mode / Blocking / System Apps ---------- */
 function buildAppsHub(m,dv){
- if(!appsSub){
-  hubPicker(m,[['regular','Regular Apps',setAppsSub,'apps'],['kiosk','Home Screen Mode',setAppsSub,'home'],['blocking','Blocking',setAppsSub,'shield'],['system','System Apps',setAppsSub,'device']]);
-  return}
- // The one "‹ Back" button for this whole page (renderDeviceDetail, below) already pops one level
- // at a time -- no second Back button nested in here too.
+ const appsSub=getSub('apps');
  if(appsSub==='regular'){
   // Same gating as the phone's own Regular Apps section (AdminActivity.buildAppsSection): while
   // Home screen mode is on, app allow/block decisions only come from the Allowed Apps editor in
@@ -359,7 +404,7 @@ function buildAppsHub(m,dv){
   // fighting over the same config.apps, with no way to tell here that Home screen mode is why an
   // app looks different than expected.
   if(dv.config.homeScreen){
-   const note=h('div',{class:'card'},h('div',{class:'mute'},'Home screen mode is on. Apps can only be allowed or blocked from the Allowed Apps list in the Home Screen Mode tab while it\'s on.'));
+   const note=h('div',{class:'card'},h('div',{class:'mute'},'Home screen mode is on. Apps can only be allowed or blocked from the Allowed Apps list in the Home screen tab while it\'s on.'));
    note.append(h('div',{style:'margin-top:10px'},btn('Turn off Home screen mode','outline',async function(){
     if(!confirm('Turn off Home screen mode on this phone?'))return;
     dv.config.homeScreen=false;
@@ -380,7 +425,7 @@ function buildAppsHub(m,dv){
   ar.append(file,btn('Upload APK from this computer…','',async function(){file.click()}));
   ar.append(btn('Install from link…','',async function(){const url=prompt('Direct https:// link to an APK file');if(!url)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'install',args:{url:url}});snack('Install queued. The phone runs it at its next check-in (within about 5 minutes).');load()}));
   ar.append(btn('Uninstall by package…','',async function(){const p=prompt('Package name to uninstall');if(!p)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:p}});snack('Uninstall queued. The phone runs it at its next check-in (within about 5 minutes).');load()}));
-  appBox.append(ar,h('div',{class:'mute small',style:'margin-top:8px'},'Uploads are kept for a week and limited to 24 MB. For bigger apps use a link, or let the person install from the Play Store with approval mode (Settings → Device).'));
+  appBox.append(ar,h('div',{class:'mute small',style:'margin-top:8px'},'Uploads are kept for a week and limited to 24 MB. For bigger apps use a link, or let the person install from the Play Store with approval mode (Device → Controls).'));
   m.append(appBox);
 
   const codeBox=h('div',{class:'card'},h('h2',null,'Codes for this phone'),
@@ -402,7 +447,7 @@ function buildAppsHub(m,dv){
   hsCard.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
    h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons, plus a "Settings" tile that always shows regardless of the Allow list (see Settings Menu below -- it\'s the only way to reach any part of Settings while this is on). An app set to Block is fully switched off, same as always; one left at Default or set to Soft block just has no icon here and stays installed and running in the background. Calls and texts still work. On or off, nothing in between: the master code on the phone (Administrator) can turn it off there too, and that reaches this switch on the next sync, same as every other setting here.')),
    sw(dv.config.homeScreen,async function(on){
-    if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the Regular Apps box, because only those will appear.')){render();return}
+    if(on&&!confirm('Turn on Home screen mode on this phone? First make sure the apps the person needs (phone, messages, maps…) are set to Allow on the Apps tab, because only those will appear.')){render();return}
     dv.config.homeScreen=on;
     // Soft block only means anything while this switch is on; off a leftover "soft" app would be
     // stuck invisible in App rules (no button shows it as selected) instead of back at Default.
@@ -413,19 +458,18 @@ function buildAppsHub(m,dv){
    sw(dv.config.hideKioskAdmin,async function(on){dv.config.hideKioskAdmin=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
   m.append(hsCard);
   const smCard=h('div',{class:'card'},h('h2',null,'Settings Menu'),
-   h('div',{class:'mute'},'The disguised "Settings" tile home screen mode always shows, whatever the Allow list says -- the only way to reach any part of Settings while it\'s on. Which categories it shows and where each one links to is set up on the phone itself (most need no setup at all; a few manufacturer-only screens need a one-time "Learn" there). Same place as Settings → Settings Menu, shown here too since it\'s part of how home screen mode actually works.'));
-  smCard.append(h('div',{style:'margin-top:8px'},btn('Open Settings → Settings Menu','outline',function(){setDeviceSection('settings');setSettingsSub('menu');render()})));
+   h('div',{class:'mute'},'The disguised "Settings" tile home screen mode always shows, whatever the Allow list says -- the only way to reach any part of Settings while it\'s on. Which categories it shows and where each one links to is set up on the phone itself (most need no setup at all; a few manufacturer-only screens need a one-time "Learn" there). Same place as Device → Settings menu, shown here too since it\'s part of how home screen mode actually works.'));
+  smCard.append(h('div',{style:'margin-top:8px'},btn('Open Device → Settings menu','outline',function(){goTo('device','menu')})));
   m.append(smCard);
-  m.append(h('div',{class:'card'},h('h2',null,'Allowed Apps'),h('div',{class:'mute'},'Same Default / Allow / Block / Schedule controls as Regular Apps -- set to Allow whatever should appear while Home screen mode is on, before turning it on above.')));
+  m.append(h('div',{class:'card'},h('h2',null,'Allowed Apps'),h('div',{class:'mute'},'Same Default / Allow / Block / Schedule controls as the Apps tab -- set to Allow whatever should appear while Home screen mode is on, before turning it on above.')));
   renderAppEditor(m,dv);
  } else if(appsSub==='blocking'){
   const bCard=h('div',{class:'card'},h('h2',null,'Block Apps/Screens'),
    h('div',{class:'mute'},'Specific screens (exact app components) to bounce away from the instant they open -- set directly on the phone\'s own Administrator screen (Apps → Blocking → Block Apps/Screens). Picking the exact screen needs the phone itself (it offers an autocomplete built from what\'s actually been seen in the foreground there), so this one box stays phone-only.'));
   m.append(bCard);
   renderWholeAppBlocklist(m,dv);
-  renderDnsBlocklist(m,dv);
-  renderDnsAllowlist(m,dv);
-  renderTrafficLog(m,dv);
+ } else if(appsSub==='browser'){
+  renderSites(m,dv);
  } else if(appsSub==='system'){
   const sal=h('div',{class:'card'},h('h2',null,'System apps'),
    h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "Apps on this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
@@ -450,23 +494,23 @@ function buildAppsHub(m,dv){
 }
 
 /* ---------- Settings hub: Settings Menu / Permissions / Network / Updates / Device ---------- */
-function buildSettingsHub(m,dv){
- if(!settingsSub){
-  hubPicker(m,[['menu','Settings Menu',setSettingsSub,'apps'],['permissions','Permissions',setSettingsSub,'key'],['network','Network',setSettingsSub,'wifi'],['updates','Updates',setSettingsSub,'update'],['device','Device',setSettingsSub,'device']]);
-  return}
- if(settingsSub==='menu')phoneLocalNote(m,'Most of the 16 categories here already work with no setup at all -- they point at a standard Android settings screen (Wi-Fi, Bluetooth, sound, display…) that works the same on every phone, or (Android Auto) jump straight into that app itself. A handful are this phone brand\'s own screens with no standard Android way to open them by name (notably some Motorola-only ones), so for just those few, Settings → Settings Menu → Learn on the phone itself captures the exact screen once, by physically going there -- genuinely needs to happen on the phone, there is no remote equivalent for an unlisted manufacturer screen. Everything else needs nothing here.');
- else if(settingsSub==='permissions')renderPermissions(m,dv);
- else if(settingsSub==='network')renderNetworkSection(m,dv);
- else if(settingsSub==='updates')renderUpdatesSection(m,dv);
- else if(settingsSub==='device')renderDeviceCard(m,dv);
+function buildInternetGroup(m,dv){
+ const sub=getSub('internet');
+ if(sub==='network')renderNetworkSection(m,dv);
+ else if(sub==='dns'){renderDnsBlocklist(m,dv);renderDnsAllowlist(m,dv)}
+ else if(sub==='traffic')renderTrafficLog(m,dv);
+}
+function buildDeviceGroup(m,dv){
+ const sub=getSub('device');
+ if(sub==='menu')phoneLocalNote(m,'Most of the 16 categories here already work with no setup at all -- they point at a standard Android settings screen (Wi-Fi, Bluetooth, sound, display…) that works the same on every phone, or (Android Auto) jump straight into that app itself. A handful are this phone brand\'s own screens with no standard Android way to open them by name (notably some Motorola-only ones), so for just those few, Settings → Settings Menu → Learn on the phone itself captures the exact screen once, by physically going there -- genuinely needs to happen on the phone, there is no remote equivalent for an unlisted manufacturer screen. Everything else needs nothing here.');
+ else if(sub==='updates')renderUpdatesSection(m,dv);
+ else if(sub==='device')renderDeviceCard(m,dv);
 }
 
 function renderDeviceDetail(m,d){
- if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceSection(null);setAppsSub(null);setSettingsSub(null);setLockSub(null)}
- const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
- m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
- m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico dev',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;padding:0'},'📱'),
-  h('div',{class:'grow'},h('h2',{style:'font-size:20px'},d.name),chipsFor(d,true))));
+ if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceSection(null);subs={};saveSubs()}
+ const headBox=h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('device','currentColor')),h('div',{class:'grow'},h('h1',null,d.name),chipsFor(d,true)),btn('Refresh','tonal',load));
+ m.append(headBox);
 
  const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it at its next check-in (within about 5 minutes).');load()};
  const cmd=function(box,label,type,args,confirmMsg,cls){box.append(btn(label,cls||'tonal',async function(){
@@ -474,7 +518,7 @@ function renderDeviceDetail(m,d){
 
  // ----- Overview (status + location + activity; the phone app has no single tile for this, it's
  // the dashboard's own equivalent of AdminActivity's Overview toggle+status card) -----
- const ov=h('section');
+ const ov=h('section',{class:'cols'});
  if(d.syncPaused)ov.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Not connected'),h('div',{class:'mute'},'This device is not connected to the dashboard because it was turned off (from this phone\'s own Admin screen, to save battery). It keeps enforcing whatever it had last. It reconnects only when someone turns it back on there — nothing here can reach it in the meantime.')));
  const info=h('div',{class:'card'},h('h2',null,'Phone'));
  info.append(kv('Recovery code',d.fallbackCode||'not seen yet (needs a check-in on a current build)'),
@@ -528,10 +572,9 @@ function renderDeviceDetail(m,d){
  ov.append(acts);
 
  // ----- Lock (hub: Lock / App lock / Administrator code -- every kind of lock in one place) -----
+ const lockSub=getSub('security');
  const lk=h('section');
- if(!lockSub){
-  hubPicker(lk,[['screen','Lock',setLockSub,'lock'],['applock','App lock',setLockSub,'lock'],['admincode','Administrator code',setLockSub,'key']]);
- } else if(lockSub==='screen'){
+ if(lockSub==='screen'){
   const lockBox=h('div',{class:'card'},h('h2',null,'Lock'));const lr=h('div',{class:'row',style:'margin-top:8px'});
   lr.append(btn('Lock…','',async function(){
     const v=await ask('Lock this phone',[
@@ -543,7 +586,7 @@ function renderDeviceDetail(m,d){
   cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
   cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
   lockBox.append(lr);
-  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Settings → Device.'));
+  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Device → Controls.'));
   lk.append(lockBox);
  } else if(lockSub==='applock'){
   const appLockOn=!!d.info.appLock;
@@ -555,8 +598,10 @@ function renderDeviceDetail(m,d){
     if(!pin)return;await queue('App lock','setAppLockPin',{pin:pin})}));
   if(appLockOn)alRow.append(btn('Turn off App lock','outline',async function(){
     if(!confirm('Turn off App lock on this phone?'))return;await queue('App lock','clearAppLockPin',{})}));
-  alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Needs an agent build that knows setAppLockPin/clearAppLockPin -- if the phone replies "unknown command", update the agent first (Settings → Device → Update agent) and try again once it has checked in. Applies within about 5 minutes.'));
+  alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Needs an agent build that knows setAppLockPin/clearAppLockPin -- if the phone replies "unknown command", update the agent first (Device → Controls → Update agent) and try again once it has checked in. Applies within about 5 minutes.'));
   lk.append(alBox);
+ } else if(lockSub==='restrictions'){
+  renderPermissions(lk,d);
  } else if(lockSub==='admincode'){
   const mc=h('div',{class:'card'},h('h2',null,'Administrator code (master code)'),
    h('div',{class:'mute'},'Works on this phone with no internet (Agent → Administrator): lock, set PIN, install APKs, show/hide apps, release, erase. The phone only stores a scrambled version. Status: '+(d.masterSet?'set':'not set')+'.'));
@@ -583,11 +628,9 @@ function renderDeviceDetail(m,d){
  // Browser the only browser" -- the phone's standalone-Browser install/open buttons are the only
  // part of its own Add-ons screen that stays phone-local, since "install" is a one-shot action
  // with nothing to mirror as a toggle) -----
- const ad=h('section');renderSites(ad,d);
-
+ 
  // ----- Settings (hub: Settings Menu / Permissions / Network / Updates / Device) -----
- const se=h('section');buildSettingsHub(se,d);
-
+ 
  // ----- Messages -----
  const msgs=h('section');
  if((d.messages||[]).length){
@@ -612,40 +655,22 @@ function renderDeviceDetail(m,d){
  for(const e of d.events.slice().reverse())ll.append(h('div',{class:'act'},(ICON[e.k]||'•')+' '+e.m+' · '+ago(e.at)));
  lg.append(ll);
 
- // ----- section picker -----
- // The exact same home screen as the phone's own Administrator screen: a 2-column grid of big red
- // icon tiles (Lock / Apps / Add-ons / App lock / Settings / Messages, same icons, same order --
- // see AdminActivity's own tile grid), tapping one replaces the grid with that section and a
- // "‹ Back" button, same as AdminActivity.openSection/onBackPressed. Two extra tiles the phone
- // doesn't have: Overview (the phone shows this as a toggle above its grid, not a tile) and Log
- // (the phone has no log viewer of its own). Apps and Settings are real two-level hubs underneath,
- // same picker-then-section idiom as AdminActivity's buildAppsHub/buildSettingsHub.
- const sections={overview:['Overview','device',ov],lock:['Lock','lock',lk],apps:['Apps','apps',ap],
-  addons:['Add-ons','globe',ad],settings:['Settings','key',se],
-  messages:['Messages','message',msgs],log:['Log','doc',lg]};
- const openSection=function(key){setAppsSub(null);setSettingsSub(null);setLockSub(null);setDeviceSection(key);render()};
 
- // ----- search: every section and sub-section, same as "search Settings" on a phone -----
+ const internet=h('section');buildInternetGroup(internet,d);
+ const devg=h('section');buildDeviceGroup(devg,d);
+ const body={overview:{status:ov,messages:msgs,log:lg},apps:ap,internet:internet,security:lk,device:devg};
+
+ // ----- search: every group and tab -----
  const searchIndex=[
-  ['Overview',function(){openSection('overview')}],
-  ['Lock — Lock / unlock / screen PIN',function(){setDeviceSection('lock');setLockSub('screen');render()}],
-  ['Lock — App lock',function(){setDeviceSection('lock');setLockSub('applock');render()}],
-  ['Lock — Administrator code (master code)',function(){setDeviceSection('lock');setLockSub('admincode');render()}],
-  ['Apps — Regular Apps',function(){setDeviceSection('apps');setAppsSub('regular');render()}],
-  ['Apps — Home Screen Mode',function(){setDeviceSection('apps');setAppsSub('kiosk');render()}],
-  ['Apps — Blocking',function(){setDeviceSection('apps');setAppsSub('blocking');render()}],
-  ['Apps — System Apps',function(){setDeviceSection('apps');setAppsSub('system');render()}],
-  ['Add-ons (Browser)',function(){openSection('addons')}],
-  ['Settings — Settings Menu',function(){setDeviceSection('settings');setSettingsSub('menu');render()}],
-  ['Settings — Permissions',function(){setDeviceSection('settings');setSettingsSub('permissions');render()}],
-  ['Settings — Network / Wi-Fi',function(){setDeviceSection('settings');setSettingsSub('network');render()}],
-  ['Settings — Updates',function(){setDeviceSection('settings');setSettingsSub('updates');render()}],
-  ['Settings — Device',function(){setDeviceSection('settings');setSettingsSub('device');render()}],
-  ['Turn off / on the phone\'s own Administrator panel',function(){setDeviceSection('settings');setSettingsSub('device');render()}],
-  ['Disable fingerprint / face / biometric unlock',function(){setDeviceSection('settings');setSettingsSub('device');render()}],
-  ['Apps — Home Screen Mode — hide the Administrator button',function(){setDeviceSection('apps');setAppsSub('kiosk');render()}],
-  ['Messages',function(){openSection('messages')}],['Log',function(){openSection('log')}]];
- const sWrap=h('div',{class:'search'});
+  ['Status, location and activity','overview','status'],['Messages from the phone','overview','messages'],['Activity log','overview','log'],
+  ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
+  ['Restrictions (permissions)','security','restrictions'],
+  ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser: allowed sites','apps','browser'],
+  ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],
+  ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
+  ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
+ const sWrap=h('div',{class:'search',style:'margin:0;width:260px;max-width:100%'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
  const sResults=h('div',{class:'search-results'});
  const renderSResults=function(){
@@ -653,32 +678,32 @@ function renderDeviceDetail(m,d){
   if(!deviceSearch){sResults.style.display='none';return}
   const q=deviceSearch.toLowerCase();
   const hits=searchIndex.filter(function(e){return e[0].toLowerCase().includes(q)});
-  if(!hits.length){sResults.style.display='block';sResults.append(h('div',{class:'mute'},'No settings match.'));return}
   sResults.style.display='block';
-  for(const [label,go] of hits){const row=h('div',null,label);row.onclick=function(){deviceSearch='';go()};sResults.append(row)}};
- sInput.oninput=function(){deviceSearch=sInput.value;const pos=sInput.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search every setting…"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
+  if(!hits.length){sResults.append(h('div',{class:'mute'},'No settings match.'));return}
+  for(const e of hits){const row=h('div',null,e[0]);row.onclick=function(){deviceSearch='';goTo(e[1],e[2])};sResults.append(row)}};
+ sInput.oninput=function(){deviceSearch=sInput.value;renderSResults()};
  renderSResults();
- sWrap.append(h('div',{class:'ico'},'🔎'),sInput,sResults);
- m.append(sWrap);
+ sWrap.append(h('div',{class:'ico'},svgIcon('search','currentColor')),sInput,sResults);
+ headBox.insertBefore(sWrap,headBox.lastChild);
 
- if(!deviceSection){
-  const grid=h('div',{class:'tilegrid-lg'});
-  for(const key of ['lock','apps','addons','settings','messages','overview','log']){
-   const [label,icon]=sections[key];
-   const tile=h('button',{class:'tile'},h('div',{class:'ico'},svgIcon(icon)),h('div',null,label));
-   tile.onclick=function(){openSection(key)};
-   grid.append(tile)}
-  m.append(grid);
- } else {
-  // One "‹ Back" button total, however deep: a sub-picker (Apps/Settings/Lock) pops back to its
-  // own hub first, everything else pops straight to the home grid -- never two Back buttons
-  // stacked for the same tap.
-  const back=h('button',{class:'btn outline',style:'margin-bottom:12px'},'‹ Back');
-  back.onclick=function(){
-   if(appsSub||settingsSub||lockSub){setAppsSub(null);setSettingsSub(null);setLockSub(null);render()}
-   else{setDeviceSection(null);render()}};
-  m.append(back,sections[deviceSection][2]);
- }
+ // ----- side menu (5 groups) + tabs along the top of the chosen group -----
+ const sec=GROUPS.some(function(g){return g.key===deviceSection})?deviceSection:'overview';
+ const G=GROUPS.find(function(g){return g.key===sec});
+ const nMsg=(d.messages||[]).length;
+ const side=h('nav',{class:'side'});
+ for(const g of GROUPS){
+  const b=h('button',{class:'nav'+(g.key===sec?' on':'')},svgIcon(g.icon,'currentColor'),g.label);
+  if(g.key==='overview'&&nMsg)b.append(h('span',{class:'badge'},String(nMsg)));
+  b.onclick=function(){goTo(g.key)};side.append(b)}
+ const content=h('div',{class:'content'});
+ const cur=getSub(sec);
+ const pills=h('div',{class:'pills'});
+ for(const sub of G.subs){
+  const b=h('button',{class:sub[0]===cur?'on':''},sub[1]+(sec==='overview'&&sub[0]==='messages'&&nMsg?' ('+nMsg+')':''));
+  b.onclick=function(){subs[sec]=sub[0];saveSubs();render()};pills.append(b)}
+ content.append(pills);
+ content.append(typeof body[sec].nodeType==='number'?body[sec]:body[sec][cur]);
+ m.append(h('div',{class:'shell'},side,content));
 }
 
 /* ---------- apps ---------- */
@@ -976,10 +1001,7 @@ function renderCloneCard(m,dv){
  m.append(card);
 }
 function renderBrowserDetail(m,b){
- const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
- m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
- m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none'},'🌐'),
-  h('div',{class:'grow'},h('h2',{style:'font-size:20px'},b.name),h('div',{class:'mute small'},'Connected directly — no MDM on this phone · last check-in '+ago(b.lastSeen)))));
+ m.append(h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('globe','currentColor')),h('div',{class:'grow'},h('h1',null,b.name),h('div',{class:'mute small'},'Connected directly — no MDM on this phone · last check-in '+ago(b.lastSeen))),btn('Refresh','tonal',load)));
 
  const controls=h('div',{class:'card'},h('h2',null,'This browser'));
  controls.append(h('div',{class:'row',style:'margin-top:8px'},
@@ -1006,10 +1028,7 @@ function renderBrowserDetail(m,b){
 }
 
 function renderWinDetail(m,w){
- const back=h('button',{class:'btn outline'},'‹ All phones');back.onclick=function(){location.hash='devices'};
- m.append(h('div',{class:'row'},back,h('div',{class:'grow'}),btn('Refresh','tonal',load)));
- m.append(h('div',{class:'row',style:'margin-top:12px'},h('div',{class:'ico',style:'width:44px;height:44px;border-radius:12px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none'},'💻'),
-  h('div',{class:'grow'},h('h2',{style:'font-size:20px'},w.name),h('div',{class:'mute small'},(w.info.hostname||'Windows computer')+' · last check-in '+ago(w.lastSeen)))));
+ m.append(h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('device','currentColor')),h('div',{class:'grow'},h('h1',null,w.name),h('div',{class:'mute small'},(w.info.hostname||'Windows computer')+' · last check-in '+ago(w.lastSeen))),btn('Refresh','tonal',load)));
 
  const controls=h('div',{class:'card'},h('h2',null,'This computer'));
  controls.append(h('div',{style:'margin-top:4px'},sw(w.enabled,async function(on){
@@ -1132,7 +1151,7 @@ function renderPermissions(m,dv){
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},state.restrictions[k].label),
    sw(dv.config.restrictions[k],async function(on){dv.config.restrictions[k]=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}})))}
  m.append(card,h('div',{class:'card'},h('h2',null,'Good to know'),
-  h('div',{class:'mute'},'Blocking Developer options also turns off USB debugging, so adb stops working. If you need to get back in, send "Release device" from Settings → Device (or use recovery mode).')));
+  h('div',{class:'mute'},'Blocking Developer options also turns off USB debugging, so adb stops working. If you need to get back in, send "Release device" from Device → Controls (or use recovery mode).')));
 }
 function renderNetworkSection(m,dv){
  const wl=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
@@ -1167,7 +1186,7 @@ function renderUpdatesSection(m,dv){
    card.append(row)}}
  m.append(card);
  m.append(h('div',{class:'card'},h('h2',null,'Agent updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Update the agent automatically'),
-  h('div',{class:'mute'},'The phone checks GitHub for a newer build every 6 hours and installs it itself. You can always update it yourself from Settings → Device, or from the phone\'s admin panel.')),
+  h('div',{class:'mute'},'The phone checks GitHub for a newer build every 6 hours and installs it itself. You can always update it yourself from Device → Controls, or from the phone\'s admin panel.')),
   sw(dv.config.autoUpdate,async function(on){dv.config.autoUpdate=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('h2',null,'System updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Freeze Android system updates'),
   h('div',{class:'mute'},'Android will not let any app block OTA updates completely -- a freeze can only last up to 90 days at a time, with a mandatory 60-day gap before the next one. This sets the most freeze Android allows, back to back, which covers most of the year but leaves about two months of it open to an update landing. There is no setting that closes that gap; this is a limit of Android itself, not this app.')),
