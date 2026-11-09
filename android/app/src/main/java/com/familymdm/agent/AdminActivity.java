@@ -32,28 +32,15 @@ public class AdminActivity extends Activity {
 
     private LinearLayout root;
     private TextView status;
-    // null = the tile-grid Administrator home; otherwise which section's cards build() renders.
-    private String currentSection;
     // Apps section: whether the "Show / Hide Apps" picker is expanded below its row.
     private boolean showingAppsPicker;
     // Home screen mode section: whether the "Allowed Apps" picker is expanded below its row.
     private boolean showingKioskAllowedPicker;
     // Settings menu section: null = pick "Icon setup" or "Categories"; otherwise which one is open.
     private String settingsMenuSub;
-    // Blocking section: null = pick "Block Apps/Screens" or "Block Whole Apps"; otherwise which.
-    private String blockingSub;
     // Block Whole Network section: non-null = which blocked package's own per-app allow list is
     // open for editing (reached by tapping that package's row); null = the plain blocked-apps list.
     private String networkAllowlistPkg;
-    // Apps hub: null = pick Regular Apps / Home Screen Mode / Blocking; otherwise which one is open
-    // -- three top-level tiles that used to be three separate ones, merged into one the same way
-    // the dashboard's own "App rules" groups what used to be scattered across several places.
-    private String appsSub;
-    // Settings hub: null = pick Settings Menu / Permissions / Network / Updates / Device; otherwise
-    // which one is open -- same idea as appsSub, for the "phone configuration" tiles.
-    private String settingsHubSub;
-    // Administrator home: whether the "Overview" card is expanded below its row.
-    private boolean showingOverview;
     // Shared by both apps pickers above (never shown at once, since only one section renders at a
     // time) -- the apps list and search text backing whichever picker is currently expanded, and
     // whether it was opened from the Home screen mode section (where Block offers to Hard Block
@@ -70,6 +57,25 @@ public class AdminActivity extends Activity {
     private JSONArray systemAppsCache;
     private String systemAppsQuery = "";
     private boolean systemAppsLoading;
+
+    // The Administrator screen has 5 groups (same ones as the dashboard's device page), each with a
+    // few tabs. `group` is the open group, `subOf` remembers which tab each group was last on.
+    private static final String[] GROUPS = {"overview", "apps", "internet", "security", "device"};
+    private static final String[] GROUP_LABELS = {"Overview", "Apps", "Internet", "Security", "Device"};
+    private static final String[][] SUBS = {
+            {"status", "messages"},
+            {"regular", "kiosk", "blocked", "system", "browser"},
+            {"wifi", "filter", "cutoff", "traffic"},
+            {"lock", "applock", "restrictions", "access"},
+            {"menu", "updates", "controls"}};
+    private static final String[][] SUB_LABELS = {
+            {"Status", "Messages"},
+            {"Apps", "Home screen", "Blocked", "System apps", "Browser"},
+            {"Wi-Fi", "Website filter", "Network cutoff", "Traffic log"},
+            {"Screen lock", "App lock", "Restrictions", "App access"},
+            {"Settings menu", "Updates", "Controls"}};
+    private String group = "overview";
+    private final java.util.Map<String, String> subOf = new java.util.HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -94,25 +100,12 @@ public class AdminActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (networkAllowlistPkg != null) {
-            // Deepest level of all: one blocked package's own per-app allow list. Pop just that,
-            // stay on the Block Whole Network list it was opened from.
+            // One blocked package's own per-app allow list. Pop just that, stay on the Network cutoff list.
             networkAllowlistPkg = null;
             build();
-        } else if (settingsMenuSub != null || blockingSub != null) {
-            // Innermost: a sub-section's own further nested picker (e.g. Settings Menu's own
-            // "Icon setup" vs "Categories"). Pop just that, stay on the same sub-section.
+        } else if (settingsMenuSub != null) {
+            // Settings menu's own "Icon setup" vs "Categories" picker. Pop just that.
             settingsMenuSub = null;
-            blockingSub = null;
-            build();
-        } else if (appsSub != null || settingsHubSub != null) {
-            // Middle: which sub-section is open inside the Apps or Settings hub. Pop back to that
-            // hub's own picker row, stay on the Administrator home's "Apps"/"Settings" tile.
-            appsSub = null;
-            settingsHubSub = null;
-            build();
-        } else if (currentSection != null) {
-            currentSection = null;
-            resetSubState();
             build();
         } else {
             super.onBackPressed();
@@ -125,14 +118,7 @@ public class AdminActivity extends Activity {
         showingAppsPicker = false;
         showingKioskAllowedPicker = false;
         settingsMenuSub = null;
-        blockingSub = null;
         networkAllowlistPkg = null;
-        appsSub = null;
-        settingsHubSub = null;
-    }
-
-    private boolean inSection(String name) {
-        return name.equals(currentSection);
     }
 
     @Override
@@ -215,112 +201,81 @@ public class AdminActivity extends Activity {
         return b;
     }
 
-    // Six top-level tiles instead of the twelve this used to be -- Apps and Settings are now hubs,
-    // each a picker in front of several sub-sections that used to each be their own top-level tile
-    // (see buildAppsHub/buildSettingsHub), the same way the dashboard groups its own per-device
-    // page into a handful of tabs instead of one tile per toggle.
-    private static final java.util.Map<String, String> SECTION_TITLES = new java.util.LinkedHashMap<>();
-    static {
-        SECTION_TITLES.put("lock", "Lock");
-        SECTION_TITLES.put("apps", "Apps");
-        SECTION_TITLES.put("addons", "Add-ons");
-        SECTION_TITLES.put("applock", "App lock");
-        SECTION_TITLES.put("settings", "Settings");
-        SECTION_TITLES.put("messages", "Messages");
+    private int groupIndex() {
+        for (int i = 0; i < GROUPS.length; i++) if (GROUPS[i].equals(group)) return i;
+        return 0;
     }
 
-    private void openSection(String name) {
-        currentSection = name;
-        resetSubState();
-        build();
+    private int subIndex(int g) {
+        String cur = subOf.get(GROUPS[g]);
+        for (int i = 0; i < SUBS[g].length; i++) if (SUBS[g][i].equals(cur)) return i;
+        return 0;
     }
 
     private void build() {
         root.removeAllViews();
-        Ui.add(root, Ui.banner(this, currentSection == null ? "Administrator" : SECTION_TITLES.get(currentSection)), 0);
-
-        if (currentSection == null) {
-            Ui.add(root, Ui.rowTile(this, "Overview", R.drawable.ic_device_tile, v -> {
-                showingOverview = !showingOverview;
+        Ui.add(root, Ui.banner(this, "Administrator"), 0);
+        final int g = groupIndex();
+        Ui.add(root, Ui.tabs(this, GROUP_LABELS, g, false, i -> {
+            group = GROUPS[i];
+            resetSubState();
+            build();
+        }), 4);
+        final int s = subIndex(g);
+        if (SUBS[g].length > 1) {
+            Ui.add(root, Ui.tabs(this, SUB_LABELS[g], s, true, i -> {
+                subOf.put(GROUPS[g], SUBS[g][i]);
+                resetSubState();
                 build();
-            }), 0);
-            if (showingOverview) buildOverviewCard(root);
-
-            LinearLayout statusCard = Ui.card(this, root);
-            statusCard.addView(Ui.body(this, "This phone's own recovery code: " + Agent.fallbackCode(this)
-                    + ". Works here and anywhere else a code is asked for, with no internet, even with no master code set.", true));
-            if (Agent.standalone(this)) {
-                action(statusCard, "Phone settings (apps, restrictions, schedules, reset protection)", Ui.FILLED,
-                        v -> startActivity(new Intent(this, LocalSettingsActivity.class)));
-            } else {
-                action(statusCard, "Sync with dashboard now", Ui.TONAL, v -> {
-                    AgentService.requestSync();
-                    toast("Checking in...");
-                });
-            }
-
-            android.widget.GridLayout grid = Ui.tileGrid(this);
-            Ui.addTile(grid, Ui.tile(this, "Lock", R.drawable.ic_lock_tile, 96, v -> openSection("lock")));
-            Ui.addTile(grid, Ui.tile(this, "Apps", R.drawable.ic_apps_tile, 96, v -> openSection("apps")));
-            Ui.addTile(grid, Ui.tile(this, "Add-ons", R.drawable.ic_browser_tile, 96, v -> openSection("addons")));
-            Ui.addTile(grid, Ui.tile(this, "App lock", R.drawable.ic_lock_tile, 96, v -> openSection("applock")));
-            Ui.addTile(grid, Ui.tile(this, "Settings", R.drawable.ic_permissions_tile, 96, v -> openSection("settings")));
-            Ui.addTile(grid, Ui.tile(this, "Messages", R.drawable.ic_message_tile, 96, v -> openSection("messages")));
-            Ui.add(root, grid, 16);
-            return;
+            }), 8);
         }
-
-        Ui.add(root, Ui.button(this, "< Back", Ui.OUTLINED, v -> onBackPressed()), 0);
-
-        if (inSection("messages")) buildMessagesSection(root);
-        if (inSection("lock")) buildLockSection(root);
-        if (inSection("apps")) buildAppsHub(root);
-        if (inSection("addons")) buildAddonsSection(root);
-        if (inSection("applock")) buildAppLockSection(root);
-        if (inSection("settings")) buildSettingsHub(root);
-        if (inSection("lock")) refreshStatus();
+        String sub = SUBS[g][s];
+        switch (group) {
+            case "overview":
+                if ("messages".equals(sub)) buildMessagesSection(root);
+                else buildStatusSection(root);
+                break;
+            case "apps":
+                if ("kiosk".equals(sub)) buildKioskSection(root);
+                else if ("blocked".equals(sub)) { buildBlockedComponentsSection(root); buildBlockedWholeAppsSection(root); }
+                else if ("system".equals(sub)) buildSystemAppsSection(root);
+                else if ("browser".equals(sub)) buildAddonsSection(root);
+                else buildAppsSection(root);
+                break;
+            case "internet":
+                if ("filter".equals(sub)) { buildDnsBlocklistSection(root); buildDnsAllowlistSection(root); }
+                else if ("cutoff".equals(sub)) buildNetworkBlocklistSection(root);
+                else if ("traffic".equals(sub)) buildTrafficLogSection(root);
+                else buildNetworkSection(root);
+                break;
+            case "security":
+                if ("applock".equals(sub)) buildAppLockSection(root);
+                else if ("restrictions".equals(sub)) buildRestrictionsCard(root);
+                else if ("access".equals(sub)) buildAppAccessSection(root);
+                else { buildLockSection(root); refreshStatus(); }
+                break;
+            default:
+                if ("updates".equals(sub)) buildUpdatesSection(root);
+                else if ("controls".equals(sub)) buildDeviceSection(root);
+                else buildSettingsMenuSection(root);
+        }
     }
 
-    /** Picks which of what used to be three separate top-level tiles (Apps, Home screen mode,
-     * Blocking) to show -- every section underneath is completely unchanged, just reached from
-     * one level deeper now. */
-    private void buildAppsHub(LinearLayout root) {
-        if (appsSub == null) {
-            Ui.add(root, Ui.rowTile(this, "Regular Apps", R.drawable.ic_apps_tile, v -> { appsSub = "regular"; build(); }), 0);
-            Ui.add(root, Ui.rowTile(this, "Home Screen Mode", R.drawable.ic_home_tile, v -> { appsSub = "kiosk"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "Blocking", R.drawable.ic_shield, v -> { appsSub = "blocking"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "System Apps", R.drawable.ic_device_tile, v -> { appsSub = "system"; build(); }), 8);
-            return;
+    /** Overview > Status: this phone's details, its recovery code, and the sync / phone-settings button. */
+    private void buildStatusSection(LinearLayout root) {
+        buildOverviewCard(root);
+        LinearLayout statusCard = Ui.card(this, root);
+        statusCard.addView(Ui.body(this, "This phone's own recovery code: " + Agent.fallbackCode(this)
+                + ". Works here and anywhere else a code is asked for, with no internet, even with no master code set.", true));
+        if (Agent.standalone(this)) {
+            action(statusCard, "Phone settings (apps, restrictions, schedules, reset protection)", Ui.FILLED,
+                    v -> startActivity(new Intent(this, LocalSettingsActivity.class)));
+        } else {
+            action(statusCard, "Sync with dashboard now", Ui.TONAL, v -> {
+                AgentService.requestSync();
+                toast("Checking in...");
+            });
         }
-        if ("regular".equals(appsSub)) buildAppsSection(root);
-        else if ("kiosk".equals(appsSub)) buildKioskSection(root);
-        else if ("blocking".equals(appsSub)) buildBlockingSection(root);
-        else if ("system".equals(appsSub)) buildSystemAppsSection(root);
-    }
-
-    /** Same idea as buildAppsHub, for the five "phone configuration" tiles that used to each be
-     * their own top-level tile. */
-    private void buildSettingsHub(LinearLayout root) {
-        if (settingsHubSub == null) {
-            Ui.add(root, Ui.rowTile(this, "Settings Menu", R.drawable.ic_apps_tile, v -> { settingsHubSub = "menu"; build(); }), 0);
-            // Split from what used to be one "Permissions" tile mixing two different things: the
-            // same restrictions the dashboard's own Permissions card has (named to match it exactly,
-            // not "Restrictions" here and "Permissions" there), and this app's own on-device access
-            // grants (Accessibility, Usage access, Battery) -- which a dashboard can't set remotely
-            // at all, Android requires walking through its own system screens for those.
-            Ui.add(root, Ui.rowTile(this, "Permissions", R.drawable.ic_permissions_tile, v -> { settingsHubSub = "permissions"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "App Access", R.drawable.ic_permissions_tile, v -> { settingsHubSub = "appaccess"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "Network", R.drawable.ic_wifi_tile, v -> { settingsHubSub = "network"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "Updates", R.drawable.ic_update_tile, v -> { settingsHubSub = "updates"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "Device", R.drawable.ic_device_tile, v -> { settingsHubSub = "device"; build(); }), 8);
-            return;
-        }
-        if ("menu".equals(settingsHubSub)) buildSettingsMenuSection(root);
-        else if ("permissions".equals(settingsHubSub)) buildRestrictionsCard(root);
-        else if ("appaccess".equals(settingsHubSub)) buildAppAccessSection(root);
-        else if ("network".equals(settingsHubSub)) buildNetworkSection(root);
-        else if ("updates".equals(settingsHubSub)) buildUpdatesSection(root);
-        else if ("device".equals(settingsHubSub)) buildDeviceSection(root);
     }
 
     /** Everything the dashboard's own device card shows, in one place -- entirely from data this
@@ -828,30 +783,6 @@ public class AdminActivity extends Activity {
             }));
             Ui.add(categoriesCard, row, 4);
         }
-    }
-
-    private void buildBlockingSection(LinearLayout root) {
-        if (blockingSub == null) {
-            Ui.add(root, Ui.rowTile(this, "Block Apps/Screens", R.drawable.ic_shield,
-                    v -> { blockingSub = "apps"; build(); }), 12);
-            Ui.add(root, Ui.rowTile(this, "Block Whole Apps", R.drawable.ic_shield,
-                    v -> { blockingSub = "whole"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "DNS Hostname Block", R.drawable.ic_shield,
-                    v -> { blockingSub = "dns"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "DNS Hostname Allow", R.drawable.ic_shield,
-                    v -> { blockingSub = "dnsallow"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "Block Whole Network", R.drawable.ic_shield,
-                    v -> { blockingSub = "network"; build(); }), 8);
-            Ui.add(root, Ui.rowTile(this, "Traffic Log", R.drawable.ic_shield,
-                    v -> { blockingSub = "log"; build(); }), 8);
-            return;
-        }
-        if ("apps".equals(blockingSub)) buildBlockedComponentsSection(root);
-        else if ("whole".equals(blockingSub)) buildBlockedWholeAppsSection(root);
-        else if ("dns".equals(blockingSub)) buildDnsBlocklistSection(root);
-        else if ("dnsallow".equals(blockingSub)) buildDnsAllowlistSection(root);
-        else if ("network".equals(blockingSub)) buildNetworkBlocklistSection(root);
-        else buildTrafficLogSection(root);
     }
 
     private void buildBlockedComponentsSection(LinearLayout root) {

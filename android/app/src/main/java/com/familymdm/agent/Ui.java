@@ -80,7 +80,7 @@ final class Ui {
         box.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(c, 16);
         box.setPadding(pad, pad, pad, pad);
-        box.setBackground(shape(color(c, R.color.m3_surface_container), dp(c, 16), color(c, R.color.m3_outline_variant), dp(c, 1)));
+        box.setBackground(shape(color(c, R.color.m3_surface_container), dp(c, 12), color(c, R.color.m3_outline_variant), dp(c, 1)));
         add(parent, box, 12);
         return box;
     }
@@ -155,7 +155,7 @@ final class Ui {
                 textColor = color(c, R.color.m3_primary);
         }
         Drawable bg = new RippleDrawable(ColorStateList.valueOf(0x22000000),
-                shape(fill, dp(c, 100), strokeColor, stroke), null);
+                shape(fill, dp(c, 10), strokeColor, stroke), null);
         b.setBackground(bg);
         b.setTextColor(textColor);
         b.setOnClickListener(l);
@@ -301,6 +301,51 @@ final class Ui {
         lp.topMargin = dp(grid.getContext(), 20);
         lp.bottomMargin = dp(grid.getContext(), 4);
         grid.addView(tile, lp);
+    }
+
+
+    interface Pick { void pick(int index); }
+
+    /** A horizontally scrolling row of tabs. pills=false: text tabs with an underline under the
+     * selected one (the main groups). pills=true: small rounded chips (the tabs inside a group). */
+    static View tabs(Context c, String[] labels, int selected, boolean pills, Pick pick) {
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        hs.addView(row);
+        for (int i = 0; i < labels.length; i++) {
+            final int index = i;
+            boolean on = i == selected;
+            TextView t = new TextView(c);
+            t.setText(labels[i]);
+            t.setTypeface(Typeface.DEFAULT_BOLD);
+            t.setSingleLine(true);
+            if (pills) {
+                t.setTextSize(13);
+                t.setPadding(dp(c, 14), dp(c, 8), dp(c, 14), dp(c, 8));
+                t.setTextColor(color(c, on ? R.color.m3_on_primary_container : R.color.m3_on_surface_variant));
+                t.setBackground(shape(color(c, on ? R.color.m3_primary_container : R.color.m3_surface_container_high), dp(c, 18), 0, 0));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.rightMargin = dp(c, 8);
+                t.setOnClickListener(v -> pick.pick(index));
+                row.addView(t, lp);
+            } else {
+                t.setTextSize(15);
+                t.setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 10));
+                t.setTextColor(color(c, on ? R.color.m3_on_primary_container : R.color.m3_on_surface_variant));
+                LinearLayout cell = new LinearLayout(c);
+                cell.setOrientation(LinearLayout.VERTICAL);
+                cell.addView(t);
+                View bar = new View(c);
+                bar.setBackgroundColor(on ? color(c, R.color.m3_primary) : Color.TRANSPARENT);
+                cell.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 3)));
+                cell.setOnClickListener(v -> pick.pick(index));
+                row.addView(cell);
+            }
+        }
+        return hs;
     }
 
     /** A bold title strip across the top of a screen, like a section banner. */
