@@ -71,6 +71,43 @@ public static class BrowserPolicies
         return new();
     }
 
+    /// <summary>What a value (or numbered list) was before LockGuard first set it, so it can be put back.</summary>
+    private sealed class Was
+    {
+        public bool Existed { get; set; }
+        public string? Value { get; set; }
+        public bool Dword { get; set; }
+        public List<string>? List { get; set; }
+    }
+
+    private static string BackupFile => Path.Combine(Paths.RootDir, "policies-backup.json");
+
+    private static Dictionary<string, Was> LoadBackup()
+    {
+        try { if (File.Exists(BackupFile)) return JsonSerializer.Deserialize<Dictionary<string, Was>>(File.ReadAllText(BackupFile)) ?? new(); } catch { }
+        return new();
+    }
+
+    private static Was Capture(string key, string name)
+    {
+        using var k = Registry.LocalMachine.OpenSubKey(key);
+        if (k == null) return new Was();
+        if (name == "")
+            return new Was { Existed = true, List = k.GetValueNames().OrderBy(n => int.TryParse(n, out var x) ? x : int.MaxValue).Select(n => k.GetValue(n)?.ToString() ?? "").ToList() };
+        var v = k.GetValue(name);
+        if (v == null) return new Was();
+        return new Was { Existed = true, Value = v.ToString(), Dword = k.GetValueKind(name) == RegistryValueKind.DWord };
+    }
+
+    private static void Restore(string key, string name, Was was)
+    {
+        if (!was.Existed) return;
+        using var k = Registry.LocalMachine.CreateSubKey(key, true);
+        if (name == "") { for (int n = 0; n < (was.List?.Count ?? 0); n++) k.SetValue((n + 1).ToString(), was.List![n], RegistryValueKind.String); }
+        else if (was.Dword && int.TryParse(was.Value, out var d)) k.SetValue(name, d, RegistryValueKind.DWord);
+        else k.SetValue(name, was.Value ?? "", RegistryValueKind.String);
+    }
+
     public static string? LastError { get; private set; }
 
     /// <summary>Writes what the policy asks for and removes anything this app set before that is no longer wanted.</summary>
@@ -80,15 +117,21 @@ public static class BrowserPolicies
         {
             var want = Desired(p);
             var owned = LoadOwned();
+            var backup = LoadBackup();
             var wantKeys = want.Select(i => new[] { i.Key, i.Name }).ToList();
             foreach (var old in owned)
             {
                 if (wantKeys.Any(w => w[0] == old[0] && w[1] == old[1])) continue;
                 if (old[1] == "") Registry.LocalMachine.DeleteSubKeyTree(old[0], false);
                 else using (var k = Registry.LocalMachine.OpenSubKey(old[0], true)) k?.DeleteValue(old[1], false);
+                // Put back whatever was there before LockGuard first set it.
+                var id = old[0] + "|" + old[1];
+                if (backup.TryGetValue(id, out var was)) { Restore(old[0], old[1], was); backup.Remove(id); }
             }
             foreach (var i in want)
             {
+                var id = i.Key + "|" + i.Name;
+                if (!backup.ContainsKey(id) && !owned.Any(o => o[0] == i.Key && o[1] == i.Name)) backup[id] = Capture(i.Key, i.Name);
                 if (i.Value is List<string> list)
                 {
                     Registry.LocalMachine.DeleteSubKeyTree(i.Key, false); // rewritten whole: no leftover entries
@@ -104,6 +147,7 @@ public static class BrowserPolicies
             }
             Directory.CreateDirectory(Paths.RootDir);
             File.WriteAllText(OwnedFile, JsonSerializer.Serialize(wantKeys));
+            File.WriteAllText(BackupFile, JsonSerializer.Serialize(backup.Where(kv => kv.Value.Existed).ToDictionary(kv => kv.Key, kv => kv.Value)));
             LastError = null;
         }
         catch (Exception e)

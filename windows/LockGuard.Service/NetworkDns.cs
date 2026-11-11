@@ -26,6 +26,8 @@ public static class NetworkDns
         public string Id { get; set; } = "";
         /// <summary>Empty = automatic (DHCP).</summary>
         public List<string> V4 { get; set; } = new();
+        /// <summary>Empty = automatic.</summary>
+        public List<string> V6 { get; set; } = new();
     }
 
     private static Dictionary<string, Original> LoadOriginals()
@@ -41,9 +43,12 @@ public static class NetworkDns
                     && n.OperationalStatus == OperationalStatus.Up && n.Supports(NetworkInterfaceComponent.IPv4));
 
     /// <summary>Addresses typed in by hand for this adapter, from the registry; empty = automatic.</summary>
-    private static List<string> StaticV4(string id)
+    private static List<string> StaticV4(string id) => Typed(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\" + id);
+    private static List<string> StaticV6(string id) => Typed(@"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\" + id);
+
+    private static List<string> Typed(string path)
     {
-        using var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\" + id);
+        using var k = Registry.LocalMachine.OpenSubKey(path);
         var s = k?.GetValue("NameServer") as string ?? "";
         return s.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList();
     }
@@ -69,7 +74,7 @@ public static class NetworkDns
             if (!originals.ContainsKey(n.Id))
             {
                 var st = StaticV4(n.Id).Where(a => a != "127.0.0.1").ToList();
-                originals[n.Id] = new Original { Name = n.Name, Id = n.Id, V4 = st };
+                originals[n.Id] = new Original { Name = n.Name, Id = n.Id, V4 = st, V6 = StaticV6(n.Id).Where(a => a != "::1").ToList() };
                 SaveOriginals(originals);
             }
             Netsh($"interface ipv4 set dnsservers name=\"{n.Name}\" source=static address=127.0.0.1 register=none validate=no");
@@ -94,7 +99,12 @@ public static class NetworkDns
                 Netsh($"interface ipv4 set dnsservers name=\"{name}\" source=static address={o.V4[0]} register=primary validate=no");
                 for (int i = 1; i < o.V4.Count; i++) Netsh($"interface ipv4 add dnsservers name=\"{name}\" address={o.V4[i]} index={i + 1} validate=no");
             }
-            Netsh($"interface ipv6 set dnsservers name=\"{name}\" source=dhcp");
+            if (o.V6.Count == 0) Netsh($"interface ipv6 set dnsservers name=\"{name}\" source=dhcp");
+            else
+            {
+                Netsh($"interface ipv6 set dnsservers name=\"{name}\" source=static address={o.V6[0]} register=primary validate=no");
+                for (int i = 1; i < o.V6.Count; i++) Netsh($"interface ipv6 add dnsservers name=\"{name}\" address={o.V6[i]} index={i + 1} validate=no");
+            }
         }
         try { File.Delete(OriginalFile); } catch { }
         FlushCache();
