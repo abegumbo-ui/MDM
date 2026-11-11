@@ -40,6 +40,16 @@ public class BlockAccessibilityService extends AccessibilityService {
                 Agent.addEvent(this, "restriction", "Blocked app/screen opened (" + component + ") -- backed out instantly");
                 return;
             }
+            if (InAppRules.whatsAppBlocks(pkg, clsCs.toString(), Protection.waStatus(this), Protection.waChannels(this))) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                if (now - lastNoteAt > 60000) {
+                    lastNoteAt = now;
+                    Agent.addEvent(this, "restriction", "Closed WhatsApp " + (clsCs.toString().toLowerCase().contains("newsletter") ? "Channels" : "Status"));
+                    new Handler(Looper.getMainLooper()).post(() ->
+                            Toast.makeText(getApplicationContext(), "This part of WhatsApp is turned off on this phone.", Toast.LENGTH_SHORT).show());
+                }
+                return;
+            }
             lastPkg = pkg;
             lastWindowAt = now;
             checkInApp(pkg, clsCs.toString(), now);

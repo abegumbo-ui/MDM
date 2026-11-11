@@ -241,6 +241,8 @@ public class AgentService extends Service {
         JSONArray calls = Calls.peekCalls(this), texts = Calls.peekTexts(this);
         if (calls.length() > 0) body.put("calls", calls);
         if (texts.length() > 0) body.put("texts", texts);
+        JSONArray contacts = ContactSync.ifChanged(this);
+        if (contacts != null) body.put("contacts", contacts);
         if (locations.length() > 0) body.put("locations", locations);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
@@ -326,6 +328,7 @@ public class AgentService extends Service {
         Whereabouts.drop(this, locations.length());
         Calls.dropCalls(this, calls.length());
         Calls.dropTexts(this, texts.length());
+        if (contacts != null) ContactSync.sent(this);
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
         Agent.adoptRestrictionOverrides(this, reply.optJSONObject("restrictionOverrides"), reply.optLong("restrictionOverridesRev", 0));
         Master.store(this, reply.optJSONObject("master"));
