@@ -45,6 +45,11 @@ test("a new PC gets the web filter: Moderate, SafeSearch, YouTube, no incognito,
   assert.deepEqual(r2.filter.words, ["casino"]);
   assert.deepEqual(r2.filter.blockedPrograms, ["steam.exe"]);
   assert.equal(r2.filter.blockExtensions, true);
+  assert.equal(r2.filter.startPage, "https://mdm.example.dev/start?sites=chabad.org", "approved-only opens on a page of the allowed sites");
+  const page = await (await req("/start?sites=mail.google.com,chabad.org,<bad>")).text();
+  assert.match(page, />Gmail<span>mail\.google\.com/);
+  assert.match(page, /chabad\.org/);
+  assert.ok(!page.includes("<bad>"));
   assert.equal(r2.enabled, true);
   assert.deepEqual(r2.allowedPrograms, ["C:\\a.exe"]);
 

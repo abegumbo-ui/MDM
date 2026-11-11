@@ -1761,6 +1761,16 @@ function renderBrowserDetail(m,b){
 }
 
 let winTab='filter';
+// Same as EMAIL_SERVICES in src/index.js: what each email service needs to load and sign in.
+const EMAIL_HOSTS={gmail:['mail.google.com','accounts.google.com','apis.google.com','ogs.google.com','contacts.google.com','gstatic.com','googleusercontent.com','googleapis.com'],
+ outlook:['outlook.live.com','outlook.office.com','outlook.office365.com','login.live.com','account.live.com','login.microsoftonline.com','office.net','msauth.net','msftauth.net','live.net'],
+ yahoo:['mail.yahoo.com','login.yahoo.com','yimg.com']};
+function adminWarning(w){
+ const a0=(w.info&&w.info.accounts)||null;if(!a0||!a0.admins)return null;const a={users:a0.users||[],admins:a0.admins.filter(function(x){return !(a0.users||[]).length||(a0.users||[]).indexOf(x)>=0})};if(!a.admins.length)return null; // switched-off accounts (like the built-in Administrator) do not count
+ const others=a.users.filter(function(u){return a.admins.indexOf(u)<0});
+ return h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Administrator accounts on this computer'),
+  h('div',{class:'mute'},'These Windows accounts are administrators: '+a.admins.join(', ')+'. Anyone using one of them can remove any filter, this one included. The child\'s account should be a Standard user: on the computer, Settings → Accounts → Other users → the account → Change account type → Standard User. Keep the administrator password to yourself.'),
+  others.length?h('div',{class:'mute small',style:'margin-top:6px'},'Standard accounts: '+others.join(', ')+'.'):null)}
 function renderWinDetail(m,w){
  w.isWindows=true;w.packages=w.packages||[];w.config=w.config||{};w.win=w.win||{};
  const dv=w,f=(w.info&&w.info.filter)||null;
@@ -1778,6 +1788,7 @@ function renderWinDetail(m,w){
    else if(!f.on)status='Waiting for the computer to switch the filter on (within a minute).';
    else if(!f.listsReady)status='On. Downloading the category lists (about 13 MB); until they are in, only essential sites open.';
    else status='On and working.';}
+  const aw=adminWarning(w);if(aw)m.append(aw);
   m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Filter websites on this computer'),h('div',{class:'mute small'},status)),
    sw(w.filterOn,function(on){w.filterOn=on;save(on?'The filter switches on within a minute.':'The filter switches off within a minute; the computer\'s network settings go back to how they were.')}))));
   if(w.filterOn){
@@ -1786,6 +1797,16 @@ function renderWinDetail(m,w){
     const r=h('input',{type:'radio',name:'winlevel'});r.checked=lv===v;r.onchange=function(){w.config.browserFilter=v;save('Saved. Applies within a minute.')};
     card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow',style:'margin-left:10px'},h('div',{style:'font-weight:500'},l),h('div',{class:'mute small'},d))))}
    m.append(card);
+   const em=h('div',{class:'card'},h('h2',null,'Email only'),h('div',{class:'mute'},'One tap: nothing opens except the email services ticked here (and the sites in "Always allowed" below). The browsers open on a page with a big button for each.'));
+   const picks={};
+   for(const [k,l] of [['gmail','Gmail'],['outlook','Outlook / Hotmail'],['yahoo','Yahoo Mail']]){const cb=h('input',{type:'checkbox'});cb.checked=k!=='yahoo';picks[k]=cb;em.append(h('label',{class:'row',style:'cursor:pointer;margin:4px 0'},cb,l))}
+   em.append(h('div',{style:'margin-top:8px'},btn('Switch to email only','',function(){
+    const chosen=Object.keys(picks).filter(function(k){return picks[k].checked});if(!chosen.length){snack('Tick at least one.',1);return}
+    if(!confirm('Switch '+w.name+' to email only? Every other website stops opening.'))return;
+    const set=new Set(w.config.dnsAllowlist||[]);for(const k of chosen)for(const hh of EMAIL_HOSTS[k])set.add(hh);
+    w.config.dnsAllowlist=[...set];w.config.browserFilter='off';save('Switched to email only. Applies within a minute.')})));
+   if(lv==='off')em.append(h('div',{class:'mute small',style:'margin-top:8px'},'Approved sites only is on now. To open the web again choose Moderate or Strict above.'));
+   m.append(em);
    renderPause(m,dv);renderFilterSchedule(m,dv);
    const yt=h('select',null,new Option('Off','off'),new Option('Moderate','moderate'),new Option('Strict','strict'));yt.value=w.config.youtubeDns||'off';yt.onchange=function(){w.config.youtubeDns=yt.value;save('Saved.')};
    m.append(h('div',{class:'card'},h('h2',null,'Safe search and pictures'),

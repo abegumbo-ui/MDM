@@ -52,11 +52,26 @@ public static class BrowserPolicies
             }
             else block.AddRange(p.Block);
             if (block.Count > 0) Add(k + @"\URLBlocklist", "", block);
+            if (p.StartPage.Length > 0)
+            {
+                Add(k, "HomepageLocation", p.StartPage);
+                Add(k, "HomepageIsNewTabPage", 0);
+                Add(k, "ShowHomeButton", 1);
+                Add(k, "NewTabPageLocation", p.StartPage);
+                Add(k, "RestoreOnStartup", 4);
+                Add(k + @"\RestoreOnStartupURLs", "", new List<string> { p.StartPage });
+            }
             if (allow.Count > 0) Add(k + @"\URLAllowlist", "", allow);
         }
         Add(Firefox + @"\DNSOverHTTPS", "Enabled", 0);
         Add(Firefox + @"\DNSOverHTTPS", "Locked", 1);
         if (p.NoIncognito) Add(Firefox, "DisablePrivateBrowsing", 1);
+        if (p.StartPage.Length > 0)
+        {
+            Add(Firefox + @"\Homepage", "URL", p.StartPage);
+            Add(Firefox + @"\Homepage", "Locked", 1);
+            Add(Firefox + @"\Homepage", "StartPage", "homepage");
+        }
         if (p.Level == "approved")
         {
             Add(Firefox + @"\WebsiteFilter\Block", "", new List<string> { "<all_urls>" });

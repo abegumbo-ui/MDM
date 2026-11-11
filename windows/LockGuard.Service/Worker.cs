@@ -146,6 +146,7 @@ public sealed class Worker : BackgroundService
         hostname = Environment.MachineName,
         tz = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes,
         version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
+        accounts = Accounts.Report(),
         filter = new
         {
             on = _filter.On,
@@ -247,6 +248,7 @@ public sealed class Worker : BackgroundService
 Start-Sleep -Seconds 2
 Stop-Service -Name LockGuard -Force -ErrorAction SilentlyContinue
 sc.exe delete LockGuard | Out-Null
+Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LockGuard' -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force '{Paths.RootDir}' -ErrorAction SilentlyContinue
 Remove-Item -Force '{scriptPath}' -ErrorAction SilentlyContinue
 ");

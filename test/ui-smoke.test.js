@@ -57,7 +57,7 @@ async function setUp() {
     apps: { "com.android.vending": { mode: "block", label: "Google Play Store" } } }) });
   await call("/api/templates", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ name: "Teen phone", deviceId: dev.id }) });
   const winReg = await (await call("/windows/register", { method: "POST", headers: J, body: JSON.stringify({ info: { hostname: "KIDS-PC" } }) })).json();
-  await call("/windows/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${winReg.token}` }, body: JSON.stringify({ info: { hostname: "KIDS-PC", tz: 120, filter: { on: true, running: true, listsReady: true } }, trafficLog: [{ kind: "dns", host: "www.wikipedia.org", time: Date.now(), blocked: false }] }) });
+  await call("/windows/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${winReg.token}` }, body: JSON.stringify({ info: { hostname: "KIDS-PC", tz: 120, filter: { on: true, running: true, listsReady: true }, accounts: { users: ["Dad", "Kid"], admins: ["Dad"] } }, trafficLog: [{ kind: "dns", host: "www.wikipedia.org", time: Date.now(), blocked: false }] }) });
   await (await call("/browser/register", { method: "POST", headers: J, body: JSON.stringify({ info: { model: "B" } }) })).json();
   return { call, cookie };
 }
@@ -177,6 +177,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
   }
   assert.match(seen["win/filter"], /On and working/);
   assert.match(seen["win/filter"], /Approved sites only/);
+  assert.match(seen["win/filter"], /Switch to email only/);
+  assert.match(seen["win/filter"], /administrators: Dad/);
   assert.match(seen["win/programs"], /Close VPN and proxy programs/);
   assert.match(seen["win/history"], /wikipedia\.org/);
   assert.match(seen["win/computer"], /KIDS-PC/);
