@@ -50,7 +50,7 @@ async function setUp() {
     events: [{ k: "restriction", m: "DNS/TLS filter turned on (0 host(s) blocked, plus the browser category filter)" }] }) });
   const dev = (await (await call("/api/devices", { headers: { cookie } })).json())[0];
   await call(`/api/devices/${dev.id}/config`, { method: "PUT", headers: { ...J, cookie }, body: JSON.stringify({
-    browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, userMenu: { store: false },
+    browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, safeSearch: true, youtubeDns: "strict", blockImages: true, imagesAllow: ["maps.google.com"], userMenu: { store: false },
     sites: { a: { type: "domain", url: "example.org" }, b: { type: "youtube", id: "@somechannel" } },
     apps: { "com.android.vending": { mode: "block", label: "Google Play Store" } } }) });
   await (await call("/browser/register", { method: "POST", headers: J, body: JSON.stringify({ info: { model: "B" } }) })).json();
@@ -118,6 +118,14 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/summary"], /He can search YouTube and watch/);
   assert.match(seen["browser/summary"], /browser category filter/, "the phone's own filter log line is shown");
   assert.match(seen["browser/access"], /Web access/);
+  assert.match(seen["browser/access"], /Force SafeSearch/);
+  assert.match(seen["browser/access"], /YouTube Restricted Mode everywhere/);
+  assert.match(seen["browser/access"], /Block pictures on web pages/);
+  assert.match(seen["browser/summary"], /SafeSearch is forced on Google, Bing and DuckDuckGo/);
+  assert.match(seen["browser/summary"], /YouTube Restricted Mode \(strict\) is forced everywhere/);
+  assert.match(seen["browser/summary"], /Hidden on web pages in our browsers and in Chrome/);
+  assert.match(seen.browserDevice, /Block pictures on web pages/);
+  assert.doesNotMatch(seen.browserDevice, /Force SafeSearch/, "a standalone Browser has no phone-wide filter to force it with");
   assert.match(seen["browser/sites"], /Site requests \(1\)/);
   assert.match(seen["browser/sites"], /YouTube channel/);
   assert.match(seen["browser/apps"], /Make this the only browser/);

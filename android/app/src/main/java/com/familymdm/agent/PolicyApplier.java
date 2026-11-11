@@ -203,7 +203,12 @@ final class PolicyApplier {
         } catch (Exception e) {
             Log.w(TAG, "category lists: " + e);
         }
-        applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"), !"off".equals(filterTier) && !filterBase.isEmpty());
+        // Forced SafeSearch / YouTube Restricted Mode are answered by the same filter (see SafeSearchDns).
+        boolean safeSearch = policy.optBoolean("safeSearch", false);
+        String youtubeDns = policy.optString("youtubeDns", "off");
+        Agent.prefs(c).edit().putBoolean("safeSearch", safeSearch).putString("youtubeDns", youtubeDns).apply();
+        applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"),
+                (!"off".equals(filterTier) && !filterBase.isEmpty()) || safeSearch || !"off".equals(youtubeDns));
         applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
         if (NetworkBlocklist.rev(c) == 0 && !NetworkBlocklist.list(c).isEmpty()) {
             NetworkBlocklist.seed(c);
@@ -809,7 +814,8 @@ final class PolicyApplier {
             String filterTier = policy.optString("browserFilter", "off");
             String filterBase = policy.optString("browserFilterBase", "");
             String youtubeMode = policy.optString("youtubeMode", "channels");
-            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode;
+            boolean blockImages = policy.optBoolean("blockImages", false);
+            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages;
             if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
@@ -817,6 +823,7 @@ final class PolicyApplier {
             b.putString("filterTier", filterTier);
             b.putString("filterBase", filterBase);
             b.putString("youtubeMode", youtubeMode);
+            b.putBoolean("blockImages", blockImages);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
             errorCleared(c, "browserConfig");

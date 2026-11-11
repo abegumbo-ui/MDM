@@ -744,7 +744,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Play Store: block, open for a while, codes','apps','store'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Play Store: block, open for a while, codes','apps','store'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1070,11 +1070,37 @@ function renderWebAccess(m,dv){
   h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Inspection (the last tab here).'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists, our own browsers stay on approved sites only, but Chrome and other browsers are not filtered yet (the phone cannot cut off the whole internet to wait for them). In Chrome the filter works on site names, not pages, and while it is on QUIC (a faster web protocol) is switched off so browsers use the kind of connection the filter can see. A browser using its own encrypted DNS can sometimes get around the name lookup, though the connection itself is still checked.'));
  m.append(card)}
+/** Safe search, YouTube's own Restricted Mode, and hiding pictures. */
+function renderSearchPictures(m,dv){
+ const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. Applies at the next check-in.')}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'Safe search and pictures'));
+ if(!dv.isBrowser){
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Force SafeSearch'),
+   h('div',{class:'mute'},'Google, Bing and DuckDuckGo show filtered results only, in Chrome, every other browser and every app. He cannot switch it off. No certificate needed. Other search engines are not covered: block them, or use Approved sites only.')),
+   sw(c.safeSearch,function(v){c.safeSearch=v;save()})));
+  const yt=h('select',null,new Option('Off','off'),new Option('Moderate','moderate'),new Option('Strict','strict'));yt.value=c.youtubeDns||'off';
+  yt.onchange=function(){c.youtubeDns=yt.value;save()};
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Restricted Mode everywhere'),
+   h('div',{class:'mute'},'Turns on YouTube\'s own Restricted Mode in every browser and in the YouTube app itself, and locks it. Strict hides more than Moderate, and both hide comments. This is YouTube\'s filter, so it is good but not perfect.')),yt));
+ }
+ card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block pictures on web pages'),
+  h('div',{class:'mute'},dv.isBrowser?'Pages load without any pictures in this browser.':'Pages load without pictures in our own browsers. In Chrome and other browsers this only works while Inspection (the last tab) is on'+(c.tlsInspection?', which it is.':', which it is not right now.'))),
+  sw(c.blockImages,function(v){c.blockImages=v;save()})));
+ if(!dv.isBrowser){
+  const ta=h('textarea',{rows:3,style:'width:100%;margin-top:8px',placeholder:'one site per line, e.g. maps.google.com'});ta.value=(c.imagesAllow||[]).join('\n');
+  card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Show pictures on these sites anyway'),
+   h('div',{class:'mute'},'Applies in Chrome and other browsers (with Inspection). In our own browsers, pictures are all on or all off for now.'),ta,
+   h('div',{style:'margin-top:8px'},btn('Save list','tonal',async function(){c.imagesAllow=ta.value.split(/\s+/).map(function(x){return x.trim().toLowerCase()}).filter(Boolean);await save('Saved.')})));
+  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Safe search and YouTube Restricted Mode run through the Agent\'s site filter, so the phone shows a VPN (key) icon while either is on.'));
+ }
+ m.append(card)}
+
 /* ---------- Browser group: everything about what this phone can open on the web, in one place ---------- */
 function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
- else if(sub==='access')renderWebAccess(m,dv);
+ else if(sub==='access'){renderWebAccess(m,dv);renderSearchPictures(m,dv)}
  else if(sub==='sites')renderSites(m,dv,'sites');
  else if(sub==='apps')renderSites(m,dv,'apps');
  else if(sub==='inspect')renderInspection(m,dv);
@@ -1094,6 +1120,10 @@ function renderBrowserSummary(m,dv){
   ytModeOf(dv)==='restricted'?'Restricted':'Allowed channels only','','access');
  line('Allowed sites',nSites+(nSites===1?' site':' sites')+' and '+nCh+(nCh===1?' YouTube channel':' YouTube channels')+' are always allowed.'+(nReq?' '+nReq+(nReq===1?' request is':' requests are')+' waiting for you.':''),
   nReq?nReq+' waiting':'',nReq?'warn':'','sites');
+ line('Safe search',(c.safeSearch?'SafeSearch is forced on Google, Bing and DuckDuckGo in every browser and app.':'Not forced in Chrome and other browsers. Our own browser always forces it on Google.')+(c.youtubeDns&&c.youtubeDns!=='off'?' YouTube Restricted Mode ('+c.youtubeDns+') is forced everywhere, the YouTube app included.':''),
+  c.safeSearch?'Forced':'Not forced',c.safeSearch?'ok':'','access');
+ line('Pictures',c.blockImages?(c.tlsInspection?'Hidden on web pages in our browsers and in Chrome and other browsers.':'Hidden on web pages in our own browsers. Chrome and others still show them (that needs Inspection).'):'Shown as normal.',
+  c.blockImages?'Hidden':'Shown','','access');
  line('Chrome and other browsers',level==='off'?(c.restrictBrowsing?'Web links open in our browser only. Chrome itself is not filtered: block it under Apps if it should not be used.':'Not filtered. Only our own browsers follow the allowed list. Block Chrome under Apps, or pick Moderate or Strict to filter it.'):'Filtered by site name through the Agent\'s site filter, with the same categories as above.',
   level==='off'?'Not filtered':'Filtered','','apps');
  line('Inspection (certificate)',c.tlsInspection?'On: the Agent can look inside pages in Chrome and other browsers, so Restricted YouTube applies there too.':'Off. Our own browsers do not need it. Only needed to apply page-level rules (Restricted YouTube) inside Chrome.',
@@ -1196,7 +1226,7 @@ function renderInspection(m,dv){
  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Needs the phone to be managed by the Agent (device owner). Check Activity → Phone log for "Browser inspection turned on". If browsing ever fails on the phone, turn this off.'));
  m.append(card)}
 function renderSitesEditor(m,dv){
- if(dv.isBrowser)renderWebAccess(m,dv); // a phone has this on its own "Filter level" tab
+ if(dv.isBrowser){renderWebAccess(m,dv);renderSearchPictures(m,dv)} // a phone has these on its own "Filter level" tab
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});

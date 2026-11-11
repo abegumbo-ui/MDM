@@ -373,6 +373,13 @@ export function normalizeConfig(input) {
     // "moderate" and "strict" open the web but block whole categories (see tools/build-blocklists.mjs).
     browserFilter: BROWSER_FILTERS.includes(c.browserFilter) ? c.browserFilter : "off",
     youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "auto",
+    // Forces SafeSearch on Google, Bing and DuckDuckGo for every browser and app (see SafeSearchDns.java).
+    safeSearch: c.safeSearch === true,
+    // Forces YouTube's own Restricted Mode everywhere, the YouTube app included: "off", "moderate" or "strict".
+    youtubeDns: ["moderate", "strict"].includes(c.youtubeDns) ? c.youtubeDns : "off",
+    // Hides pictures on web pages: always in our own browsers; in Chrome and others only with inspection on.
+    blockImages: c.blockImages === true,
+    imagesAllow: normalizeDnsAllowlist(c.imagesAllow),
     blockAppGroups: [...new Set((Array.isArray(c.blockAppGroups) ? c.blockAppGroups : []).filter((g) => Object.prototype.hasOwnProperty.call(APP_GROUPS, g)))],
     userMenu: normalizeUserMenu(c.userMenu),
     // Optional: the Agent installs a certificate of its own and runs a local proxy, so browsers' secure
@@ -561,6 +568,10 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
   if (cfg.approveNew && known) out.known = [...known];
   out.userMenu = cfg.userMenu;
+  out.safeSearch = cfg.safeSearch;
+  out.youtubeDns = cfg.youtubeDns;
+  out.blockImages = cfg.blockImages;
+  out.imagesAllow = cfg.imagesAllow;
   return out;
 }
 
@@ -609,6 +620,9 @@ export function summarizeConfigChange(before, after) {
     const b = !before.userMenu || before.userMenu[k] !== false, a = !after.userMenu || after.userMenu[k] !== false;
     if (a !== b) lines.push('Phone menu "' + label + '": ' + (a ? "shown" : "hidden"));
   }
+  if (!!before.safeSearch !== !!after.safeSearch) lines.push("Forced SafeSearch: " + (after.safeSearch ? "on" : "off"));
+  if ((before.youtubeDns || "off") !== (after.youtubeDns || "off")) lines.push("YouTube Restricted Mode everywhere: " + (after.youtubeDns || "off"));
+  if (!!before.blockImages !== !!after.blockImages) lines.push("Block pictures on web pages: " + (after.blockImages ? "on" : "off"));
   if (!!before.tlsInspection !== !!after.tlsInspection) lines.push("Browser inspection: " + (after.tlsInspection ? "on" : "off"));
   if ((before.youtubeMode || "auto") !== (after.youtubeMode || "auto")) lines.push("YouTube in the browsers: " + (after.youtubeMode || "auto"));
   if (JSON.stringify(before.frpAccounts) !== JSON.stringify(after.frpAccounts)) lines.push("Factory Reset Protection accounts changed");

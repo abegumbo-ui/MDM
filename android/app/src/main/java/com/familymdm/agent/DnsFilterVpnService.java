@@ -247,9 +247,20 @@ public class DnsFilterVpnService extends VpnService {
         // Not blocked: relay to a real resolver on a protected socket (bypasses this VPN itself,
         // so the relay's own traffic doesn't loop back into this same tunnel) and relay the real
         // answer back. Off the read loop's own thread so one slow lookup never blocks the next query.
-        byte[] query = new byte[dnsLength];
+        final byte[] query = new byte[dnsLength];
         System.arraycopy(buf, dnsOffset, query, 0, dnsLength);
         final byte[] origSrcIp = srcIp, origDstIp = dstIp;
+        // Forced SafeSearch / YouTube Restricted Mode: give the search engine's own "safe" address instead.
+        final String safeTarget = com.familymdm.agent.sitepolicy.SafeSearchDns.target(qname,
+                Agent.prefs(this).getBoolean("safeSearch", false), Agent.prefs(this).getString("youtubeDns", "off"));
+        if (safeTarget != null) {
+            final int qtype = com.familymdm.agent.sitepolicy.SafeSearchDns.questionType(query);
+            if (qtype == com.familymdm.agent.sitepolicy.SafeSearchDns.TYPE_A || qtype == com.familymdm.agent.sitepolicy.SafeSearchDns.TYPE_AAAA
+                    || qtype == com.familymdm.agent.sitepolicy.SafeSearchDns.TYPE_HTTPS) {
+                new Thread(() -> answerSafely(origSrcIp, origDstIp, srcPort, dstPort, query, safeTarget, qtype), "mdm-dns-safe").start();
+                return;
+            }
+        }
         new Thread(() -> forward(origSrcIp, origDstIp, srcPort, dstPort, query), "mdm-dns-relay").start();
     }
 
@@ -269,6 +280,60 @@ public class DnsFilterVpnService extends VpnService {
             // An unanswered lookup here behaves exactly like one dropped on any flaky network --
             // the app's own DNS client retries or gives up; nothing else is affected.
         }
+    }
+
+    private static final class SafeEntry {
+        final java.util.List<byte[]> ips;
+        final long expires;
+
+        SafeEntry(java.util.List<byte[]> ips, long expires) {
+            this.ips = ips;
+            this.expires = expires;
+        }
+    }
+
+    private final java.util.concurrent.ConcurrentHashMap<String, SafeEntry> safeCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Answers a lookup for a search engine or YouTube with the address of its "safe" host. Only the
+     * plain address question gets addresses; the IPv6 and HTTPS-record questions are answered "none",
+     * so the app falls back to the plain address. If the safe host cannot be found, the lookup is
+     * passed on untouched rather than breaking the site.
+     */
+    private void answerSafely(byte[] origSrcIp, byte[] origDstIp, int origSrcPort, int origDstPort, byte[] query, String target, int qtype) {
+        byte[] reply;
+        if (qtype != com.familymdm.agent.sitepolicy.SafeSearchDns.TYPE_A) {
+            reply = com.familymdm.agent.sitepolicy.SafeSearchDns.answer(query, new java.util.ArrayList<byte[]>(), 300);
+        } else {
+            java.util.List<byte[]> ips = safeAddresses(target);
+            reply = ips.isEmpty() ? null : com.familymdm.agent.sitepolicy.SafeSearchDns.answer(query, ips, 300);
+        }
+        if (reply == null) {
+            forward(origSrcIp, origDstIp, origSrcPort, origDstPort, query);
+            return;
+        }
+        writeDnsReply(origDstIp, origSrcIp, origDstPort, origSrcPort, reply);
+    }
+
+    private java.util.List<byte[]> safeAddresses(String target) {
+        long now = System.currentTimeMillis();
+        SafeEntry cached = safeCache.get(target);
+        if (cached != null && cached.expires > now) return cached.ips;
+        java.util.List<byte[]> ips = new java.util.ArrayList<>();
+        try (DatagramSocket socket = new DatagramSocket()) {
+            protect(socket);
+            socket.setSoTimeout(4000);
+            byte[] q = com.familymdm.agent.sitepolicy.SafeSearchDns.buildQuery((int) (now & 0xffff), target);
+            socket.send(new DatagramPacket(q, q.length, InetAddress.getByName(UPSTREAM_DNS), 53));
+            byte[] respBuf = new byte[2048];
+            DatagramPacket resp = new DatagramPacket(respBuf, respBuf.length);
+            socket.receive(resp);
+            ips = com.familymdm.agent.sitepolicy.SafeSearchDns.parseA(java.util.Arrays.copyOf(respBuf, resp.getLength()));
+        } catch (Exception ignored) {
+        }
+        if (ips.isEmpty()) ips = com.familymdm.agent.sitepolicy.SafeSearchDns.fallback(target);
+        if (!ips.isEmpty()) safeCache.put(target, new SafeEntry(ips, now + 30 * 60 * 1000L));
+        return ips;
     }
 
     /** Builds a full IPv4+UDP packet and writes it into the tunnel as a reply. */

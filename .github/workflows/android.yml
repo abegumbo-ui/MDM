@@ -37,6 +37,8 @@ jobs:
           java -cp json.jar:out2 com.familymdm.agent.inspect.ProxyCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/CategoryFilterRules.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/CategoryFilterRulesCheck.java
           java -cp out com.familymdm.agent.sitepolicy.CategoryFilterRulesCheck
+          javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SafeSearchDns.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SafeSearchDnsCheck.java
+          java -cp out com.familymdm.agent.sitepolicy.SafeSearchDnsCheck
       - name: Restore the release signing key
         # Not committed to the repo -- RELEASE_KEYSTORE_B64 is the keystore file, base64-encoded,
         # stored as a GitHub Actions secret. See android/README.md for how to generate/set it.

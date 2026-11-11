@@ -656,7 +656,7 @@ async function adminApiInner(request, env, url, session) {
     if (brConfig[2] === "config" && method === "PUT") {
       // An omitted browserFilter becomes "off" (allowlist-only), the stricter setting, so a stale
       // dashboard tab can never accidentally open the web.
-      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode });
+      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages });
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -896,7 +896,7 @@ async function adminApiInner(request, env, url, session) {
 
 // ---- agent API (per-device bearer token) ----
 // Where the Browser downloads its category blocklists from (the fixed "blocklists" release the weekly job publishes).
-const filterFor = (env, config) => ({ tier: config.browserFilter || "off", youtube: effectiveYoutubeMode(config), base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
+const filterFor = (env, config) => ({ tier: config.browserFilter || "off", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
 
 async function agentApi(request, env, url, ctx) {
   const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);
