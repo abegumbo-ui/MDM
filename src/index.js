@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY } from "./alerts.js";
@@ -418,6 +418,20 @@ async function adminApi(request, env, url, session) {
 async function adminApiInner(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
+
+  // A YouTube video's title and channel, so a request can be approved by name instead of as a bare address.
+  if (path === "/api/youtube-info" && method === "GET") {
+    const id = youtubeVideoId(url.searchParams.get("url") || "");
+    if (!id) return json({ error: "That is not a YouTube video link" }, 400);
+    try {
+      const r = await fetch("https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent("https://www.youtube.com/watch?v=" + id), { signal: AbortSignal.timeout(6000) });
+      if (!r.ok) return json({ videoId: id, error: "YouTube gave no details for it (private, removed or not shareable)" });
+      const j = await r.json();
+      return json({ videoId: id, title: String(j.title || "").slice(0, 120), author: String(j.author_name || "").slice(0, 80), handle: youtubeChannelHandle(String(j.author_url || "")) });
+    } catch {
+      return json({ videoId: id, error: "Could not reach YouTube just now" });
+    }
+  }
 
   // ---- admin-only security pages: change history, two-step login, alerts ----
   if (path === "/api/audit" || path.startsWith("/api/2fa") || path.startsWith("/api/alerts")) {
