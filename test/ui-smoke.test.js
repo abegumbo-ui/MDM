@@ -56,6 +56,8 @@ async function setUp() {
     sites: { a: { type: "domain", url: "example.org" }, b: { type: "youtube", id: "@somechannel" } },
     apps: { "com.android.vending": { mode: "block", label: "Google Play Store" } } }) });
   await call("/api/templates", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ name: "Teen phone", deviceId: dev.id }) });
+  const winReg = await (await call("/windows/register", { method: "POST", headers: J, body: JSON.stringify({ info: { hostname: "KIDS-PC" } }) })).json();
+  await call("/windows/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${winReg.token}` }, body: JSON.stringify({ info: { hostname: "KIDS-PC", tz: 120, filter: { on: true, running: true, listsReady: true } }, trafficLog: [{ kind: "dns", host: "www.wikipedia.org", time: Date.now(), blocked: false }] }) });
   await (await call("/browser/register", { method: "POST", headers: J, body: JSON.stringify({ info: { model: "B" } }) })).json();
   return { call, cookie };
 }
@@ -169,6 +171,15 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["calls/contacts"], /Show the phone's contacts here/);
   assert.match(seen["apps/regular"], /Close Status/);
   assert.match(seen.settings, /Other parents/);
+  // The Windows computer's page, every tab.
+  for (const wt of ["filter", "programs", "history", "computer"]) {
+    seen["win/" + wt] = tryRender("win/" + wt, `tab='devices';openId=null;openBrowserId=null;openWinId=windevices[0].id;winTab='${wt}';render()`);
+  }
+  assert.match(seen["win/filter"], /On and working/);
+  assert.match(seen["win/filter"], /Approved sites only/);
+  assert.match(seen["win/programs"], /Close VPN and proxy programs/);
+  assert.match(seen["win/history"], /wikipedia\.org/);
+  assert.match(seen["win/computer"], /KIDS-PC/);
   assert.match(seen["browser/history"], /Keep a list of the sites/);
   assert.match(seen["internet/appnet"], /Filtering per app/);
   assert.match(seen.settings, /Weekly report/);

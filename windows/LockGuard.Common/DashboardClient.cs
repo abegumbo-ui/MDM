@@ -4,12 +4,11 @@ using System.Text.Json.Serialization;
 namespace LockGuard.Common;
 
 /// <summary>
-/// Talks to the same MDM dashboard the Android agent and standalone Browser report to, so a
-/// LockGuard computer shows up there too and can be turned on/off, given an allowed-programs
-/// list, and remotely removed from it -- the same kind of control the dashboard already has over
-/// a phone. Self-registers with no code to type (like a standalone Browser does), the moment the
-/// dashboard URL is known and it can reach it. The dashboard is treated as authoritative: whatever
-/// it says to apply wins over any local change made through Setup, the next time this syncs.
+/// Talks to the family dashboard (the same Cloudflare Worker the phones use): registers this
+/// computer the first time, then on every check-in reports its state and gets back what to apply.
+/// Only used when a dashboard URL is known and it can reach it. The dashboard is treated as
+/// authoritative: whatever it says to apply wins over any local change made through Setup, the
+/// next time this syncs.
 /// </summary>
 public sealed class DashboardClient
 {
@@ -55,6 +54,9 @@ public sealed class DashboardClient
         [JsonPropertyName("enabled")] public bool Enabled { get; set; }
         [JsonPropertyName("allowedPrograms")] public List<string> AllowedPrograms { get; set; } = new();
         [JsonPropertyName("commands")] public List<DashboardCommand> Commands { get; set; } = new();
+        /// <summary>The web filter's settings; null = no web filter on this computer.</summary>
+        [JsonPropertyName("filter")] public FilterPolicy? Filter { get; set; }
+        [JsonPropertyName("pollSeconds")] public int PollSeconds { get; set; }
     }
 
     public sealed class DashboardCommand
@@ -63,16 +65,16 @@ public sealed class DashboardClient
     }
 
     /// <summary>
-    /// Registers if there's no token yet, then reports this computer's current state and returns
-    /// what the dashboard wants applied -- or null if the dashboard can't be reached right now
-    /// (no internet, dashboard down, etc.), in which case the caller should just try again later.
+    /// Registers if there's no token yet, then reports this computer's current state (and, when
+    /// given, the sites looked up and log lines since last time) and returns what the dashboard
+    /// wants applied -- or null if the dashboard can't be reached right now.
     /// </summary>
-    public async Task<SyncResult?> SyncAsync(bool enabled, List<string> allowedPrograms, string hostname)
+    public async Task<SyncResult?> SyncAsync(bool enabled, List<string> allowedPrograms, object info, List<object>? trafficLog = null, List<object>? events = null)
     {
         var state = LoadState();
         if (string.IsNullOrEmpty(state.Token))
         {
-            var reg = await _http.PostAsJsonAsync($"{_baseUrl}/windows/register", new { info = new { hostname } });
+            var reg = await _http.PostAsJsonAsync($"{_baseUrl}/windows/register", new { info });
             if (!reg.IsSuccessStatusCode) return null;
             var regBody = await reg.Content.ReadFromJsonAsync<RegisterResponse>();
             if (string.IsNullOrEmpty(regBody?.Token)) return null;
@@ -82,7 +84,7 @@ public sealed class DashboardClient
 
         var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/windows/sync")
         {
-            Content = JsonContent.Create(new { info = new { hostname }, enabled, allowedPrograms }),
+            Content = JsonContent.Create(new { info, enabled, allowedPrograms, trafficLog = trafficLog ?? new List<object>(), events = events ?? new List<object>() }),
         };
         req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", state.Token);
         var resp = await _http.SendAsync(req);
