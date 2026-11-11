@@ -82,6 +82,7 @@ final class Actions {
             Agent.prefs(c).edit()
                     .putLong("lockUntil", System.currentTimeMillis() + minutes * 60000L)
                     .putString("lockMsg", hasMessage ? message.trim() : "")
+                    .remove("lockBy") // the administrator's own lock, not a screen-time one
                     .apply();
             startTimedLock(c);
             dpm.lockNow();
@@ -122,7 +123,7 @@ final class Actions {
 
     static void endTimedLock(Context c) {
         boolean wasLocked = Agent.prefs(c).getLong("lockUntil", 0) != 0;
-        Agent.prefs(c).edit().remove("lockUntil").remove("lockMsg").apply();
+        Agent.prefs(c).edit().remove("lockUntil").remove("lockMsg").remove("lockBy").apply();
         try {
             Agent.dpm(c).setDeviceOwnerLockScreenInfo(Agent.admin(c), null);
             Agent.dpm(c).setLockTaskPackages(Agent.admin(c), Kiosk.active(c) ? Kiosk.lockTaskPackages(c) : new String[0]);

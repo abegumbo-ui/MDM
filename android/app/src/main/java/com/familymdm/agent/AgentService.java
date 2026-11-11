@@ -49,6 +49,7 @@ public class AgentService extends Service {
         Agent.prefs(this).edit().putInt("knownBuild", build).apply();
         if (packageReceiver == null) registerPackageReceiver();
         AppBlocklist.start(this);
+        ScreenTime.start(this);
         if (thread == null || !thread.isAlive()) {
             running = true;
             thread = new Thread(this::loop, "mdm-agent");
@@ -224,6 +225,8 @@ public class AgentService extends Service {
         body.put("events", events);
         JSONArray siteRequests = Agent.peekSiteRequests(this);
         body.put("siteRequests", siteRequests);
+        JSONObject usage = ScreenTime.report(this);
+        if (usage != null) body.put("usage", usage);
         JSONArray appRequests = Agent.peekAppRequests(this);
         body.put("appRequests", appRequests);
         JSONArray messages = Agent.peekMessages(this);
@@ -471,6 +474,12 @@ public class AgentService extends Service {
                     int minutes = args.optInt("minutes", 60);
                     StoreAccess.start(this, minutes, "from the dashboard");
                     msg = minutes <= 0 ? "Play Store open until closed" : "Play Store open for " + minutes + " minutes";
+                    break;
+                }
+                case "addTime": {
+                    int minutes = args.optInt("minutes", 15);
+                    ScreenTime.grant(this, minutes, "from the dashboard");
+                    msg = minutes + " minutes of extra time";
                     break;
                 }
                 case "closeStore":

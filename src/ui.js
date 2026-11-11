@@ -117,6 +117,14 @@ pre.cmd{background:var(--surface-3);border-radius:10px;padding:12px;white-space:
 .filters input[type=text]{flex:1;min-width:180px}
 .bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--primary-container);color:var(--on-primary-container);border-radius:10px;padding:10px 14px;margin-bottom:12px}
 .bulk b{font-weight:600;margin-right:auto}
+.usage{display:grid;grid-template-columns:minmax(90px,180px) minmax(60px,1fr) auto;gap:8px 12px;align-items:center;margin-top:12px}
+.usage .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.usage .track{height:8px;position:relative}
+.usage .bar{height:8px;min-width:2px;background:var(--primary);border-radius:0 4px 4px 0}
+.usage .val{font-variant-numeric:tabular-nums;color:var(--on-surface-variant);font-size:13px;text-align:right;white-space:nowrap}
+.hero{font-size:34px;font-weight:600;letter-spacing:-.02em;line-height:1.1;margin-top:8px}
+.meter{height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden;margin-top:10px;max-width:420px}
+.meter i{display:block;height:100%;background:var(--primary)}
 .tbl{width:100%;border-collapse:collapse}
 .tbl td,.tbl th{padding:10px 12px;border-top:1px solid var(--outline-variant);text-align:left;vertical-align:top;font-size:13px}
 .tbl th{border-top:0;color:var(--on-surface-variant);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
@@ -195,6 +203,7 @@ function saveSubs(){try{sessionStorage.setItem('subs',JSON.stringify(subs))}catc
 const GROUPS=[
  {key:'overview',label:'Overview',icon:'home',subs:[['status','Status'],['messages','Messages'],['log','Activity log']]},
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
+ {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
  {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
  {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['traffic','Traffic log']]},
  {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
@@ -232,6 +241,7 @@ const ICONS={
  wifi:'M1,9l2,2c4.97,-4.97 13.03,-4.97 18,0l2,-2C16.93,2.93 7.08,2.93 1,9zM9,17l3,3 3,-3C13.35,15.34 10.66,15.34 9,17zM5,13l2,2c2.76,-2.76 7.24,-2.76 10,0l2,-2C15.14,9.14 8.87,9.14 5,13z',
  update:'M19,13c0,3.87 -3.13,7 -7,7 -3.87,0 -7,-3.13 -7,-7 0,-3.83 3.08,-6.94 6.9,-7l0,2.02c-2.7,0.07 -4.9,2.3 -4.9,4.98 0,2.76 2.24,5 5,5 2.76,0 5,-2.24 5,-5 0,-1.27 -0.49,-2.42 -1.27,-3.3l-1.48,1.48 0,-5.5 5.5,0 -1.69,1.69c1.17,1.28 1.94,2.96 1.94,4.63z',
  doc:'M14,2H6c-1.1,0 -1.99,0.9 -1.99,2L4,20c0,1.1 0.89,2 1.99,2H18c1.1,0 2,-0.9 2,-2L20,8l-6,-6zM13,9L13,3.5L18.5,9L13,9z',
+ clock:'M11.99,2C6.47,2 2,6.48 2,12s4.47,10 9.99,10C17.52,22 22,17.52 22,12S17.52,2 11.99,2zM12,20c-4.42,0 -8,-3.58 -8,-8s3.58,-8 8,-8 8,3.58 8,8 -3.58,8 -8,8zM12.5,7H11v6l5.25,3.15 0.75,-1.23 -4.5,-2.67z',
  search:'M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z',
  battery:'M15.67,4H14V2h-4v2H8.33C7.6,4,7,4.6,7,5.33v15.33C7,21.4,7.6,22,8.33,22h7.33c0.74,0,1.34,-0.6,1.34,-1.33V5.33C17,4.6,16.4,4,15.67,4z'};
 function svgIcon(name,fill){const s=document.createElementNS(SVGNS,'svg');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('fill',fill||'#fff');
@@ -323,7 +333,7 @@ function render(){
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
-const NAMES={openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app'};
+const NAMES={addTime:'Extra screen time',openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app'};
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒',watchdog:'👀'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
@@ -735,8 +745,9 @@ function renderDeviceDetail(m,d){
 
  const internet=h('section');buildInternetGroup(internet,d);
  const brg=h('section');buildBrowserGroup(brg,d);
+ const tmg=h('section');buildTimeGroup(tmg,d);
  const devg=h('section');buildDeviceGroup(devg,d);
- const body={overview:{status:ov,messages:msgs,log:lg},apps:ap,browser:brg,internet:internet,security:lk,device:devg};
+ const body={overview:{status:ov,messages:msgs,log:lg},apps:ap,time:tmg,browser:brg,internet:internet,security:lk,device:devg};
 
  // ----- search: every group and tab -----
  const searchIndex=[
@@ -744,7 +755,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Play Store: block, open for a while, codes','apps','store'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1096,6 +1107,87 @@ function renderSearchPictures(m,dv){
  }
  m.append(card)}
 
+/* ---------- Screen time: what he used, and the limits ---------- */
+function buildTimeGroup(m,dv){
+ const sub=getSub('time');
+ if(sub==='limits')renderTimeLimits(m,dv);else renderUsage(m,dv);
+}
+function fmtMin(n){n=Math.max(0,Math.round(n||0));const hh=Math.floor(n/60),mm=n%60;return hh?(hh+' h'+(mm?' '+mm+' min':'')):mm+' min'}
+function dayName(key){const p=key.split('-');const d=new Date(+p[0],+p[1]-1,+p[2]);return d.toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})}
+function usageRows(box,rows,max){
+ for(const r of rows){
+  const bar=h('div',{class:'bar',style:'width:'+Math.max(1,Math.round(100*r.m/(max||1)))+'%'});
+  box.append(h('div',{class:'nm',title:r.title||r.name},r.name),h('div',{class:'track',title:r.name+': '+fmtMin(r.m)},bar),h('div',{class:'val'},fmtMin(r.m)+(r.extra||'')))}}
+function renderUsage(m,dv){
+ renderAppRequests(m,dv);
+ const usage=dv.usage||{},days=Object.keys(usage).sort().reverse(),st=dv.config.screenTime||{};
+ const send=function(minutes){return btn('Give '+minutes+' minutes','tonal',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:'addTime',args:{minutes:minutes}});snack('Extra time queued. It starts at the phone\'s next check-in (within about 5 minutes).');load()})};
+ if(!days.length){
+  m.append(h('div',{class:'card'},h('h2',null,'Screen time'),h('div',{class:'mute'},'Nothing reported yet. The phone sends its screen time with each check-in once it is on a build that has this feature.')));
+ }else{
+  const today=usage[days[0]],limit=st.dailyLimit||0;
+  const card=h('div',{class:'card'},h('h2',null,dayName(days[0])),h('div',{class:'hero'},fmtMin(today.total)),
+   h('div',{class:'mute'},limit?'of '+fmtMin(limit)+' allowed today':'on screen so far. No daily limit is set.'));
+  if(limit)card.append(h('div',{class:'meter',title:fmtMin(today.total)+' of '+fmtMin(limit)},h('i',{style:'width:'+Math.min(100,Math.round(100*today.total/limit))+'%'})));
+  if(today.ok===false)card.append(h('div',{class:'chip warn',style:'margin-top:10px'},'The Agent cannot see app usage on this phone'),
+   h('div',{class:'mute small',style:'margin-top:6px'},'On the phone open MDM Agent → Administrator → Security → App access and turn on usage access. Until then limits cannot count anything.'));
+  if(today.extraUntil&&today.extraUntil>Date.now())card.append(h('div',{class:'chip warn',style:'margin-top:10px'},'Extra time until '+new Date(today.extraUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+  const apps=today.apps||[];
+  if(apps.length){
+   const box=h('div',{class:'usage'});
+   usageRows(box,apps.map(function(a){const lim=(st.appLimits||{})[a.p];return{name:a.l||a.p,title:a.p,m:a.m,extra:lim?' of '+fmtMin(lim):''}}),apps[0].m);
+   card.append(box)}
+  else card.append(h('div',{class:'mute small',style:'margin-top:10px'},'No app has been used for a full minute yet today.'));
+  m.append(card);
+  if(days.length>1){
+   const wk=h('div',{class:'card'},h('h2',null,'Earlier days'));
+   const rows=days.slice(1,8).map(function(k){return{name:dayName(k),m:usage[k].total}});
+   const box=h('div',{class:'usage'});usageRows(box,rows,Math.max.apply(null,rows.map(function(r){return r.m}).concat([1])));
+   wk.append(box);m.append(wk)}
+ }
+ m.append(h('div',{class:'card'},h('h2',null,'Give extra time'),h('div',{class:'mute'},'Lifts bedtime and every time limit for that long, starting when the phone next checks in. Afterwards the limits apply again.'),
+  h('div',{class:'row',style:'margin-top:8px'},send(15),send(30),send(60))))}
+function renderTimeLimits(m,dv){
+ const st=dv.config.screenTime=dv.config.screenTime||{dailyLimit:0,bedtime:null,appLimits:{},exempt:[]};
+ st.appLimits=st.appLimits||{};st.exempt=st.exempt||[];
+ const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}};
+ const pick=function(value,options,onchange){const el=h('select');for(const o of options)el.append(new Option(o[1],String(o[0])));el.value=String(value);el.onchange=function(){onchange(parseInt(el.value,10))};return el};
+ // daily limit
+ const dl=h('div',{class:'card'},h('h2',null,'Daily limit'));
+ dl.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Screen time allowed per day'),
+  h('div',{class:'mute'},'When it is used up the phone shows a lock screen until midnight. Emergency calls still work, and he can ask you for more time from that screen.')),
+  pick(st.dailyLimit||0,[[0,'No limit'],[30,'30 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours'],[300,'5 hours'],[360,'6 hours'],[480,'8 hours']],function(v){st.dailyLimit=v;save().then(render)})));
+ m.append(dl);
+ // bedtime
+ const bt=st.bedtime,on=!!bt;
+ const bc=h('div',{class:'card'},h('h2',null,'Bedtime'));
+ bc.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Lock the phone at night'),
+  h('div',{class:'mute'},on?'Locked from '+bt.from+' to '+bt.to+' on the nights chosen below.':'Off. The phone can be used at any hour.')),
+  sw(on,function(v){st.bedtime=v?{days:[0,1,2,3,4,5,6],from:'22:00',to:'07:00'}:null;save().then(render)})));
+ if(on){
+  const from=h('input',{type:'time',value:bt.from}),to=h('input',{type:'time',value:bt.to});
+  const days=h('div',{class:'days'});const names=['S','M','T','W','T','F','S'],full=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const chosen=new Set(bt.days);
+  names.forEach(function(n,i){const b=h('button',{class:chosen.has(i)?'on':'',title:full[i]+' night'},n);b.onclick=function(){chosen.has(i)?chosen.delete(i):chosen.add(i);b.className=chosen.has(i)?'on':''};days.append(b)});
+  bc.append(h('div',{class:'row',style:'margin-top:8px'},h('span',{class:'mute'},'From'),from,h('span',{class:'mute'},'until'),to),
+   h('div',{class:'mute small',style:'margin-top:8px'},'Nights it applies. A night belongs to the day it starts on: "S" on the left is Sunday night into Monday morning.'),days,
+   btn('Save bedtime','',async function(){
+    if(!from.value||!to.value||from.value===to.value){snack('Choose two different times.',1);return}
+    if(!chosen.size){snack('Choose at least one night, or switch bedtime off.',1);return}
+    st.bedtime={days:[...chosen].sort(),from:from.value,to:to.value};await save();render()}))}
+ m.append(bc);
+ // per app
+ const ac=h('div',{class:'card'},h('h2',null,'Apps'),h('div',{class:'mute'},'Give one app its own daily limit: when it is used up, that app disappears until midnight. Or mark an app as not counting toward the daily limit (the phone app, maps).'));
+ const apps=dv.packages.filter(function(p){return p.p!==SELF_PACKAGE&&(!p.s||st.appLimits[p.p]||st.exempt.includes(p.p))}).sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)});
+ if(!apps.length)ac.append(h('div',{class:'mute small',style:'margin-top:8px'},'No apps reported by the phone yet.'));
+ for(const a of apps){
+  const cb=h('input',{type:'checkbox'});cb.checked=st.exempt.includes(a.p);
+  cb.onchange=function(){const set=new Set(st.exempt);cb.checked?set.add(a.p):set.delete(a.p);st.exempt=[...set];save()};
+  ac.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),h('label',{class:'row small mute',style:'margin-top:2px;cursor:pointer'},cb,'Does not count toward the daily limit')),
+   pick(st.appLimits[a.p]||0,[[0,'No limit'],[15,'15 min a day'],[30,'30 min a day'],[45,'45 min a day'],[60,'1 hour a day'],[90,'1.5 hours a day'],[120,'2 hours a day'],[180,'3 hours a day']],function(v){if(v)st.appLimits[a.p]=v;else delete st.appLimits[a.p];save()})))}
+ m.append(ac);
+ m.append(h('div',{class:'card'},h('h2',null,'Good to know'),h('div',{class:'mute'},'Time is counted on the phone itself, so limits keep working with no internet. The count needs Android\'s "usage access" for the Agent: it asks for it by itself, and the Usage tab tells you if a phone refused. A lock you send yourself from Security always wins over these.')))}
+
 /* ---------- Browser group: everything about what this phone can open on the web, in one place ---------- */
 function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
@@ -1142,14 +1234,17 @@ function renderAppRequests(m,dv){
  for(const r of reqs){
   const dismiss=async function(){await call('DELETE','/api/devices/'+dv.id+'/app-requests?key='+encodeURIComponent(r.key));load()};
   const row=h('div',{class:'row',style:'margin-top:8px'});
-  if(r.kind==='store'){
+  if(r.kind==='time'){
+   const more=function(minutes){return btn('Give '+minutes+' minutes','',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:'addTime',args:{minutes:minutes}});snack('He gets '+minutes+' more minutes from the phone\'s next check-in.');await dismiss()})};
+   row.append(more(15),more(30),more(60));
+  }else if(r.kind==='store'){
    const open=function(label,minutes){return btn(label,'',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:'openStore',args:{minutes:minutes}});snack('The Play Store opens at the phone\'s next check-in.');await dismiss()})};
    row.append(open('Open for 1 hour',60),open('Open for 15 minutes',15),open('Open until I close it',0));
   }else{
    row.append(btn('Allow this app','',async function(){dv.config.apps[r.pkg]={mode:'allow',label:r.label||r.pkg};await saveConfigFor(dv,'Allowed. It appears on the phone within about 5 minutes.');await dismiss()}));
   }
   row.append(btn('Dismiss','outline',dismiss));
-  rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.kind==='store'?'Open the Google Play Store':'App: '+(r.label||r.pkg)),
+  rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.kind==='time'?'More screen time':r.kind==='store'?'Open the Google Play Store':'App: '+(r.label||r.pkg)),
    h('div',{class:'mute small'},(r.kind==='app'?r.pkg+' · ':'')+ago(r.at)),row)))}
  m.append(rc)}
 

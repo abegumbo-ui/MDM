@@ -101,6 +101,13 @@ public class LockActivity extends Activity {
                 Toast.makeText(this, "No phone app available.", Toast.LENGTH_LONG).show();
             }
         }), 32);
+        if (ScreenTime.lockIsOurs(this) && !Agent.standalone(this) && Agent.prefs(this).getString("token", null) != null) {
+            Ui.add(root, Ui.button(this, "Ask for more time", Ui.TONAL, v -> {
+                Agent.addAppRequest(this, "time", null, null);
+                AgentService.requestSync();
+                Toast.makeText(this, "Sent. The phone opens if the administrator gives more time.", Toast.LENGTH_LONG).show();
+            }), 8);
+        }
         Ui.add(root, Ui.button(this, "Administrator unlock", Ui.OUTLINED, v -> promptMaster()), 8);
         setContentView(root);
     }
@@ -151,6 +158,8 @@ public class LockActivity extends Activity {
                                 Toast.makeText(this, err, Toast.LENGTH_LONG).show();
                             } else {
                                 Agent.addEvent(this, "local", "Master code on phone: unlocked the timed lock");
+                                // A screen-time lock would come straight back, so the code also gives half an hour.
+                                if (ScreenTime.lockIsOurs(this)) ScreenTime.grant(this, 30, "the administrator's code on the phone");
                                 Actions.endTimedLock(this);
                                 finishLock();
                             }
