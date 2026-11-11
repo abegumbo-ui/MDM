@@ -50,24 +50,36 @@ test("a dashboard-connected Browser is told its filter level and where to downlo
   assert.deepEqual(s.sites, [], "the allowlist is untouched");
 });
 
-test("the YouTube setting defaults to allowed-channels-only and only accepts known values", async () => {
-  assert.equal(normalizeConfig({}).youtubeMode, "channels");
-  assert.equal(normalizeConfig({ youtubeMode: "restricted" }).youtubeMode, "restricted");
-  for (const bad of ["Restricted", "open", "", null, 1, "restricted "]) assert.equal(normalizeConfig({ youtubeMode: bad }).youtubeMode, "channels", String(bad));
-  assert.equal(buildAgentPolicy(normalizeConfig({ youtubeMode: "restricted" }), []).youtubeMode, "restricted");
-  assert.deepEqual(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ youtubeMode: "restricted" })).filter((l) => l.startsWith("YouTube")), ["YouTube in the Browser: restricted"]);
+test("YouTube follows the filter level by default, and an explicit choice always wins", async () => {
+  assert.equal(normalizeConfig({}).youtubeMode, "auto");
+  for (const bad of ["Restricted", "open", "", null, 1, "restricted "]) assert.equal(normalizeConfig({ youtubeMode: bad }).youtubeMode, "auto", String(bad));
+  const mode = (c) => buildAgentPolicy(normalizeConfig(c), []).youtubeMode;
+  // auto: Moderate -> restricted (search works); Strict and Off -> only allowed channels/videos
+  assert.equal(mode({}), "channels");
+  assert.equal(mode({ browserFilter: "off" }), "channels");
+  assert.equal(mode({ browserFilter: "moderate" }), "restricted");
+  assert.equal(mode({ browserFilter: "strict" }), "channels");
+  // an explicit choice overrides the level in both directions
+  assert.equal(mode({ browserFilter: "moderate", youtubeMode: "channels" }), "channels");
+  assert.equal(mode({ browserFilter: "strict", youtubeMode: "restricted" }), "restricted");
+  assert.equal(mode({ browserFilter: "off", youtubeMode: "restricted" }), "restricted");
+  assert.deepEqual(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ youtubeMode: "restricted" })).filter((l) => l.startsWith("YouTube")), ["YouTube in the browsers: restricted"]);
 
   const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
   const cookie = login.headers.get("set-cookie").split(";")[0];
   const reg = await (await req("/browser/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ info: { model: "Y" } }) })).json();
   const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
   const sync = async () => await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json();
-  assert.equal((await sync()).filter.youtube, "channels");
-  const id = reg.token.split(".")[0]; // this Browser's own id, not whichever happens to be first in the list
-  await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ youtubeMode: "restricted" }) });
-  assert.equal((await sync()).filter.youtube, "restricted");
+  const id = reg.token.split(".")[0];
+  const put = (body) => req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+  assert.equal((await sync()).filter.youtube, "channels", "a new Browser: off -> channels only");
+  await put({ browserFilter: "moderate" });
+  assert.equal((await sync()).filter.youtube, "restricted", "Moderate lets him search YouTube");
+  await put({ browserFilter: "strict" });
+  assert.equal((await sync()).filter.youtube, "channels", "Strict: allowed channels only");
+  await put({ browserFilter: "moderate", youtubeMode: "channels" });
+  assert.equal((await sync()).filter.youtube, "channels", "an explicit choice wins over the level");
 });
-
 test("browser inspection is off unless exactly true, and its skip list is sanitized", () => {
   assert.equal(normalizeConfig({}).tlsInspection, false);
   assert.equal(normalizeConfig({ tlsInspection: true }).tlsInspection, true);

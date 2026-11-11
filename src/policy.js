@@ -289,9 +289,17 @@ export function normalizeFrpAccounts(list) {
 }
 
 export const BROWSER_FILTERS = ["off", "moderate", "strict"];
-// YouTube in the Browser: "channels" = only allowed channels and videos open (the default);
-// "restricted" = YouTube opens with search but no recommendations (home, feeds and Shorts are blocked).
-export const YOUTUBE_MODES = ["channels", "restricted"];
+// YouTube in the browsers: "channels" = only allowed channels and videos open; "restricted" = YouTube
+// opens with search but no recommendations (home, feeds and Shorts are blocked); "auto" (the default)
+// = follow the browser filter level: Moderate -> restricted, Strict or Off -> channels.
+export const YOUTUBE_MODES = ["auto", "channels", "restricted"];
+
+/** The YouTube mode actually applied: "channels" or "restricted", whatever the setting is. */
+export function effectiveYoutubeMode(cfg) {
+  const m = cfg && cfg.youtubeMode;
+  if (m === "channels" || m === "restricted") return m;
+  return cfg && cfg.browserFilter === "moderate" ? "restricted" : "channels";
+}
 
 export function normalizeConfig(input) {
   const c = input || {};
@@ -332,7 +340,7 @@ export function normalizeConfig(input) {
     // How the Browser filters the open web: "off" keeps it allowlist-only (nothing opens unless approved);
     // "moderate" and "strict" open the web but block whole categories (see tools/build-blocklists.mjs).
     browserFilter: BROWSER_FILTERS.includes(c.browserFilter) ? c.browserFilter : "off",
-    youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "channels",
+    youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "auto",
     // Optional: the Agent installs a certificate of its own and runs a local proxy, so browsers' secure
     // pages can be filtered by what is on them (see TlsInspection.java). Off unless chosen, per phone.
     tlsInspection: c.tlsInspection === true,
@@ -510,7 +518,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: cfg.youtubeMode, tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
   if (cfg.approveNew && known) out.known = [...known];
   return out;
 }
@@ -553,7 +561,7 @@ export function summarizeConfigChange(before, after) {
   }
   if ((before.browserFilter || "off") !== (after.browserFilter || "off")) lines.push("Browser filter: " + (after.browserFilter || "off"));
   if (!!before.tlsInspection !== !!after.tlsInspection) lines.push("Browser inspection: " + (after.tlsInspection ? "on" : "off"));
-  if ((before.youtubeMode || "channels") !== (after.youtubeMode || "channels")) lines.push("YouTube in the Browser: " + (after.youtubeMode || "channels"));
+  if ((before.youtubeMode || "auto") !== (after.youtubeMode || "auto")) lines.push("YouTube in the browsers: " + (after.youtubeMode || "auto"));
   if (JSON.stringify(before.frpAccounts) !== JSON.stringify(after.frpAccounts)) lines.push("Factory Reset Protection accounts changed");
   if (JSON.stringify(Object.keys(before.sites || {})) !== JSON.stringify(Object.keys(after.sites || {}))) lines.push("Sites list changed");
   if (JSON.stringify(Object.keys(before.wholeAppBlocklist || {}).sort()) !== JSON.stringify(Object.keys(after.wholeAppBlocklist || {}).sort()))
