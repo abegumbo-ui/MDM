@@ -99,6 +99,14 @@ final class FilterStore {
         return prefs(c).getBoolean("blockAllImages", false);
     }
 
+    static void setBlockImageSearch(Context c, boolean on) {
+        prefs(c).edit().putBoolean("blockImageSearch", on).apply();
+    }
+
+    static boolean blockImageSearch(Context c) {
+        return prefs(c).getBoolean("blockImageSearch", false);
+    }
+
     /** The administrator's blocked words (see WordFilter). */
     static void setBlockedWords(Context c, String[] words) {
         StringBuilder sb = new StringBuilder();

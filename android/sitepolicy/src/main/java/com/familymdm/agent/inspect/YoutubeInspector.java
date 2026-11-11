@@ -34,6 +34,12 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     }
 
     private final java.util.List<String> blockedWords;
+    private volatile boolean blockImageSearch;
+
+    /** The "Images" tab of Google, Bing and DuckDuckGo is refused (see ProtectionRules.isImageSearch). */
+    public void setBlockImageSearch(boolean on) {
+        blockImageSearch = on;
+    }
 
     /** blockImages: replace every picture on web pages with a blank, except on (or from) the sites in imagesAllow. */
     public YoutubeInspector(boolean restricted, Set<String> bypass, boolean blockImages, Set<String> imagesAllow) {
@@ -89,6 +95,10 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     @Override
     public InspectProxy.Response onRequest(InspectProxy.Request r) {
         if (imageBlocked(r)) return new InspectProxy.Response(200, "image/gif", BLANK_GIF);
+        if (blockImageSearch && isDocument(r) && com.familymdm.agent.sitepolicy.ProtectionRules.isImageSearch(r.url())) {
+            return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+                    + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>Image search is turned off on this phone.</p></body></html>");
+        }
         if (!blockedWords.isEmpty() && isDocument(r) && com.familymdm.agent.sitepolicy.WordFilter.match(r.url(), blockedWords) != null) {
             return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
                     + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>This page has a blocked word in it.</p></body></html>");

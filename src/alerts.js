@@ -10,6 +10,7 @@ export const DEFAULT_ALERTS = {
   batteryPct: 15,
   requests: true, // the phone asked for a site or sent you a message
   tamper: true, // the Agent noticed something security related on the phone
+  places: true, // a phone arrived at or left a saved place (location history)
 };
 
 export const ALERTS_KEY = "alerts";
@@ -53,7 +54,7 @@ export function mergeAlerts(current, body) {
     if (u && !validWebhook(u)) throw new Error("That is not a valid https:// address.");
     out.url = u;
   }
-  for (const k of ["offline", "battery", "requests", "tamper"]) if (typeof body[k] === "boolean") out[k] = body[k];
+  for (const k of ["offline", "battery", "requests", "tamper", "places"]) if (typeof body[k] === "boolean") out[k] = body[k];
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v))));
   if (body.offlineHours !== undefined && Number.isFinite(Number(body.offlineHours))) out.offlineHours = clamp(body.offlineHours, 1, 72);
   if (body.batteryPct !== undefined && Number.isFinite(Number(body.batteryPct))) out.batteryPct = clamp(body.batteryPct, 5, 50);

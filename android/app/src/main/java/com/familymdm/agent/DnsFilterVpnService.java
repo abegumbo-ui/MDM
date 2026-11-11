@@ -227,12 +227,12 @@ public class DnsFilterVpnService extends VpnService {
         boolean blocked;
         if (qname == null) {
             blocked = false;
-        } else if (NetworkBlocklist.isBlocked(this, pkg)) {
+        } else if (NetworkBlocklist.isBlocked(this, pkg) || !Protection.internetAllowed(this, pkg)) {
             // A network-blocked app only ever gets what's on its own allow list -- the
             // device-wide DnsAllowlist does NOT apply here, on purpose (see PerAppDnsAllowlist).
             blocked = !PerAppDnsAllowlist.allows(this, pkg, qname);
         } else {
-            blocked = (DnsBlocklist.blocks(this, qname) || BrowserCategoryFilter.blocks(this, pkg, qname) || BlockedWords.blocksHost(this, qname)) && !DnsAllowlist.allows(this, qname);
+            blocked = !Protection.paused(this) && (DnsBlocklist.blocks(this, qname) || BrowserCategoryFilter.blocks(this, pkg, qname) || BlockedWords.blocksHost(this, qname)) && !DnsAllowlist.allows(this, qname);
         }
         if (qname != null) TrafficLog.add(this, TrafficLog.KIND_DNS, qname, uid, uidResolver.labelFor(uid), blocked);
 
@@ -252,7 +252,8 @@ public class DnsFilterVpnService extends VpnService {
         final byte[] origSrcIp = srcIp, origDstIp = dstIp;
         // Forced SafeSearch / YouTube Restricted Mode: give the search engine's own "safe" address instead.
         final String safeTarget = com.familymdm.agent.sitepolicy.SafeSearchDns.target(qname,
-                Agent.prefs(this).getBoolean("safeSearch", false), Agent.prefs(this).getString("youtubeDns", "off"));
+                !Protection.paused(this) && Agent.prefs(this).getBoolean("safeSearch", false),
+                Protection.paused(this) ? "off" : Agent.prefs(this).getString("youtubeDns", "off"));
         if (safeTarget != null) {
             final int qtype = com.familymdm.agent.sitepolicy.SafeSearchDns.questionType(query);
             if (qtype == com.familymdm.agent.sitepolicy.SafeSearchDns.TYPE_A || qtype == com.familymdm.agent.sitepolicy.SafeSearchDns.TYPE_AAAA

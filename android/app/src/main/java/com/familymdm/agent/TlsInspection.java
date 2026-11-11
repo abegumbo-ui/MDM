@@ -122,6 +122,7 @@ final class TlsInspection {
         }
         rules = new YoutubeInspector("restricted".equals(policy.optString("youtubeMode", "channels")), bypass,
                 policy.optBoolean("blockImages", false), imagesAllow, words);
+        rules.setBlockImageSearch(policy.optBoolean("blockImageSearch", false));
     }
 
     private static void enable(Context c, DevicePolicyManager dpm, ComponentName admin, boolean applied) throws Exception {

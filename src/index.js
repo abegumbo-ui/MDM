@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { placesAt, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY } from "./alerts.js";
@@ -52,6 +52,7 @@ const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this
 const MASTER_ITERATIONS = 10000; // 10k, not 100k: cheap flip-phone CPUs took ~5s to check a code at 100k
 const MAX_EVENTS = 60;
 const MAX_TRAFFIC_LOG = 150;
+const MAX_LOCATIONS = 200;
 const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser", "freebrowse", "playstore"]);
 const MAX_STORE_MINUTES = 24 * 60;
 const MAX_FREEBROWSE_MINUTES = 240;
@@ -202,6 +203,7 @@ const publicDevice = (d) => ({
   results: (d.results || []).slice(-15),
   events: (d.events || []).slice(-40),
   trafficLog: (d.trafficLog || []).slice(-150),
+  locations: (d.locations || []).slice(-100),
   overrides: d.overrides || {},
   wifiNetworks: d.wifiNetworks || [],
   appCode: d.appCode || null,
@@ -447,7 +449,7 @@ async function adminApiInner(request, env, url, session) {
       const src = /^[0-9a-f]{1,32}$/.test(tb.deviceId || "") ? await getJSON(env, `device:${tb.deviceId}`, null) : null;
       if (!src || !canSee(session, src.ownerId)) return json({ error: "Unknown device" }, 404);
       const { cfg } = await configOf(env, src);
-      const { frpAccounts, ...config } = cfg; // reset-protection accounts belong to one phone, never copied
+      const { frpAccounts, pauseUntil, ...config } = cfg; // reset-protection accounts belong to one phone, never copied; nor does a pause
       const id = randomHex(6);
       await putJSON(env, `template:${id}`, { id, name, from: src.name, config, createdAt: Date.now(), ownerId: isClient(session) ? session.id : null });
       return json({ id, name });
@@ -715,7 +717,7 @@ async function adminApiInner(request, env, url, session) {
     if (brConfig[2] === "config" && method === "PUT") {
       // An omitted browserFilter becomes "off" (allowlist-only), the stricter setting, so a stale
       // dashboard tab can never accidentally open the web.
-      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages, blockedWords: body.blockedWords });
+      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages, blockedWords: body.blockedWords, blockImageSearch: body.blockImageSearch });
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -960,7 +962,7 @@ const categoriesOf = (d) => Object.fromEntries((d.packages || []).filter((p) => 
 
 // ---- agent API (per-device bearer token) ----
 // Where the Browser downloads its category blocklists from (the fixed "blocklists" release the weekly job publishes).
-const filterFor = (env, config) => ({ tier: config.browserFilter || "off", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, words: config.blockedWords || [], base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
+const filterFor = (env, config) => ({ tier: config.browserFilter || "off", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, imageSearch: !!config.blockImageSearch, words: config.blockedWords || [], base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
 
 async function agentApi(request, env, url, ctx) {
   const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);
@@ -1232,9 +1234,29 @@ async function agentApi(request, env, url, ctx) {
     if (Array.isArray(body.events) && body.events.length) {
       for (const e of body.events.slice(0, 40)) {
         if (e && (e.k === "security" || e.k === "watchdog")) toAlert.push({ kind: "tamper", text: String(e.m || "").slice(0, 200) });
+        if (e && e.k === "sos") toAlert.push({ kind: "sos", text: "SOS: " + String(e.m || "").slice(0, 200) });
       }
       d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
       dirty = true;
+    }
+    if (Array.isArray(body.locations) && body.locations.length) {
+      // Location history (switched on per phone), and "arrived at / left" a saved place.
+      const fixes = body.locations.slice(-30)
+        .map((f) => ({ lat: Number(f && f.lat), lon: Number(f && f.lon), acc: Number(f && f.accuracy) || 0, at: Number(f && f.at) || now, ...(f && f.why === "sos" ? { why: "sos" } : {}) }))
+        .filter((f) => Number.isFinite(f.lat) && Number.isFinite(f.lon) && Math.abs(f.lat) <= 90 && Math.abs(f.lon) <= 180);
+      if (fixes.length) {
+        d.locations = [...(d.locations || []), ...fixes].slice(-MAX_LOCATIONS);
+        const latest = fixes[fixes.length - 1];
+        if (latest.acc <= 500) { // a rough fix would make up arrivals and departures
+          const inside = placesAt((d.config || {}).places, latest).map((p) => p.name);
+          const before = Array.isArray(d.inPlaces) ? d.inPlaces : inside; // the first fix only sets the starting point
+          const moves = [...inside.filter((n) => !before.includes(n)).map((n) => "Arrived at " + n), ...before.filter((n) => !inside.includes(n)).map((n) => "Left " + n)];
+          for (const m of moves) toAlert.push({ kind: "places", text: m });
+          if (moves.length) d.events = [...(d.events || []), ...moves.map((m) => ({ k: "place", m, at: latest.at }))].slice(-MAX_EVENTS);
+          d.inPlaces = inside;
+        }
+        dirty = true;
+      }
     }
     if (Array.isArray(body.trafficLog) && body.trafficLog.length) {
       // Every DNS query and TLS SNI hostname DnsFilterVpnService saw, mirrored up from the
@@ -1335,7 +1357,7 @@ async function agentApi(request, env, url, ctx) {
     if (dirty) await putJSON(env, key, d);
     if (toAlert.length) {
       const a = await getAlerts(env);
-      const lines = toAlert.filter((x) => a[x.kind]).map((x) => x.text);
+      const lines = toAlert.filter((x) => x.kind === "sos" || a[x.kind]).map((x) => x.text); // a call for help always goes out
       if (a.url && lines.length) {
         const p = sendAlert(env, d.name, lines.join("\n"), a);
         if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);

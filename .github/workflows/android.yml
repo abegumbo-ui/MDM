@@ -43,6 +43,8 @@ jobs:
           java -cp out com.familymdm.agent.sitepolicy.ScreenTimeRulesCheck
           javac -encoding UTF-8 -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/WordFilter.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/WordFilterCheck.java
           java -cp out com.familymdm.agent.sitepolicy.WordFilterCheck
+          javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/ProtectionRules.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/ProtectionRulesCheck.java
+          java -cp out com.familymdm.agent.sitepolicy.ProtectionRulesCheck
       - name: Restore the release signing key
         # Not committed to the repo -- RELEASE_KEYSTORE_B64 is the keystore file, base64-encoded,
         # stored as a GitHub Actions secret. See android/README.md for how to generate/set it.
