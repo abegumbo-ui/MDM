@@ -217,7 +217,8 @@ final class PolicyApplier {
         applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"),
                 (!"off".equals(filterTier) && !filterBase.isEmpty()) || safeSearch || !"off".equals(youtubeDns)
                         || (policy.optJSONArray("blockedWords") != null && policy.optJSONArray("blockedWords").length() > 0)
-                || policy.optBoolean("internetOnlyApps", false));
+                || policy.optBoolean("internetOnlyApps", false)
+                || policy.optBoolean("recordSites", false));
         applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
         if (NetworkBlocklist.rev(c) == 0 && !NetworkBlocklist.list(c).isEmpty()) {
             NetworkBlocklist.seed(c);

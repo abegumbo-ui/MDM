@@ -37,7 +37,34 @@ final class Protection {
                 .putBoolean("internetOnlyApps", policy.optBoolean("internetOnlyApps", false))
                 .putString("internetApps", sb.toString())
                 .putBoolean("blockImageSearch", policy.optBoolean("blockImageSearch", false))
+                .putString("filterSkipApps", join(policy.optJSONArray("filterSkipApps")))
                 .apply();
+    }
+
+    private static String join(JSONArray a) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; a != null && i < a.length(); i++) {
+            String p = a.optString(i, "").trim();
+            if (!p.isEmpty()) sb.append(sb.length() == 0 ? "" : ",").append(p);
+        }
+        return sb.toString();
+    }
+
+    private static volatile Set<String> cachedSkip;
+    private static volatile String cachedSkipFrom;
+
+    /** "Not filtered" apps (dashboard: Internet for apps): the site filter leaves them alone. */
+    static boolean skips(Context c, String pkg) {
+        if (pkg == null) return false;
+        String s = Agent.prefs(c).getString("filterSkipApps", "");
+        if (s.isEmpty()) return false;
+        if (!s.equals(cachedSkipFrom) || cachedSkip == null) {
+            Set<String> out = new HashSet<>();
+            for (String p : s.split(",")) if (!p.isEmpty()) out.add(p);
+            cachedSkip = out;
+            cachedSkipFrom = s;
+        }
+        return cachedSkip.contains(pkg);
     }
 
     /** Web filtering paused right now? Uses the phone's own clock, so it ends on time offline too. */
@@ -47,7 +74,7 @@ final class Protection {
 
     /** True while "internet only for these apps" is on, so the filter has to work out which app is asking. */
     static boolean needsUid(Context c) {
-        return Agent.prefs(c).getBoolean("internetOnlyApps", false);
+        return Agent.prefs(c).getBoolean("internetOnlyApps", false) || !Agent.prefs(c).getString("filterSkipApps", "").isEmpty();
     }
 
     static boolean internetAllowed(Context c, String pkg) {

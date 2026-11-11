@@ -179,7 +179,7 @@ final class TcpRelay {
                     // PerAppDnsAllowlist). No SNI at all means no hostname to check, so blocked.
                     blocked = hostname == null || !PerAppDnsAllowlist.allows(context, tcb.pkg, hostname);
                 } else {
-                    blocked = hostname != null && !Protection.paused(context) && (DnsBlocklist.blocks(context, hostname) || BrowserCategoryFilter.blocks(context, tcb.pkg, hostname) || BlockedWords.blocksHost(context, hostname)) && !DnsAllowlist.allows(context, hostname);
+                    blocked = hostname != null && !Protection.paused(context) && !Protection.skips(context, tcb.pkg) && (DnsBlocklist.blocks(context, hostname) || BrowserCategoryFilter.blocks(context, tcb.pkg, hostname) || BlockedWords.blocksHost(context, hostname)) && !DnsAllowlist.allows(context, hostname);
                 }
                 logAndMaybeBlock(tcb, hostname, blocked);
                 if (blocked) return; // logAndMaybeBlock already RST + removed it

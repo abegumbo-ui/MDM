@@ -394,6 +394,35 @@ export const USER_MENU = {
   sos: "I need help (sends the phone's location)",
 };
 
+/** {on, level, days: [0..6] (0 = Sunday), from: "HH:MM", to: "HH:MM"}; "to" before "from" runs past midnight. */
+export function normalizeFilterSchedule(s) {
+  const o = s && typeof s === "object" ? s : {};
+  const hm = (v, d) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(v || "") ? v : d);
+  return {
+    on: o.on === true,
+    level: BROWSER_FILTERS.includes(o.level) ? o.level : "strict",
+    days: [...new Set((Array.isArray(o.days) ? o.days : [0, 1, 2, 3, 4]).map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort(),
+    from: hm(o.from, "08:00"),
+    to: hm(o.to, "15:00"),
+  };
+}
+
+/** The filter level right now: the schedule's level inside its hours, else the normal one. tz = the phone's offset from UTC in minutes. */
+export function effectiveFilter(cfg, now = Date.now(), tz = 0) {
+  const s = normalizeFilterSchedule(cfg && cfg.filterSchedule);
+  const normal = BROWSER_FILTERS.includes(cfg && cfg.browserFilter) ? cfg.browserFilter : "off";
+  if (!s.on || !s.days.length) return normal;
+  const local = new Date(now + (Number.isFinite(Number(tz)) ? Number(tz) : 0) * 60000);
+  const day = local.getUTCDay(), mins = local.getUTCHours() * 60 + local.getUTCMinutes();
+  const toMin = (v) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
+  const from = toMin(s.from), to = toMin(s.to);
+  let inside;
+  if (from === to) inside = s.days.includes(day); // the whole day
+  else if (from < to) inside = s.days.includes(day) && mins >= from && mins < to;
+  else inside = (s.days.includes(day) && mins >= from) || (s.days.includes((day + 6) % 7) && mins < to); // past midnight
+  return inside ? s.level : normal;
+}
+
 export const CALL_MODES = ["all", "contacts", "list"];
 const CALL_MODE_WORDS = { all: "anyone", contacts: "contacts and the list", list: "only the list" };
 
@@ -513,6 +542,12 @@ export function normalizeConfig(input) {
     callNumbers: normalizeCallNumbers(c.callNumbers),
     // Send the phone's call log / texts log to the dashboard; texts with their words only if textContent.
     callLog: c.callLog === true,
+    // Apps the site filter leaves alone ("Not filtered"); an app it breaks can be put here.
+    filterSkipApps: [...new Set((Array.isArray(c.filterSkipApps) ? c.filterSkipApps : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 300),
+    // Keeps a list of the sites the phone opens (Browser → Sites visited); runs the site filter for it.
+    recordSites: c.recordSites === true,
+    // A different filter level at set times, in the phone's own time (see effectiveFilter).
+    filterSchedule: normalizeFilterSchedule(c.filterSchedule),
     textLog: c.textLog === true,
     textContent: c.textContent === true,
     imagesAllow: normalizeDnsAllowlist(c.imagesAllow),
@@ -715,6 +750,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.internetOnlyApps = cfg.internetOnlyApps;
   out.internetApps = cfg.internetApps;
   out.locationEvery = cfg.locationEvery;
+  out.filterSkipApps = cfg.filterSkipApps;
+  out.recordSites = cfg.recordSites;
   out.callsIn = cfg.callsIn;
   out.callsOut = cfg.callsOut;
   out.callNumbers = cfg.callNumbers.map((n) => n.number);
@@ -774,6 +811,12 @@ export function summarizeConfigChange(before, after) {
   if ((before.pauseUntil || 0) !== (after.pauseUntil || 0)) lines.push(after.pauseUntil ? "Web filtering paused for a while" : "Web filtering back on");
   if (!!before.internetOnlyApps !== !!after.internetOnlyApps || JSON.stringify(before.internetApps || []) !== JSON.stringify(after.internetApps || [])) lines.push("Internet only for chosen apps: " + (after.internetOnlyApps ? "on (" + (after.internetApps || []).length + " apps)" : "off"));
   if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
+  if (JSON.stringify(before.filterSkipApps || []) !== JSON.stringify(after.filterSkipApps || [])) lines.push("Apps not filtered: " + (after.filterSkipApps || []).length);
+  if (!!before.recordSites !== !!after.recordSites) lines.push("Sites visited list: " + (after.recordSites ? "on" : "off"));
+  if (JSON.stringify(normalizeFilterSchedule(before.filterSchedule)) !== JSON.stringify(normalizeFilterSchedule(after.filterSchedule))) {
+    const s = normalizeFilterSchedule(after.filterSchedule);
+    lines.push("Filter schedule: " + (s.on ? s.level + " " + s.from + " to " + s.to : "off"));
+  }
   if ((before.callsIn || "all") !== (after.callsIn || "all")) lines.push("Who can call: " + CALL_MODE_WORDS[after.callsIn || "all"]);
   if ((before.callsOut || "all") !== (after.callsOut || "all")) lines.push("Who the phone can call: " + CALL_MODE_WORDS[after.callsOut || "all"]);
   if (JSON.stringify(normalizeCallNumbers(before.callNumbers)) !== JSON.stringify(normalizeCallNumbers(after.callNumbers))) lines.push("Allowed numbers: " + normalizeCallNumbers(after.callNumbers).length);

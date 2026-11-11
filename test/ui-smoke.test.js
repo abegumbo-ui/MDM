@@ -164,6 +164,10 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["calls/rules"], /Not active yet/);
   assert.match(seen["calls/calllog"], /Send the call log/);
   assert.match(seen["calls/texts"], /Include what the messages say/);
+  assert.match(seen["browser/access"], /Filter schedule/);
+  assert.match(seen["browser/history"], /Keep a list of the sites/);
+  assert.match(seen["internet/appnet"], /Filtering per app/);
+  assert.match(seen.settings, /Weekly report/);
   assert.match(seen.settings, /arrived at or left a place/);
   assert.match(seen["device/device"], /Save as template/);
   assert.match(seen.templates, /Teen phone/);

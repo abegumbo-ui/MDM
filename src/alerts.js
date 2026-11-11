@@ -11,6 +11,7 @@ export const DEFAULT_ALERTS = {
   requests: true, // the phone asked for a site or sent you a message
   tamper: true, // the Agent noticed something security related on the phone
   places: true, // a phone arrived at or left a saved place (location history)
+  weekly: true, // a summary of every phone, Sunday evenings
 };
 
 export const ALERTS_KEY = "alerts";
@@ -54,7 +55,7 @@ export function mergeAlerts(current, body) {
     if (u && !validWebhook(u)) throw new Error("That is not a valid https:// address.");
     out.url = u;
   }
-  for (const k of ["offline", "battery", "requests", "tamper", "places"]) if (typeof body[k] === "boolean") out[k] = body[k];
+  for (const k of ["offline", "battery", "requests", "tamper", "places", "weekly"]) if (typeof body[k] === "boolean") out[k] = body[k];
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v))));
   if (body.offlineHours !== undefined && Number.isFinite(Number(body.offlineHours))) out.offlineHours = clamp(body.offlineHours, 1, 72);
   if (body.batteryPct !== undefined && Number.isFinite(Number(body.batteryPct))) out.batteryPct = clamp(body.batteryPct, 5, 50);
@@ -132,6 +133,64 @@ export async function checkDevices(env, devices, now = Date.now()) {
     if (JSON.stringify(next) !== JSON.stringify(prev)) await env.STATE.put(key, JSON.stringify(next));
   }
   return { sent };
+}
+
+/* ------------------------------ weekly report ------------------------------ */
+
+const fmtMin = (m) => (m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min");
+
+/** The weekly summary, in plain words: screen time, top apps, blocked sites, calls, places. Pure, for tests. */
+export function weeklyReport(devices, now = Date.now()) {
+  const since = now - 7 * 86400000;
+  const days = new Set(Array.from({ length: 7 }, (_, i) => new Date(now - i * 86400000).toISOString().slice(0, 10)));
+  const blocks = [];
+  for (const d of devices) {
+    const lines = [];
+    const usage = Object.entries(d.usage || {}).filter(([day, u]) => days.has(day) && u && u.ok !== false);
+    if (usage.length) {
+      const total = usage.reduce((n, [, u]) => n + (u.total || 0), 0);
+      const apps = {};
+      for (const [, u] of usage) for (const a of u.apps || []) apps[a.l || a.p] = (apps[a.l || a.p] || 0) + (a.m || 0);
+      const top = Object.entries(apps).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([l, m]) => l + " " + fmtMin(m));
+      lines.push("Screen time: about " + fmtMin(Math.round(total / usage.length)) + " a day" + (top.length ? " (most: " + top.join(", ") + ")" : ""));
+    }
+    const blocked = {};
+    let visited = 0;
+    for (const [day, sites] of Object.entries(d.siteHistory || {})) {
+      if (!days.has(day)) continue;
+      for (const [site, r] of Object.entries(sites)) {
+        visited++;
+        if (r[1]) blocked[site] = (blocked[site] || 0) + r[1];
+      }
+    }
+    const nb = Object.keys(blocked).length;
+    if (visited) lines.push("Sites: " + visited + " visits to sites" + (nb ? ", " + nb + " blocked (" + Object.entries(blocked).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([s]) => s).join(", ") + ")" : ", none blocked"));
+    const calls = (d.calls || []).filter((c) => c.at >= since);
+    if (calls.length) lines.push("Calls: " + calls.length + (calls.some((c) => c.type === "blocked") ? ", " + calls.filter((c) => c.type === "blocked").length + " blocked" : ""));
+    const ev = (d.events || []).filter((e) => e.at >= since);
+    const sos = ev.filter((e) => e.k === "sos" && !/maps\.google/.test(e.m)).length;
+    if (sos) lines.push("Asked for help: " + sos + " time" + (sos === 1 ? "" : "s"));
+    const sec = ev.filter((e) => e.k === "security").length;
+    if (sec) lines.push("Security notices: " + sec + " (see the phone log)");
+    const reqs = (d.siteRequests || []).length + (d.appRequests || []).length;
+    if (reqs) lines.push("Requests waiting for you: " + reqs);
+    if (!d.lastSeen || d.lastSeen < since) lines.push("Did not check in this week");
+    blocks.push(d.name + "\n" + (lines.length ? lines.map((l) => "- " + l).join("\n") : "- Nothing to report"));
+  }
+  return blocks.join("\n\n");
+}
+
+/** Sunday from 17:00 UTC (the first 15-minute check after), once a week, if switched on. */
+export async function maybeSendWeekly(env, devices, now = Date.now()) {
+  const t = new Date(now);
+  if (t.getUTCDay() !== 0 || t.getUTCHours() < 17 || !devices.length) return { sent: false };
+  const a = await getAlerts(env);
+  if (!a.url || !a.weekly) return { sent: false };
+  const week = t.toISOString().slice(0, 10);
+  if ((await env.STATE.get("weeklySent")) === week) return { sent: false };
+  await env.STATE.put("weeklySent", week);
+  const r = await sendAlert(env, "Weekly report", weeklyReport(devices, now), a);
+  return { sent: !!r.ok };
 }
 
 /* ------------------------------ change history ------------------------------ */
