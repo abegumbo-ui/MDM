@@ -321,7 +321,55 @@ export const APP_GROUPS = {
       "org.telegram.messenger", "tv.twitch.android.app", "com.bereal.ft",
     ],
   },
+  // categories: what the app itself tells Android it is (ApplicationInfo.category; 0 = game,
+  // 2 = video). That catches games and video apps nobody listed by name. Apps that do not say,
+  // are caught by the names below.
+  games: {
+    label: "Games",
+    categories: [0],
+    packages: [
+      "com.roblox.client", "com.mojang.minecraftpe", "com.supercell.clashofclans", "com.supercell.clashroyale",
+      "com.supercell.brawlstars", "com.epicgames.fortnite", "com.king.candycrushsaga", "com.activision.callofduty.shooter",
+      "com.tencent.ig", "com.dts.freefireth", "com.innersloth.spacemafia", "com.kiloo.subwaysurf", "com.miniclip.eightballpool",
+      "com.outfit7.mytalkingtomfree", "com.ea.gp.fifamobile", "com.nianticlabs.pokemongo", "com.chess", "com.playrix.homescapes",
+    ],
+  },
+  video: {
+    label: "Video and streaming apps",
+    categories: [2],
+    packages: [
+      "com.google.android.youtube", "com.google.android.apps.youtube.kids", "com.netflix.mediaclient", "com.amazon.avod.thirdpartyclient",
+      "com.disney.disneyplus", "com.hulu.plus", "com.wbd.stream", "com.peacocktv.peacockandroid", "com.cbs.app", "com.plexapp.android",
+      "com.vimeo.android.videoapp", "tv.pluto.android", "com.tubitv", "com.dailymotion.dailymotion",
+    ],
+  },
+  dating: {
+    label: "Dating apps",
+    packages: [
+      "com.tinder", "co.hinge.app", "com.bumble.app", "com.okcupid.okcupid", "com.match.android.matchmobile", "com.grindrapp.android",
+      "com.pof.android", "com.badoo.mobile", "com.coffeemeetsbagel", "ru.mamba.client", "com.taimi.android", "com.jdate.android",
+    ],
+  },
+  shopping: {
+    label: "Shopping apps",
+    packages: [
+      "com.amazon.mShop.android.shopping", "com.ebay.mobile", "com.einnovation.temu", "com.zzkko", "com.alibaba.aliexpresshd",
+      "com.contextlogic.wish", "com.walmart.android", "com.target.ui", "com.etsy.android", "com.shopify.arrive",
+    ],
+  },
 };
+
+/** The packages of these reported apps that a group covers, by name or by the category the app declares. */
+export function inGroup(group, pkg, category) {
+  const g = APP_GROUPS[group];
+  return !!g && (g.packages.includes(pkg) || (Number.isInteger(category) && (g.categories || []).includes(category)));
+}
+
+/** Chrome's own settings the dashboard can lock (see PolicyApplier.pushChromeConfig). */
+function normalizeChromePolicy(c) {
+  const o = c && typeof c === "object" ? c : {};
+  return { noIncognito: o.noIncognito === true, adultFilter: o.adultFilter === true, noSignin: o.noSignin === true };
+}
 
 // The buttons on the phone's own "User" screen. Each can be hidden per phone from the dashboard.
 export const USER_MENU = {
@@ -390,6 +438,7 @@ export function normalizeConfig(input) {
     browserFilter: BROWSER_FILTERS.includes(c.browserFilter) ? c.browserFilter : "off",
     youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "auto",
     screenTime: normalizeScreenTime(c.screenTime),
+    chromePolicy: normalizeChromePolicy(c.chromePolicy),
     // Forces SafeSearch on Google, Bing and DuckDuckGo for every browser and app (see SafeSearchDns.java).
     safeSearch: c.safeSearch === true,
     // Forces YouTube's own Restricted Mode everywhere, the YouTube app included: "off", "moderate" or "strict".
@@ -556,8 +605,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
       show.add(pkg);
     }
   }
-  const groupBlocked = new Set();
-  for (const g of cfg.blockAppGroups) for (const pkg of APP_GROUPS[g].packages) groupBlocked.add(pkg);
+  const categories = opts.categories || {};
+  const groupBlocked = { has: (pkg) => cfg.blockAppGroups.some((g) => inGroup(g, pkg, categories[pkg])) };
   for (const pkg of reportedPackages) {
     const mode = apps[pkg]?.mode;
     if (mode === "block" || mode === "allow" || mode === "force" || mode === "soft") continue; // handled above
@@ -586,6 +635,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   if (cfg.approveNew && known) out.known = [...known];
   out.userMenu = cfg.userMenu;
   out.screenTime = cfg.screenTime;
+  out.chromePolicy = cfg.chromePolicy;
   out.safeSearch = cfg.safeSearch;
   out.youtubeDns = cfg.youtubeDns;
   out.blockImages = cfg.blockImages;
@@ -637,6 +687,10 @@ export function summarizeConfigChange(before, after) {
   for (const [k, label] of Object.entries(USER_MENU)) {
     const b = !before.userMenu || before.userMenu[k] !== false, a = !after.userMenu || after.userMenu[k] !== false;
     if (a !== b) lines.push('Phone menu "' + label + '": ' + (a ? "shown" : "hidden"));
+  }
+  const cpB = normalizeChromePolicy(before.chromePolicy), cpA = normalizeChromePolicy(after.chromePolicy);
+  for (const [k, label] of [["noIncognito", "Chrome: no incognito tabs"], ["adultFilter", "Chrome: Google's adult-site filter"], ["noSignin", "Chrome: no signing in"]]) {
+    if (cpB[k] !== cpA[k]) lines.push(label + ": " + (cpA[k] ? "on" : "off"));
   }
   const stB = normalizeScreenTime(before.screenTime), stA = normalizeScreenTime(after.screenTime);
   if (stB.dailyLimit !== stA.dailyLimit) lines.push("Daily screen time: " + (stA.dailyLimit ? stA.dailyLimit + " minutes" : "no limit"));

@@ -120,6 +120,20 @@ Dashboard: **Browser → At a glance** should describe each setting in plain wor
    blocked. Under a video there are no suggested videos and no comments.
 4. Watch for: suggested videos or comments showing anyway (YouTube changes its pages; tell me).
 
+## 7a. Chrome's own settings, and app groups
+
+1. Dashboard: **Browser → Browser apps → Chrome**, switch on "No incognito tabs". Refresh the
+   phone, then fully close and reopen Chrome.
+   You should see: Chrome's menu has no "New incognito tab". Typing `chrome://policy` in Chrome
+   lists `IncognitoModeAvailability` with value 1. **Tell me exactly what that page shows** - it
+   is how we confirm Chrome accepts each setting.
+2. Switch on "Google's adult-site filter" and "Block pictures on web pages" (Filter level tab).
+   You should see in `chrome://policy`: `SafeSitesFilterBehavior` and `DefaultImagesSetting`.
+   Pages in Chrome load without pictures; a site on the "show pictures" list keeps them.
+3. Dashboard: **Apps → Apps → App groups**, switch on "Block games".
+   You should see: any game on the phone disappears, including games not named in our list (the
+   card names the games it found on the phone). An app you set to Allow stays.
+
 ## 7b. Safe search, YouTube Restricted Mode, pictures
 
 Dashboard: **Browser → Filter level → Safe search and pictures**.

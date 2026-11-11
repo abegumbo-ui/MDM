@@ -755,7 +755,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1081,6 +1081,20 @@ function renderWebAccess(m,dv){
   h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Inspection (the last tab here).'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists, our own browsers stay on approved sites only, but Chrome and other browsers are not filtered yet (the phone cannot cut off the whole internet to wait for them). In Chrome the filter works on site names, not pages, and while it is on QUIC (a faster web protocol) is switched off so browsers use the kind of connection the filter can see. A browser using its own encrypted DNS can sometimes get around the name lookup, though the connection itself is still checked.'));
  m.append(card)}
+/** Chrome's own settings, locked by the Agent (no certificate needed). */
+function renderChromeLock(m,dv){
+ const cp=dv.config.chromePolicy=dv.config.chromePolicy||{};
+ const save=async function(){try{await saveConfigFor(dv,'Saved. Chrome picks it up within about 5 minutes (the next time it starts).')}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'Chrome'),h('div',{class:'mute'},'Locks settings inside Chrome itself, the way companies manage Chrome on work phones. He cannot change them in Chrome. To check on the phone, open chrome://policy in Chrome.'));
+ const row=function(k,title,text){card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute'},text)),sw(cp[k],function(v){cp[k]=v;save()})))};
+ row('noIncognito','No incognito tabs','Removes "New incognito tab", so everything opened in Chrome stays in its history.');
+ row('adultFilter','Google\'s adult-site filter','Chrome checks each site with Google and blocks adult ones, on top of the filter level.');
+ row('noSignin','No signing in to Chrome','Stops signing in to Chrome with a Google account (so no syncing in bookmarks and history from elsewhere).');
+ const c=dv.config,auto=[];
+ if(c.safeSearch)auto.push('SafeSearch');if(c.youtubeDns&&c.youtubeDns!=='off')auto.push('YouTube Restricted Mode');if(c.blockImages)auto.push('no pictures');
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},auto.length?'Also locked in Chrome from the settings above: '+auto.join(', ')+'. Hiding pictures this way needs no certificate.':'SafeSearch, YouTube Restricted Mode and "Block pictures" from the card above are also locked inside Chrome when you switch them on. Hiding pictures this way needs no certificate.'));
+ m.append(card)}
+
 /** Safe search, YouTube's own Restricted Mode, and hiding pictures. */
 function renderSearchPictures(m,dv){
  const c=dv.config;
@@ -1096,12 +1110,12 @@ function renderSearchPictures(m,dv){
    h('div',{class:'mute'},'Turns on YouTube\'s own Restricted Mode in every browser and in the YouTube app itself, and locks it. Strict hides more than Moderate, and both hide comments. This is YouTube\'s filter, so it is good but not perfect.')),yt));
  }
  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block pictures on web pages'),
-  h('div',{class:'mute'},dv.isBrowser?'Pages load without any pictures in this browser.':'Pages load without pictures in our own browsers. In Chrome and other browsers this only works while Inspection (the last tab) is on'+(c.tlsInspection?', which it is.':', which it is not right now.'))),
+  h('div',{class:'mute'},dv.isBrowser?'Pages load without any pictures in this browser.':'Pages load without pictures in our own browsers and in Chrome. Other browsers (Firefox, Samsung Internet...) only with Inspection (the last tab) on'+(c.tlsInspection?', which it is.':', which it is not right now.'))),
   sw(c.blockImages,function(v){c.blockImages=v;save()})));
  if(!dv.isBrowser){
   const ta=h('textarea',{rows:3,style:'width:100%;margin-top:8px',placeholder:'one site per line, e.g. maps.google.com'});ta.value=(c.imagesAllow||[]).join('\n');
   card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Show pictures on these sites anyway'),
-   h('div',{class:'mute'},'Applies in Chrome and other browsers (with Inspection). In our own browsers, pictures are all on or all off for now.'),ta,
+   h('div',{class:'mute'},'Applies in Chrome, and in other browsers with Inspection on. In our own browsers, pictures are all on or all off for now.'),ta,
    h('div',{style:'margin-top:8px'},btn('Save list','tonal',async function(){c.imagesAllow=ta.value.split(/\s+/).map(function(x){return x.trim().toLowerCase()}).filter(Boolean);await save('Saved.')})));
   card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Safe search and YouTube Restricted Mode run through the Agent\'s site filter, so the phone shows a VPN (key) icon while either is on.'));
  }
@@ -1214,7 +1228,7 @@ function renderBrowserSummary(m,dv){
   nReq?nReq+' waiting':'',nReq?'warn':'','sites');
  line('Safe search',(c.safeSearch?'SafeSearch is forced on Google, Bing and DuckDuckGo in every browser and app.':'Not forced in Chrome and other browsers. Our own browser always forces it on Google.')+(c.youtubeDns&&c.youtubeDns!=='off'?' YouTube Restricted Mode ('+c.youtubeDns+') is forced everywhere, the YouTube app included.':''),
   c.safeSearch?'Forced':'Not forced',c.safeSearch?'ok':'','access');
- line('Pictures',c.blockImages?(c.tlsInspection?'Hidden on web pages in our browsers and in Chrome and other browsers.':'Hidden on web pages in our own browsers. Chrome and others still show them (that needs Inspection).'):'Shown as normal.',
+ line('Pictures',c.blockImages?(c.tlsInspection?'Hidden on web pages in our browsers, in Chrome, and in other browsers.':'Hidden in our own browsers and in Chrome. Other browsers (Firefox, Samsung Internet...) still show them unless Inspection is on.'):'Shown as normal.',
   c.blockImages?'Hidden':'Shown','','access');
  line('Chrome and other browsers',level==='off'?(c.restrictBrowsing?'Web links open in our browser only. Chrome itself is not filtered: block it under Apps if it should not be used.':'Not filtered. Only our own browsers follow the allowed list. Block Chrome under Apps, or pick Moderate or Strict to filter it.'):'Filtered by site name through the Agent\'s site filter, with the same categories as above.',
   level==='off'?'Not filtered':'Filtered','','apps');
@@ -1254,13 +1268,13 @@ function renderAppGroups(m,dv){
  const card=h('div',{class:'card'},h('h2',null,'App groups'),h('div',{class:'mute'},'Block a whole kind of app with one switch. An app you set to Allow below stays allowed, so you can block the group and still leave one in.'));
  for(const g in groups){
   const on=(dv.config.blockAppGroups||[]).includes(g);
-  const here=dv.packages.filter(function(p){return groups[g].packages.includes(p.p)}).map(function(p){return p.l||p.p});
+  const here=dv.packages.filter(function(p){return groups[g].packages.includes(p.p)||(groups[g].categories||[]).includes(p.c)}).map(function(p){return p.l||p.p});
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block '+groups[g].label.toLowerCase()),
-   h('div',{class:'mute'},here.length?'On this phone: '+here.join(', ')+'.':'None of them are installed on this phone right now. If one is installed later, it is blocked.')),
+   h('div',{class:'mute'},(here.length?'On this phone: '+here.join(', ')+'.':'None of them are installed on this phone right now. If one is installed later, it is blocked.')+((groups[g].categories||[]).length?' Also catches any app that tells Android it is one of these.':''))),
    sw(on,async function(v){
     const set=new Set(dv.config.blockAppGroups||[]);v?set.add(g):set.delete(g);dv.config.blockAppGroups=[...set];
     try{await saveConfigFor(dv,v?'Blocked. Applies within about 5 minutes.':'No longer blocked as a group.')}catch(e){snack(e.message,1)}render()})))}
- card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Messaging apps such as WhatsApp are not part of this group. More groups (games, video, dating) can be added.'));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Messaging apps such as WhatsApp are in none of these groups. Games and video apps are recognised by the kind of app they tell Android they are, plus a list of well-known names; other groups go by the list only.'));
  m.append(card)}
 
 /* ---------- the Play Store: blocked or not, open for a while, codes ---------- */
@@ -1362,7 +1376,7 @@ function renderSites(m,dv,part){
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
   h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the App rules box so it can\'t be opened directly.')),
   sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it within about 5 minutes.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
- if(part==='apps')return;
+ if(part==='apps'){renderChromeLock(m,dv);return}
  renderSitesPart(m,dv);
 }
 function renderSitesPart(m,dv){

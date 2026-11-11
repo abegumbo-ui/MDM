@@ -725,7 +725,7 @@ async function adminApiInner(request, env, url, session) {
           config: cfg,
           masterSet: !!d.master,
           packages: (d.packages || []).map((p) => ({ ...p, protected: isProtected(p.p) })),
-          applied: buildAgentPolicy(cfg, (d.packages || []).map((p) => p.p), { known: d.known, overrides: d.overrides }),
+          applied: buildAgentPolicy(cfg, (d.packages || []).map((p) => p.p), { known: d.known, overrides: d.overrides, categories: categoriesOf(d) }),
         };
       })),
     );
@@ -897,6 +897,9 @@ async function adminApiInner(request, env, url, session) {
   return json({ error: "Not found" }, 404);
 }
 
+/** {package: category} for the apps a phone reported, for the app groups that go by category. */
+const categoriesOf = (d) => Object.fromEntries((d.packages || []).filter((p) => Number.isInteger(p.c)).map((p) => [p.p, p.c]));
+
 // ---- agent API (per-device bearer token) ----
 // Where the Browser downloads its category blocklists from (the fixed "blocklists" release the weekly job publishes).
 const filterFor = (env, config) => ({ tier: config.browserFilter || "off", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
@@ -986,7 +989,7 @@ async function agentApi(request, env, url, ctx) {
     if (Array.isArray(body.packages)) {
       const pk = body.packages
         .filter((p) => p && typeof p.p === "string")
-        .map((p) => ({ p: p.p, l: String(p.l || p.p).slice(0, 80), s: !!p.s, h: !!p.h }))
+        .map((p) => ({ p: p.p, l: String(p.l || p.p).slice(0, 80), s: !!p.s, h: !!p.h, ...(Number.isInteger(p.c) && p.c >= 0 && p.c <= 20 && { c: p.c }) }))
         .sort((a, b) => a.p.localeCompare(b.p));
       if (JSON.stringify(pk) !== JSON.stringify(d.packages)) {
         d.packages = pk;
@@ -1282,7 +1285,7 @@ async function agentApi(request, env, url, ctx) {
       }
     }
 
-    const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides });
+    const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides, categories: categoriesOf(d) });
     policy.browserFilterBase = filterFor(env, config).base;
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
     const master = d.master || null;

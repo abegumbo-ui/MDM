@@ -42,7 +42,7 @@ async function setUp() {
   const { code } = await (await call("/api/codes", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ type: "enroll" }) })).json();
   const { token } = await (await call("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Pixel", manufacturer: "Test" } }) })).json();
   await call("/agent/sync", { method: "POST", headers: { ...J, authorization: "Bearer " + token }, body: JSON.stringify({
-    packages: [{ p: "com.google.android.apps.maps", l: "Maps", s: false, h: false }, { p: "com.instagram.android", l: "Instagram", s: false, h: true }, { p: "com.android.vending", l: "Google Play Store", s: true, h: false }],
+    packages: [{ p: "com.google.android.apps.maps", l: "Maps", s: false, h: false, c: 6 }, { p: "com.instagram.android", l: "Instagram", s: false, h: true }, { p: "com.example.puzzle", l: "Puzzle Fun", s: false, h: false, c: 0 }, { p: "com.android.vending", l: "Google Play Store", s: true, h: false }],
     info: { deviceOwner: true, android: "14", versionCode: 400, battery: { pct: 80, charging: false }, wifi: { transport: "wifi", ssid: "Home" }, storeUntil: -1 },
     siteRequests: [{ url: "https://example.com/page" }],
     appRequests: [{ kind: "store" }, { kind: "app", pkg: "com.instagram.android", label: "Instagram" }, { kind: "time" }],
@@ -52,7 +52,7 @@ async function setUp() {
   const dev = (await (await call("/api/devices", { headers: { cookie } })).json())[0];
   await call(`/api/devices/${dev.id}/config`, { method: "PUT", headers: { ...J, cookie }, body: JSON.stringify({
     screenTime: { dailyLimit: 180, bedtime: { days: [0, 1, 2, 3, 4], from: "22:00", to: "07:00" }, appLimits: { "com.instagram.android": 30 }, exempt: ["com.google.android.apps.maps"] },
-    browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, safeSearch: true, youtubeDns: "strict", blockImages: true, imagesAllow: ["maps.google.com"], userMenu: { store: false },
+    chromePolicy: { noIncognito: true }, browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, safeSearch: true, youtubeDns: "strict", blockImages: true, imagesAllow: ["maps.google.com"], userMenu: { store: false },
     sites: { a: { type: "domain", url: "example.org" }, b: { type: "youtube", id: "@somechannel" } },
     apps: { "com.android.vending": { mode: "block", label: "Google Play Store" } } }) });
   await (await call("/browser/register", { method: "POST", headers: J, body: JSON.stringify({ info: { model: "B" } }) })).json();
@@ -123,6 +123,10 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["apps/regular"], /Block social media apps/);
   assert.match(seen["apps/regular"], /On this phone: Instagram/);
   assert.match(seen["apps/store"], /Keep the Play Store closed/);
+  assert.match(seen["apps/regular"], /Block games/);
+  assert.match(seen["apps/regular"], /On this phone: Puzzle Fun/, "a game is found by the category it declares");
+  assert.match(seen["browser/apps"], /No incognito tabs/);
+  assert.match(seen["browser/apps"], /Also locked in Chrome from the settings above: SafeSearch, YouTube Restricted Mode, no pictures/);
   assert.match(seen["browser/summary"], /What this phone can open/);
   assert.match(seen["browser/summary"], /Moderate/);
   assert.match(seen["browser/summary"], /He can search YouTube and watch/);
@@ -133,7 +137,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/access"], /Block pictures on web pages/);
   assert.match(seen["browser/summary"], /SafeSearch is forced on Google, Bing and DuckDuckGo/);
   assert.match(seen["browser/summary"], /YouTube Restricted Mode \(strict\) is forced everywhere/);
-  assert.match(seen["browser/summary"], /Hidden on web pages in our browsers and in Chrome/);
+  assert.match(seen["browser/summary"], /Hidden on web pages in our browsers, in Chrome, and in other browsers/);
   assert.match(seen.browserDevice, /Block pictures on web pages/);
   assert.doesNotMatch(seen.browserDevice, /Force SafeSearch/, "a standalone Browser has no phone-wide filter to force it with");
   assert.match(seen["browser/sites"], /Site requests \(1\)/);

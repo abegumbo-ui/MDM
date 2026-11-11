@@ -97,20 +97,24 @@ final class PolicyApplier {
             if (out.containsKey(pkg)) continue;
             boolean system = (ri.activityInfo.applicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0;
             out.put(pkg, entry(pkg, label(pm, ri), system, false));
+            if (ri.activityInfo.applicationInfo.category >= 0) out.get(pkg).put("c", ri.activityInfo.applicationInfo.category);
         }
         for (String pkg : Agent.getSet(c, "hidden")) {
             if (out.containsKey(pkg)) continue;
             boolean system = false;
             String label = pkg;
+            int category = -1;
             try {
                 android.content.pm.ApplicationInfo ai =
                         pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES);
                 system = (ai.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0;
                 label = ai.loadLabel(pm).toString();
+                category = ai.category;
             } catch (PackageManager.NameNotFoundException ignored) {
             }
             boolean hidden = dpm.isApplicationHidden(admin, pkg);
             out.put(pkg, entry(pkg, LABELS.containsKey(pkg) ? LABELS.get(pkg) : label, system, hidden));
+            if (category >= 0) out.get(pkg).put("c", category); // what kind of app it says it is (0 = game, 2 = video...)
         }
         JSONArray arr = new JSONArray();
         for (JSONObject o : out.values()) arr.put(o);
@@ -313,6 +317,7 @@ final class PolicyApplier {
         Kiosk.syncPreferredActivities(c, Kiosk.active(c), policy.optBoolean("restrictBrowsing", false));
         Kiosk.announceChange(c);
         pushBrowserConfig(c, dpm, admin, policy);
+        pushChromeConfig(c, dpm, admin, policy);
         TlsInspection.apply(c, dpm, admin, policy); // optional browser inspection; off unless the dashboard turned it on
         String stKey = String.valueOf(policy.optJSONObject("screenTime"));
         if (!stKey.equals(Agent.prefs(c).getString("screenTimeApplied", ""))) {
@@ -846,6 +851,56 @@ final class PolicyApplier {
             Log.w(TAG, "browser config push failed: " + e);
             errorOnce(c, "browserConfig", "Could not hand the site list to the Browser app: " + e.getMessage());
         }
+    }
+
+    // Chrome and its test channels all read the same settings.
+    private static final String[] CHROMES = {"com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary"};
+
+    /**
+     * Locks Chrome's own settings, the documented way Chrome takes them from a managing app
+     * ("managed configurations"); open chrome://policy on the phone to see what it received.
+     * Built from the dashboard's Chrome switches plus the phone-wide settings that Chrome can also
+     * enforce itself (SafeSearch, YouTube Restricted Mode, pictures). A setting a Chrome version
+     * does not know is simply ignored by it.
+     */
+    private static void pushChromeConfig(Context c, DevicePolicyManager dpm, ComponentName admin, JSONObject policy) {
+        try {
+            JSONObject cp = policy.optJSONObject("chromePolicy");
+            Bundle b = new Bundle();
+            if (cp != null && cp.optBoolean("noIncognito", false)) b.putInt("IncognitoModeAvailability", 1); // 1 = incognito off
+            if (cp != null && cp.optBoolean("adultFilter", false)) b.putInt("SafeSitesFilterBehavior", 1); // 1 = Google's adult-site filter on
+            if (cp != null && cp.optBoolean("noSignin", false)) b.putInt("BrowserSignin", 0); // 0 = no signing in to Chrome
+            if (policy.optBoolean("safeSearch", false)) b.putBoolean("ForceGoogleSafeSearch", true);
+            String yt = policy.optString("youtubeDns", "off");
+            if ("moderate".equals(yt)) b.putInt("ForceYouTubeRestrict", 1);
+            if ("strict".equals(yt)) b.putInt("ForceYouTubeRestrict", 2);
+            if (policy.optBoolean("blockImages", false)) {
+                b.putInt("DefaultImagesSetting", 2); // 2 = do not show pictures
+                JSONArray ia = policy.optJSONArray("imagesAllow");
+                if (ia != null && ia.length() > 0) {
+                    String[] allow = new String[ia.length()];
+                    for (int i = 0; i < allow.length; i++) allow[i] = ia.optString(i);
+                    b.putStringArray("ImagesAllowedForUrls", allow);
+                }
+            }
+            String key = new java.util.TreeSet<>(b.keySet()).toString() + "|" + bundleValues(b);
+            if (key.equals(Agent.prefs(c).getString("chromeConfigApplied", "[]|"))) return;
+            for (String pkg : CHROMES) dpm.setApplicationRestrictions(admin, pkg, b); // works whether or not that Chrome is installed
+            Agent.prefs(c).edit().putString("chromeConfigApplied", key).apply();
+            Agent.addEvent(c, "restriction", b.isEmpty() ? "Chrome settings no longer locked" : "Chrome settings locked: " + new java.util.TreeSet<>(b.keySet()));
+            errorCleared(c, "chromeConfig");
+        } catch (Exception e) {
+            errorOnce(c, "chromeConfig", "Could not lock Chrome's settings: " + e.getMessage());
+        }
+    }
+
+    private static String bundleValues(Bundle b) {
+        StringBuilder sb = new StringBuilder();
+        for (String k : new java.util.TreeSet<>(b.keySet())) {
+            Object v = b.get(k);
+            sb.append(k).append('=').append(v instanceof String[] ? Arrays.toString((String[]) v) : String.valueOf(v)).append(';');
+        }
+        return sb.toString();
     }
 
     /** "Browse freely for a while": redeemed on the agent's main screen, applies right away. */
