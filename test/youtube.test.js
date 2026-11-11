@@ -54,3 +54,27 @@ test("a YouTube channel entry is accepted only with a real @handle, and never ma
   assert.ok(!siteAllowed("https://www.youtube.com/@aishdotcom", sites), "address matching never allows it: the Browser decides");
   assert.ok(!siteAllowed(`https://www.youtube.com/watch?v=${V}`, sites));
 });
+
+test("the video info lookup validates the link, names the channel, and survives YouTube being unreachable", async () => {
+  const { default: worker } = await import("../src/index.js");
+  const kv = new Map();
+  const env = { ADMIN_PASSWORD: "pw", STATE: { get: async (k, t) => (kv.has(k) ? (t === "json" ? JSON.parse(kv.get(k)) : kv.get(k)) : null), put: async (k, v) => void kv.set(k, v), delete: async (k) => void kv.delete(k), list: async () => ({ keys: [], list_complete: true }) } };
+  const call = (p, c) => worker.fetch(new Request("https://x.test" + p, { headers: { cookie: c } }), env);
+  const login = await worker.fetch(new Request("https://x.test/login", { method: "POST", body: new URLSearchParams({ password: "pw" }) }), env);
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  assert.equal((await call("/api/youtube-info?url=" + encodeURIComponent("https://example.com/watch?v=dQw4w9WgXcQ"), cookie)).status, 400, "not a YouTube link");
+  const realFetch = globalThis.fetch;
+  try {
+    let asked = "";
+    globalThis.fetch = async (u) => { asked = String(u); return new Response(JSON.stringify({ title: "A Torah class", author_name: "Aish", author_url: "https://www.youtube.com/@AishDotCom" })); };
+    const ok = await (await call("/api/youtube-info?url=" + encodeURIComponent("https://youtu.be/dQw4w9WgXcQ?si=x"), cookie)).json();
+    assert.deepEqual(ok, { videoId: "dQw4w9WgXcQ", title: "A Torah class", author: "Aish", handle: "@aishdotcom" });
+    assert.ok(asked.startsWith("https://www.youtube.com/oembed") && asked.includes("dQw4w9WgXcQ"), "asks YouTube for just that video, nothing else the caller supplied");
+    globalThis.fetch = async () => new Response("nope", { status: 404 });
+    assert.ok((await (await call("/api/youtube-info?url=" + encodeURIComponent("https://youtu.be/dQw4w9WgXcQ"), cookie)).json()).error, "a private/removed video gives a message, not a crash");
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    assert.ok((await (await call("/api/youtube-info?url=" + encodeURIComponent("https://youtu.be/dQw4w9WgXcQ"), cookie)).json()).error, "YouTube being down gives a message, not a crash");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

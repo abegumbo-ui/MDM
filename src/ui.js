@@ -996,22 +996,41 @@ function appRow(a,dv,opts){
 /* ---------- sites (browser allowlist) ---------- */
 function ytHostOf(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.toLowerCase().replace(/^www\./,'')}catch(e){return null}}
 function isYoutubeUrl(u){const h=ytHostOf(u);return h==='youtube.com'||h==='m.youtube.com'||h==='music.youtube.com'||h==='youtu.be'||h==='youtube-nocookie.com'}
+function ytVideoIdOf(u){try{const x=new URL(u.includes('://')?u:'https://'+u);const h=x.hostname.toLowerCase().replace(/^www\./,'');let id=null;if(h==='youtu.be')id=x.pathname.split('/')[1]||null;else if(h==='youtube.com'||h==='m.youtube.com'||h==='music.youtube.com'||h==='youtube-nocookie.com'){if(x.pathname==='/watch')id=x.searchParams.get('v');else{const m=/^\/(?:shorts|embed|live|v)\/([^/?#]+)/.exec(x.pathname);if(m)id=m[1]}}return id&&/^[A-Za-z0-9_-]{11}$/.test(id)?id:null}catch(e){return null}}
 function ytChannelOf(u){try{const x=new URL(u.includes('://')?u:'https://'+u);const h=x.hostname.toLowerCase().replace(/^www\./,'');if(h!=='youtube.com'&&h!=='m.youtube.com')return null;const m=/^\/(@[A-Za-z0-9._-]{3,30})(?:\/|$)/.exec(x.pathname);return m?m[1].toLowerCase():null}catch(e){return null}}
 function hostOfUrl(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.replace(/^www\./,'')}catch(e){return u}}
 function renderRequestsCard(m,reqs,dv){
  if(!reqs.length)return;
  const rc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Site requests ('+reqs.length+')'),
   h('div',{class:'mute'},'Pages tried on this device that weren\'t on its allowlist.'));
- for(const r of reqs){
-  const dismiss=async function(){await call('DELETE',r.path+'?url='+encodeURIComponent(r.url));load()};
-  rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500;word-break:break-all'},r.url),
-   h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),
-   h('div',{class:'row',style:'margin-top:8px'},
-    btn('Allow this page only','',async function(){
-     await addSite(dv,{type:'exact',url:r.url,label:hostOfUrl(r.url)});await dismiss()}),
-    btn('Allow whole site ('+hostOfUrl(r.url)+')','',async function(){
-     await addSite(dv,{type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}),
-    btn('Dismiss','outline',dismiss)))))}
+  for(const r of reqs){
+   const dismiss=async function(){await call('DELETE',r.path+'?url='+encodeURIComponent(r.url));load()};
+   const isVideo=!!ytVideoIdOf(r.url);
+   const detail=h('div',{class:'mute small'},isVideo?'Looking up the video…':'');
+   const titleEl=h('div',{style:'font-weight:500;word-break:break-all'},r.url);
+   let info=null;
+   const buttons=h('div',{class:'row',style:'margin-top:8px'});
+   buttons.append(btn(isVideo?'Allow this video':'Allow this page only','',async function(){
+     const label=info&&info.title?info.title+(info.author?' — '+info.author:''):hostOfUrl(r.url);
+     await addSite(dv,{type:'exact',url:r.url,label:label});await dismiss()}));
+   if(!isVideo||!isYoutubeUrl(r.url)){
+    buttons.append(btn('Allow whole site ('+hostOfUrl(r.url)+')','',async function(){
+     await addSite(dv,{type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}));
+   }
+   buttons.append(btn('Dismiss','outline',dismiss));
+   rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,detail,
+    h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+   if(isVideo){
+    call('GET','/api/youtube-info?url='+encodeURIComponent(r.url)).then(function(i){
+     info=i;
+     if(i.title){titleEl.textContent=i.title;detail.textContent=(i.author?'Channel: '+i.author:'')+' · '+r.url}
+     else detail.textContent=i.error||'';
+     if(i.handle){
+      const all=btn('Allow all videos from '+(i.author||i.handle),'tonal',async function(){
+       await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+i.handle,id:i.handle,label:'YouTube channel '+i.handle+(i.author?' — '+i.author:'')});await dismiss()});
+      buttons.insertBefore(all,buttons.children[1]||null)}
+    }).catch(function(){detail.textContent=''})}
+  }
  m.append(rc)}
 /** How much of the web this browser may open: only the allowlist (default), or the open web minus blocked categories. */
 function renderWebAccess(m,dv){
