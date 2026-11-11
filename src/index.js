@@ -1,7 +1,7 @@
-import { placesAt, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { effectiveFilter, placesAt, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
-import { auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY } from "./alerts.js";
+import { maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY } from "./alerts.js";
 import { ICON_192, ICON_512 } from "./icons.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -54,6 +54,67 @@ const MAX_EVENTS = 60;
 const MAX_TRAFFIC_LOG = 150;
 const MAX_LOCATIONS = 200;
 const MAX_CALLS = 300;
+// Faster check-ins while someone is using the dashboard (see adminActive): every 30 s for 10 minutes.
+const FAST_POLL_SECONDS = 30;
+const FAST_WINDOW_MS = 10 * 60 * 1000;
+let adminActiveMarked = 0; // this worker already noted it in the last minute: no storage read at all
+async function markAdminActive(env, now = Date.now()) {
+  if (now - adminActiveMarked < 60 * 1000) return;
+  adminActiveMarked = now;
+  const last = Number(await env.STATE.get("adminActive")) || 0;
+  if (now - last > 60 * 1000) await env.STATE.put("adminActive", String(now)); // at most one write a minute
+}
+async function pollFor(env, now = Date.now()) {
+  const last = Number(await env.STATE.get("adminActive")) || 0;
+  return now - last < FAST_WINDOW_MS ? FAST_POLL_SECONDS : POLL_SECONDS;
+}
+
+// Sites visited: the site a hostname belongs to ("m.youtube.com" -> "youtube.com", "www.ynet.co.il" -> "ynet.co.il").
+const TWO_PART_TLDS = /\.(co|com|org|net|ac|gov|edu|k12|muni)\.[a-z]{2}$/;
+export function siteOf(host) {
+  const h = String(host || "").toLowerCase().replace(/\.$/, "");
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(h)) return null; // not a name (an address, or junk)
+  const parts = h.split(".");
+  return parts.slice(TWO_PART_TLDS.test(h) ? -3 : -2).join(".");
+}
+// Background services every phone talks to all day; hidden so the list shows what was actually opened.
+const SITE_NOISE = new Set(["googleapis.com", "gstatic.com", "googleusercontent.com", "gvt1.com", "gvt2.com", "gvt3.com", "doubleclick.net",
+  "google-analytics.com", "googlesyndication.com", "googletagmanager.com", "googleadservices.com", "app-measurement.com", "crashlytics.com",
+  "firebaseio.com", "firebaseinstallations.com", "ggpht.com", "ytimg.com", "googlevideo.com", "android.com", "akamaihd.net", "akamaized.net",
+  "akamaiedge.net", "cloudfront.net", "fastly.net", "amazonaws.com", "cloudflare.com", "cloudflare-dns.com", "workers.dev", "github.com",
+  "githubusercontent.com", "samsungcloud.com", "samsungapps.com", "samsungosp.com", "msftconnecttest.com", "gvt0.com", "fbcdn.net",
+  "whatsapp.net", "cdninstagram.com", "tiktokcdn.com", "scorecardresearch.com", "adnxs.com", "criteo.com", "appsflyer.com", "adjust.com",
+  "branch.io", "onesignal.com", "sentry.io", "newrelic.com", "nr-data.net", "mozilla.com", "mozilla.net", "xiaomi.com", "miui.com",
+  "qualcomm.com", "e2ro.com", "edgekey.net", "edgesuite.net", "azureedge.net", "trafficmanager.net", "windows.net", "jsdelivr.net",
+  "unity3d.com", "applovin.com", "inmobi.com", "ironsrc.mobi", "mopub.com", "facebook.net", "pki.goog", "digicert.com", "letsencrypt.org"]);
+const MAX_SITES_PER_DAY = 400;
+export function addSiteHistory(hist, entries, now = Date.now()) {
+  const out = hist && typeof hist === "object" ? hist : {};
+  for (const e of entries) {
+    if (!e || e.kind === "net") continue;
+    const site = siteOf(e.host);
+    if (!site || SITE_NOISE.has(site)) continue;
+    const day = new Date(Number(e.time) || now).toISOString().slice(0, 10);
+    const dd = out[day] || (out[day] = {});
+    const r = dd[site] || (dd[site] = [0, 0, ""]);
+    r[0]++;
+    if (e.blocked) r[1]++;
+    if (!r[2] && e.app) r[2] = String(e.app).slice(0, 40);
+  }
+  for (const day of Object.keys(out).sort().slice(0, -14)) delete out[day]; // two weeks
+  for (const day of Object.keys(out)) {
+    const sites = Object.entries(out[day]);
+    if (sites.length > MAX_SITES_PER_DAY) out[day] = Object.fromEntries(sites.sort((a, b) => b[1][0] - a[1][0]).slice(0, MAX_SITES_PER_DAY));
+  }
+  return out;
+}
+function siteHistoryView(hist) {
+  const out = {};
+  for (const day of Object.keys(hist || {}).sort().slice(-7)) {
+    out[day] = Object.fromEntries(Object.entries(hist[day]).sort((a, b) => b[1][0] - a[1][0]).slice(0, 200));
+  }
+  return out;
+}
 const MAX_TEXTS = 300;
 const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser", "freebrowse", "playstore"]);
 const MAX_STORE_MINUTES = 24 * 60;
@@ -207,6 +268,7 @@ const publicDevice = (d) => ({
   trafficLog: (d.trafficLog || []).slice(-150),
   locations: (d.locations || []).slice(-100),
   calls: (d.calls || []).slice(-200),
+  siteHistory: siteHistoryView(d.siteHistory),
   texts: (d.texts || []).slice(-200),
   overrides: d.overrides || {},
   wifiNetworks: d.wifiNetworks || [],
@@ -662,6 +724,7 @@ async function adminApiInner(request, env, url, session) {
       return json({ ok: true });
     }
     if (devConfig[2] === "config" && method === "PUT") {
+      await markAdminActive(env); // phones check in every 30 s for a while
       const { cfg: before } = await configOf(env, d);
       const next = normalizeConfig(body);
       if (next.approveNew && !before.approveNew) d.known = (d.packages || []).map((p) => p.p); // everything installed now counts as already approved
@@ -780,6 +843,7 @@ async function adminApiInner(request, env, url, session) {
     return b64 ? imageResponse(b64) : new Response(null, { status: 404 });
   }
   if (path === "/api/devices" && method === "GET") {
+    await markAdminActive(env); // phones check in every 30 s for a while (see pollFor)
     const devices = (await listDevices(env)).filter((d) => canSee(session, d.ownerId));
     return json(
       await Promise.all(devices.map(async (d) => {
@@ -1294,6 +1358,7 @@ async function agentApi(request, env, url, ctx) {
           blocked: !!e.blocked,
         })),
       ].slice(-MAX_TRAFFIC_LOG);
+      d.siteHistory = addSiteHistory(d.siteHistory, body.trafficLog.slice(0, 60), now);
       dirty = true;
     }
     if (Array.isArray(body.siteRequests) && body.siteRequests.length) {
@@ -1386,12 +1451,15 @@ async function agentApi(request, env, url, ctx) {
       }
     }
 
-    const policy = buildAgentPolicy(config, reported, { known: d.known, overrides: d.overrides, categories: categoriesOf(d) });
-    policy.browserFilterBase = filterFor(env, config).base;
+    // A filter schedule swaps the level during its hours, in the phone's own time.
+    const level = effectiveFilter(config, now, d.info && d.info.tz);
+    const effective = level === config.browserFilter ? config : { ...config, browserFilter: level };
+    const policy = buildAgentPolicy(effective, reported, { known: d.known, overrides: d.overrides, categories: categoriesOf(d) });
+    policy.browserFilterBase = filterFor(env, effective).base;
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
     const master = d.master || null;
     const logoRev = await cachedLogoRev(env);
-    return json({ policy, commands, pollSeconds: POLL_SECONDS, overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, restrictionOverrides: d.restrictionOverrides || {}, restrictionOverridesRev: d.restrictionOverridesRev || 0, master, logoRev });
+    return json({ policy, commands, pollSeconds: await pollFor(env, now), overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, restrictionOverrides: d.restrictionOverrides || {}, restrictionOverridesRev: d.restrictionOverridesRev || 0, master, logoRev });
   }
   return json({ error: "Not found" }, 404);
 }
@@ -1609,7 +1677,9 @@ export default {
   async scheduled(event, env, ctx) {
     const work = (async () => {
       try {
-        await checkDevices(env, await listDevices(env));
+        const devices = await listDevices(env);
+        await checkDevices(env, devices);
+        await maybeSendWeekly(env, devices);
       } catch {
         // A failed check just means no alert this round; the next one tries again.
       }

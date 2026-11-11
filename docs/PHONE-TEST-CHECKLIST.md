@@ -211,6 +211,22 @@ Dashboard: the **Calls & texts** group.
 6. Watch for: an allowed caller being blocked (tell me how their number is saved in contacts and
    how it shows in the phone's call log).
 
+## 7f. Faster updates, per-app filtering, sites visited, schedule, weekly report
+
+1. Keep the dashboard open on the phone's page for a minute, then change any setting.
+   You should see: the phone picks it up within about 30 seconds (the first change after opening
+   the dashboard can still take up to 5 minutes).
+2. **Internet → Internet for apps → Filtering per app**: set Chrome to "No internet".
+   You should see: Chrome cannot load anything; other apps can. Set it back to "Filtered".
+3. With the level on Strict, set a browser you trust to "Not filtered".
+   You should see: `facebook.com` opens in that app but not in Chrome.
+4. **Browser → Sites visited**: switch on, use the phone for a while, refresh.
+   You should see: today's sites with the app that opened them, blocked ones marked. Background
+   services (googleapis and the like) are not listed. Tell me any noise that still shows up a lot.
+5. **Browser → Filter level → Filter schedule**: level Strict, today, from now to an hour from now.
+   You should see: within about 5 minutes `facebook.com` is blocked; after the end time it opens again.
+6. Weekly report: Sunday after 17:00 UTC you get one alert summing up each phone.
+
 ## 8. Inspection (certificate) - one test phone only
 
 1. Dashboard: **Browser → Inspection (advanced)**, switch it on, confirm.

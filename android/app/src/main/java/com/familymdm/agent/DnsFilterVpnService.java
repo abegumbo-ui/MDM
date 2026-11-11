@@ -232,7 +232,7 @@ public class DnsFilterVpnService extends VpnService {
             // device-wide DnsAllowlist does NOT apply here, on purpose (see PerAppDnsAllowlist).
             blocked = !PerAppDnsAllowlist.allows(this, pkg, qname);
         } else {
-            blocked = !Protection.paused(this) && (DnsBlocklist.blocks(this, qname) || BrowserCategoryFilter.blocks(this, pkg, qname) || BlockedWords.blocksHost(this, qname)) && !DnsAllowlist.allows(this, qname);
+            blocked = !Protection.paused(this) && !Protection.skips(this, pkg) && (DnsBlocklist.blocks(this, qname) || BrowserCategoryFilter.blocks(this, pkg, qname) || BlockedWords.blocksHost(this, qname)) && !DnsAllowlist.allows(this, qname);
         }
         if (qname != null) TrafficLog.add(this, TrafficLog.KIND_DNS, qname, uid, uidResolver.labelFor(uid), blocked);
 
