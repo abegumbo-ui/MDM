@@ -120,6 +120,7 @@ public class BrowserActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.WHITE); // the page area: web pages are drawn on white
         getWindow().setStatusBarColor(BAR_DARK);
+        if (getActionBar() != null) getActionBar().hide(); // the tab strip and toolbar are the whole top bar
 
         root.addView(buildTabStrip());
         root.addView(buildToolbar());
