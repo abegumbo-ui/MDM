@@ -169,6 +169,9 @@ export function describeChange(method, path, body) {
   if (path === "/api/logo") return { text: method === "DELETE" ? "Removed the logo" : "Changed the logo", target: null };
   if (path.startsWith("/api/2fa/")) return { text: "Changed two-step login", target: null };
   if (path === "/api/alerts") return { text: "Changed alert settings", target: null };
+  if (path === "/api/templates" && method === "POST") return { text: "Saved a template", target: null };
+  if (/^\/api\/templates\/[0-9a-f]+\/apply$/.test(path)) return { text: "Applied a template to " + ((body && Array.isArray(body.deviceIds) && body.deviceIds.length) || 0) + " phone(s)", target: null };
+  if (/^\/api\/templates\/[0-9a-f]+$/.test(path) && method === "DELETE") return { text: "Deleted a template", target: null };
   if (path.startsWith("/api/apk")) return { text: "Uploaded an APK", target: null };
   return null;
 }

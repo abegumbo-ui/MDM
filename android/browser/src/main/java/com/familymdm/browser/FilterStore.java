@@ -99,6 +99,23 @@ final class FilterStore {
         return prefs(c).getBoolean("blockAllImages", false);
     }
 
+    /** The administrator's blocked words (see WordFilter). */
+    static void setBlockedWords(Context c, String[] words) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; words != null && i < words.length; i++) {
+            String w = com.familymdm.agent.sitepolicy.WordFilter.clean(words[i]);
+            if (w != null) sb.append(sb.length() == 0 ? "" : "\n").append(w);
+        }
+        prefs(c).edit().putString("blockedWords", sb.toString()).apply();
+    }
+
+    static java.util.List<String> blockedWords(Context c) {
+        String s = prefs(c).getString("blockedWords", "");
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (String w : s.split("\n")) if (!w.isEmpty()) out.add(w);
+        return out;
+    }
+
     static boolean youtubeRestricted(Context c) {
         return "restricted".equals(prefs(c).getString("youtubeMode", "channels"));
     }

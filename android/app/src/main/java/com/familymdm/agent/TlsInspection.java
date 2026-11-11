@@ -114,8 +114,14 @@ final class TlsInspection {
                 if (!h.isEmpty()) imagesAllow.add(h.startsWith("www.") ? h.substring(4) : h);
             }
         }
+        java.util.List<String> words = new java.util.ArrayList<>();
+        JSONArray bw = policy.optJSONArray("blockedWords");
+        for (int i = 0; bw != null && i < bw.length(); i++) {
+            String w = com.familymdm.agent.sitepolicy.WordFilter.clean(bw.optString(i));
+            if (w != null) words.add(w);
+        }
         rules = new YoutubeInspector("restricted".equals(policy.optString("youtubeMode", "channels")), bypass,
-                policy.optBoolean("blockImages", false), imagesAllow);
+                policy.optBoolean("blockImages", false), imagesAllow, words);
     }
 
     private static void enable(Context c, DevicePolicyManager dpm, ComponentName admin, boolean applied) throws Exception {

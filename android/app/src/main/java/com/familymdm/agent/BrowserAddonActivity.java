@@ -183,6 +183,15 @@ public class BrowserAddonActivity extends Activity {
             showAdultBlocked();
             return true;
         }
+        if (com.familymdm.agent.sitepolicy.WordFilter.match(url, BlockedWords.list(this)) != null) {
+            webView.setVisibility(View.GONE);
+            ensureOverlay();
+            overlay.removeAllViews();
+            overlay.addView(Ui.titleText(this, "Not available"));
+            overlay.addView(Ui.body(this, "This page or search has a blocked word in it.", true));
+            overlay.addView(Ui.button(this, "Go to the start page", Ui.TONAL, v -> load(HOME_URL)));
+            return true;
+        }
         if (WebFilter.youtubeRestricted(this) && isYoutubeAddress(url)) {
             int kind = SitePolicy.youtubeKind(url);
             if (kind == SitePolicy.YT_HOME) {

@@ -160,12 +160,14 @@ public class BrowserActivity extends Activity {
                 FilterStore.setPolicy(this, b == null ? "off" : b.getString("filterTier", "off"), b == null ? "" : b.getString("filterBase", ""));
                 FilterStore.setYoutubeMode(this, b == null ? "channels" : b.getString("youtubeMode", "channels"));
                 FilterStore.setBlockImages(this, b != null && b.getBoolean("blockImages", false));
+                FilterStore.setBlockedWords(this, b == null ? null : b.getStringArray("blockedWords"));
             } else if (m == Mode.ONLINE) {
                 FilterStore.refreshAsync(this, false);
             } else {
                 FilterStore.setPolicy(this, "off", "");
                 FilterStore.setYoutubeMode(this, "channels");
                 FilterStore.setBlockImages(this, false);
+                FilterStore.setBlockedWords(this, null);
             }
             filterModeOk = (m == Mode.AGENT || m == Mode.ONLINE) && !"off".equals(FilterStore.tier(this));
         } catch (Exception e) {
@@ -604,6 +606,10 @@ public class BrowserActivity extends Activity {
             showSetupRequired(t, url);
             return false;
         }
+        if ((mode == Mode.AGENT || mode == Mode.ONLINE) && com.familymdm.agent.sitepolicy.WordFilter.match(url, FilterStore.blockedWords(this)) != null) {
+            showNotAvailable(t, "This page or search has a blocked word in it.");
+            return false;
+        }
         if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.youtubeRestricted(this) && isYoutubeAddress(url)) {
             int kind = SitePolicy.youtubeKind(url);
             if (kind == SitePolicy.YT_HOME) {
@@ -824,6 +830,10 @@ public class BrowserActivity extends Activity {
                 else FilterStore.setPolicy(this, "off", ""); // an older dashboard that does not know about filtering
                 FilterStore.setYoutubeMode(this, filter == null ? "channels" : filter.optString("youtube", "channels"));
                 FilterStore.setBlockImages(this, filter != null && filter.optBoolean("blockImages", false));
+                org.json.JSONArray fw = filter == null ? null : filter.optJSONArray("words");
+                String[] wordList = new String[fw == null ? 0 : fw.length()];
+                for (int i = 0; i < wordList.length; i++) wordList[i] = fw.optString(i);
+                FilterStore.setBlockedWords(this, wordList);
                 filterModeOk = !"off".equals(FilterStore.tier(this));
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list
