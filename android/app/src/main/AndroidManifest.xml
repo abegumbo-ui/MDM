@@ -21,6 +21,10 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- To notice a SIM card being removed or swapped (Tamper.java). Granted by the Agent itself as device owner. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Calls & texts (see Calls.java): who may call, and the call/texts log. Granted by the Agent itself as device owner. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
@@ -212,5 +216,29 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- Calls & texts: incoming calls (call-screening role) and outgoing calls (call-redirection
+             role). Both roles are taken with one "Allow" tap, see CallSetupActivity. -->
+        <service
+            android:name=".CallGuard"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".CallOutGuard"
+            android:exported="true"
+            android:permission="android.permission.BIND_CALL_REDIRECTION_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallRedirectionService" />
+            </intent-filter>
+        </service>
+        <activity
+            android:name=".CallSetupActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>

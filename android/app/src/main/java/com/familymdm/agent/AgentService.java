@@ -185,6 +185,7 @@ public class AgentService extends Service {
         o.put("kiosk", Kiosk.active(this));
         JSONObject battery = Telemetry.battery(this);
         if (battery != null) o.put("battery", battery);
+        o.put("callControl", Calls.status(this));
         o.put("wifi", Telemetry.wifi(this));
         long lockUntil = Agent.prefs(this).getLong("lockUntil", 0);
         if (lockUntil > System.currentTimeMillis()) {
@@ -234,6 +235,10 @@ public class AgentService extends Service {
         JSONArray trafficLog = TrafficLog.peekPending(this);
         body.put("trafficLog", trafficLog);
         JSONArray locations = Whereabouts.peek(this);
+        Calls.collect(this);
+        JSONArray calls = Calls.peekCalls(this), texts = Calls.peekTexts(this);
+        if (calls.length() > 0) body.put("calls", calls);
+        if (texts.length() > 0) body.put("texts", texts);
         if (locations.length() > 0) body.put("locations", locations);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
@@ -317,6 +322,8 @@ public class AgentService extends Service {
         Agent.dropMessages(this, messages.length());
         TrafficLog.dropPending(this, trafficLog.length());
         Whereabouts.drop(this, locations.length());
+        Calls.dropCalls(this, calls.length());
+        Calls.dropTexts(this, texts.length());
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
         Agent.adoptRestrictionOverrides(this, reply.optJSONObject("restrictionOverrides"), reply.optLong("restrictionOverridesRev", 0));
         Master.store(this, reply.optJSONObject("master"));

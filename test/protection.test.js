@@ -85,3 +85,31 @@ test("a template never carries a pause", async () => {
   const t = (await (await req("/api/templates", { headers: { cookie } })).json()).find((x) => x.name === "No pause");
   assert.ok(!t.summary.some((l) => l.includes("paused")));
 });
+
+test("calls: settings cleaned and sent to the phone; call and texts logs kept on the dashboard", async () => {
+  const { normalizeCallNumbers } = await import("../src/policy.js");
+  assert.deepEqual(normalizeCallNumbers([{ name: "Mom", number: "+1 (212) 555-1234" }, { number: "212-555-1234" }, { number: "12" }, { name: "Star", number: "*611" }, "x"]),
+    [{ name: "Mom", number: "+12125551234" }, { name: "Star", number: "*611" }]);
+  const c = normalizeConfig({ callsIn: "list", callsOut: "nonsense", callNumbers: [{ name: "Mom", number: "052-123-4567" }], callLog: true });
+  assert.equal(c.callsOut, "all");
+  const p = buildAgentPolicy(c, []);
+  assert.equal(p.callsIn, "list");
+  assert.deepEqual(p.callNumbers, ["0521234567"]);
+  assert.equal(p.callLog, true);
+  assert.equal(p.textLog, false);
+  const lines = summarizeConfigChange(normalizeConfig({}), c);
+  for (const l of ["Who can call: only the list", "Allowed numbers: 1", "Call log: on"]) assert.ok(lines.includes(l), l);
+
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Caller" } }) })).json();
+  const sync = (body) => req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  await sync({
+    calls: [{ number: "0521234567", name: "Mom", type: "in", at: 5, secs: 61 }, { number: "999", type: "weird", at: 6 }],
+    texts: [{ number: "0521234567", type: "in", at: 7, text: "hi", secs: 3 }],
+  });
+  const d = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.name.endsWith("Caller"));
+  assert.deepEqual(d.calls, [{ number: "0521234567", name: "Mom", type: "in", at: 5, secs: 61 }, { number: "999", type: "other", at: 6 }]);
+  assert.deepEqual(d.texts, [{ number: "0521234567", type: "in", at: 7, text: "hi" }]);
+});

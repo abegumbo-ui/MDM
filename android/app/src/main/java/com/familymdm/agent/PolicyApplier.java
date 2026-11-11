@@ -210,6 +210,7 @@ final class PolicyApplier {
         // Forced SafeSearch / YouTube Restricted Mode are answered by the same filter (see SafeSearchDns).
         Protection.apply(c, policy); // pause, internet only for chosen apps, image search
         Whereabouts.apply(c, policy); // location history
+        Calls.apply(c, policy); // who may call, call log, texts log
         boolean safeSearch = policy.optBoolean("safeSearch", false);
         String youtubeDns = policy.optString("youtubeDns", "off");
         Agent.prefs(c).edit().putBoolean("safeSearch", safeSearch).putString("youtubeDns", youtubeDns).apply();

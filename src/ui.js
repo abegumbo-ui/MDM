@@ -205,7 +205,8 @@ const GROUPS=[
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
  {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
  {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
- {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['appnet','Internet for apps'],['traffic','Traffic log']]},
+ {key:'calls',label:'Calls & texts',icon:'phone',subs:[['rules','Who can call'],['calllog','Call log'],['texts','Texts']]},
+{key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['appnet','Internet for apps'],['traffic','Traffic log']]},
  {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
  {key:'device',label:'Device',icon:'device',subs:[['location','Location'],['usermenu','Phone menu'],['menu','Settings menu'],['updates','Updates'],['device','Controls']]}];
 function getSub(g){const G=GROUPS.find(function(x){return x.key===g});const v=subs[g];return G.subs.some(function(x){return x[0]===v})?v:G.subs[0][0]}
@@ -237,6 +238,7 @@ const ICONS={
  message:'M20,2L4,2c-1.1,0 -2,0.9 -2,2v18l4,-4h14c1.1,0 2,-0.9 2,-2L22,4c0,-1.1 -0.9,-2 -2,-2zM6,9h12v2L6,11L6,9zM14,14L6,14v-2h8v2zM18,8L6,8L6,6h12v2z',
  device:'M17,19L7,19L7,5h10v14zM17,1L7,1c-1.1,0 -2,0.9 -2,2v18c0,1.1 0.9,2 2,2h10c1.1,0 2,-0.9 2,-2L19,3c0,-1.1 -0.9,-2 -2,-2z',
  home:'M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z',
+ phone:'M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z',
  shield:'M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z',
  wifi:'M1,9l2,2c4.97,-4.97 13.03,-4.97 18,0l2,-2C16.93,2.93 7.08,2.93 1,9zM9,17l3,3 3,-3C13.35,15.34 10.66,15.34 9,17zM5,13l2,2c2.76,-2.76 7.24,-2.76 10,0l2,-2C15.14,9.14 8.87,9.14 5,13z',
  update:'M19,13c0,3.87 -3.13,7 -7,7 -3.87,0 -7,-3.13 -7,-7 0,-3.83 3.08,-6.94 6.9,-7l0,2.02c-2.7,0.07 -4.9,2.3 -4.9,4.98 0,2.76 2.24,5 5,5 2.76,0 5,-2.24 5,-5 0,-1.27 -0.49,-2.42 -1.27,-3.3l-1.48,1.48 0,-5.5 5.5,0 -1.69,1.69c1.17,1.28 1.94,2.96 1.94,4.63z',
@@ -751,10 +753,11 @@ function renderDeviceDetail(m,d){
 
 
  const internet=h('section');buildInternetGroup(internet,d);
+ const callsg=h('section');buildCallsGroup(callsg,d);
  const brg=h('section');buildBrowserGroup(brg,d);
  const tmg=h('section');buildTimeGroup(tmg,d);
  const devg=h('section');buildDeviceGroup(devg,d);
- const body={overview:{status:ov,messages:msgs,log:lg},apps:ap,time:tmg,browser:brg,internet:internet,security:lk,device:devg};
+ const body={overview:{status:ov,messages:msgs,log:lg},apps:ap,time:tmg,browser:brg,calls:callsg,internet:internet,security:lk,device:devg};
 
  // ----- search: every group and tab -----
  const searchIndex=[
@@ -762,7 +765,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Who can call the phone, and who it can call','calls','rules'],['Allowed phone numbers','calls','rules'],['Call log','calls','calllog'],['Texts (SMS) log','calls','texts'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1130,6 +1133,67 @@ function renderImageSearch(m,dv){const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block image search'),
   h('div',{class:'mute small'},'The "Images" tab of Google, Bing and DuckDuckGo is refused; normal searches keep working. '+(dv.isBrowser?'Applies to this browser.':'In our own browsers always. In Chrome and other browsers only with Inspection on (the last tab).'))),
   sw(c.blockImageSearch,async function(on){c.blockImageSearch=on;try{await saveConfigFor(dv,on?'Image search will be blocked.':'Image search is allowed again.')}catch(e){snack(e.message,1)}}))))}
+
+/* ---------- Calls & texts ---------- */
+function buildCallsGroup(m,dv){
+ const sub=getSub('calls');
+ if(sub==='rules')renderCallRules(m,dv);
+ else if(sub==='calllog')renderCallLog(m,dv);
+ else if(sub==='texts')renderTexts(m,dv);
+}
+const CALL_MODE_OPTS=[['all','Anyone'],['contacts','Only the phone\'s contacts and the numbers below'],['list','Only the numbers below']];
+function renderCallRules(m,dv){
+ const c=dv.config,save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const cc=(dv.info||{}).callControl;
+ const wantIn=(c.callsIn||'all')!=='all',wantOut=(c.callsOut||'all')!=='all';
+ if(wantIn||wantOut){
+  let msg=null;
+  if(!cc)msg='The phone has not reported yet whether call controls are ready (it needs the latest Agent build).';
+  else if(cc.supported===false)msg='This phone\'s Android version is too old for call controls (Android 10 or newer is needed).';
+  else if((wantIn&&!cc.screening)||(wantOut&&!cc.redirection))msg='One step left on the phone: tap the notification "Finish setting up call controls" and choose Allow (Android asks once; nobody can do this from here). Until then calls are not checked.';
+  if(msg)m.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Not active yet'),h('div',{class:'mute'},msg)));
+  else m.append(h('div',{class:'card'},h('div',{class:'mute'},'Call controls are active on the phone.')));
+ }
+ const sel=function(val,on){const s=h('select',{style:'max-width:100%'});for(const [v,l] of CALL_MODE_OPTS){const o=new Option(l,v);if((val||'all')===v)o.selected=true;s.append(o)}s.onchange=function(){on(s.value)};return s};
+ m.append(h('div',{class:'card'},h('h2',null,'Who can call'),
+  h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Incoming calls'),h('div',{class:'mute small'},'Calls from anyone else are rejected without ringing. Calls from hidden or private numbers cannot be blocked here; turn on "Block unknown callers" in the phone\'s own Phone app for those.')),
+   sel(c.callsIn,function(v){c.callsIn=v;save('Saved. Applies at the next check-in.')})),
+  h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Outgoing calls'),h('div',{class:'mute small'},'Calls to other numbers are stopped with a message. Emergency calls (911, 112 and so on) and voicemail always work.')),
+   sel(c.callsOut,function(v){c.callsOut=v;save('Saved. Applies at the next check-in.')})),
+  h('div',{class:'mute small',style:'margin-top:8px'},'"Contacts" lets through anyone saved in the phone\'s contacts, and he can add contacts himself. For full control choose "Only the numbers below". To stop call controls being switched off in Settings, turn on "Block changing default apps" (Security → Restrictions).'),
+  !(c.restrictions||{}).defaultAppsDisabled&&(wantIn||wantOut)?h('div',{style:'margin-top:8px'},btn('Turn on "Block changing default apps"','tonal',function(){c.restrictions=Object.assign({},c.restrictions,{defaultAppsDisabled:true});save('Turned on.')})):null));
+ const nc=h('div',{class:'card'},h('h2',null,'Allowed numbers ('+(c.callNumbers||[]).length+')'),h('div',{class:'mute'},'Used by both settings above. A number matches however it is written (with or without the country code, spaces or dashes).'));
+ (c.callNumbers||[]).forEach(function(n,i){nc.append(h('div',{class:'row',style:'margin:6px 0'},h('span',{class:'grow'},(n.name?n.name+' · ':'')+n.number),btn('Remove','danger',function(){c.callNumbers.splice(i,1);save('Removed.')})))});
+ const name=h('input',{type:'text',placeholder:'Name, e.g. Mom',style:'flex:1;min-width:140px'}),num=h('input',{type:'tel',placeholder:'Phone number',style:'flex:1;min-width:160px'});
+ nc.append(h('div',{class:'row',style:'margin-top:10px;flex-wrap:wrap'},name,num,btn('Add number','',function(){
+  if(num.value.replace(/\D/g,'').length<3){snack('Type a phone number.',1);return}
+  c.callNumbers=(c.callNumbers||[]).concat([{name:name.value.trim(),number:num.value.trim()}]);save('Number added.')})));
+ const calls=dv.calls||[],seen=new Set(),recent=[];
+ for(const x of calls.slice().reverse()){const k=x.number.replace(/\D/g,'').slice(-9);if(!k||seen.has(k)||(c.callNumbers||[]).some(function(n){return n.number.replace(/\D/g,'').slice(-9)===k}))continue;seen.add(k);recent.push(x);if(recent.length>=8)break}
+ if(recent.length){nc.append(h('div',{style:'font-weight:500;margin-top:14px'},'Add from recent calls'));
+  for(const x of recent)nc.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},(x.name?x.name+' · ':'')+x.number),btn('Add','tonal',function(){c.callNumbers=(c.callNumbers||[]).concat([{name:x.name||'',number:x.number}]);save('Number added.')})))}
+ m.append(nc);
+ m.append(h('div',{class:'card'},h('div',{class:'mute small'},'Also in Security → Restrictions: "Block making calls" (all calls except emergency) and "Block sending and receiving SMS" (all texts). Android does not let an app block texts from just some numbers.')))}
+function logToggle(m,dv,title,desc,key,extra){
+ const c=dv.config;
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc)),
+  sw(c[key],async function(on){c[key]=on;try{await saveConfigFor(dv,on?'Switched on. Entries arrive with the phone\'s next check-ins (the past week first).':'Switched off.')}catch(e){snack(e.message,1)}render()})),extra||null))}
+const CALL_TYPE_WORDS={in:'Incoming',out:'Outgoing',missed:'Missed',voicemail:'Voicemail',rejected:'Rejected',blocked:'Blocked',other:'Call'};
+function dur(s){if(!s)return '';const m=Math.floor(s/60);return m?m+' min '+(s%60)+' s':s+' s'}
+function renderCallLog(m,dv){
+ logToggle(m,dv,'Send the call log to the dashboard','Who the phone called, who called it, missed and blocked calls, and how long each call took.','callLog');
+ const list=(dv.calls||[]).slice().reverse(),card=h('div',{class:'card'},h('h2',null,'Calls'));
+ if(!list.length)card.append(h('div',{class:'mute'},dv.config.callLog?'Nothing yet. Calls show up after the phone\'s next check-in.':'Switch on the call log above.'));
+ for(const x of list.slice(0,150))card.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{style:'width:90px'},h('span',{class:'chip'+(x.type==='blocked'||x.type==='missed'?' bad':'')},CALL_TYPE_WORDS[x.type]||'Call')),h('span',{class:'grow'},(x.name?x.name+' · ':'')+(x.number||'hidden number')),h('span',{class:'mute small'},dur(x.secs)),h('span',{class:'mute small',style:'min-width:130px;text-align:right'},new Date(x.at).toLocaleString())));
+ m.append(card)}
+function renderTexts(m,dv){
+ const c=dv.config;
+ logToggle(m,dv,'Send the texts (SMS) log to the dashboard','Who texted the phone and whom it texted, and when. Only ordinary text messages: not WhatsApp or other chat apps.','textLog',
+  c.textLog?h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Include what the messages say'),h('div',{class:'mute small'},'Off: only who and when. On: the first 300 letters of each message are stored on the dashboard.')),sw(c.textContent,async function(on){c.textContent=on;try{await saveConfigFor(dv,on?'Message words included from now on.':'Only who and when from now on.')}catch(e){snack(e.message,1)}render()})):null);
+ const list=(dv.texts||[]).slice().reverse(),card=h('div',{class:'card'},h('h2',null,'Texts'));
+ if(!list.length)card.append(h('div',{class:'mute'},c.textLog?'Nothing yet. Texts show up after the phone\'s next check-in.':'Switch on the texts log above.'));
+ for(const x of list.slice(0,150))card.append(h('div',{style:'margin:6px 0'},h('div',{class:'row'},h('span',{class:'chip'},x.type==='in'?'From':'To'),h('span',{class:'grow'},(x.name?x.name+' · ':'')+x.number),h('span',{class:'mute small'},new Date(x.at).toLocaleString())),x.text?h('div',{class:'mute',style:'margin:2px 0 0 8px;white-space:pre-wrap'},x.text):null));
+ m.append(card)}
 
 /* ---------- Internet: only chosen apps get internet ---------- */
 function renderInternetApps(m,dv){
