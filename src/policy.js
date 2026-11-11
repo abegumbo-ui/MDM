@@ -365,6 +365,18 @@ export function inGroup(group, pkg, category) {
   return !!g && (g.packages.includes(pkg) || (Number.isInteger(category) && (g.categories || []).includes(category)));
 }
 
+/** Blocked words: lower-case, 1-60 characters, letters/digits (Hebrew included) and single spaces; at most 200. Mirrors WordFilter.clean. */
+export function normalizeBlockedWords(list) {
+  const out = [];
+  for (const raw of Array.isArray(list) ? list : []) {
+    if (typeof raw !== "string") continue;
+    const w = raw.toLowerCase().split(/[^a-z0-9\u0590-\u05ff]+/).filter(Boolean).join(" ");
+    if (w && w.length <= 60 && !out.includes(w)) out.push(w);
+    if (out.length >= 200) break;
+  }
+  return out;
+}
+
 /** Chrome's own settings the dashboard can lock (see PolicyApplier.pushChromeConfig). */
 function normalizeChromePolicy(c) {
   const o = c && typeof c === "object" ? c : {};
@@ -439,6 +451,7 @@ export function normalizeConfig(input) {
     youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "auto",
     screenTime: normalizeScreenTime(c.screenTime),
     chromePolicy: normalizeChromePolicy(c.chromePolicy),
+    blockedWords: normalizeBlockedWords(c.blockedWords),
     // Forces SafeSearch on Google, Bing and DuckDuckGo for every browser and app (see SafeSearchDns.java).
     safeSearch: c.safeSearch === true,
     // Forces YouTube's own Restricted Mode everywhere, the YouTube app included: "off", "moderate" or "strict".
@@ -636,6 +649,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.userMenu = cfg.userMenu;
   out.screenTime = cfg.screenTime;
   out.chromePolicy = cfg.chromePolicy;
+  out.blockedWords = cfg.blockedWords;
   out.safeSearch = cfg.safeSearch;
   out.youtubeDns = cfg.youtubeDns;
   out.blockImages = cfg.blockImages;
@@ -688,6 +702,7 @@ export function summarizeConfigChange(before, after) {
     const b = !before.userMenu || before.userMenu[k] !== false, a = !after.userMenu || after.userMenu[k] !== false;
     if (a !== b) lines.push('Phone menu "' + label + '": ' + (a ? "shown" : "hidden"));
   }
+  if (JSON.stringify(normalizeBlockedWords(before.blockedWords)) !== JSON.stringify(normalizeBlockedWords(after.blockedWords))) lines.push("Blocked words: " + normalizeBlockedWords(after.blockedWords).length);
   const cpB = normalizeChromePolicy(before.chromePolicy), cpA = normalizeChromePolicy(after.chromePolicy);
   for (const [k, label] of [["noIncognito", "Chrome: no incognito tabs"], ["adultFilter", "Chrome: Google's adult-site filter"], ["noSignin", "Chrome: no signing in"]]) {
     if (cpB[k] !== cpA[k]) lines.push(label + ": " + (cpA[k] ? "on" : "off"));

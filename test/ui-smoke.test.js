@@ -52,9 +52,10 @@ async function setUp() {
   const dev = (await (await call("/api/devices", { headers: { cookie } })).json())[0];
   await call(`/api/devices/${dev.id}/config`, { method: "PUT", headers: { ...J, cookie }, body: JSON.stringify({
     screenTime: { dailyLimit: 180, bedtime: { days: [0, 1, 2, 3, 4], from: "22:00", to: "07:00" }, appLimits: { "com.instagram.android": 30 }, exempt: ["com.google.android.apps.maps"] },
-    chromePolicy: { noIncognito: true }, browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, safeSearch: true, youtubeDns: "strict", blockImages: true, imagesAllow: ["maps.google.com"], userMenu: { store: false },
+    chromePolicy: { noIncognito: true }, blockedWords: ["casino", "sex"], browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, safeSearch: true, youtubeDns: "strict", blockImages: true, imagesAllow: ["maps.google.com"], userMenu: { store: false },
     sites: { a: { type: "domain", url: "example.org" }, b: { type: "youtube", id: "@somechannel" } },
     apps: { "com.android.vending": { mode: "block", label: "Google Play Store" } } }) });
+  await call("/api/templates", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ name: "Teen phone", deviceId: dev.id }) });
   await (await call("/browser/register", { method: "POST", headers: J, body: JSON.stringify({ info: { model: "B" } }) })).json();
   return { call, cookie };
 }
@@ -98,7 +99,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   };
   const seen = {};
   seen.list = tryRender("device list", "tab='devices';openId=null;openBrowserId=null;openWinId=null;render()");
-  for (const page of ["codes", "settings", "clients", "audit"]) seen[page] = tryRender(page, `tab='${page}';openId=null;render()`);
+  for (const page of ["codes", "settings", "clients", "audit", "templates"]) seen[page] = tryRender(page, `tab='${page}';openId=null;render()`);
   const groups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,g.subs.map(function(s){return s[0]})]}))", ctx);
   for (const [g, subs] of JSON.parse(groups)) {
     for (const sub of subs) {
@@ -107,6 +108,12 @@ test("every dashboard page, group and tab opens without an error", async () => {
   }
   seen.browserDevice = tryRender("standalone browser page", "tab='devices';openId=null;openBrowserId=browsers[0].id;render()");
   await new Promise((r) => setTimeout(r, 150)); // let the cards that fetch their own data finish
+  // Pages that fill themselves in after asking the server: open them again and read them once that is done.
+  for (const page of ["templates", "settings"]) {
+    tryRender(page, `tab='${page}';openId=null;openBrowserId=null;render()`);
+    await new Promise((r) => setTimeout(r, 200));
+    seen[page] = reg.get("main").textContent;
+  }
   assert.deepEqual(errors, [], "no tab threw an error");
 
   // A few things that must actually be on the screen, not just "no crash".
@@ -147,4 +154,9 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["device/usermenu"], /Open Google Play Store/);
   assert.match(seen.browserDevice, /Web access/, "a standalone Browser still has its filter card");
   assert.match(seen.list, /Pixel/);
+  assert.match(seen["browser/access"], /Blocked words \(2\)/);
+  assert.match(seen["device/device"], /Save as template/);
+  assert.match(seen.templates, /Teen phone/);
+  assert.match(seen.templates, /Blocked words: 2/, "the template says how it differs from a fresh phone");
+  assert.match(seen.settings, /SIM card removed or changed/);
 });

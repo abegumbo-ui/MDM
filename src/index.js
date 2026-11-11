@@ -422,6 +422,64 @@ async function adminApiInner(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
 
+  // ---- templates: a phone's settings saved under a name, to apply to other phones ----
+  const tpl = /^\/api\/templates(?:\/([0-9a-f]{12})(\/apply)?)?$/.exec(path);
+  if (tpl) {
+    // Read here: this block runs before the request body is parsed for the rest of the API.
+    const tb = method === "POST" ? await request.json().catch(() => ({})) : {};
+    const mine = (t) => t && canSee(session, t.ownerId);
+    if (!tpl[1] && method === "GET") {
+      const out = [];
+      let cursor;
+      do {
+        const page = await env.STATE.list({ prefix: "template:", ...(cursor && { cursor }) });
+        for (const k of page.keys) {
+          const t = await getJSON(env, k.name, null);
+          if (mine(t)) out.push({ id: t.id, name: t.name, from: t.from, createdAt: t.createdAt, summary: summarizeConfigChange(normalizeConfig({}), normalizeConfig(t.config)) });
+        }
+        cursor = page.list_complete ? null : page.cursor;
+      } while (cursor);
+      return json(out.sort((a, b) => b.createdAt - a.createdAt));
+    }
+    if (!tpl[1] && method === "POST") {
+      const name = String(tb.name || "").trim().slice(0, 60);
+      if (!name) return json({ error: "Give the template a name" }, 400);
+      const src = /^[0-9a-f]{1,32}$/.test(tb.deviceId || "") ? await getJSON(env, `device:${tb.deviceId}`, null) : null;
+      if (!src || !canSee(session, src.ownerId)) return json({ error: "Unknown device" }, 404);
+      const { cfg } = await configOf(env, src);
+      const { frpAccounts, ...config } = cfg; // reset-protection accounts belong to one phone, never copied
+      const id = randomHex(6);
+      await putJSON(env, `template:${id}`, { id, name, from: src.name, config, createdAt: Date.now(), ownerId: isClient(session) ? session.id : null });
+      return json({ id, name });
+    }
+    const key = `template:${tpl[1]}`;
+    const t = tpl[1] ? await getJSON(env, key, null) : null;
+    if (!mine(t)) return json({ error: "Unknown template" }, 404);
+    if (!tpl[2] && method === "DELETE") {
+      await env.STATE.delete(key);
+      return json({ ok: true });
+    }
+    if (tpl[2] && method === "POST") {
+      const ids = (Array.isArray(tb.deviceIds) ? tb.deviceIds : []).filter((x) => /^[0-9a-f]{1,32}$/.test(x)).slice(0, 200);
+      let applied = 0;
+      for (const id of ids) {
+        const dk = `device:${id}`;
+        const d = await getJSON(env, dk, null);
+        if (!d || !canSee(session, d.ownerId)) continue;
+        const { cfg: before } = await configOf(env, d);
+        const next = normalizeConfig({ ...t.config, frpAccounts: before.frpAccounts }); // keep this phone's own reset-protection accounts
+        if (next.approveNew && !before.approveNew) d.known = (d.packages || []).map((p) => p.p);
+        d.config = next;
+        const changes = summarizeConfigChange(before, next);
+        d.pushLog = [...(d.pushLog || []), { at: Date.now(), changes: [`Template "${t.name}" applied`, ...changes] }].slice(-30);
+        await putJSON(env, dk, d);
+        applied++;
+      }
+      return json({ applied });
+    }
+    return json({ error: "Not found" }, 404);
+  }
+
   // A YouTube video's title and channel, so a request can be approved by name instead of as a bare address.
   if (path === "/api/youtube-info" && method === "GET") {
     const id = youtubeVideoId(url.searchParams.get("url") || "");
@@ -657,7 +715,7 @@ async function adminApiInner(request, env, url, session) {
     if (brConfig[2] === "config" && method === "PUT") {
       // An omitted browserFilter becomes "off" (allowlist-only), the stricter setting, so a stale
       // dashboard tab can never accidentally open the web.
-      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages });
+      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages, blockedWords: body.blockedWords });
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -902,7 +960,7 @@ const categoriesOf = (d) => Object.fromEntries((d.packages || []).filter((p) => 
 
 // ---- agent API (per-device bearer token) ----
 // Where the Browser downloads its category blocklists from (the fixed "blocklists" release the weekly job publishes).
-const filterFor = (env, config) => ({ tier: config.browserFilter || "off", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
+const filterFor = (env, config) => ({ tier: config.browserFilter || "off", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, words: config.blockedWords || [], base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
 
 async function agentApi(request, env, url, ctx) {
   const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);

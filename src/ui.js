@@ -319,13 +319,14 @@ function render(){
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){setCrumbs([['Devices','devices'],[d.name]]);renderDeviceDetail(m,d);return}openId=null}
  if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){setCrumbs([['Devices','devices'],[b.name]]);renderBrowserDetail(m,b);return}openBrowserId=null}
  if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){setCrumbs([['Devices','devices'],[w.name]]);renderWinDetail(m,w);return}openWinId=null}
- if(tab==='codes'||tab==='settings'||tab==='clients'||tab==='audit'){
-  const T={codes:'Codes',clients:'Clients',settings:'Settings',audit:'Activity'}[tab];
+ if(tab==='codes'||tab==='settings'||tab==='clients'||tab==='audit'||tab==='templates'){
+  const T={codes:'Codes',clients:'Clients',settings:'Settings',audit:'Activity',templates:'Templates'}[tab];
   setCrumbs([['Devices','devices'],[T]]);
   pageHead(m,T);
   if(tab==='codes')renderCodes(m);
   else if(tab==='clients')renderClients(m);
   else if(tab==='audit')renderAudit(m);
+  else if(tab==='templates')renderTemplates(m);
   else renderSettings(m);
   return}
  setCrumbs([['Devices']]);
@@ -382,6 +383,7 @@ function renderDevices(m){
  const codes=h('button',{class:'btn'},'Add device');codes.onclick=function(){location.hash='codes'};bar.append(codes);
  if(state.session.role==='admin'){
   const act=h('button',{class:'btn tonal'},'Activity');act.onclick=function(){location.hash='audit'};
+  const tp=h('button',{class:'btn tonal'},'Templates');tp.onclick=function(){location.hash='templates'};bar.append(tp);
   const clients=h('button',{class:'btn tonal'},'Clients');clients.onclick=function(){location.hash='clients'};
   const settings=h('button',{class:'btn tonal'},'Settings');settings.onclick=function(){location.hash='settings'};
   bar.append(act,clients,settings)}
@@ -590,7 +592,7 @@ function buildDeviceGroup(m,dv){
  if(sub==='menu')phoneLocalNote(m,'Most of the 16 categories here already work with no setup at all -- they point at a standard Android settings screen (Wi-Fi, Bluetooth, sound, display…) that works the same on every phone, or (Android Auto) jump straight into that app itself. A handful are this phone brand\'s own screens with no standard Android way to open them by name (notably some Motorola-only ones), so for just those few, Settings → Settings Menu → Learn on the phone itself captures the exact screen once, by physically going there -- genuinely needs to happen on the phone, there is no remote equivalent for an unlisted manufacturer screen. Everything else needs nothing here.');
  else if(sub==='usermenu')renderUserMenu(m,dv);
  else if(sub==='updates')renderUpdatesSection(m,dv);
- else if(sub==='device')renderDeviceCard(m,dv);
+ else if(sub==='device'){renderTemplateCard(m,dv);renderDeviceCard(m,dv)}
 }
 
 function renderDeviceDetail(m,d){
@@ -755,7 +757,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1081,6 +1083,52 @@ function renderWebAccess(m,dv){
   h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Inspection (the last tab here).'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists, our own browsers stay on approved sites only, but Chrome and other browsers are not filtered yet (the phone cannot cut off the whole internet to wait for them). In Chrome the filter works on site names, not pages, and while it is on QUIC (a faster web protocol) is switched off so browsers use the kind of connection the filter can see. A browser using its own encrypted DNS can sometimes get around the name lookup, though the connection itself is still checked.'));
  m.append(card)}
+/** Words that block any site name, page or search containing them. */
+function renderBlockedWords(m,dv){
+ const c=dv.config,ta=h('textarea',{rows:5,style:'width:100%;margin-top:8px',placeholder:'one word or phrase per line, e.g. casino'});ta.value=(c.blockedWords||[]).join('\n');
+ const card=h('div',{class:'card'},h('h2',null,'Blocked words'+((c.blockedWords||[]).length?' ('+c.blockedWords.length+')':'')),
+  h('div',{class:'mute'},'Any site, page or search that contains one of these is blocked. Short words (1 to 3 letters) only count as a whole word, so "sex" does not block "Sussex"; longer words also count inside other words, so "casino" blocks "onlinecasinos". A phrase counts when its words appear in that order. Hebrew works too.'),ta,
+  h('div',{style:'margin-top:8px'},btn('Save words','',async function(){c.blockedWords=ta.value.split(/\n+/).map(function(x){return x.trim()}).filter(Boolean);try{await saveConfigFor(dv,'Saved. Applies at the next check-in.')}catch(e){snack(e.message,1)}render()})));
+ card.append(h('div',{class:'mute small',style:'margin-top:10px'},dv.isBrowser?'Applies to this browser.':'In our own browsers: site names, pages and searches. In Chrome and every other app: site names (through the Agent\'s site filter). Words typed into a search in Chrome are only checked when Inspection is on.'));
+ m.append(card)}
+
+/* ---------- templates: one phone's settings, saved under a name, applied to others ---------- */
+function renderTemplateCard(m,dv){
+ const card=h('div',{class:'card'},h('h2',null,'Templates'),h('div',{class:'mute'},'Save everything set up for this phone (apps, filters, screen time, Chrome, safe search, menus...) under a name, then apply it to other phones in one go. Reset-protection accounts are never copied.'));
+ const name=h('input',{type:'text',placeholder:'Template name, e.g. Teen phone',style:'flex:1;min-width:180px'});
+ card.append(h('div',{class:'row',style:'margin-top:10px'},name,btn('Save as template','',async function(){
+  if(!name.value.trim()){snack('Give it a name first.',1);return}
+  await call('POST','/api/templates',{name:name.value.trim(),deviceId:dv.id});snack('Saved. Apply it to other phones from the Templates page.');name.value=''})));
+ const pick=h('select',{style:'flex:1;min-width:180px'},new Option('Loading templates…',''));
+ const apply=btn('Apply to this phone','tonal',async function(){
+  if(!pick.value){snack('Choose a template first.',1);return}
+  if(!confirm('Replace this phone\'s settings with the template "'+pick.options[pick.selectedIndex].text+'"? Its current settings are overwritten.'))return;
+  await call('POST','/api/templates/'+pick.value+'/apply',{deviceIds:[dv.id]});snack('Applied. The phone picks it up within about 5 minutes.');load()});
+ card.append(h('div',{class:'row',style:'margin-top:10px'},pick,apply));
+ call('GET','/api/templates').then(function(list){pick.textContent='';
+  if(!list.length){pick.append(new Option('No templates yet',''));return}
+  pick.append(new Option('Choose a template…',''));for(const t of list)pick.append(new Option(t.name,t.id))}).catch(function(){pick.textContent='';pick.append(new Option('Could not load templates',''))});
+ m.append(card)}
+function renderTemplates(m){
+ const box=h('div',null,h('div',{class:'card'},h('div',{class:'mute'},'Loading…')));m.append(box);
+ call('GET','/api/templates').then(function(list){
+  box.textContent='';
+  if(!list.length){box.append(h('div',{class:'card empty'},h('h2',null,'No templates yet'),h('p',{class:'mute'},'Set up one phone the way you want, then on that phone\'s page open Device → Controls → Templates → "Save as template".')));return}
+  for(const t of list){
+   const card=h('div',{class:'card'},h('div',{class:'row'},h('h2',{class:'grow'},t.name),h('span',{class:'mute small'},'from '+(t.from||'a phone')+' · '+ago(t.createdAt))));
+   card.append(h('div',{class:'mute'},t.summary&&t.summary.length?'Differs from a fresh phone in: '+t.summary.slice(0,12).join('; ')+(t.summary.length>12?'; and '+(t.summary.length-12)+' more':''):'Same as a fresh phone.'));
+   const picks=h('div',{style:'margin-top:10px'});
+   for(const d of devices){const cb=h('input',{type:'checkbox',value:d.id});picks.append(h('label',{class:'row',style:'cursor:pointer;margin:4px 0'},cb,d.name))}
+   card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Apply to'),picks,h('div',{class:'row',style:'margin-top:8px'},
+    btn('Apply to the chosen phones','',async function(){
+     const ids=[...picks.querySelectorAll('input:checked')].map(function(x){return x.value});
+     if(!ids.length){snack('Choose at least one phone.',1);return}
+     if(!confirm('Replace the settings of '+ids.length+' phone(s) with "'+t.name+'"?'))return;
+     const r=await call('POST','/api/templates/'+t.id+'/apply',{deviceIds:ids});snack('Applied to '+r.applied+' phone(s). They pick it up within about 5 minutes.');load()}),
+    btn('Delete template','danger',async function(){if(!confirm('Delete the template "'+t.name+'"? Phones it was applied to keep their settings.'))return;await call('DELETE','/api/templates/'+t.id);render()})));
+   box.append(card)}
+ }).catch(function(e){box.textContent='';box.append(h('div',{class:'card'},h('div',{class:'mute'},e.message)))})}
+
 /** Chrome's own settings, locked by the Agent (no certificate needed). */
 function renderChromeLock(m,dv){
  const cp=dv.config.chromePolicy=dv.config.chromePolicy||{};
@@ -1206,7 +1254,7 @@ function renderTimeLimits(m,dv){
 function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
- else if(sub==='access'){renderWebAccess(m,dv);renderSearchPictures(m,dv)}
+ else if(sub==='access'){renderWebAccess(m,dv);renderSearchPictures(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='sites')renderSites(m,dv,'sites');
  else if(sub==='apps')renderSites(m,dv,'apps');
  else if(sub==='inspect')renderInspection(m,dv);
@@ -1335,7 +1383,7 @@ function renderInspection(m,dv){
  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Needs the phone to be managed by the Agent (device owner). Check Activity → Phone log for "Browser inspection turned on". If browsing ever fails on the phone, turn this off.'));
  m.append(card)}
 function renderSitesEditor(m,dv){
- if(dv.isBrowser){renderWebAccess(m,dv);renderSearchPictures(m,dv)} // a phone has these on its own "Filter level" tab
+ if(dv.isBrowser){renderWebAccess(m,dv);renderSearchPictures(m,dv);renderBlockedWords(m,dv)} // a phone has these on its own "Filter level" tab
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
@@ -1571,7 +1619,7 @@ function renderAlerts(m){
   opt('offline','A phone has not checked in for',hours);
   opt('battery','A phone battery is at or below',pct);
   opt('requests','A phone asks to open a site or sends you a message');
-  opt('tamper','The Agent notices something security related on a phone');
+  opt('tamper','Something security related: a phone restarted, its SIM card removed or changed, or a blocked attempt');
  }).catch(function(e){body.textContent='';body.append(h('div',{class:'mute'},e.message))})}
 
 /* ---------- settings ---------- */

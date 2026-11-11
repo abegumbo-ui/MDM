@@ -151,6 +151,21 @@ Dashboard: **Browser → Filter level → Safe search and pictures**.
    You should see: pictures still show, unless Inspection (section 8) is on, in which case they
    are gone there too. A site on the "show pictures" list keeps its pictures in Chrome.
 
+## 7c. Blocked words, tamper alerts, templates
+
+1. Dashboard: **Browser → Filter level → Blocked words**, add `casino`, save, refresh the phone.
+   You should see: searching Google for "casino" in the Agent's browser shows "This page or search
+   has a blocked word in it". In Chrome, a site with "casino" in its name does not load (a search
+   for it in Chrome still works unless Inspection is on).
+2. With alerts set up, restart the phone.
+   You should see: an alert "Phone was restarted" and the same line in the phone log.
+3. Take the SIM card out (or swap it), wait a minute.
+   You should see: "SIM card removed (was ...)" or "SIM card changed" in the log and as an alert.
+4. On a phone set up the way you like: **Device → Controls → Templates → Save as template**. Then
+   **Templates** (top of the Devices page): tick another phone, Apply.
+   You should see: the other phone gets the same settings (check its Browser and Screen time
+   tabs); its own reset-protection account is unchanged.
+
 ## 8. Inspection (certificate) - one test phone only
 
 1. Dashboard: **Browser → Inspection (advanced)**, switch it on, confirm.

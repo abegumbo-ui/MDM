@@ -212,7 +212,8 @@ final class PolicyApplier {
         String youtubeDns = policy.optString("youtubeDns", "off");
         Agent.prefs(c).edit().putBoolean("safeSearch", safeSearch).putString("youtubeDns", youtubeDns).apply();
         applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"),
-                (!"off".equals(filterTier) && !filterBase.isEmpty()) || safeSearch || !"off".equals(youtubeDns));
+                (!"off".equals(filterTier) && !filterBase.isEmpty()) || safeSearch || !"off".equals(youtubeDns)
+                        || (policy.optJSONArray("blockedWords") != null && policy.optJSONArray("blockedWords").length() > 0));
         applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
         if (NetworkBlocklist.rev(c) == 0 && !NetworkBlocklist.list(c).isEmpty()) {
             NetworkBlocklist.seed(c);
@@ -832,7 +833,10 @@ final class PolicyApplier {
             String filterBase = policy.optString("browserFilterBase", "");
             String youtubeMode = policy.optString("youtubeMode", "channels");
             boolean blockImages = policy.optBoolean("blockImages", false);
-            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages;
+            JSONArray wordsArr = policy.optJSONArray("blockedWords");
+            String[] words = new String[wordsArr == null ? 0 : wordsArr.length()];
+            for (int i = 0; i < words.length; i++) words[i] = wordsArr.optString(i);
+            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words);
             if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
@@ -841,6 +845,7 @@ final class PolicyApplier {
             b.putString("filterBase", filterBase);
             b.putString("youtubeMode", youtubeMode);
             b.putBoolean("blockImages", blockImages);
+            b.putStringArray("blockedWords", words);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
             errorCleared(c, "browserConfig");

@@ -33,8 +33,16 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         this(restricted, bypass, false, java.util.Collections.<String>emptySet());
     }
 
+    private final java.util.List<String> blockedWords;
+
     /** blockImages: replace every picture on web pages with a blank, except on (or from) the sites in imagesAllow. */
     public YoutubeInspector(boolean restricted, Set<String> bypass, boolean blockImages, Set<String> imagesAllow) {
+        this(restricted, bypass, blockImages, imagesAllow, java.util.Collections.<String>emptyList());
+    }
+
+    /** blockedWords: a page (or search) whose address contains one is refused. See WordFilter. */
+    public YoutubeInspector(boolean restricted, Set<String> bypass, boolean blockImages, Set<String> imagesAllow, java.util.List<String> blockedWords) {
+        this.blockedWords = blockedWords;
         this.restricted = restricted;
         this.bypass = bypass;
         this.blockImages = blockImages;
@@ -81,6 +89,10 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     @Override
     public InspectProxy.Response onRequest(InspectProxy.Request r) {
         if (imageBlocked(r)) return new InspectProxy.Response(200, "image/gif", BLANK_GIF);
+        if (!blockedWords.isEmpty() && isDocument(r) && com.familymdm.agent.sitepolicy.WordFilter.match(r.url(), blockedWords) != null) {
+            return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+                    + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>This page has a blocked word in it.</p></body></html>");
+        }
         if (!restricted || !isYoutube(r.host)) return null;
         r.headers.set(YoutubeRestricted.RESTRICT_HEADER, YoutubeRestricted.RESTRICT_VALUE);
         if (!isDocument(r)) return null;
