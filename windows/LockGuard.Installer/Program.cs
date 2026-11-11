@@ -101,6 +101,24 @@ internal static class Program
         }
 
         CreateDesktopShortcut();
+        RegisterUninstall();
+    }
+
+    /// <summary>
+    /// LockGuard in Windows' own "Installed apps" list. Its Uninstall button opens LockGuard
+    /// Setup, which only removes LockGuard after the code is entered.
+    /// </summary>
+    private static void RegisterUninstall()
+    {
+        using var k = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LockGuard", true);
+        var setup = Path.Combine(SetupDir, "LockGuard.Setup.exe");
+        k.SetValue("DisplayName", "LockGuard");
+        k.SetValue("Publisher", "Family MDM");
+        k.SetValue("DisplayIcon", setup);
+        k.SetValue("UninstallString", "\"" + setup + "\"");
+        k.SetValue("NoModify", 1, Microsoft.Win32.RegistryValueKind.DWord);
+        k.SetValue("NoRepair", 1, Microsoft.Win32.RegistryValueKind.DWord);
+        k.SetValue("Comments", "Removing LockGuard needs its code: Setup asks for it.");
     }
 
     private static void ExtractEmbeddedZip(string resourceName, string targetDir)

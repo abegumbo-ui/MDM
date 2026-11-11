@@ -359,6 +359,32 @@ const normalizeWin = (w) => {
     blockedPrograms: [...new Set((Array.isArray(o.blockedPrograms) ? o.blockedPrograms : []).map((p) => String(p).trim().toLowerCase()).filter((p) => /^[a-z0-9 ._()+-]{1,80}$/.test(p)))].slice(0, 200),
   };
 };
+// "Email only" (approved sites only, with these): what each email service needs to load and sign in.
+export const EMAIL_SERVICES = {
+  gmail: { label: "Gmail", open: "mail.google.com", hosts: ["mail.google.com", "accounts.google.com", "apis.google.com", "ogs.google.com", "contacts.google.com", "gstatic.com", "googleusercontent.com", "googleapis.com"] },
+  outlook: { label: "Outlook / Hotmail", open: "outlook.live.com", hosts: ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "login.live.com", "account.live.com", "login.microsoftonline.com", "office.net", "msauth.net", "msftauth.net", "live.net"] },
+  yahoo: { label: "Yahoo Mail", open: "mail.yahoo.com", hosts: ["mail.yahoo.com", "login.yahoo.com", "yimg.com"] },
+};
+const EMAIL_HELPERS = new Set(Object.values(EMAIL_SERVICES).flatMap((e) => e.hosts.filter((h) => h !== e.open)));
+const EMAIL_NAMES = Object.fromEntries(Object.values(EMAIL_SERVICES).map((e) => [e.open, e.label]));
+
+/** The start page's buttons: the allowed sites someone would open (not the sign-in and picture servers). */
+function startSites(allow) {
+  return allow.filter((h) => !EMAIL_HELPERS.has(h)).slice(0, 24);
+}
+
+/** The browsers' start page on a PC with "approved sites only": big buttons to the allowed sites. */
+function startPageHtml(sites) {
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const buttons = sites.map((h) => `<a class="b" href="https://${esc(h)}/">${esc(EMAIL_NAMES[h] || h)}<span>${esc(h)}</span></a>`).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Start</title>
+<style>body{margin:0;font-family:system-ui,Segoe UI,sans-serif;background:#0b0d12;color:#f2f4f7;display:flex;min-height:100vh;align-items:center;justify-content:center}
+main{width:min(720px,92vw);text-align:center}h1{font-weight:600;font-size:28px;margin:0 0 6px}p{color:#98a2b3;margin:0 0 28px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}.b{display:block;padding:26px 16px;border-radius:16px;background:#12151c;border:1px solid #232833;color:#f2f4f7;text-decoration:none;font-size:20px;font-weight:600}
+.b:hover{border-color:#6366f1;background:#161a24}.b span{display:block;font-size:13px;font-weight:400;color:#98a2b3;margin-top:6px}</style></head>
+<body><main><h1>What would you like to open?</h1><p>Only these sites are available on this computer.</p><div class="g">${buttons || "<p>No sites are allowed yet.</p>"}</div></main></body></html>`;
+}
+
 const WIN_DEFAULT_CONFIG = { browserFilter: "moderate", safeSearch: true, youtubeDns: "moderate", chromePolicy: { noIncognito: true } };
 
 /** What the PC's filter applies right now (see windows/LockGuard.Common/FilterPolicy.cs). null = no web filter. */
@@ -382,6 +408,7 @@ function winFilter(env, d, now, dashboardHost) {
     blockImages: c.blockImages,
     imagesAllow: c.imagesAllow,
     noIncognito: !!c.chromePolicy.noIncognito,
+    startPage: level === "off" && dashboardHost ? `https://${dashboardHost}/start?sites=${encodeURIComponent(startSites(c.dnsAllowlist).join(","))}` : "",
     ...w,
   };
 }
@@ -1737,6 +1764,10 @@ export default {
         return new Response(bin, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
       }
 
+      if (url.pathname === "/start" && request.method === "GET") {
+        const sites = String(url.searchParams.get("sites") || "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z0-9.-]{3,100}$/.test(x)).slice(0, 24);
+        return html(startPageHtml(sites));
+      }
       if (url.pathname === "/login" && request.method === "POST") {
         const form = await request.formData();
         const password = String(form.get("password") || "");
