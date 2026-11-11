@@ -391,7 +391,27 @@ export const USER_MENU = {
   message: "Message the administrator",
   install: "Install an app from a file (with a code)",
   updates: "Check for app updates",
+  sos: "I need help (sends the phone's location)",
 };
+
+/** Saved places for arrive/leave alerts: a name, a point and a radius in metres (50 to 5000); at most 20. */
+export function normalizePlaces(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((p) => (p && typeof p === "object" ? { name: String(p.name || "").trim().slice(0, 40), lat: Number(p.lat), lon: Number(p.lon), r: Math.min(5000, Math.max(50, Math.round(Number(p.r) || 200))) } : null))
+    .filter((p) => p && p.name && Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180)
+    .slice(0, 20);
+}
+
+/** Distance in metres between two points (haversine). */
+export function distanceMeters(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180, a = Math.sin(((lat2 - lat1) * r) / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lon2 - lon1) * r) / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/** The saved places a location is inside. */
+export function placesAt(places, fix) {
+  return normalizePlaces(places).filter((p) => distanceMeters(p.lat, p.lon, fix.lat, fix.lon) <= p.r);
+}
 function normalizeUserMenu(m) {
   const out = {};
   for (const k of Object.keys(USER_MENU)) out[k] = !(m && typeof m === "object" && m[k] === false); // shown unless switched off
@@ -458,6 +478,16 @@ export function normalizeConfig(input) {
     youtubeDns: ["moderate", "strict"].includes(c.youtubeDns) ? c.youtubeDns : "off",
     // Hides pictures on web pages: always in our own browsers; in Chrome and others only with inspection on.
     blockImages: c.blockImages === true,
+    // Refuses the "Images" tab of Google, Bing and DuckDuckGo (own browsers; Chrome with inspection on).
+    blockImageSearch: c.blockImageSearch === true,
+    // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
+    pauseUntil: Number.isFinite(Number(c.pauseUntil)) && Number(c.pauseUntil) > 0 ? Math.floor(Number(c.pauseUntil)) : 0,
+    // Only the apps listed in internetApps (plus Android's essentials) can use the internet.
+    internetOnlyApps: c.internetOnlyApps === true,
+    internetApps: [...new Set((Array.isArray(c.internetApps) ? c.internetApps : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 300),
+    // Location history: how often (minutes) the phone notes where it is; 0 = off.
+    locationEvery: [15, 30, 60].includes(Number(c.locationEvery)) ? Number(c.locationEvery) : 0,
+    places: normalizePlaces(c.places),
     imagesAllow: normalizeDnsAllowlist(c.imagesAllow),
     blockAppGroups: [...new Set((Array.isArray(c.blockAppGroups) ? c.blockAppGroups : []).filter((g) => Object.prototype.hasOwnProperty.call(APP_GROUPS, g)))],
     userMenu: normalizeUserMenu(c.userMenu),
@@ -653,6 +683,11 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.safeSearch = cfg.safeSearch;
   out.youtubeDns = cfg.youtubeDns;
   out.blockImages = cfg.blockImages;
+  out.blockImageSearch = cfg.blockImageSearch;
+  out.pauseUntil = cfg.pauseUntil;
+  out.internetOnlyApps = cfg.internetOnlyApps;
+  out.internetApps = cfg.internetApps;
+  out.locationEvery = cfg.locationEvery;
   out.imagesAllow = cfg.imagesAllow;
   return out;
 }
@@ -702,6 +737,11 @@ export function summarizeConfigChange(before, after) {
     const b = !before.userMenu || before.userMenu[k] !== false, a = !after.userMenu || after.userMenu[k] !== false;
     if (a !== b) lines.push('Phone menu "' + label + '": ' + (a ? "shown" : "hidden"));
   }
+  if (!!before.blockImageSearch !== !!after.blockImageSearch) lines.push("Image search: " + (after.blockImageSearch ? "blocked" : "allowed"));
+  if ((before.pauseUntil || 0) !== (after.pauseUntil || 0)) lines.push(after.pauseUntil ? "Web filtering paused for a while" : "Web filtering back on");
+  if (!!before.internetOnlyApps !== !!after.internetOnlyApps || JSON.stringify(before.internetApps || []) !== JSON.stringify(after.internetApps || [])) lines.push("Internet only for chosen apps: " + (after.internetOnlyApps ? "on (" + (after.internetApps || []).length + " apps)" : "off"));
+  if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
+  if (JSON.stringify(normalizePlaces(before.places)) !== JSON.stringify(normalizePlaces(after.places))) lines.push("Places: " + normalizePlaces(after.places).length);
   if (JSON.stringify(normalizeBlockedWords(before.blockedWords)) !== JSON.stringify(normalizeBlockedWords(after.blockedWords))) lines.push("Blocked words: " + normalizeBlockedWords(after.blockedWords).length);
   const cpB = normalizeChromePolicy(before.chromePolicy), cpA = normalizeChromePolicy(after.chromePolicy);
   for (const [k, label] of [["noIncognito", "Chrome: no incognito tabs"], ["adultFilter", "Chrome: Google's adult-site filter"], ["noSignin", "Chrome: no signing in"]]) {

@@ -119,6 +119,7 @@ final class ScreenTime {
     private static void tick(Context c) throws Exception {
         if (c == null || !Agent.isOwner(c)) return;
         Tamper.check(c); // remembers the phone is on (for "was off for ...") and watches the SIM
+        Whereabouts.check(c); // location history, when switched on
         JSONObject cfg = config(c);
         long now = System.currentTimeMillis();
         Calendar cal = Calendar.getInstance();

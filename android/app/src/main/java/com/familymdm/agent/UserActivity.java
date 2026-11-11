@@ -64,6 +64,17 @@ public class UserActivity extends Activity {
     private void buildMenu(LinearLayout root) {
         boolean online = !Agent.standalone(this) && Agent.prefs(this).getString("token", null) != null;
         int n = 0;
+        if (online && menuOn("sos")) {
+            Ui.add(root, Ui.rowTile(this, "I need help", R.drawable.ic_message_tile, v -> Ui.alertDialog(this)
+                    .setTitle("Ask for help?")
+                    .setMessage("This tells the administrator right away and sends where the phone is. In an emergency, call the emergency number.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Send", (d, w) -> {
+                        Whereabouts.sos(this);
+                        toast("Sent. Your location follows as soon as the phone finds it.");
+                    })
+                    .show()), n++ == 0 ? 16 : 8);
+        }
         if (online && menuOn("site")) {
             Ui.add(root, Ui.rowTile(this, "Request a site", R.drawable.ic_browser_tile, v -> promptSiteRequest()), n++ == 0 ? 16 : 8);
         }

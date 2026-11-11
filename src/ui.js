@@ -205,9 +205,9 @@ const GROUPS=[
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
  {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
  {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
- {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['traffic','Traffic log']]},
+ {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['appnet','Internet for apps'],['traffic','Traffic log']]},
  {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
- {key:'device',label:'Device',icon:'device',subs:[['usermenu','Phone menu'],['menu','Settings menu'],['updates','Updates'],['device','Controls']]}];
+ {key:'device',label:'Device',icon:'device',subs:[['location','Location'],['usermenu','Phone menu'],['menu','Settings menu'],['updates','Updates'],['device','Controls']]}];
 function getSub(g){const G=GROUPS.find(function(x){return x.key===g});const v=subs[g];return G.subs.some(function(x){return x[0]===v})?v:G.subs[0][0]}
 function goTo(g,sub){setDeviceSection(g);if(sub){subs[g]=sub;saveSubs()}render()}
 let state=null,devices=[],browsers=[],windevices=[],clients=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
@@ -586,11 +586,13 @@ function buildInternetGroup(m,dv){
  if(sub==='network')renderNetworkSection(m,dv);
  else if(sub==='dns'){renderDnsBlocklist(m,dv);renderDnsAllowlist(m,dv)}
  else if(sub==='traffic')renderTrafficLog(m,dv);
+ else if(sub==='appnet')renderInternetApps(m,dv);
 }
 function buildDeviceGroup(m,dv){
  const sub=getSub('device');
  if(sub==='menu')phoneLocalNote(m,'Most of the 16 categories here already work with no setup at all -- they point at a standard Android settings screen (Wi-Fi, Bluetooth, sound, display…) that works the same on every phone, or (Android Auto) jump straight into that app itself. A handful are this phone brand\'s own screens with no standard Android way to open them by name (notably some Motorola-only ones), so for just those few, Settings → Settings Menu → Learn on the phone itself captures the exact screen once, by physically going there -- genuinely needs to happen on the phone, there is no remote equivalent for an unlisted manufacturer screen. Everything else needs nothing here.');
  else if(sub==='usermenu')renderUserMenu(m,dv);
+ else if(sub==='location')renderLocation(m,dv);
  else if(sub==='updates')renderUpdatesSection(m,dv);
  else if(sub==='device'){renderTemplateCard(m,dv);renderDeviceCard(m,dv)}
 }
@@ -608,7 +610,10 @@ function renderDeviceDetail(m,d){
  // the dashboard's own equivalent of AdminActivity's Overview toggle+status card) -----
  const ov=h('section',{class:'cols'});
  if(d.syncPaused)ov.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Not connected'),h('div',{class:'mute'},'This device is not connected to the dashboard because it was turned off (from this phone\'s own Admin screen, to save battery). It keeps enforcing whatever it had last. It reconnects only when someone turns it back on there — nothing here can reach it in the meantime.')));
+ renderSos(ov,d);
  renderAppRequests(ov,d);
+ renderPause(ov,d);
+ renderLevels(ov,d);
  const info=h('div',{class:'card'},h('h2',null,'Phone'));
  info.append(kv('Recovery code',d.fallbackCode||'not seen yet (needs a check-in on a current build)'),
   kv('Android',d.info.android||'?'),kv('Agent build',(d.info.versionCode||'?')+(latest?' (latest '+latest.versionCode+')':'')),
@@ -626,7 +631,7 @@ function renderDeviceDetail(m,d){
  ov.append(info);
  ov.append(resetCard(d));
  const locCard=h('div',{class:'card'},h('h2',null,'Location'),
-  h('div',{class:'mute'},'One fix at a time, only when you ask -- nothing here tracks the phone continuously or stores a history of where it\'s been.'));
+  h('div',{class:'mute'},'Finds the phone once, right now. For a history of where it has been, and alerts for places like home or school, see Device → Location.'));
  locCard.append(h('div',{style:'margin-top:8px'},btn('Find now','tonal',async function(){
   await call('POST','/api/devices/'+d.id+'/command',{type:'locate',args:{}});
   snack('Asked the phone to find itself. It reports back at its next check-in (within about 5 minutes) -- tap Refresh after a moment.');load()})));
@@ -757,7 +762,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1083,6 +1088,94 @@ function renderWebAccess(m,dv){
   h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Inspection (the last tab here).'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists, our own browsers stay on approved sites only, but Chrome and other browsers are not filtered yet (the phone cannot cut off the whole internet to wait for them). In Chrome the filter works on site names, not pages, and while it is on QUIC (a faster web protocol) is switched off so browsers use the kind of connection the filter can see. A browser using its own encrypted DNS can sometimes get around the name lookup, though the connection itself is still checked.'));
  m.append(card)}
+/* ---------- Overview: SOS, pause, protection level ---------- */
+function renderSos(box,d){
+ const ev=(d.events||[]).filter(function(e){return e.k==='sos'&&Date.now()-e.at<48*3600000});if(!ev.length)return;
+ const card=h('div',{class:'card',style:'border-color:var(--error)'},h('h2',null,'Asked for help'));
+ for(const e of ev.slice().reverse()){const link=(String(e.m).match(/https:\/\/maps\.google\.com\/\?q=[-0-9.,]+/)||[])[0];
+  card.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},link?'Where the phone was':e.m),h('span',{class:'mute small'},ago(e.at)),link?h('a',{href:link,target:'_blank',rel:'noopener'},'Open map'):null))}
+ box.append(card)}
+function hhmm(t){return new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+function renderPause(box,d){
+ const c=d.config,on=(c.pauseUntil||0)>Date.now();
+ const save=async function(msg){try{await saveConfigFor(d,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,on?'Web filtering is paused':'Pause web filtering'));
+ if(on){card.append(h('div',{class:'mute'},'Until '+hhmm(c.pauseUntil)+'. It comes back by itself then, even if the phone is offline.'),h('div',{style:'margin-top:8px'},btn('Turn filtering back on now','',function(){c.pauseUntil=0;save('Filtering comes back on at the next check-in.')})))}
+ else{card.append(h('div',{class:'mute'},'Lets every site through for a while, for example while you use the phone yourself: blocked sites, categories, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked apps stay blocked, and our own browsers keep their allowed-sites list. Starts at the phone\'s next check-in.'));
+  const row=h('div',{class:'row',style:'margin-top:8px'});
+  for(const [mins,label] of [[15,'15 minutes'],[60,'1 hour'],[180,'3 hours']])row.append(btn(label,'tonal',function(){c.pauseUntil=Date.now()+mins*60000;save('Paused until '+hhmm(c.pauseUntil)+'.')}));
+  card.append(row)}
+ box.append(card)}
+const LEVELS={
+ strictest:{label:'Strictest',desc:'Approved sites only. SafeSearch on, strict YouTube Restricted Mode, no pictures on web pages, no image search. Every app group blocked (social media, games, video, dating, shopping). New apps wait for you. No incognito in Chrome.',
+  set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:true,blockImageSearch:true,blockAppGroups:'all',approveNew:true,noIncognito:true}},
+ recommended:{label:'Recommended',desc:'Strict filter: adult, gambling, drugs, scam, piracy and social media sites blocked. SafeSearch on, YouTube Restricted Mode, no image search. Social media and dating apps blocked. New apps wait for you. No incognito in Chrome.',
+  set:{browserFilter:'strict',safeSearch:true,youtubeDns:'moderate',blockImages:false,blockImageSearch:true,blockAppGroups:['social','dating'],approveNew:true,noIncognito:true}},
+ light:{label:'Light',desc:'Moderate filter: adult, gambling, drugs, scam and piracy sites blocked. SafeSearch on, YouTube Restricted Mode. Dating apps blocked. Everything else open.',
+  set:{browserFilter:'moderate',safeSearch:true,youtubeDns:'moderate',blockImages:false,blockImageSearch:false,blockAppGroups:['dating'],approveNew:false,noIncognito:false}}};
+function applyLevel(c,s){const groups=Object.keys(state.appGroups||{});
+ c.browserFilter=s.browserFilter;c.safeSearch=s.safeSearch;c.youtubeDns=s.youtubeDns;c.blockImages=s.blockImages;c.blockImageSearch=s.blockImageSearch;
+ c.blockAppGroups=s.blockAppGroups==='all'?groups:s.blockAppGroups.filter(function(g){return groups.includes(g)});
+ c.approveNew=s.approveNew;c.chromePolicy=Object.assign({},c.chromePolicy||{},{noIncognito:s.noIncognito})}
+function renderLevels(box,d){
+ const card=h('div',{class:'card'},h('h2',null,'Protection level'),h('div',{class:'mute'},'One tap sets many settings at once. Afterwards you can still change any single setting in its own tab. Your allowed sites, and apps you set to Allow, are kept.'));
+ for(const k of Object.keys(LEVELS)){const L=LEVELS[k];
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},L.label),h('div',{class:'mute small'},L.desc)),btn('Use this','tonal',async function(){
+   if(!confirm('Set this phone to "'+L.label+'"? This changes its filter level, safe search, YouTube, picture, Chrome and app-group settings.'))return;
+   applyLevel(d.config,L.set);try{await saveConfigFor(d,'Set to '+L.label+'. The phone picks it up within about 5 minutes.')}catch(e){snack(e.message,1)}render()})))}
+ box.append(card)}
+
+/** "Images" tab of Google, Bing and DuckDuckGo. */
+function renderImageSearch(m,dv){const c=dv.config;
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block image search'),
+  h('div',{class:'mute small'},'The "Images" tab of Google, Bing and DuckDuckGo is refused; normal searches keep working. '+(dv.isBrowser?'Applies to this browser.':'In our own browsers always. In Chrome and other browsers only with Inspection on (the last tab).'))),
+  sw(c.blockImageSearch,async function(on){c.blockImageSearch=on;try{await saveConfigFor(dv,on?'Image search will be blocked.':'Image search is allowed again.')}catch(e){snack(e.message,1)}}))))}
+
+/* ---------- Internet: only chosen apps get internet ---------- */
+function renderInternetApps(m,dv){
+ const c=dv.config,save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'Internet only for chosen apps'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only the apps ticked below can use the internet'),
+  h('div',{class:'mute small'},'Every other app still opens, but gets no internet. Calls and texts, notifications for the ticked apps, and Wi-Fi sign-in pages keep working. The phone shows a key (VPN) icon while this is on.')),
+  sw(c.internetOnlyApps,function(on){c.internetOnlyApps=on;save(on?'From the next check-in only the ticked apps have internet.':'Every app has internet again from the next check-in.')})));
+ const chosen=new Set(c.internetApps||[]),count=h('div',{style:'font-weight:500;margin-top:12px'},chosen.size+' app(s) ticked');
+ const list=h('div',{style:'margin-top:6px'});
+ const apps=dv.packages.filter(function(p){return p.p!==SELF_PACKAGE}).sort(function(a,b){return (a.s?1:0)-(b.s?1:0)||(a.l||a.p).localeCompare(b.l||b.p)});
+ for(const a of apps){const cb=h('input',{type:'checkbox'});cb.checked=chosen.has(a.p);cb.onchange=function(){if(cb.checked)chosen.add(a.p);else chosen.delete(a.p);count.textContent=chosen.size+' app(s) ticked'};
+  list.append(h('label',{class:'row',style:'cursor:pointer;margin:4px 0'},cb,(a.l||a.p)+(a.s?' (built in)':'')))}
+ if(!apps.length)list.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
+ card.append(count,list,h('div',{style:'margin-top:8px'},btn('Save the ticked apps','',function(){c.internetApps=[...chosen];save('Saved.')})));
+ m.append(card)}
+
+/* ---------- Device: location history and places ---------- */
+function distM(a,b,c,d){const r=Math.PI/180,x=Math.sin((c-a)*r/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;return 2*6371000*Math.asin(Math.min(1,Math.sqrt(x)))}
+function placeAt(places,f){for(const p of places||[])if(distM(p.lat,p.lon,f.lat,f.lon)<=p.r)return p;return null}
+function mapLink(lat,lon,label){return h('a',{href:'https://maps.google.com/?q='+lat+','+lon,target:'_blank',rel:'noopener'},label||'Map')}
+function renderLocation(m,dv){
+ const c=dv.config,save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const sel=h('select',null);for(const [v,l] of [[0,'Off'],[15,'Every 15 minutes'],[30,'Every 30 minutes'],[60,'Every hour']]){const o=new Option(l,v);if((c.locationEvery||0)===v)o.selected=true;sel.append(o)}
+ sel.onchange=function(){c.locationEvery=Number(sel.value);save(c.locationEvery?'The phone notes its location every '+c.locationEvery+' minutes from the next check-in.':'Location history is off.')};
+ m.append(h('div',{class:'card'},h('h2',null,'Location history'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Note where the phone is'),
+  h('div',{class:'mute small'},'The phone checks its location this often and sends it with its next check-in. It uses a little battery, and Location has to be on, on the phone. "Locate now" on the Overview still works either way.')),sel)));
+ const hist=(dv.locations||[]).slice().reverse();
+ const hc=h('div',{class:'card'},h('h2',null,'Where it was'));
+ if(!hist.length)hc.append(h('div',{class:'mute'},c.locationEvery?'Nothing yet. The first location arrives within a few check-ins.':'Switch on location history above to see where the phone has been.'));
+ for(const f of hist.slice(0,40)){const p=placeAt(c.places,f);
+  hc.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},new Date(f.at).toLocaleString()+(p?' · '+p.name:'')+(f.why==='sos'?' · asked for help':'')),h('span',{class:'mute small'},f.acc?'within '+Math.round(f.acc)+' m':''),mapLink(f.lat,f.lon)))}
+ m.append(hc);
+ const pc=h('div',{class:'card'},h('h2',null,'Places'),h('div',{class:'mute'},'Save places like home or school. With location history on, you get an alert (Settings → Alerts) when the phone arrives at or leaves one. It is only as quick as the location history: with "every 30 minutes" an arrival can show up to 30 minutes late.'));
+ (c.places||[]).forEach(function(p,i){pc.append(h('div',{class:'row',style:'margin:6px 0'},h('span',{class:'grow'},p.name+' · within '+p.r+' m'),mapLink(p.lat,p.lon),btn('Remove','danger',function(){c.places.splice(i,1);save('Place removed.')})))});
+ const name=h('input',{type:'text',placeholder:'Name, e.g. Home',style:'flex:1;min-width:140px'});
+ const where=h('input',{type:'text',placeholder:'Paste a Google Maps link or coordinates; empty = where the phone was last',style:'flex:2;min-width:240px'});
+ const rad=h('select',null);for(const r of [100,200,500,1000])rad.append(new Option('within '+r+' m',r));rad.value='200';
+ pc.append(h('div',{class:'row',style:'margin-top:10px;flex-wrap:wrap'},name,where,rad,btn('Add place','',function(){
+  if(!name.value.trim()){snack('Give the place a name.',1);return}
+  let lat,lon;const mm=where.value.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+  if(mm){lat=Number(mm[1]);lon=Number(mm[2])}
+  else if(where.value.trim()){snack('No coordinates found in that. In Google Maps, press and hold the spot and copy the numbers that appear (like 40.6782, -73.9442).',1);return}
+  else{if(!hist[0]){snack('No location from the phone yet. Paste coordinates instead.',1);return}lat=hist[0].lat;lon=hist[0].lon}
+  c.places=(c.places||[]).concat([{name:name.value.trim(),lat:lat,lon:lon,r:Number(rad.value)}]);save('Place saved.')})));
+ m.append(pc)}
+
 /** Words that block any site name, page or search containing them. */
 function renderBlockedWords(m,dv){
  const c=dv.config,ta=h('textarea',{rows:5,style:'width:100%;margin-top:8px',placeholder:'one word or phrase per line, e.g. casino'});ta.value=(c.blockedWords||[]).join('\n');
@@ -1254,7 +1347,7 @@ function renderTimeLimits(m,dv){
 function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
- else if(sub==='access'){renderWebAccess(m,dv);renderSearchPictures(m,dv);renderBlockedWords(m,dv)}
+ else if(sub==='access'){renderWebAccess(m,dv);renderSearchPictures(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='sites')renderSites(m,dv,'sites');
  else if(sub==='apps')renderSites(m,dv,'apps');
  else if(sub==='inspect')renderInspection(m,dv);
@@ -1383,7 +1476,7 @@ function renderInspection(m,dv){
  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Needs the phone to be managed by the Agent (device owner). Check Activity → Phone log for "Browser inspection turned on". If browsing ever fails on the phone, turn this off.'));
  m.append(card)}
 function renderSitesEditor(m,dv){
- if(dv.isBrowser){renderWebAccess(m,dv);renderSearchPictures(m,dv);renderBlockedWords(m,dv)} // a phone has these on its own "Filter level" tab
+ if(dv.isBrowser){renderWebAccess(m,dv);renderSearchPictures(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)} // a phone has these on its own "Filter level" tab
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
@@ -1620,6 +1713,8 @@ function renderAlerts(m){
   opt('battery','A phone battery is at or below',pct);
   opt('requests','A phone asks to open a site or sends you a message');
   opt('tamper','Something security related: a phone restarted, its SIM card removed or changed, or a blocked attempt');
+  opt('places','A phone arrived at or left a place you saved (Device → Location)');
+  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'When someone taps "I need help" on a phone, you always get an alert.'));
  }).catch(function(e){body.textContent='';body.append(h('div',{class:'mute'},e.message))})}
 
 /* ---------- settings ---------- */

@@ -67,12 +67,12 @@ final class UdpRelay {
                 // otherwise this is a syscall on every single new UDP flow for a feature nobody's
                 // using. No per-port "already known blocked" cache: a blocked app's own QUIC
                 // retry/backoff already keeps this from being a tight loop in practice.
-                if (!NetworkBlocklist.list(context).isEmpty()) {
+                if (!NetworkBlocklist.list(context).isEmpty() || Protection.needsUid(context)) {
                     int uid = uidResolver.uidFor(NetUtil.IPPROTO_UDP,
                             new InetSocketAddress(InetAddress.getByAddress(clientIp), clientPort),
                             new InetSocketAddress(InetAddress.getByAddress(destIp), destPort));
                     String pkg = uidResolver.packageFor(uid);
-                    if (NetworkBlocklist.isBlocked(context, pkg)) {
+                    if (NetworkBlocklist.isBlocked(context, pkg) || !Protection.internetAllowed(context, pkg)) {
                         TrafficLog.add(context, TrafficLog.KIND_NET, ipString(destIp) + ":" + destPort, uid, uidResolver.labelFor(uid), true);
                         return;
                     }

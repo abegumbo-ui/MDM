@@ -161,6 +161,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setYoutubeMode(this, b == null ? "channels" : b.getString("youtubeMode", "channels"));
                 FilterStore.setBlockImages(this, b != null && b.getBoolean("blockImages", false));
                 FilterStore.setBlockedWords(this, b == null ? null : b.getStringArray("blockedWords"));
+                FilterStore.setBlockImageSearch(this, b != null && b.getBoolean("blockImageSearch", false));
             } else if (m == Mode.ONLINE) {
                 FilterStore.refreshAsync(this, false);
             } else {
@@ -168,6 +169,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setYoutubeMode(this, "channels");
                 FilterStore.setBlockImages(this, false);
                 FilterStore.setBlockedWords(this, null);
+                FilterStore.setBlockImageSearch(this, false);
             }
             filterModeOk = (m == Mode.AGENT || m == Mode.ONLINE) && !"off".equals(FilterStore.tier(this));
         } catch (Exception e) {
@@ -610,6 +612,10 @@ public class BrowserActivity extends Activity {
             showNotAvailable(t, "This page or search has a blocked word in it.");
             return false;
         }
+        if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.blockImageSearch(this) && com.familymdm.agent.sitepolicy.ProtectionRules.isImageSearch(url)) {
+            showNotAvailable(t, "Image search is turned off.");
+            return false;
+        }
         if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.youtubeRestricted(this) && isYoutubeAddress(url)) {
             int kind = SitePolicy.youtubeKind(url);
             if (kind == SitePolicy.YT_HOME) {
@@ -834,6 +840,7 @@ public class BrowserActivity extends Activity {
                 String[] wordList = new String[fw == null ? 0 : fw.length()];
                 for (int i = 0; i < wordList.length; i++) wordList[i] = fw.optString(i);
                 FilterStore.setBlockedWords(this, wordList);
+                FilterStore.setBlockImageSearch(this, filter != null && filter.optBoolean("imageSearch", false));
                 filterModeOk = !"off".equals(FilterStore.tier(this));
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list

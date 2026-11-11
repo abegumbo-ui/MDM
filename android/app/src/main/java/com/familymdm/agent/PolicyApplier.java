@@ -208,12 +208,15 @@ final class PolicyApplier {
             Log.w(TAG, "category lists: " + e);
         }
         // Forced SafeSearch / YouTube Restricted Mode are answered by the same filter (see SafeSearchDns).
+        Protection.apply(c, policy); // pause, internet only for chosen apps, image search
+        Whereabouts.apply(c, policy); // location history
         boolean safeSearch = policy.optBoolean("safeSearch", false);
         String youtubeDns = policy.optString("youtubeDns", "off");
         Agent.prefs(c).edit().putBoolean("safeSearch", safeSearch).putString("youtubeDns", youtubeDns).apply();
         applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"),
                 (!"off".equals(filterTier) && !filterBase.isEmpty()) || safeSearch || !"off".equals(youtubeDns)
-                        || (policy.optJSONArray("blockedWords") != null && policy.optJSONArray("blockedWords").length() > 0));
+                        || (policy.optJSONArray("blockedWords") != null && policy.optJSONArray("blockedWords").length() > 0)
+                || policy.optBoolean("internetOnlyApps", false));
         applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
         if (NetworkBlocklist.rev(c) == 0 && !NetworkBlocklist.list(c).isEmpty()) {
             NetworkBlocklist.seed(c);
@@ -833,10 +836,11 @@ final class PolicyApplier {
             String filterBase = policy.optString("browserFilterBase", "");
             String youtubeMode = policy.optString("youtubeMode", "channels");
             boolean blockImages = policy.optBoolean("blockImages", false);
+            boolean blockImageSearch = policy.optBoolean("blockImageSearch", false);
             JSONArray wordsArr = policy.optJSONArray("blockedWords");
             String[] words = new String[wordsArr == null ? 0 : wordsArr.length()];
             for (int i = 0; i < words.length; i++) words[i] = wordsArr.optString(i);
-            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words);
+            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch;
             if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
@@ -846,6 +850,7 @@ final class PolicyApplier {
             b.putString("youtubeMode", youtubeMode);
             b.putBoolean("blockImages", blockImages);
             b.putStringArray("blockedWords", words);
+            b.putBoolean("blockImageSearch", blockImageSearch);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
             errorCleared(c, "browserConfig");

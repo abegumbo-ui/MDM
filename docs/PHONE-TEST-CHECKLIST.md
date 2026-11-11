@@ -166,6 +166,30 @@ Dashboard: **Browser → Filter level → Safe search and pictures**.
    You should see: the other phone gets the same settings (check its Browser and Screen time
    tabs); its own reset-protection account is unchanged.
 
+## 7d. Protection level, pause, internet for apps, image search, SOS, location
+
+1. **Overview → Protection level → Recommended → Use this.** Open the Browser and Apps tabs.
+   You should see: filter level Strict, SafeSearch on, social media and dating apps blocked.
+2. **Overview → Pause web filtering → 15 minutes**, refresh the phone. In Chrome open a site the
+   filter blocks (e.g. `bet365.com`).
+   You should see: it loads now. After 15 minutes (even with Wi-Fi off) it is blocked again.
+   Blocked apps stay hidden the whole time.
+3. **Internet → Internet for apps**: tick WhatsApp only, Save, switch it on, refresh the phone.
+   You should see: WhatsApp sends and receives; Chrome and YouTube show "no internet"; phone calls,
+   texts and the Agent still work. **Note any app that should have kept working but didn't**
+   (especially notifications). Switch it off: everything has internet again.
+4. **Browser → Filter level → Block image search** on. In the Agent's browser search Google, tap
+   "Images".
+   You should see: "Image search is turned off". Normal search results still work.
+5. Phone: **MDM Agent → User → I need help → Send.**
+   You should see: an alert starting "SOS" right away, then a second one with a map link; the
+   Overview shows a red "Asked for help" card with "Open map".
+6. **Device → Location**: set "Every 15 minutes". Wait about half an hour.
+   You should see: entries under "Where it was" with working Map links. Add a place "Home" with
+   the coordinates field empty (it uses the last location). Leave and come back.
+   You should see: "Left Home" and "Arrived at Home" in the log and as alerts (up to 15 minutes late).
+   If nothing arrives at all, tell me: the phone may need Location switched on.
+
 ## 8. Inspection (certificate) - one test phone only
 
 1. Dashboard: **Browser → Inspection (advanced)**, switch it on, confirm.
