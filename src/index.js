@@ -53,6 +53,8 @@ const MASTER_ITERATIONS = 10000; // 10k, not 100k: cheap flip-phone CPUs took ~5
 const MAX_EVENTS = 60;
 const MAX_TRAFFIC_LOG = 150;
 const MAX_LOCATIONS = 200;
+const MAX_CALLS = 300;
+const MAX_TEXTS = 300;
 const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser", "freebrowse", "playstore"]);
 const MAX_STORE_MINUTES = 24 * 60;
 const MAX_FREEBROWSE_MINUTES = 240;
@@ -204,6 +206,8 @@ const publicDevice = (d) => ({
   events: (d.events || []).slice(-40),
   trafficLog: (d.trafficLog || []).slice(-150),
   locations: (d.locations || []).slice(-100),
+  calls: (d.calls || []).slice(-200),
+  texts: (d.texts || []).slice(-200),
   overrides: d.overrides || {},
   wifiNetworks: d.wifiNetworks || [],
   appCode: d.appCode || null,
@@ -1237,6 +1241,23 @@ async function agentApi(request, env, url, ctx) {
         if (e && e.k === "sos") toAlert.push({ kind: "sos", text: "SOS: " + String(e.m || "").slice(0, 200) });
       }
       d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
+      dirty = true;
+    }
+    // The phone's call log and texts log (each switched on per phone).
+    const logRow = (x, types) => ({
+      number: String((x && x.number) || "").slice(0, 40),
+      ...(x && x.name ? { name: String(x.name).slice(0, 80) } : {}),
+      type: types.includes(x && x.type) ? x.type : "other",
+      at: Number(x && x.at) || now,
+      ...(x && Number.isFinite(Number(x.secs)) ? { secs: Math.max(0, Math.round(Number(x.secs))) } : {}),
+      ...(x && typeof x.text === "string" ? { text: x.text.slice(0, 310) } : {}),
+    });
+    if (Array.isArray(body.calls) && body.calls.length) {
+      d.calls = [...(d.calls || []), ...body.calls.slice(0, 150).map((x) => logRow(x, ["in", "out", "missed", "voicemail", "rejected", "blocked"]))].slice(-MAX_CALLS);
+      dirty = true;
+    }
+    if (Array.isArray(body.texts) && body.texts.length) {
+      d.texts = [...(d.texts || []), ...body.texts.slice(0, 150).map((x) => { const r = logRow(x, ["in", "out"]); delete r.secs; return r; })].slice(-MAX_TEXTS);
       dirty = true;
     }
     if (Array.isArray(body.locations) && body.locations.length) {

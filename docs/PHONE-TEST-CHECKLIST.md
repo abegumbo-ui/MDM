@@ -190,6 +190,27 @@ Dashboard: **Browser → Filter level → Safe search and pictures**.
    You should see: "Left Home" and "Arrived at Home" in the log and as alerts (up to 15 minutes late).
    If nothing arrives at all, tell me: the phone may need Location switched on.
 
+## 7e. Calls and texts
+
+Dashboard: the **Calls & texts** group.
+
+1. **Who can call → Allowed numbers**: add your own number. Set **Incoming calls** to "Only the
+   numbers below". Refresh the phone.
+   You should see on the phone: a notification "Finish setting up call controls". Tap it, choose
+   Allow. The dashboard's "Not active yet" card turns into "Call controls are active".
+2. Call the phone from your number: it rings. Call it from another phone (not on the list).
+   You should see: that call does not ring at all; the phone log says "Blocked a call from ...".
+3. Set **Outgoing calls** to "Only the numbers below" (Allow again if the phone asks). On the phone
+   dial a number that is not on the list.
+   You should see: the call does not start; a message "Calls to this number are not allowed".
+   Calling your own number works. **Do not test 911**, but voicemail should still work.
+4. **Call log**: switch on, refresh the phone.
+   You should see: the past week's calls, with type and length.
+5. **Texts**: switch on, send the phone a text.
+   You should see: who and when. Switch on "Include what the messages say": new texts show the words.
+6. Watch for: an allowed caller being blocked (tell me how their number is saved in contacts and
+   how it shows in the phone's call log).
+
 ## 8. Inspection (certificate) - one test phone only
 
 1. Dashboard: **Browser → Inspection (advanced)**, switch it on, confirm.

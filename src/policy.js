@@ -394,6 +394,25 @@ export const USER_MENU = {
   sos: "I need help (sends the phone's location)",
 };
 
+export const CALL_MODES = ["all", "contacts", "list"];
+const CALL_MODE_WORDS = { all: "anyone", contacts: "contacts and the list", list: "only the list" };
+
+/** The dashboard's allowed-numbers list: {name, number}; a number keeps its digits (and a leading + or *), 3 to 16 digits; at most 300. */
+export function normalizeCallNumbers(list) {
+  const seen = new Set(), out = [];
+  for (const x of Array.isArray(list) ? list : []) {
+    if (!x || typeof x !== "object") continue;
+    const raw = String(x.number || "").trim();
+    const digits = raw.replace(/\D/g, "");
+    const key = digits.length >= 7 ? digits.slice(-9) : digits; // the same number written two ways counts once (see CallRules.same)
+    if (digits.length < 3 || digits.length > 16 || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name: String(x.name || "").trim().slice(0, 40), number: (/^[+*]/.test(raw) ? raw[0] : "") + digits });
+    if (out.length >= 300) break;
+  }
+  return out;
+}
+
 /** Saved places for arrive/leave alerts: a name, a point and a radius in metres (50 to 5000); at most 20. */
 export function normalizePlaces(list) {
   return (Array.isArray(list) ? list : [])
@@ -488,6 +507,14 @@ export function normalizeConfig(input) {
     // Location history: how often (minutes) the phone notes where it is; 0 = off.
     locationEvery: [15, 30, 60].includes(Number(c.locationEvery)) ? Number(c.locationEvery) : 0,
     places: normalizePlaces(c.places),
+    // Calls: who may call the phone / whom it may call: "all", "contacts" (contacts + callNumbers) or "list" (callNumbers only).
+    callsIn: CALL_MODES.includes(c.callsIn) ? c.callsIn : "all",
+    callsOut: CALL_MODES.includes(c.callsOut) ? c.callsOut : "all",
+    callNumbers: normalizeCallNumbers(c.callNumbers),
+    // Send the phone's call log / texts log to the dashboard; texts with their words only if textContent.
+    callLog: c.callLog === true,
+    textLog: c.textLog === true,
+    textContent: c.textContent === true,
     imagesAllow: normalizeDnsAllowlist(c.imagesAllow),
     blockAppGroups: [...new Set((Array.isArray(c.blockAppGroups) ? c.blockAppGroups : []).filter((g) => Object.prototype.hasOwnProperty.call(APP_GROUPS, g)))],
     userMenu: normalizeUserMenu(c.userMenu),
@@ -688,6 +715,12 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.internetOnlyApps = cfg.internetOnlyApps;
   out.internetApps = cfg.internetApps;
   out.locationEvery = cfg.locationEvery;
+  out.callsIn = cfg.callsIn;
+  out.callsOut = cfg.callsOut;
+  out.callNumbers = cfg.callNumbers.map((n) => n.number);
+  out.callLog = cfg.callLog;
+  out.textLog = cfg.textLog;
+  out.textContent = cfg.textContent;
   out.imagesAllow = cfg.imagesAllow;
   return out;
 }
@@ -741,6 +774,11 @@ export function summarizeConfigChange(before, after) {
   if ((before.pauseUntil || 0) !== (after.pauseUntil || 0)) lines.push(after.pauseUntil ? "Web filtering paused for a while" : "Web filtering back on");
   if (!!before.internetOnlyApps !== !!after.internetOnlyApps || JSON.stringify(before.internetApps || []) !== JSON.stringify(after.internetApps || [])) lines.push("Internet only for chosen apps: " + (after.internetOnlyApps ? "on (" + (after.internetApps || []).length + " apps)" : "off"));
   if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
+  if ((before.callsIn || "all") !== (after.callsIn || "all")) lines.push("Who can call: " + CALL_MODE_WORDS[after.callsIn || "all"]);
+  if ((before.callsOut || "all") !== (after.callsOut || "all")) lines.push("Who the phone can call: " + CALL_MODE_WORDS[after.callsOut || "all"]);
+  if (JSON.stringify(normalizeCallNumbers(before.callNumbers)) !== JSON.stringify(normalizeCallNumbers(after.callNumbers))) lines.push("Allowed numbers: " + normalizeCallNumbers(after.callNumbers).length);
+  if (!!before.callLog !== !!after.callLog) lines.push("Call log: " + (after.callLog ? "on" : "off"));
+  if (!!before.textLog !== !!after.textLog || !!before.textContent !== !!after.textContent) lines.push("Texts log: " + (after.textLog ? (after.textContent ? "on, with the words" : "on, who and when only") : "off"));
   if (JSON.stringify(normalizePlaces(before.places)) !== JSON.stringify(normalizePlaces(after.places))) lines.push("Places: " + normalizePlaces(after.places).length);
   if (JSON.stringify(normalizeBlockedWords(before.blockedWords)) !== JSON.stringify(normalizeBlockedWords(after.blockedWords))) lines.push("Blocked words: " + normalizeBlockedWords(after.blockedWords).length);
   const cpB = normalizeChromePolicy(before.chromePolicy), cpA = normalizeChromePolicy(after.chromePolicy);

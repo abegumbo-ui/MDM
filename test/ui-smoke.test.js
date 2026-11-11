@@ -52,7 +52,7 @@ async function setUp() {
   const dev = (await (await call("/api/devices", { headers: { cookie } })).json())[0];
   await call(`/api/devices/${dev.id}/config`, { method: "PUT", headers: { ...J, cookie }, body: JSON.stringify({
     screenTime: { dailyLimit: 180, bedtime: { days: [0, 1, 2, 3, 4], from: "22:00", to: "07:00" }, appLimits: { "com.instagram.android": 30 }, exempt: ["com.google.android.apps.maps"] },
-    chromePolicy: { noIncognito: true }, blockedWords: ["casino", "sex"], blockImageSearch: true, locationEvery: 30, places: [{ name: "School", lat: 40.7, lon: -74, r: 200 }], internetOnlyApps: true, browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, safeSearch: true, youtubeDns: "strict", blockImages: true, imagesAllow: ["maps.google.com"], userMenu: { store: false },
+    chromePolicy: { noIncognito: true }, blockedWords: ["casino", "sex"], blockImageSearch: true, locationEvery: 30, places: [{ name: "School", lat: 40.7, lon: -74, r: 200 }], internetOnlyApps: true, callsIn: "list", callNumbers: [{ name: "Mom", number: "+1 212 555 1234" }], callLog: true, textLog: true, browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, safeSearch: true, youtubeDns: "strict", blockImages: true, imagesAllow: ["maps.google.com"], userMenu: { store: false },
     sites: { a: { type: "domain", url: "example.org" }, b: { type: "youtube", id: "@somechannel" } },
     apps: { "com.android.vending": { mode: "block", label: "Google Play Store" } } }) });
   await call("/api/templates", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ name: "Teen phone", deviceId: dev.id }) });
@@ -160,9 +160,13 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["overview/status"], /Pause web filtering/);
   assert.match(seen["internet/appnet"], /Internet only for chosen apps/);
   assert.match(seen["device/location"], /School · within 200 m/);
+  assert.match(seen["calls/rules"], /Mom · \+12125551234/);
+  assert.match(seen["calls/rules"], /Not active yet/);
+  assert.match(seen["calls/calllog"], /Send the call log/);
+  assert.match(seen["calls/texts"], /Include what the messages say/);
   assert.match(seen.settings, /arrived at or left a place/);
   assert.match(seen["device/device"], /Save as template/);
   assert.match(seen.templates, /Teen phone/);
-  assert.match(seen.templates, /Blocked words: 2/, "the template says how it differs from a fresh phone");
+  assert.match(seen.templates, /Differs from a fresh phone in: .*Browser filter: moderate/, "the template says how it differs from a fresh phone");
   assert.match(seen.settings, /SIM card removed or changed/);
 });
