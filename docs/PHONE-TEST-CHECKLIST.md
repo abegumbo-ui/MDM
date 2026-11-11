@@ -57,6 +57,33 @@ it once with one test phone before relying on any of it. For each step: do it, a
 2. Set Instagram itself to **Allow** in the list below.
    You should see: Instagram comes back while the group stays blocked.
 
+## 4b. Screen time
+
+Dashboard: the **Screen time** group.
+
+1. Use the phone for a few minutes, then Refresh. Open **Screen time → Usage**.
+   You should see: today's total and the apps you used, in minutes. If instead it says "The Agent
+   cannot see app usage on this phone", open MDM Agent → Administrator → Security → App access on
+   the phone, turn on usage access, and tell me which phone model it was.
+2. **Limits → Daily limit**: pick 30 minutes (or less than what is already used today).
+   You should see within a minute of the phone getting it: a full lock screen saying today's screen
+   time is used up, with a countdown to midnight, "Emergency call" and "Ask for more time".
+3. Tap **Ask for more time**.
+   You should see on the dashboard: a "More screen time" request. Tap "Give 15 minutes". After a
+   refresh the phone unlocks, and locks again about 15 minutes later.
+4. Set the daily limit back to "No limit".
+   You should see: the phone unlocks by itself within a minute of getting the change.
+5. **Bedtime**: switch it on, set "From" to a couple of minutes from now, save.
+   You should see: at that time the phone locks with "Bedtime. The phone opens again at ...".
+   Switch bedtime off: it unlocks.
+6. **Apps**: give one app a 15-minute limit and use it past that.
+   You should see: the app disappears from the phone until midnight, and the Usage tab shows
+   "of 15 min" next to it.
+7. Mark the Phone app "Does not count toward the daily limit".
+   You should see: time in that app is still listed, but no longer added to the total.
+8. Watch for: the lock appearing while a normal Lock you sent from Security is active (it should
+   not replace yours), and the count being clearly wrong compared with what you actually used.
+
 ## 5. Browser filter level (our own browser)
 
 Dashboard: **Browser → At a glance** should describe each setting in plain words as you change it.

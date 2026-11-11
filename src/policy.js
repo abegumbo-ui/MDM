@@ -290,6 +290,22 @@ export function normalizeFrpAccounts(list) {
 
 export const BROWSER_FILTERS = ["off", "moderate", "strict"];
 
+/**
+ * Screen time: dailyLimit is minutes a day for the whole phone (0 = no limit); bedtime is a
+ * {days, from, to} window when the phone is locked; appLimits is minutes a day per app; exempt is
+ * apps that do not count toward the daily limit (Phone, Maps...).
+ */
+export function normalizeScreenTime(raw) {
+  const c = raw && typeof raw === "object" ? raw : {};
+  const clamp = (v) => (Number.isInteger(v) ? Math.min(Math.max(v, 0), 24 * 60) : 0);
+  const appLimits = {};
+  for (const [pkg, m] of Object.entries(c.appLimits && typeof c.appLimits === "object" ? c.appLimits : {})) {
+    if (/^[A-Za-z0-9_.]{1,200}$/.test(pkg) && clamp(m) > 0) appLimits[pkg] = clamp(m);
+  }
+  const exempt = [...new Set((Array.isArray(c.exempt) ? c.exempt : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 100);
+  return { dailyLimit: clamp(c.dailyLimit), bedtime: normalizeSchedule(c.bedtime), appLimits, exempt };
+}
+
 // Whole groups of apps that can be blocked with one switch, like other parental-control apps offer.
 // An app you explicitly set to Allow is never blocked by its group, so you can block "all social
 // media" and still leave one in. Messaging apps (WhatsApp, Signal, SMS) are deliberately not here.
@@ -373,6 +389,7 @@ export function normalizeConfig(input) {
     // "moderate" and "strict" open the web but block whole categories (see tools/build-blocklists.mjs).
     browserFilter: BROWSER_FILTERS.includes(c.browserFilter) ? c.browserFilter : "off",
     youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "auto",
+    screenTime: normalizeScreenTime(c.screenTime),
     // Forces SafeSearch on Google, Bing and DuckDuckGo for every browser and app (see SafeSearchDns.java).
     safeSearch: c.safeSearch === true,
     // Forces YouTube's own Restricted Mode everywhere, the YouTube app included: "off", "moderate" or "strict".
@@ -568,6 +585,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
   if (cfg.approveNew && known) out.known = [...known];
   out.userMenu = cfg.userMenu;
+  out.screenTime = cfg.screenTime;
   out.safeSearch = cfg.safeSearch;
   out.youtubeDns = cfg.youtubeDns;
   out.blockImages = cfg.blockImages;
@@ -620,6 +638,10 @@ export function summarizeConfigChange(before, after) {
     const b = !before.userMenu || before.userMenu[k] !== false, a = !after.userMenu || after.userMenu[k] !== false;
     if (a !== b) lines.push('Phone menu "' + label + '": ' + (a ? "shown" : "hidden"));
   }
+  const stB = normalizeScreenTime(before.screenTime), stA = normalizeScreenTime(after.screenTime);
+  if (stB.dailyLimit !== stA.dailyLimit) lines.push("Daily screen time: " + (stA.dailyLimit ? stA.dailyLimit + " minutes" : "no limit"));
+  if (JSON.stringify(stB.bedtime) !== JSON.stringify(stA.bedtime)) lines.push("Bedtime: " + (stA.bedtime ? stA.bedtime.from + " to " + stA.bedtime.to : "off"));
+  if (JSON.stringify(stB.appLimits) !== JSON.stringify(stA.appLimits)) lines.push("App time limits changed (" + Object.keys(stA.appLimits).length + " app(s))");
   if (!!before.safeSearch !== !!after.safeSearch) lines.push("Forced SafeSearch: " + (after.safeSearch ? "on" : "off"));
   if ((before.youtubeDns || "off") !== (after.youtubeDns || "off")) lines.push("YouTube Restricted Mode everywhere: " + (after.youtubeDns || "off"));
   if (!!before.blockImages !== !!after.blockImages) lines.push("Block pictures on web pages: " + (after.blockImages ? "on" : "off"));

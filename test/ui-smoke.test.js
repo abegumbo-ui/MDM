@@ -45,11 +45,13 @@ async function setUp() {
     packages: [{ p: "com.google.android.apps.maps", l: "Maps", s: false, h: false }, { p: "com.instagram.android", l: "Instagram", s: false, h: true }, { p: "com.android.vending", l: "Google Play Store", s: true, h: false }],
     info: { deviceOwner: true, android: "14", versionCode: 400, battery: { pct: 80, charging: false }, wifi: { transport: "wifi", ssid: "Home" }, storeUntil: -1 },
     siteRequests: [{ url: "https://example.com/page" }],
-    appRequests: [{ kind: "store" }, { kind: "app", pkg: "com.instagram.android", label: "Instagram" }],
+    appRequests: [{ kind: "store" }, { kind: "app", pkg: "com.instagram.android", label: "Instagram" }, { kind: "time" }],
+    usage: { day: "2026-11-10", total: 134, ok: true, apps: [{ p: "com.google.android.apps.maps", l: "Maps", m: 90 }, { p: "com.instagram.android", l: "Instagram", m: 44 }] },
     messages: [{ msg: "hello" }],
     events: [{ k: "restriction", m: "DNS/TLS filter turned on (0 host(s) blocked, plus the browser category filter)" }] }) });
   const dev = (await (await call("/api/devices", { headers: { cookie } })).json())[0];
   await call(`/api/devices/${dev.id}/config`, { method: "PUT", headers: { ...J, cookie }, body: JSON.stringify({
+    screenTime: { dailyLimit: 180, bedtime: { days: [0, 1, 2, 3, 4], from: "22:00", to: "07:00" }, appLimits: { "com.instagram.android": 30 }, exempt: ["com.google.android.apps.maps"] },
     browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, safeSearch: true, youtubeDns: "strict", blockImages: true, imagesAllow: ["maps.google.com"], userMenu: { store: false },
     sites: { a: { type: "domain", url: "example.org" }, b: { type: "youtube", id: "@somechannel" } },
     apps: { "com.android.vending": { mode: "block", label: "Google Play Store" } } }) });
@@ -108,7 +110,15 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.deepEqual(errors, [], "no tab threw an error");
 
   // A few things that must actually be on the screen, not just "no crash".
-  assert.match(seen["overview/status"], /Requests from the phone \(2\)/);
+  assert.match(seen["overview/status"], /Requests from the phone \(3\)/);
+  assert.match(seen["overview/status"], /More screen time/);
+  assert.match(seen["time/report"], /2 h 14 min/);
+  assert.match(seen["time/report"], /of 3 h allowed today/);
+  assert.match(seen["time/report"], /Instagram/);
+  assert.match(seen["time/report"], /44 min of 30 min/);
+  assert.match(seen["time/report"], /Give 15 minutes/);
+  assert.match(seen["time/limits"], /Locked from 22:00 to 07:00/);
+  assert.match(seen["time/limits"], /Does not count toward the daily limit/);
   assert.match(seen["overview/status"], /Play Store open/);
   assert.match(seen["apps/regular"], /Block social media apps/);
   assert.match(seen["apps/regular"], /On this phone: Instagram/);

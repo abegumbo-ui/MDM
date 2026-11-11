@@ -260,6 +260,13 @@ final class PolicyApplier {
             }
         }
 
+        // Apps that have used up their own daily time limit (see ScreenTime) are hidden until midnight.
+        for (String pkg : Agent.getSet(c, "overLimit")) {
+            hideSet.add(pkg);
+            showSet.remove(pkg);
+            allowedSet.remove(pkg);
+        }
+
         // A Play Store window (see StoreAccess): while it is open the store is not hidden, whatever the lists say.
         StoreAccess.expireIfDue(c);
         if (StoreAccess.open(c)) {
@@ -307,6 +314,11 @@ final class PolicyApplier {
         Kiosk.announceChange(c);
         pushBrowserConfig(c, dpm, admin, policy);
         TlsInspection.apply(c, dpm, admin, policy); // optional browser inspection; off unless the dashboard turned it on
+        String stKey = String.valueOf(policy.optJSONObject("screenTime"));
+        if (!stKey.equals(Agent.prefs(c).getString("screenTimeApplied", ""))) {
+            Agent.prefs(c).edit().putString("screenTimeApplied", stKey).apply();
+            ScreenTime.soon(); // the limits changed: re-check now rather than in half a minute
+        }
 
         Set<String> wanted = new HashSet<>();
         for (String r : strings(policy.optJSONArray("restrictions"))) {

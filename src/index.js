@@ -29,7 +29,7 @@ async function cachedLogoRev(env) {
   logoRevCacheAt = now;
   return logoRevCache;
 }
-const COMMANDS = new Set(["openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp"]);
+const COMMANDS = new Set(["addTime", "openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_IMAGE_BYTES = 200 * 1024;
@@ -210,6 +210,7 @@ const publicDevice = (d) => ({
   adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
   siteRequests: d.siteRequests || [],
   appRequests: d.appRequests || [],
+  usage: d.usage || {},
   messages: d.messages || [],
   pushLog: (d.pushLog || []).slice(-30),
   ownerId: d.ownerId || null,
@@ -813,6 +814,8 @@ async function adminApiInner(request, env, url, session) {
         args.packageName = given.packageName;
       }
       if (body.type === "release") args.uninstall = given.uninstall === true;
+      // Extra screen time: lifts bedtime and the limits for this many minutes from when the phone gets it.
+      if (body.type === "addTime") args.minutes = Number.isInteger(given.minutes) ? Math.min(Math.max(given.minutes, 5), 240) : 15;
       // Opens the Play Store on the phone for a while (0 = until it is closed again from here).
       if (body.type === "openStore") args.minutes = Number.isInteger(given.minutes) ? Math.min(Math.max(given.minutes, 0), MAX_STORE_MINUTES) : 60;
       if (body.type === "lock") {
@@ -1204,22 +1207,40 @@ async function agentApi(request, env, url, ctx) {
         dirty = true;
       }
     }
+    if (body.usage && typeof body.usage === "object" && /^\d{4}-\d{2}-\d{2}$/.test(body.usage.day || "")) {
+      // Today's screen time so far. It changes at every check-in, so it does not force a write by
+      // itself (that would use up the free storage allowance): it rides along with the next real
+      // write, which happens at least every ten minutes. A new day is always written.
+      const u = body.usage;
+      const entry = {
+        total: Number.isInteger(u.total) ? Math.min(Math.max(u.total, 0), 1440) : 0,
+        ok: u.ok !== false,
+        apps: (Array.isArray(u.apps) ? u.apps : []).slice(0, 15)
+          .filter((a) => a && PKG_RE.test(a.p || ""))
+          .map((a) => ({ p: a.p, l: String(a.l || a.p).slice(0, 60), m: Number.isInteger(a.m) ? Math.min(Math.max(a.m, 0), 1440) : 0 })),
+        ...(Number(u.extraUntil) > now && { extraUntil: Number(u.extraUntil) }),
+      };
+      const all = { ...(d.usage || {}) };
+      if (!all[u.day]) dirty = true;
+      all[u.day] = entry;
+      d.usage = Object.fromEntries(Object.entries(all).sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 14));
+    }
     if (Array.isArray(body.appRequests) && body.appRequests.length) {
       // Asked for from the phone's own User screen: "open the Play Store", or one particular blocked app.
       const existing = d.appRequests || [];
       const keys = new Set(existing.map((r) => r.key));
       const added = [];
       for (const r of body.appRequests.slice(0, 20)) {
-        const kind = r && r.kind === "store" ? "store" : r && r.kind === "app" && PKG_RE.test(r.pkg || "") ? "app" : null;
+        const kind = r && (r.kind === "store" || r.kind === "time") ? r.kind : r && r.kind === "app" && PKG_RE.test(r.pkg || "") ? "app" : null;
         if (!kind) continue;
-        const reqKey = kind === "store" ? "store" : "app:" + r.pkg;
+        const reqKey = kind === "app" ? "app:" + r.pkg : kind;
         if (keys.has(reqKey)) continue;
         keys.add(reqKey);
-        added.push(kind === "store" ? { key: reqKey, kind, at: now } : { key: reqKey, kind, pkg: r.pkg, label: String(r.label || r.pkg).slice(0, 80), at: now });
+        added.push(kind !== "app" ? { key: reqKey, kind, at: now } : { key: reqKey, kind, pkg: r.pkg, label: String(r.label || r.pkg).slice(0, 80), at: now });
       }
       if (added.length) {
         d.appRequests = [...existing, ...added].slice(-30);
-        for (const r of added) toAlert.push({ kind: "requests", text: r.kind === "store" ? "Asked to open the Play Store" : `Asked for the app ${r.label}` });
+        for (const r of added) toAlert.push({ kind: "requests", text: r.kind === "store" ? "Asked to open the Play Store" : r.kind === "time" ? "Asked for more screen time" : `Asked for the app ${r.label}` });
         dirty = true;
       }
     }
