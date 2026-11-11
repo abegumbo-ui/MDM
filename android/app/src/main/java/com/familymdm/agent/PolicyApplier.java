@@ -195,7 +195,15 @@ final class PolicyApplier {
         } else {
             WholeAppBlocklist.adopt(c, policy.optJSONObject("wholeAppBlocklist"));
         }
-        applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"));
+        // The browser filter level (Moderate / Strict) also applies phone-wide through the DNS/TLS filter.
+        String filterTier = policy.optString("browserFilter", "off");
+        String filterBase = policy.optString("browserFilterBase", "");
+        try {
+            WebFilter.setPolicy(c, filterTier, filterBase); // starts downloading the category lists if needed
+        } catch (Exception e) {
+            Log.w(TAG, "category lists: " + e);
+        }
+        applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"), !"off".equals(filterTier) && !filterBase.isEmpty());
         applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
         if (NetworkBlocklist.rev(c) == 0 && !NetworkBlocklist.list(c).isEmpty()) {
             NetworkBlocklist.seed(c);
@@ -680,7 +688,7 @@ final class PolicyApplier {
      * already offered elsewhere, to close the two ordinary ways around it -- those are a deliberate
      * admin choice on the Restrictions screen, not forced on here.
      */
-    private static void applyDnsFilter(Context c, DevicePolicyManager dpm, ComponentName admin, JSONArray hostnames) {
+    private static void applyDnsFilter(Context c, DevicePolicyManager dpm, ComponentName admin, JSONArray hostnames, boolean categoryFilterOn) {
         Set<String> had = DnsBlocklist.list(c);
         if (DnsBlocklist.rev(c) == 0 && !had.isEmpty()) {
             // Same migration-safety reasoning as WholeAppBlocklist's own: a list already set up
@@ -693,13 +701,14 @@ final class PolicyApplier {
         }
         Set<String> want = DnsBlocklist.list(c);
         boolean listChanged = !had.equals(want);
-        boolean wanted = !want.isEmpty();
+        // Runs when there is a custom block list OR a browser filter level is on (the level needs this same filter).
+        boolean wanted = !want.isEmpty() || categoryFilterOn;
         boolean applied = Agent.prefs(c).getBoolean("dnsFilterApplied", false);
         try {
             if (wanted && !applied) {
                 c.startForegroundService(new Intent(c, DnsFilterVpnService.class));
                 dpm.setAlwaysOnVpnPackage(admin, c.getPackageName(), false);
-                Agent.addEvent(c, "restriction", "DNS/TLS filter turned on (" + want.size() + " host(s) blocked) -- see Traffic Log");
+                Agent.addEvent(c, "restriction", "DNS/TLS filter turned on (" + want.size() + " host(s) blocked" + (categoryFilterOn ? ", plus the browser category filter" : "") + ") -- see Traffic Log");
             } else if (!wanted && applied) {
                 dpm.setAlwaysOnVpnPackage(admin, null, false);
                 c.stopService(new Intent(c, DnsFilterVpnService.class));

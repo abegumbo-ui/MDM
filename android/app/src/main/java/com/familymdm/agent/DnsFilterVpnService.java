@@ -199,6 +199,9 @@ public class DnsFilterVpnService extends VpnService {
 
         if (dstPort != 53) {
             // Not a DNS query -- plain NAT relay (QUIC on :443 is the common case).
+            // QUIC hides the site's name, so while category filtering is on it is dropped: browsers then
+            // fall back to the ordinary connection the filter can see.
+            if (dstPort == 443 && BrowserCategoryFilter.blockQuic(this)) return;
             int payloadLen = Math.min(udpLength, len - udpOffset) - 8;
             if (payloadLen <= 0) return;
             byte[] payload = new byte[payloadLen];
@@ -229,7 +232,7 @@ public class DnsFilterVpnService extends VpnService {
             // device-wide DnsAllowlist does NOT apply here, on purpose (see PerAppDnsAllowlist).
             blocked = !PerAppDnsAllowlist.allows(this, pkg, qname);
         } else {
-            blocked = DnsBlocklist.blocks(this, qname) && !DnsAllowlist.allows(this, qname);
+            blocked = (DnsBlocklist.blocks(this, qname) || BrowserCategoryFilter.blocks(this, pkg, qname)) && !DnsAllowlist.allows(this, qname);
         }
         if (qname != null) TrafficLog.add(this, TrafficLog.KIND_DNS, qname, uid, uidResolver.labelFor(uid), blocked);
 

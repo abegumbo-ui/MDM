@@ -1036,7 +1036,7 @@ function renderRequestsCard(m,reqs,dv){
 function renderWebAccess(m,dv){
  const cur=dv.config.browserFilter||'off';
  const card=h('div',{class:'card'},h('h2',null,'Web access'),
-  h('div',{class:'mute'},'Choose what this browser may open. Sites on the allowed list below are always allowed, whichever you pick. This applies to the separate Browser app and to the Browser add-on built into the Agent app.'));
+  h('div',{class:'mute'},'Choose what this browser may open. Sites on the allowed list below are always allowed, whichever you pick. This applies to the separate Browser app and the Browser add-on built into the Agent app. On phones managed by the Agent, Moderate and Strict also apply to Chrome, Firefox, Samsung Internet and other browsers, through the Agent\'s site filter (no certificate needed): adult, gambling, drugs, scam and piracy sites are blocked for every app, and Strict\'s social media only in browsers, so WhatsApp and similar apps keep working.'));
  const opts=[
   ['off','Approved sites only','Nothing opens unless it is on the allowed list below. The strictest setting, and what every browser starts with.'],
   ['moderate','Moderate filter','Opens the rest of the web, but blocks adult sites, gambling, drugs and vaping, scams and phishing, and piracy.'],
@@ -1059,7 +1059,7 @@ function renderWebAccess(m,dv){
   render()};
  card.append(h('div',{class:'setting',style:'display:block;margin-top:12px'},h('div',{style:'font-weight:500'},'YouTube'),
   h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Browser inspection (Internet tab).'),ytSel));
- card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists it stays on approved sites only.'));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists, our own browsers stay on approved sites only, but Chrome and other browsers are not filtered yet (the phone cannot cut off the whole internet to wait for them). In Chrome the filter works on site names, not pages, and while it is on QUIC (a faster web protocol) is switched off so browsers use the kind of connection the filter can see. A browser using its own encrypted DNS can sometimes get around the name lookup, though the connection itself is still checked.'));
  m.append(card)}
 /** Optional: the phone gets its own certificate and a local proxy, so browsers' secure pages can be filtered by their content. */
 function renderInspection(m,dv){

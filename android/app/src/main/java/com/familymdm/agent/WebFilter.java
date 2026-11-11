@@ -41,6 +41,7 @@ final class WebFilter {
     private static volatile boolean refreshing;
     // Lists opened for the current tier+manifest, or null when not (yet) usable.
     private static List<BlockList> loaded;
+    private static List<String> loadedCats = new ArrayList<>(); // the category of each list above, same order
     private static String loadedFor = "";
 
     private static SharedPreferences prefs(Context c) {
@@ -94,6 +95,31 @@ final class WebFilter {
         return "restricted".equals(prefs(c).getString("youtubeMode", "channels"));
     }
 
+    /** In one of the core lists (everything except social media)? False if the filter is not active. */
+    static boolean blocksCore(Context c, String host) {
+        return blocksIn(c, host, false);
+    }
+
+    /** In the social-media list (only part of the Strict level)? False if the filter is not active. */
+    static boolean blocksSocial(Context c, String host) {
+        return blocksIn(c, host, true);
+    }
+
+    private static boolean blocksIn(Context c, String host, boolean social) {
+        List<BlockList> l;
+        List<String> names;
+        synchronized (LOCK) {
+            ensureLoaded(c);
+            l = loaded;
+            names = loadedCats;
+        }
+        if (l == null) return false;
+        for (int i = 0; i < l.size() && i < names.size(); i++) {
+            if ("social".equals(names.get(i)) == social && l.get(i).blocks(host)) return true;
+        }
+        return false;
+    }
+
     // ---------- loading what is already on disk ----------
 
     private static File dir(Context c) {
@@ -130,8 +156,10 @@ final class WebFilter {
         Map<String, JSONObject> need = needed(c);
         if (need == null) return;
         List<BlockList> out = new ArrayList<>();
+        List<String> names = new ArrayList<>();
         try {
-            for (JSONObject cat : need.values()) {
+            for (Map.Entry<String, JSONObject> entry : need.entrySet()) {
+                JSONObject cat = entry.getValue();
                 String file = cat.getString("file");
                 File f = new File(dir(c), file);
                 // Only a file that was fully downloaded and checked against the published checksum
@@ -139,11 +167,13 @@ final class WebFilter {
                 if (!f.exists() || !cat.getString("sha256").equals(prefs(c).getString("sha:" + file, ""))) return;
                 if (f.length() != cat.getLong("bytes")) return;
                 out.add(BlockList.open(f));
+                names.add(entry.getKey());
             }
         } catch (Exception e) {
             return;
         }
         loaded = out;
+        loadedCats = names;
     }
 
     // ---------- downloading ----------
