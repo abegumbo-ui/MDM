@@ -255,6 +255,14 @@ final class PolicyApplier {
             }
         }
 
+        // A Play Store window (see StoreAccess): while it is open the store is not hidden, whatever the lists say.
+        StoreAccess.expireIfDue(c);
+        if (StoreAccess.open(c)) {
+            hideSet.remove(StoreAccess.PKG);
+            showSet.add(StoreAccess.PKG);
+            allowedSet.add(StoreAccess.PKG);
+        }
+
         for (String pkg : hideSet) {
             if (never.contains(pkg)) continue;
             try {
@@ -301,7 +309,7 @@ final class PolicyApplier {
         }
         // While the agent itself is installing or uninstalling something (an update, an uploaded APK, the
         // Uninstall button), those restrictions are paused for a couple of minutes, then restored.
-        boolean window = System.currentTimeMillis() < Agent.prefs(c).getLong("installWindowUntil", 0);
+        boolean window = System.currentTimeMillis() < Agent.prefs(c).getLong("installWindowUntil", 0) || StoreAccess.open(c);
         Set<String> tempCleared = Agent.getSet(c, "tempCleared");
         if (window) {
             for (String r : INSTALL_RELATED) if (wanted.remove(r)) tempCleared.add(r);

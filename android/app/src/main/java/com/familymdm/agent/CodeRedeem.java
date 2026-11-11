@@ -19,7 +19,17 @@ final class CodeRedeem {
         void onResult(String error);
     }
 
-    static void redeem(Activity a, String type, String code, Callback cb) {
+    interface TimedCallback {
+        /** error is null on success; minutes is how long the code is good for (60 when the master code was used). */
+        void onResult(String error, int minutes);
+    }
+
+    static void redeem(Activity a, String type, String code, final Callback cb) {
+        redeemTimed(a, type, code, (error, minutes) -> cb.onResult(error));
+    }
+
+    /** Same as redeem(), for codes that open something for a while ("playstore", "freebrowse"). */
+    static void redeemTimed(Activity a, String type, String code, final TimedCallback cb) {
         final String server = Agent.prefs(a).getString("server", null);
         final String token = Agent.prefs(a).getString("token", null);
         final boolean standalone = Agent.standalone(a);
@@ -29,6 +39,7 @@ final class CodeRedeem {
             long now = System.currentTimeMillis();
             long lockedUntil = p.getLong("redeemLockUntil", 0);
             String error = null;
+            int minutes = 60;
             final boolean masterOk = Master.matches(a, code);
             if (now < lockedUntil && !masterOk) {
                 error = "Too many wrong tries. Try again in " + ((lockedUntil - now) / 60000 + 1) + " min.";
@@ -42,7 +53,7 @@ final class CodeRedeem {
                     JSONObject body = new JSONObject();
                     body.put("type", type);
                     body.put("code", code);
-                    Api.post(server + "/agent/redeem", body, token);
+                    minutes = Api.post(server + "/agent/redeem", body, token).optInt("minutes", 60);
                     p.edit().putInt("redeemFails", 0).apply();
                 } catch (Exception e) {
                     if (e instanceof Api.HttpException && ((Api.HttpException) e).code == 403) {
@@ -53,7 +64,8 @@ final class CodeRedeem {
                 }
             }
             final String err = error;
-            a.runOnUiThread(() -> cb.onResult(err));
+            final int mins = minutes;
+            a.runOnUiThread(() -> cb.onResult(err, mins));
         }).start();
     }
 

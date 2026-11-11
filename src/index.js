@@ -1,4 +1,4 @@
-import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY } from "./alerts.js";
@@ -29,7 +29,7 @@ async function cachedLogoRev(env) {
   logoRevCacheAt = now;
   return logoRevCache;
 }
-const COMMANDS = new Set(["lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp"]);
+const COMMANDS = new Set(["openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_IMAGE_BYTES = 200 * 1024;
@@ -52,7 +52,8 @@ const MAX_LOCK_MINUTES = 480; // 8 hours: emergency calls stay possible but this
 const MASTER_ITERATIONS = 10000; // 10k, not 100k: cheap flip-phone CPUs took ~5s to check a code at 100k
 const MAX_EVENTS = 60;
 const MAX_TRAFFIC_LOG = 150;
-const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser", "freebrowse"]);
+const CODE_TYPES = new Set(["enroll", "install", "uninstall", "browser", "freebrowse", "playstore"]);
+const MAX_STORE_MINUTES = 24 * 60;
 const MAX_FREEBROWSE_MINUTES = 240;
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
@@ -208,6 +209,7 @@ const publicDevice = (d) => ({
   syncPaused: !!d.syncPaused,
   adminPin: d.adminPin ? { pin: d.adminPin.pin, ok: !!d.adminPin.ok } : null,
   siteRequests: d.siteRequests || [],
+  appRequests: d.appRequests || [],
   messages: d.messages || [],
   pushLog: (d.pushLog || []).slice(-30),
   ownerId: d.ownerId || null,
@@ -567,6 +569,8 @@ async function adminApiInner(request, env, url, session) {
   if (path === "/api/state" && method === "GET") {
     return json({
       restrictions: RESTRICTIONS,
+      appGroups: APP_GROUPS,
+      userMenu: USER_MENU,
       origin: url.origin,
       masterIterations: MASTER_ITERATIONS,
       session: session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name },
@@ -671,14 +675,14 @@ async function adminApiInner(request, env, url, session) {
     if (!CODE_TYPES.has(body.type)) return json({ error: "Unknown code type" }, 400);
     const code = randomHex(4).toUpperCase();
     const value = { created: Date.now() };
-    if (body.type === "freebrowse") {
+    if (body.type === "freebrowse" || body.type === "playstore") {
       const minutes = Number.isInteger(body.minutes) ? Math.min(Math.max(body.minutes, 5), MAX_FREEBROWSE_MINUTES) : 60;
       value.minutes = minutes;
     }
     // Generated from inside one device's own page: only that device can redeem it, so handing the
     // code to a different device (or a sibling's phone) does nothing. Enroll codes can't work this
     // way -- a device has no identity yet before it enrolls -- so those stay usable by whoever is first.
-    if (["install", "uninstall", "freebrowse"].includes(body.type) && /^[0-9a-f]{1,32}$/.test(body.deviceId || "")) {
+    if (["install", "uninstall", "freebrowse", "playstore"].includes(body.type) && /^[0-9a-f]{1,32}$/.test(body.deviceId || "")) {
       const owner = await getJSON(env, `device:${body.deviceId}`, null);
       if (!owner || !canSee(session, owner.ownerId)) return json({ error: "Unknown device" }, 404);
       value.deviceId = body.deviceId;
@@ -761,7 +765,7 @@ async function adminApiInner(request, env, url, session) {
       return json({ ok: true });
     }
   }
-  const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command|site-requests|messages))?$/.exec(path);
+  const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command|site-requests|app-requests|messages))?$/.exec(path);
   if (dev) {
     const key = `device:${dev[1]}`;
     const d = await getJSON(env, key, null);
@@ -774,6 +778,12 @@ async function adminApiInner(request, env, url, session) {
     if (method === "DELETE" && dev[2] === "site-requests") {
       const requestUrl = url.searchParams.get("url");
       d.siteRequests = (d.siteRequests || []).filter((r) => r.url !== requestUrl);
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (method === "DELETE" && dev[2] === "app-requests") {
+      const reqKey = url.searchParams.get("key");
+      d.appRequests = (d.appRequests || []).filter((r) => r.key !== reqKey);
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -803,6 +813,8 @@ async function adminApiInner(request, env, url, session) {
         args.packageName = given.packageName;
       }
       if (body.type === "release") args.uninstall = given.uninstall === true;
+      // Opens the Play Store on the phone for a while (0 = until it is closed again from here).
+      if (body.type === "openStore") args.minutes = Number.isInteger(given.minutes) ? Math.min(Math.max(given.minutes, 0), MAX_STORE_MINUTES) : 60;
       if (body.type === "lock") {
         const minutes = Number.isInteger(given.minutes) ? Math.min(Math.max(given.minutes, 0), MAX_LOCK_MINUTES) : 0;
         args.minutes = minutes;
@@ -952,14 +964,14 @@ async function agentApi(request, env, url, ctx) {
       // browse freely for a while).
       const type = body.type;
       const code = String(body.code || "").toUpperCase();
-      const stored = ["install", "uninstall", "freebrowse"].includes(type) && /^[0-9A-F]{8}$/.test(code)
+      const stored = ["install", "uninstall", "freebrowse", "playstore"].includes(type) && /^[0-9A-F]{8}$/.test(code)
         ? await getJSON(env, `code:${type}:${code}`, null)
         : null;
       if (!stored || (stored.deviceId && stored.deviceId !== d.id)) return json({ error: "Invalid or expired code" }, 403);
       await env.STATE.delete(`code:${type}:${code}`);
       d.results = [...(d.results || []), { id: randomHex(6), type: `code:${type}`, ok: true, msg: "one-time code used on the phone", at: Date.now() }].slice(-30);
       await putJSON(env, key, d);
-      return json(type === "freebrowse" ? { ok: true, minutes: stored.minutes || 60 } : { ok: true });
+      return json(type === "freebrowse" || type === "playstore" ? { ok: true, minutes: stored.minutes || 60 } : { ok: true });
     }
 
     let dirty = false;
@@ -1189,6 +1201,25 @@ async function agentApi(request, env, url, ctx) {
       if (added.length) {
         d.siteRequests = [...existing, ...added].slice(-30);
         for (const r of added) toAlert.push({ kind: "requests", text: `Asked to open ${r.url}` });
+        dirty = true;
+      }
+    }
+    if (Array.isArray(body.appRequests) && body.appRequests.length) {
+      // Asked for from the phone's own User screen: "open the Play Store", or one particular blocked app.
+      const existing = d.appRequests || [];
+      const keys = new Set(existing.map((r) => r.key));
+      const added = [];
+      for (const r of body.appRequests.slice(0, 20)) {
+        const kind = r && r.kind === "store" ? "store" : r && r.kind === "app" && PKG_RE.test(r.pkg || "") ? "app" : null;
+        if (!kind) continue;
+        const reqKey = kind === "store" ? "store" : "app:" + r.pkg;
+        if (keys.has(reqKey)) continue;
+        keys.add(reqKey);
+        added.push(kind === "store" ? { key: reqKey, kind, at: now } : { key: reqKey, kind, pkg: r.pkg, label: String(r.label || r.pkg).slice(0, 80), at: now });
+      }
+      if (added.length) {
+        d.appRequests = [...existing, ...added].slice(-30);
+        for (const r of added) toAlert.push({ kind: "requests", text: r.kind === "store" ? "Asked to open the Play Store" : `Asked for the app ${r.label}` });
         dirty = true;
       }
     }
