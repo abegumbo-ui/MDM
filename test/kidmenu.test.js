@@ -81,3 +81,40 @@ test("requests from the phone's menu arrive once, can be dismissed, and Play Sto
   assert.deepEqual(await ok.json(), { ok: true, minutes: 30 });
   assert.equal((await redeem(ps.code)).status, 403, "a code works once");
 });
+
+test("games and video apps are found by the kind of app they say they are, as well as by name", async () => {
+  const { inGroup } = await import("../src/policy.js");
+  const installed = ["com.example.puzzle", "com.example.notes", "com.netflix.mediaclient", "com.example.videoeditor", "com.whatsapp"];
+  const categories = { "com.example.puzzle": 0, "com.example.notes": 7, "com.example.videoeditor": 2, "com.whatsapp": 4 };
+  const p = buildAgentPolicy({ blockAppGroups: ["games", "video"] }, installed, { categories });
+  assert.ok(p.hide.includes("com.example.puzzle"), "a game by category");
+  assert.ok(p.hide.includes("com.netflix.mediaclient"), "a video app by name");
+  assert.ok(p.hide.includes("com.example.videoeditor"), "a video app by category");
+  assert.ok(!p.hide.includes("com.example.notes") && !p.hide.includes("com.whatsapp"), "others, including social-category messaging, untouched");
+  assert.ok(!buildAgentPolicy({ blockAppGroups: ["games"] }, installed).hide.includes("com.example.puzzle"), "without categories reported, only names count");
+  assert.ok(!buildAgentPolicy({ blockAppGroups: ["games"], apps: { "com.example.puzzle": { mode: "allow" } } }, installed, { categories }).hide.includes("com.example.puzzle"), "an explicit Allow still wins");
+  assert.ok(inGroup("dating", "com.tinder") && !inGroup("dating", "com.tinder.x", 0) && !inGroup("nope", "com.tinder"));
+  assert.deepEqual(normalizeConfig({ blockAppGroups: ["games", "dating", "shopping", "video", "made-up"] }).blockAppGroups, ["games", "dating", "shopping", "video"]);
+});
+
+test("Chrome's locked settings are off by default and reach the phone", () => {
+  assert.deepEqual(normalizeConfig({}).chromePolicy, { noIncognito: false, adultFilter: false, noSignin: false });
+  assert.deepEqual(buildAgentPolicy({ chromePolicy: { noIncognito: true, adultFilter: "yes" } }, []).chromePolicy, { noIncognito: true, adultFilter: false, noSignin: false });
+  assert.deepEqual(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ chromePolicy: { noIncognito: true } })).filter((l) => l.startsWith("Chrome")), ["Chrome: no incognito tabs: on"]);
+});
+
+test("the category an app declares is kept from the phone's report, and junk is dropped", async () => {
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "C" } }) })).json();
+  const auth = { ...J, authorization: `Bearer ${token}` };
+  const sync = async (body) => await (await req("/agent/sync", { method: "POST", headers: auth, body: JSON.stringify(body) })).json();
+  await sync({ packages: [{ p: "com.example.puzzle", l: "Puzzle", c: 0 }, { p: "com.example.odd", l: "Odd", c: "game" }, { p: "com.example.neg", l: "Neg", c: -1 }] });
+  const d = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.name.endsWith("C"));
+  assert.equal(d.packages.find((p) => p.p === "com.example.puzzle").c, 0);
+  assert.equal(d.packages.find((p) => p.p === "com.example.odd").c, undefined);
+  assert.equal(d.packages.find((p) => p.p === "com.example.neg").c, undefined);
+  await req(`/api/devices/${d.id}/config`, { method: "PUT", headers: { ...J, cookie }, body: JSON.stringify({ blockAppGroups: ["games"] }) });
+  assert.ok((await sync({})).policy.hide.includes("com.example.puzzle"), "the phone is told to hide the game");
+});
