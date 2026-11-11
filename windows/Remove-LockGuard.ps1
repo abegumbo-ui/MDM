@@ -9,10 +9,28 @@
 #   5. deletes LockGuard's own folders (Program Files\LockGuard, ProgramData\LockGuard)
 
 $ErrorActionPreference = 'Continue'
+# LockGuard protects itself from administrators, so this hands itself to the system (a one-off
+# scheduled task) and shows what it did. Only an administrator can do that.
+if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18') {
+    $log = Join-Path $env:TEMP 'remove-lockguard.log'
+    Remove-Item $log -ErrorAction SilentlyContinue
+    # A tiny launcher file, so the task's command line has no tricky quoting.
+    $launcher = Join-Path $env:TEMP 'lg-remove.cmd'
+    Set-Content -Path $launcher -Encoding ASCII -Value "@powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" > `"$log`" 2>&1"
+    schtasks.exe /create /tn LockGuardRemove /tr $launcher /sc once /st 00:00 /ru SYSTEM /rl HIGHEST /f | Out-Null
+    schtasks.exe /run /tn LockGuardRemove | Out-Null
+    Write-Host 'Removing LockGuard (as the system)...'
+    for ($i = 0; $i -lt 90; $i++) { Start-Sleep 2; if ((Test-Path $log) -and (Select-String -Path $log -Pattern '^Done\.' -Quiet)) { break } }
+    schtasks.exe /delete /tn LockGuardRemove /f | Out-Null
+    Remove-Item $launcher -ErrorAction SilentlyContinue
+    if (Test-Path $log) { Get-Content $log }
+    exit
+}
 $data = Join-Path $env:ProgramData 'LockGuard'
 Write-Host 'Removing LockGuard...'
 
-# 1. the service
+# 1. the service (normal rights back first)
+sc.exe sdset LockGuard "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)" | Out-Null
 Stop-Service -Name LockGuard -Force -ErrorAction SilentlyContinue
 sc.exe delete LockGuard | Out-Null
 Get-Process -Name 'LockGuard.Service','LockGuard.Setup' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue

@@ -182,6 +182,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["win/programs"], /Close VPN and proxy programs/);
   assert.match(seen["win/history"], /wikipedia\.org/);
   assert.match(seen["win/computer"], /KIDS-PC/);
+  assert.match(seen["win/computer"], /Protect LockGuard from administrators/);
   assert.match(seen["browser/history"], /Keep a list of the sites/);
   assert.match(seen["internet/appnet"], /Filtering per app/);
   assert.match(seen.settings, /Weekly report/);

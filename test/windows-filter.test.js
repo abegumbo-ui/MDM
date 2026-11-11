@@ -27,6 +27,7 @@ test("a new PC gets the web filter: Moderate, SafeSearch, YouTube, no incognito,
   assert.equal(r.filter.blockOtherBrowsers, true);
   assert.equal(r.filter.blockVpnApps, true);
   assert.equal(r.filter.blockExtensions, false);
+  assert.equal(r.protect, true, "new computers are protected from administrators");
   assert.ok(r.filter.essential.includes("mdm.example.dev"), "the dashboard itself is never blocked");
   assert.match(r.filter.base, /releases\/download\/blocklists/);
   assert.equal(r.enabled, false, "the old program lockdown stays off");

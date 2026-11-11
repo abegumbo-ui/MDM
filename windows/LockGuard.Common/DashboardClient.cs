@@ -59,6 +59,8 @@ public sealed class DashboardClient
         [JsonPropertyName("pollSeconds")] public int PollSeconds { get; set; }
         /// <summary>The newest published LockGuard, when newer than the build this computer reported.</summary>
         [JsonPropertyName("update")] public UpdateInfo? Update { get; set; }
+        /// <summary>Protect LockGuard from administrators (see Hardening). Missing = keep the current setting.</summary>
+        [JsonPropertyName("protect")] public bool? Protect { get; set; }
     }
 
     public sealed class UpdateInfo

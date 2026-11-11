@@ -1851,7 +1851,11 @@ function renderWinDetail(m,w){
  }
  else if(winTab==='history')renderSitesVisited(m,dv);
  else{
-  const controls=h('div',{class:'card'},h('h2',null,'This computer'),kv('Name on the computer',w.info.hostname||'unknown'),kv('Last check-in',ago(w.lastSeen)),kv('LockGuard version',w.info.version||'unknown'));
+  const pr=w.win.protectFromAdmins!==false;
+  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect LockGuard from administrators'),
+   h('div',{class:'mute small'},'Even an administrator account on the computer cannot stop, change or uninstall LockGuard: only the code (in LockGuard Setup) or "Uninstall from this computer" below removes it. An expert could still get around it, as with any filter. '+(w.info.protectedFromAdmins?'Active on the computer.':w.info.protectError?'Problem on the computer: '+w.info.protectError:pr?'Waiting for the computer (it needs the latest LockGuard).':''))),
+   sw(pr,function(on){w.win.protectFromAdmins=on;save(on?'Protection on within a minute.':'Protection off within a minute: administrators can manage LockGuard again.')}))));
+  const controls=h('div',{class:'card'},h('h2',null,'This computer'),kv('Name on the computer',w.info.hostname||'unknown'),kv('Last check-in',ago(w.lastSeen)),kv('LockGuard build',w.info.build?String(w.info.build):'not numbered (built on a computer)'));
   controls.append(h('div',{class:'row',style:'margin-top:12px;flex-wrap:wrap'},
    btn('Rename','outline',async function(){const name=prompt('Name for this computer',w.name);if(!name)return;await call('PUT','/api/windevices/'+w.id,{name:name});load()}),
    btn('Uninstall from this computer','danger',async function(){if(!confirm('Remove LockGuard from '+w.name+' entirely? It puts the network settings, firewall and browser settings back, next time it checks in.'))return;await call('POST','/api/windevices/'+w.id+'/command',{type:'uninstall'});snack('Queued.');load()}),
