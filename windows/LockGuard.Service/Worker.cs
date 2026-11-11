@@ -29,6 +29,10 @@ public sealed class Worker : BackgroundService
     private volatile FilterPolicy _filter = FilterPolicy.Load();
     private bool _filterApplied;
     private DateTime _lastReport = DateTime.UtcNow;
+    private DateTime _lastHarden = DateTime.MinValue;
+    private static string ProtectFile => Path.Combine(Paths.RootDir, "protect.txt");
+    /// <summary>On unless the dashboard switched it off.</summary>
+    private bool _protect = !File.Exists(ProtectFile) || File.ReadAllText(ProtectFile).Trim() != "off";
     private CancellationToken _stopping;
 
     public Worker(ILogger<Worker> logger)
@@ -78,6 +82,8 @@ public sealed class Worker : BackgroundService
         ApplyNow();
         await ApplyFilterAsync();
         _ = BlockerLoop(stoppingToken);
+        Hardening.Apply(_protect);
+        _lastHarden = DateTime.UtcNow;
 
         try
         {
@@ -87,6 +93,7 @@ public sealed class Worker : BackgroundService
                 await Task.Delay(ReapplyInterval, stoppingToken);
                 ApplyNow();
                 await ApplyFilterAsync();
+                if (DateTime.UtcNow - _lastHarden > TimeSpan.FromMinutes(10)) { _lastHarden = DateTime.UtcNow; Hardening.Apply(_protect); }
             }
         }
         catch (OperationCanceledException)
@@ -147,6 +154,8 @@ public sealed class Worker : BackgroundService
         tz = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes,
         version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
         build = Updater.Build,
+        protectedFromAdmins = Hardening.On,
+        protectError = Hardening.LastError,
         accounts = Accounts.Report(),
         filter = new
         {
@@ -198,6 +207,13 @@ public sealed class Worker : BackgroundService
                 await ApplyFilterAsync();
             }
 
+            if (result.Protect is bool protect && protect != _protect)
+            {
+                _protect = protect;
+                File.WriteAllText(ProtectFile, protect ? "on" : "off");
+                Hardening.Apply(protect);
+                _lastHarden = DateTime.UtcNow;
+            }
             if (result.Commands.Any(c => c.Type == "uninstall")) { BeginUninstall(); return; }
             await Updater.MaybeUpdateAsync(result.Update, Note);
         }
@@ -235,6 +251,7 @@ public sealed class Worker : BackgroundService
     {
         try
         {
+            Hardening.Apply(false); // normal rights again, so everything below (and the script) can remove it
             FirewallManager.RemoveLockdown();
             FirewallManager.SetFilterRules(false);
             NetworkDns.Restore();
@@ -252,6 +269,8 @@ Stop-Service -Name LockGuard -Force -ErrorAction SilentlyContinue
 sc.exe delete LockGuard | Out-Null
 Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LockGuard' -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force '{Paths.RootDir}' -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force (Join-Path $env:ProgramFiles 'LockGuard') -ErrorAction SilentlyContinue
+Get-ChildItem ([Environment]::GetFolderPath('CommonDesktopDirectory')) -Filter 'LockGuard Setup*.lnk' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 Remove-Item -Force '{scriptPath}' -ErrorAction SilentlyContinue
 ");
         Process.Start(new ProcessStartInfo

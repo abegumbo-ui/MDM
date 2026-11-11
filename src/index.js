@@ -356,6 +356,8 @@ const normalizeWin = (w) => {
     blockOtherBrowsers: o.blockOtherBrowsers !== false,
     blockVpnApps: o.blockVpnApps !== false,
     blockExtensions: o.blockExtensions === true,
+    // LockGuard refuses to be stopped or removed by an administrator (code or dashboard only).
+    protectFromAdmins: o.protectFromAdmins !== false,
     blockedPrograms: [...new Set((Array.isArray(o.blockedPrograms) ? o.blockedPrograms : []).map((p) => String(p).trim().toLowerCase()).filter((p) => /^[a-z0-9 ._()+-]{1,80}$/.test(p)))].slice(0, 200),
   };
 };
@@ -1743,6 +1745,7 @@ async function windowsApi(request, env, url, ctx) {
       allowedPrograms: d.allowedPrograms || [],
       commands,
       filter: winFilter(env, d, now, url.hostname),
+      protect: normalizeWin(d.win).protectFromAdmins,
       // Only computers that can update themselves report a build number.
       ...(Number(body.info && body.info.build) > 0 ? await (async () => { const u = await latestLockguard(env); return u && u.build > Number(body.info.build) ? { update: u } : {}; })() : {}),
       pollSeconds: POLL_SECONDS,

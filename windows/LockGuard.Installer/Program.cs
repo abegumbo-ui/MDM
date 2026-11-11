@@ -55,6 +55,33 @@ internal static class Program
             return 0;
         }
 
+        // Already installed: LockGuard protects itself from administrators, so the update is handed
+        // to the system (a one-off scheduled task running this same file with /quiet).
+        if (System.ServiceProcess.ServiceController.GetServices().Any(s => s.ServiceName == "LockGuard"))
+        {
+            try
+            {
+                var me = Environment.ProcessPath ?? Application.ExecutablePath;
+                RunAndWait("schtasks.exe", $"/create /tn LockGuardUpdate /tr \"\\\"{me}\\\" /quiet\" /sc once /st 00:00 /ru SYSTEM /rl HIGHEST /f");
+                RunAndWait("schtasks.exe", "/run /tn LockGuardUpdate");
+                Thread.Sleep(5000);
+                for (var i = 0; i < 60; i++)
+                {
+                    using var sc = new System.ServiceProcess.ServiceController("LockGuard");
+                    if (sc.Status == System.ServiceProcess.ServiceControllerStatus.Running) break;
+                    Thread.Sleep(2000);
+                }
+                RunAndWait("schtasks.exe", "/delete /tn LockGuardUpdate /f", allowFailure: true);
+                MessageBox.Show("LockGuard is updated and running.", "LockGuard", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Update failed: {ex.Message}", "LockGuard", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return 1;
+            }
+        }
+
         try
         {
             Install();
