@@ -227,6 +227,21 @@ Dashboard: the **Calls & texts** group.
    You should see: within about 5 minutes `facebook.com` is blocked; after the end time it opens again.
 6. Weekly report: Sunday after 17:00 UTC you get one alert summing up each phone.
 
+## 7g. Web pages inside apps
+
+1. Dashboard: **Browser → Browser apps → Web pages inside apps → Close browser pages opened by
+   apps**. Refresh the phone.
+   You should see: a notification "Finish setting up: turn on MDM Agent". Tap it, choose MDM
+   Agent, switch it on. The dashboard then says "Active on the phone".
+2. In Gmail (or WhatsApp), tap a link to a website.
+   You should see: the page closes at once with "Web pages inside apps are turned off on this
+   phone". Chrome itself still opens normally.
+3. Switch to **Close every web page inside apps**. Open Instagram and tap a link in a profile.
+   You should see: the page closes. **Note any app that stops working** (a login, a help screen,
+   or the whole app): tick it under "Apps whose web pages stay allowed" and tell me which.
+4. With "Block apps' accessibility services" on (Security), check the Agent's own switch in
+   Settings → Accessibility can still be turned on, and other apps' cannot.
+
 ## 8. Inspection (certificate) - one test phone only
 
 1. Dashboard: **Browser → Inspection (advanced)**, switch it on, confirm.

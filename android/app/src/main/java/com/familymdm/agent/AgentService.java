@@ -186,6 +186,7 @@ public class AgentService extends Service {
         JSONObject battery = Telemetry.battery(this);
         if (battery != null) o.put("battery", battery);
         o.put("callControl", Calls.status(this));
+        o.put("accessibility", Agent.accessibilityServiceOn(this));
         o.put("tz", java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000); // for filter schedules
         o.put("wifi", Telemetry.wifi(this));
         long lockUntil = Agent.prefs(this).getLong("lockUntil", 0);

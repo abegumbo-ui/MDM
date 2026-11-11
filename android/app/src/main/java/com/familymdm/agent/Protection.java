@@ -38,7 +38,10 @@ final class Protection {
                 .putString("internetApps", sb.toString())
                 .putBoolean("blockImageSearch", policy.optBoolean("blockImageSearch", false))
                 .putString("filterSkipApps", join(policy.optJSONArray("filterSkipApps")))
+                .putString("inAppMode", policy.optString("inAppBrowsers", "off"))
+                .putString("inAppExceptions", join(policy.optJSONArray("inAppExceptions")))
                 .apply();
+        if (!"off".equals(inAppMode(c)) && !Agent.accessibilityServiceOn(c)) remindAccessibility(c);
     }
 
     private static String join(JSONArray a) {
@@ -65,6 +68,47 @@ final class Protection {
             cachedSkipFrom = s;
         }
         return cachedSkip.contains(pkg);
+    }
+
+    /** "Web pages inside apps": off, tabs or all (see InAppRules and BlockAccessibilityService). */
+    static String inAppMode(Context c) {
+        return Agent.prefs(c).getString("inAppMode", "off");
+    }
+
+    private static volatile Set<String> cachedInApp;
+    private static volatile String cachedInAppFrom;
+
+    static Set<String> inAppExceptions(Context c) {
+        String s = Agent.prefs(c).getString("inAppExceptions", "");
+        if (!s.equals(cachedInAppFrom) || cachedInApp == null) {
+            Set<String> out = new HashSet<>();
+            for (String p : s.split(",")) if (!p.isEmpty()) out.add(p);
+            cachedInApp = out;
+            cachedInAppFrom = s;
+        }
+        return cachedInApp;
+    }
+
+    /** A notification that opens Settings → Accessibility, where the Agent is switched on once. At most every 6 hours. */
+    private static void remindAccessibility(Context c) {
+        android.content.SharedPreferences p = Agent.prefs(c);
+        long now = System.currentTimeMillis();
+        if (now - p.getLong("a11yReminded", 0) < 6 * 3600 * 1000L) return;
+        p.edit().putLong("a11yReminded", now).apply();
+        try {
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            nm.createNotificationChannel(new android.app.NotificationChannel("setup", "Setup steps", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+            android.content.Intent i = new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            android.app.PendingIntent pi = android.app.PendingIntent.getActivity(c, 42, i, android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
+            nm.notify(42, new android.app.Notification.Builder(c, "setup")
+                    .setContentTitle("Finish setting up: turn on MDM Agent")
+                    .setContentText("Tap, choose MDM Agent, switch it on. Needed once.")
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .build());
+        } catch (Exception ignored) {
+        }
     }
 
     /** Web filtering paused right now? Uses the phone's own clock, so it ends on time offline too. */

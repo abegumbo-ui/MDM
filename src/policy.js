@@ -546,6 +546,9 @@ export function normalizeConfig(input) {
     filterSkipApps: [...new Set((Array.isArray(c.filterSkipApps) ? c.filterSkipApps : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 300),
     // Keeps a list of the sites the phone opens (Browser → Sites visited); runs the site filter for it.
     recordSites: c.recordSites === true,
+    // Web pages inside apps: "off", "tabs" (the browser page an app opens over itself), "all" (also pages built into apps).
+    inAppBrowsers: ["tabs", "all"].includes(c.inAppBrowsers) ? c.inAppBrowsers : "off",
+    inAppExceptions: [...new Set((Array.isArray(c.inAppExceptions) ? c.inAppExceptions : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 200),
     // A different filter level at set times, in the phone's own time (see effectiveFilter).
     filterSchedule: normalizeFilterSchedule(c.filterSchedule),
     textLog: c.textLog === true,
@@ -752,6 +755,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.locationEvery = cfg.locationEvery;
   out.filterSkipApps = cfg.filterSkipApps;
   out.recordSites = cfg.recordSites;
+  out.inAppBrowsers = cfg.inAppBrowsers;
+  out.inAppExceptions = cfg.inAppExceptions;
   out.callsIn = cfg.callsIn;
   out.callsOut = cfg.callsOut;
   out.callNumbers = cfg.callNumbers.map((n) => n.number);
@@ -812,6 +817,8 @@ export function summarizeConfigChange(before, after) {
   if (!!before.internetOnlyApps !== !!after.internetOnlyApps || JSON.stringify(before.internetApps || []) !== JSON.stringify(after.internetApps || [])) lines.push("Internet only for chosen apps: " + (after.internetOnlyApps ? "on (" + (after.internetApps || []).length + " apps)" : "off"));
   if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
   if (JSON.stringify(before.filterSkipApps || []) !== JSON.stringify(after.filterSkipApps || [])) lines.push("Apps not filtered: " + (after.filterSkipApps || []).length);
+  if ((before.inAppBrowsers || "off") !== (after.inAppBrowsers || "off")) lines.push("Web pages inside apps: " + ({ off: "allowed", tabs: "browser pages opened by apps closed", all: "all closed" })[after.inAppBrowsers || "off"]);
+  if (JSON.stringify(before.inAppExceptions || []) !== JSON.stringify(after.inAppExceptions || [])) lines.push("Apps allowed web pages: " + (after.inAppExceptions || []).length);
   if (!!before.recordSites !== !!after.recordSites) lines.push("Sites visited list: " + (after.recordSites ? "on" : "off"));
   if (JSON.stringify(normalizeFilterSchedule(before.filterSchedule)) !== JSON.stringify(normalizeFilterSchedule(after.filterSchedule))) {
     const s = normalizeFilterSchedule(after.filterSchedule);
