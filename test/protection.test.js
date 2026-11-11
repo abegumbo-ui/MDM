@@ -113,3 +113,12 @@ test("calls: settings cleaned and sent to the phone; call and texts logs kept on
   assert.deepEqual(d.calls, [{ number: "0521234567", name: "Mom", type: "in", at: 5, secs: 61 }, { number: "999", type: "other", at: 6 }]);
   assert.deepEqual(d.texts, [{ number: "0521234567", type: "in", at: 7, text: "hi" }]);
 });
+
+test("web pages inside apps: cleaned and sent to the phone", () => {
+  const c = normalizeConfig({ inAppBrowsers: "all", inAppExceptions: ["com.bank", "bad name"] });
+  assert.equal(normalizeConfig({ inAppBrowsers: "everything" }).inAppBrowsers, "off");
+  const p = buildAgentPolicy(c, []);
+  assert.equal(p.inAppBrowsers, "all");
+  assert.deepEqual(p.inAppExceptions, ["com.bank"]);
+  assert.ok(summarizeConfigChange(normalizeConfig({}), c).includes("Web pages inside apps: all closed"));
+});

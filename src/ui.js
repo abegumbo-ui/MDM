@@ -765,7 +765,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Per app: filtered, not filtered, or no internet','internet','appnet'],['Sites visited (browsing history)','browser','history'],['Filter schedule: a different level at set times','browser','access'],['Weekly report','settings',null],['Who can call the phone, and who it can call','calls','rules'],['Allowed phone numbers','calls','rules'],['Call log','calls','calllog'],['Texts (SMS) log','calls','texts'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Per app: filtered, not filtered, or no internet','internet','appnet'],['Sites visited (browsing history)','browser','history'],['Web pages inside apps (links in Instagram, Gmail...)','browser','apps'],['Filter schedule: a different level at set times','browser','access'],['Weekly report','settings',null],['Who can call the phone, and who it can call','calls','rules'],['Allowed phone numbers','calls','rules'],['Call log','calls','calllog'],['Texts (SMS) log','calls','texts'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1212,6 +1212,28 @@ function renderAppFilterModes(m,dv){
  if(!apps.length)card.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
  m.append(card)}
 
+/* ---------- Browser: web pages inside apps ---------- */
+function renderInAppBrowsers(m,dv){
+ if(dv.isBrowser)return;
+ const c=dv.config,save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const mode=c.inAppBrowsers||'off',on=(dv.info||{}).accessibility;
+ const card=h('div',{class:'card'},h('h2',null,'Web pages inside apps'),h('div',{class:'mute'},'When he taps a link inside an app like Instagram or Gmail, the page opens inside that app. Those pages are already filtered like Chrome; this closes them altogether, so links in apps do not open.'));
+ const opts=[['off','Allowed','Links in apps open as usual (still filtered).'],['tabs','Close browser pages opened by apps','The page an app opens on top of itself (Chrome, Samsung Internet...). Chrome itself still works. Some apps\' "Sign in with Google" uses this page, so a sign-in may be stopped too.'],['all','Close every web page inside apps (strictest)','Also pages built into apps. Some apps show their own screens as web pages (logins, help, some whole apps): add those below so they keep working.']];
+ for(const [v,l,d] of opts){const r=h('input',{type:'radio',name:'inapp'});r.checked=mode===v;r.onchange=function(){c.inAppBrowsers=v;save(v==='off'?'Links in apps open again.':'Saved. Applies at the next check-in.')};
+  card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow',style:'margin-left:10px'},h('div',{style:'font-weight:500'},l),h('div',{class:'mute small'},d))))}
+ if(mode!=='off'){
+  if(on===false)card.append(h('div',{class:'card',style:'border-color:var(--warn);margin-top:10px'},h('div',{style:'font-weight:500'},'One step left on the phone'),h('div',{class:'mute small'},'Tap the notification "Finish setting up: turn on MDM Agent", choose MDM Agent and switch it on. Android lets nobody do this from afar. To stop it being switched off again, keep "Block changing apps in Settings" on (Security → Restrictions).')));
+  else if(on===undefined)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The phone has not said yet whether this is switched on (it needs the latest Agent build).'));
+  else card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Active on the phone.'));
+ }
+ if(mode==='all'){
+  const ex=new Set(c.inAppExceptions||[]);const apps=dv.packages.filter(function(p){return p.p!==SELF_PACKAGE&&!p.s}).sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)});
+  const box=h('details',{style:'margin-top:10px'},h('summary',{style:'cursor:pointer'},'Apps whose web pages stay allowed ('+ex.size+')'));
+  for(const a of apps){const cb=h('input',{type:'checkbox'});cb.checked=ex.has(a.p);cb.onchange=function(){if(cb.checked)ex.add(a.p);else ex.delete(a.p)};box.append(h('label',{class:'row',style:'cursor:pointer;margin:4px 0'},cb,a.l||a.p))}
+  box.append(h('div',{style:'margin-top:6px'},btn('Save','tonal',function(){c.inAppExceptions=[...ex];save('Saved.')})));
+  card.append(box)}
+ m.append(card)}
+
 /* ---------- Browser: filter schedule ---------- */
 const DAY_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 function renderFilterSchedule(m,dv){
@@ -1472,7 +1494,7 @@ function buildBrowserGroup(m,dv){
  else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='history')renderSitesVisited(m,dv);
  else if(sub==='sites')renderSites(m,dv,'sites');
- else if(sub==='apps')renderSites(m,dv,'apps');
+ else if(sub==='apps'){renderInAppBrowsers(m,dv);renderSites(m,dv,'apps')}
  else if(sub==='inspect')renderInspection(m,dv);
 }
 function ytModeOf(dv){const y=dv.config.youtubeMode||'auto';return y==='channels'||y==='restricted'?y:((dv.config.browserFilter||'off')==='moderate'?'restricted':'channels')}

@@ -641,7 +641,9 @@ final class PolicyApplier {
      */
     private static void applyAccessibilityLock(Context c, DevicePolicyManager dpm, ComponentName admin, boolean wanted) {
         try {
-            dpm.setPermittedAccessibilityServices(admin, wanted ? new ArrayList<String>() : null);
+            // Every other app's service is turned off; the Agent's own stays allowed (it is what
+            // closes blocked screens and web pages inside apps).
+            dpm.setPermittedAccessibilityServices(admin, wanted ? new ArrayList<String>(java.util.Collections.singletonList(c.getPackageName())) : null);
             Agent.prefs(c).edit().putBoolean("accessibilityLockSet", wanted).apply();
             errorCleared(c, "a11y");
         } catch (Exception e) {
