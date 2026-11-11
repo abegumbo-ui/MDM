@@ -59,6 +59,9 @@ public static class FirewallManager
 
             AddAllowRule(policy, DnsRuleName, applicationName: null, serviceName: "Dnscache", protocol: 17 /* UDP */, remotePort: "53");
             AddAllowRule(policy, DhcpRuleName, applicationName: null, serviceName: "Dhcp", protocol: 17 /* UDP */, remotePort: "67,68");
+            // LockGuard itself must stay online: it checks in with the dashboard and, with the web filter on,
+            // looks websites up over an encrypted connection.
+            if (Environment.ProcessPath is { } self) AddAllowRule(policy, RuleNamePrefix + "Self", applicationName: self, serviceName: null, protocol: 256, remotePort: null);
 
             int i = 0;
             foreach (var path in allowedProgramPaths)
@@ -96,6 +99,54 @@ public static class FirewallManager
         }
     }
 
+    private const string FilterRulePrefix = "LockGuard-Filter-";
+
+    /// <summary>
+    /// With the web filter on: no program may look websites up anywhere except through the filter
+    /// on this computer (loopback traffic is not filtered by Windows Firewall, so lookups to
+    /// 127.0.0.1 still work). Blocks the plain lookup port (53) and encrypted-lookup port (853) to
+    /// the outside. The filter itself uses encrypted lookups over port 443, which this leaves alone.
+    /// Off: removes these rules.
+    /// </summary>
+    public static bool SetFilterRules(bool on)
+    {
+        try
+        {
+            dynamic policy = CreatePolicy();
+            var existing = new List<string>();
+            foreach (dynamic rule in policy.Rules)
+            {
+                string name = rule.Name ?? "";
+                if (name.StartsWith(FilterRulePrefix, StringComparison.Ordinal)) existing.Add(name);
+            }
+            if (!on)
+            {
+                foreach (var n in existing) policy.Rules.Remove(n);
+                return true;
+            }
+            foreach (var (name, protocol) in new[] { (FilterRulePrefix + "BlockLookups-UDP", 17), (FilterRulePrefix + "BlockLookups-TCP", 6) })
+            {
+                if (existing.Contains(name)) continue;
+                var ruleType = Type.GetTypeFromProgID("HNetCfg.FWRule")!;
+                dynamic rule = Activator.CreateInstance(ruleType)!;
+                rule.Name = name;
+                rule.Description = "Added by LockGuard's web filter. Re-applied automatically.";
+                rule.Direction = NET_FW_RULE_DIR_OUT;
+                rule.Action = NET_FW_ACTION_BLOCK;
+                rule.Enabled = true;
+                rule.Profiles = ALL_PROFILES;
+                rule.Protocol = protocol;
+                rule.RemotePorts = "53,853";
+                policy.Rules.Add(rule);
+            }
+            return true;
+        }
+        catch (Exception e)
+        {
+            LastError = e.Message;
+            return false;
+        }
+    }
     private static dynamic CreatePolicy()
     {
         var type = Type.GetTypeFromProgID("HNetCfg.FwPolicy2")

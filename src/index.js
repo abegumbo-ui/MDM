@@ -349,11 +349,53 @@ async function listWinDevices(env) {
   return listByPrefix(env, "winDevice");
 }
 
+// The PC filter's own switches (the rest of a PC's settings use the phones' config shape).
+const normalizeWin = (w) => {
+  const o = w && typeof w === "object" ? w : {};
+  return {
+    blockOtherBrowsers: o.blockOtherBrowsers !== false,
+    blockVpnApps: o.blockVpnApps !== false,
+    blockExtensions: o.blockExtensions === true,
+    blockedPrograms: [...new Set((Array.isArray(o.blockedPrograms) ? o.blockedPrograms : []).map((p) => String(p).trim().toLowerCase()).filter((p) => /^[a-z0-9 ._()+-]{1,80}$/.test(p)))].slice(0, 200),
+  };
+};
+const WIN_DEFAULT_CONFIG = { browserFilter: "moderate", safeSearch: true, youtubeDns: "moderate", chromePolicy: { noIncognito: true } };
+
+/** What the PC's filter applies right now (see windows/LockGuard.Common/FilterPolicy.cs). null = no web filter. */
+function winFilter(env, d, now, dashboardHost) {
+  if (!d.filterOn) return null;
+  const c = normalizeConfig(d.config || WIN_DEFAULT_CONFIG);
+  const level = effectiveFilter(c, now, d.info && d.info.tz);
+  const w = normalizeWin(d.win);
+  return {
+    on: true,
+    level: level === "off" ? "approved" : level, // on a PC, "off" (as on the phones' browser) means approved sites only
+    base: filterFor(env, c).base,
+    allow: c.dnsAllowlist,
+    block: c.dnsBlocklist,
+    essential: [dashboardHost, "github.com", "githubusercontent.com", "msftconnecttest.com", "msftncsi.com"].filter(Boolean),
+    words: c.blockedWords,
+    safeSearch: c.safeSearch,
+    youtube: c.youtubeDns,
+    pauseUntil: c.pauseUntil,
+    recordSites: c.recordSites,
+    blockImages: c.blockImages,
+    imagesAllow: c.imagesAllow,
+    noIncognito: !!c.chromePolicy.noIncognito,
+    ...w,
+  };
+}
+
 const publicWinDevice = (d) => ({
   id: d.id,
   name: d.name,
   lastSeen: d.lastSeen,
   info: d.info || {},
+  filterOn: !!d.filterOn,
+  config: normalizeConfig(d.config || WIN_DEFAULT_CONFIG),
+  win: normalizeWin(d.win),
+  siteHistory: siteHistoryView(d.siteHistory),
+  events: (d.events || []).slice(-40),
   enabled: !!d.enabled,
   allowedPrograms: d.allowedPrograms || [],
   reportedEnabled: !!d.reportedEnabled,
@@ -372,6 +414,10 @@ async function createWinDevice(env, info) {
     lastSeen: Date.now(),
     info,
     enabled: false,
+    // New computers start with the web filter on (Moderate, SafeSearch, YouTube Restricted Mode).
+    filterOn: true,
+    config: normalizeConfig(WIN_DEFAULT_CONFIG),
+    win: normalizeWin({}),
     allowedPrograms: [],
     reportedEnabled: false,
     reportedAllowedPrograms: [],
@@ -1060,11 +1106,14 @@ async function adminApiInner(request, env, url, session) {
       return json({ ok: true });
     }
     if (method === "PUT" && wdev[2] === "config") {
-      d.enabled = !!body.enabled;
-      d.allowedPrograms = Array.isArray(body.allowedPrograms)
-        ? body.allowedPrograms.map((p) => String(p).slice(0, 300)).filter(Boolean).slice(0, 200)
-        : [];
+      // Each part is optional, so the dashboard can save just the filter or just the programs.
+      if (typeof body.enabled === "boolean") d.enabled = body.enabled;
+      if (Array.isArray(body.allowedPrograms)) d.allowedPrograms = body.allowedPrograms.map((p) => String(p).slice(0, 300)).filter(Boolean).slice(0, 200);
+      if (typeof body.filterOn === "boolean") d.filterOn = body.filterOn;
+      if (body.config && typeof body.config === "object") d.config = normalizeConfig(body.config);
+      if (body.win && typeof body.win === "object") d.win = normalizeWin(body.win);
       await putJSON(env, key, d);
+      await markAdminActive(env);
       return json({ ok: true });
     }
     if (method === "POST" && wdev[2] === "command") {
@@ -1582,7 +1631,7 @@ async function browserApi(request, env, url) {
 }
 
 // ---- Windows LockGuard API (per-device bearer token, no agent/MDM involved) ----
-async function windowsApi(request, env, url) {
+async function windowsApi(request, env, url, ctx) {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
 
@@ -1616,6 +1665,21 @@ async function windowsApi(request, env, url) {
       d.reportedAllowedPrograms = reportedPrograms;
       dirty = true;
     }
+    if (Array.isArray(body.trafficLog) && body.trafficLog.length) {
+      d.siteHistory = addSiteHistory(d.siteHistory, body.trafficLog.slice(0, 300), now);
+      dirty = true;
+    }
+    if (Array.isArray(body.events) && body.events.length) {
+      const evs = body.events.slice(0, 40).map((e) => ({ k: String((e && e.k) || "info").slice(0, 20), m: String((e && e.m) || "").slice(0, 200), at: Number(e && e.at) || now }));
+      d.events = [...(d.events || []), ...evs].slice(-MAX_EVENTS);
+      dirty = true;
+      const a = await getAlerts(env);
+      if (a.url && a.tamper) {
+        const p = sendAlert(env, d.name, evs.map((e) => e.m).join("\n"), a);
+        if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
+        else await p;
+      }
+    }
     // Delivered at most once: the service applies a queued "uninstall" and tears itself down, so
     // there's no later sync to retry a lost command on anyway.
     const commands = d.queue || [];
@@ -1628,6 +1692,7 @@ async function windowsApi(request, env, url) {
       enabled: !!d.enabled,
       allowedPrograms: d.allowedPrograms || [],
       commands,
+      filter: winFilter(env, d, now, url.hostname),
       pollSeconds: POLL_SECONDS,
     });
   }
@@ -1645,7 +1710,7 @@ export default {
     try {
       if (url.pathname.startsWith("/agent/")) return await agentApi(request, env, url, ctx);
       if (url.pathname.startsWith("/browser/")) return await browserApi(request, env, url);
-      if (url.pathname.startsWith("/windows/")) return await windowsApi(request, env, url);
+      if (url.pathname.startsWith("/windows/")) return await windowsApi(request, env, url, ctx);
 
       // Public, harmless files that let the dashboard be installed to a phone's home screen.
       if (url.pathname === "/manifest.webmanifest") {

@@ -302,7 +302,9 @@ async function load(){
  if(state.session.role==='admin')clients=await call('GET','/api/clients');
  render();
  call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
-async function saveConfigFor(d,msg){const r=await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about 5 minutes.');return r}
+async function saveConfigFor(d,msg){
+ if(d.isWindows){const r=await call('PUT','/api/windevices/'+d.id+'/config',{config:d.config,filterOn:d.filterOn,win:d.win});snack(msg||'Saved. The computer applies it within a minute.');return r}
+ const r=await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about 5 minutes.');return r}
 
 /* ---------- shell ---------- */
 // Everything is sandboxed to its own thing: the top bar only ever says "Devices". Apps and Sites
@@ -419,7 +421,7 @@ function renderDevices(m){
   const row=trow('globe','Browser',b.name+' · no MDM on this phone',h('div',null,h('span',{class:'chip'},'Browser')),'—',b.lastSeen?ago(b.lastSeen):'—','browser/'+b.id);
   rows.push({el:row,text:('browser '+b.name).toLowerCase(),phone:null});t.append(row)}
  for(const w of windevices){
-  const row=trow('device',w.name,(w.info.hostname||'LockGuard')+' · Windows',h('div',null,h('span',{class:'chip '+(w.enabled?'ok':'')},w.enabled?'Locked down':'Not locked down')),'—',w.lastSeen?ago(w.lastSeen):'—','win/'+w.id);
+  const row=trow('device',w.name,(w.info.hostname||'LockGuard')+' · Windows',h('div',null,h('span',{class:'chip '+(w.filterOn||w.enabled?'ok':'')},w.filterOn?'Filter on':w.enabled?'Locked down':'No filter')),'—',w.lastSeen?ago(w.lastSeen):'—','win/'+w.id);
   rows.push({el:row,text:(w.name+' windows '+(w.info.hostname||'')).toLowerCase(),phone:null});t.append(row)}
  const none=h('div',{class:'empty mute'},'No devices match.');none.style.display='none';
  t.append(none);
@@ -1105,7 +1107,7 @@ function renderPause(box,d){
  const save=async function(msg){try{await saveConfigFor(d,msg)}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,on?'Web filtering is paused':'Pause web filtering'));
  if(on){card.append(h('div',{class:'mute'},'Until '+hhmm(c.pauseUntil)+'. It comes back by itself then, even if the phone is offline.'),h('div',{style:'margin-top:8px'},btn('Turn filtering back on now','',function(){c.pauseUntil=0;save('Filtering comes back on at the next check-in.')})))}
- else{card.append(h('div',{class:'mute'},'Lets every site through for a while, for example while you use the phone yourself: blocked sites, categories, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked apps stay blocked, and our own browsers keep their allowed-sites list. Starts at the phone\'s next check-in.'));
+ else{card.append(h('div',{class:'mute'},(d.isWindows?'Lets every site through for a while, for example while you use the computer yourself: blocked sites, categories, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked programs stay blocked. Starts within a minute.':'Lets every site through for a while, for example while you use the phone yourself: blocked sites, categories, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked apps stay blocked, and our own browsers keep their allowed-sites list. Starts at the phone\'s next check-in.')));
   const row=h('div',{class:'row',style:'margin-top:8px'});
   for(const [mins,label] of [[15,'15 minutes'],[60,'1 hour'],[180,'3 hours']])row.append(btn(label,'tonal',function(){c.pauseUntil=Date.now()+mins*60000;save('Paused until '+hhmm(c.pauseUntil)+'.')}));
   card.append(row)}
@@ -1273,7 +1275,7 @@ function renderFilterSchedule(m,dv){
  const save=async function(on){c.filterSchedule={on:on,level:lv.value,days:boxes.map(function(b,i){return b.checked?i:-1}).filter(function(i){return i>=0}),from:from.value||'08:00',to:to.value||'15:00'};
   try{await saveConfigFor(dv,on?'Schedule saved.':'Schedule off.')}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Filter schedule'),
-  h('div',{class:'mute small'},'A different level at set times, for example Strict on school days from 8:00 to 15:00. Uses the phone\'s own clock; a change takes effect at the phone\'s next check-in (within about 5 minutes). Outside these hours the level above applies.'+(s.on?' Now on: '+(LV.find(function(x){return x[0]===s.level})||[0,''])[1]+' '+s.from+' to '+s.to+'.':''))),
+  h('div',{class:'mute small'},'A different level at set times, for example Strict on school days from 8:00 to 15:00. Uses the '+(dv.isWindows?'computer':'phone')+'\'s own clock; a change takes effect at its next check-in (within '+(dv.isWindows?'a minute':'about 5 minutes')+'). Outside these hours the level above applies.'+(s.on?' Now on: '+(LV.find(function(x){return x[0]===s.level})||[0,''])[1]+' '+s.from+' to '+s.to+'.':''))),
   sw(s.on,function(on){save(on)})),
   h('div',{class:'row',style:'margin-top:8px;flex-wrap:wrap'},h('span',null,'Level'),lv,h('span',null,'from'),from,h('span',null,'to'),to),days,
   h('div',{style:'margin-top:8px'},btn('Save schedule','tonal',function(){save(true)})));
@@ -1284,7 +1286,7 @@ let sitesDay=null,sitesQuery='',sitesBlockedOnly=false;
 function renderSitesVisited(m,dv){
  const c=dv.config,hist=dv.siteHistory||{},daysList=Object.keys(hist).sort().reverse();
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Keep a list of the sites this phone opens'),
-  h('div',{class:'mute small'},'From every app, not only browsers; background services are left out. Kept for two weeks. The phone shows a key (VPN) icon while it runs. The level filters (Strict, Moderate, safe search, blocked words) also fill this list when they are on.')),
+  h('div',{class:'mute small'},(dv.isWindows?'Every website looked up on this computer, by any browser or program; background services are left out. Kept for two weeks.':'From every app, not only browsers; background services are left out. Kept for two weeks. The phone shows a key (VPN) icon while it runs.')+' The level filters (Strict, Moderate, safe search, blocked words) also fill this list when they are on.')),
   sw(c.recordSites,async function(on){c.recordSites=on;try{await saveConfigFor(dv,on?'From the next check-in the phone keeps the list.':'Switched off.')}catch(e){snack(e.message,1)}render()}))));
  const card=h('div',{class:'card'},h('h2',null,'Sites visited'));
  if(!daysList.length){card.append(h('div',{class:'mute'},'Nothing yet. Sites show up after the phone\'s next check-ins.'));m.append(card);return}
@@ -1352,7 +1354,7 @@ function renderBlockedWords(m,dv){
  const card=h('div',{class:'card'},h('h2',null,'Blocked words'+((c.blockedWords||[]).length?' ('+c.blockedWords.length+')':'')),
   h('div',{class:'mute'},'Any site, page or search that contains one of these is blocked. Short words (1 to 3 letters) only count as a whole word, so "sex" does not block "Sussex"; longer words also count inside other words, so "casino" blocks "onlinecasinos". A phrase counts when its words appear in that order. Hebrew works too.'),ta,
   h('div',{style:'margin-top:8px'},btn('Save words','',async function(){c.blockedWords=ta.value.split(/\n+/).map(function(x){return x.trim()}).filter(Boolean);try{await saveConfigFor(dv,'Saved. Applies at the next check-in.')}catch(e){snack(e.message,1)}render()})));
- card.append(h('div',{class:'mute small',style:'margin-top:10px'},dv.isBrowser?'Applies to this browser.':'In our own browsers: site names, pages and searches. In Chrome and every other app: site names (through the Agent\'s site filter). Words typed into a search in Chrome are only checked when Inspection is on.'));
+ card.append(h('div',{class:'mute small',style:'margin-top:10px'},dv.isWindows?'On this computer: any website whose name contains one of these is blocked, in every browser and program.':dv.isBrowser?'Applies to this browser.':'In our own browsers: site names, pages and searches. In Chrome and every other app: site names (through the Agent\'s site filter). Words typed into a search in Chrome are only checked when Inspection is on.'));
  m.append(card)}
 
 /* ---------- templates: one phone's settings, saved under a name, applied to others ---------- */
@@ -1758,32 +1760,86 @@ function renderBrowserDetail(m,b){
  renderSitesEditor(m,b);
 }
 
+let winTab='filter';
 function renderWinDetail(m,w){
+ w.isWindows=true;w.packages=w.packages||[];w.config=w.config||{};w.win=w.win||{};
+ const dv=w,f=(w.info&&w.info.filter)||null;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
  m.append(h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('device','currentColor')),h('div',{class:'grow'},h('h1',null,w.name),h('div',{class:'mute small'},(w.info.hostname||'Windows computer')+' · last check-in '+ago(w.lastSeen))),btn('Refresh','tonal',load)));
-
- const controls=h('div',{class:'card'},h('h2',null,'This computer'));
- controls.append(h('div',{style:'margin-top:4px'},sw(w.enabled,async function(on){
-  await call('PUT','/api/windevices/'+w.id+'/config',{enabled:on,allowedPrograms:w.allowedPrograms});
-  snack(on?'Locking down. The computer applies this within about 5 minutes.':'Lockdown turned off.');load()}),
-  ' Lock down internet access (everything except the allowed programs below)'));
- if(w.enabled!==w.reportedEnabled)controls.append(h('div',{class:'mute small',style:'margin-top:4px'},'⏳ Waiting for the computer to apply this.'));
- controls.append(h('div',{class:'row',style:'margin-top:12px'},
-  btn('Rename','outline',async function(){const name=prompt('Name for this computer',w.name);if(!name)return;await call('PUT','/api/windevices/'+w.id,{name:name});load()}),
-  btn('Uninstall from this computer','danger',async function(){if(!confirm('Remove LockGuard from '+w.name+' entirely? It will take internet access and the firewall rules off automatically, next time it checks in.'))return;await call('POST','/api/windevices/'+w.id+'/command',{type:'uninstall'});snack('Queued. It\'ll remove itself within about 5 minutes.')}),
-  btn('Remove from this list','outline',async function(){if(!confirm('Remove '+w.name+' from the dashboard? Only do this if it\'s already gone — otherwise use "Uninstall from this computer" instead, or it stays locked down with no way to control it from here.'))return;await call('DELETE','/api/windevices/'+w.id);location.hash='devices'})));
- m.append(controls);
-
- const progCard=h('div',{class:'card'},h('h2',null,'Allowed programs'),
+ if(state.session&&state.session.viewOnly)m.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('div',{class:'mute'},'This login can only look. Changes have to be made from a full login.')));
+ const tabs=h('div',{class:'row',style:'margin:0 0 12px;flex-wrap:wrap'});
+ for(const [k,l] of [['filter','Web filter'],['programs','Programs & browsers'],['history','Sites visited'],['computer','Computer']])tabs.append(btn(l,winTab===k?'':'tonal',function(){winTab=k;render()}));
+ m.append(tabs);
+ if(winTab==='filter'){
+  let status='The filter is off: every website opens.';
+  if(w.filterOn){
+   if(!f)status='Waiting for the computer to check in (it needs the latest LockGuard).';
+   else if(f.error)status='Problem on the computer: '+f.error;
+   else if(!f.on)status='Waiting for the computer to switch the filter on (within a minute).';
+   else if(!f.listsReady)status='On. Downloading the category lists (about 13 MB); until they are in, only essential sites open.';
+   else status='On and working.';}
+  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Filter websites on this computer'),h('div',{class:'mute small'},status)),
+   sw(w.filterOn,function(on){w.filterOn=on;save(on?'The filter switches on within a minute.':'The filter switches off within a minute; the computer\'s network settings go back to how they were.')}))));
+  if(w.filterOn){
+   const lv=w.config.browserFilter||'moderate',card=h('div',{class:'card'},h('h2',null,'Filter level'));
+   for(const [v,l,d] of [['moderate','Moderate','Blocks adult sites, gambling, drugs and vaping, scams and phishing, and piracy.'],['strict','Strict','Everything in Moderate, plus social media (Facebook, Instagram, TikTok, X).'],['off','Approved sites only','Nothing opens except the allowed sites below (and the dashboard). Many programs that need the internet will stop working; Windows updates too.']]){
+    const r=h('input',{type:'radio',name:'winlevel'});r.checked=lv===v;r.onchange=function(){w.config.browserFilter=v;save('Saved. Applies within a minute.')};
+    card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow',style:'margin-left:10px'},h('div',{style:'font-weight:500'},l),h('div',{class:'mute small'},d))))}
+   m.append(card);
+   renderPause(m,dv);renderFilterSchedule(m,dv);
+   const yt=h('select',null,new Option('Off','off'),new Option('Moderate','moderate'),new Option('Strict','strict'));yt.value=w.config.youtubeDns||'off';yt.onchange=function(){w.config.youtubeDns=yt.value;save('Saved.')};
+   m.append(h('div',{class:'card'},h('h2',null,'Safe search and pictures'),
+    h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Force SafeSearch'),h('div',{class:'mute small'},'Google, Bing and DuckDuckGo show filtered results only, in every browser.')),sw(w.config.safeSearch,function(on){w.config.safeSearch=on;save('Saved.')})),
+    h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Restricted Mode'),h('div',{class:'mute small'},'In every browser and the YouTube app. Strict hides more than Moderate; both hide comments.')),yt),
+    h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block pictures on web pages'),h('div',{class:'mute small'},'In Chrome, Edge and Brave.')),sw(w.config.blockImages,function(on){w.config.blockImages=on;save('Saved.')}))));
+   const al=h('textarea',{rows:4,style:'width:100%',placeholder:'one site per line, e.g. chabad.org'});al.value=(w.config.dnsAllowlist||[]).join('\n');
+   const bl=h('textarea',{rows:4,style:'width:100%',placeholder:'one site per line, e.g. tiktok.com'});bl.value=(w.config.dnsBlocklist||[]).join('\n');
+   const lines=function(t){return t.value.split(/\n+/).map(function(x){return x.trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'')}).filter(Boolean)};
+   m.append(h('div',{class:'card'},h('h2',null,'Sites'),h('div',{style:'font-weight:500;margin-top:6px'},'Always allowed'),h('div',{class:'mute small'},'Open whatever the level. A site includes everything under it (chabad.org also allows www.chabad.org).'),al,
+    h('div',{style:'font-weight:500;margin-top:12px'},'Always blocked'),bl,h('div',{style:'margin-top:8px'},btn('Save sites','',function(){w.config.dnsAllowlist=lines(al);w.config.dnsBlocklist=lines(bl);save('Saved.')}))));
+   renderBlockedWords(m,dv);
+  }
+ }
+ else if(winTab==='programs'){
+  const row=function(get,set,title,desc){return h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc)),sw(get(),function(on){set(on);save('Saved. Applies within a minute.')}))};
+  m.append(h('div',{class:'card'},h('h2',null,'Browsers'),
+   row(function(){return !!(w.config.chromePolicy||{}).noIncognito},function(on){w.config.chromePolicy=Object.assign({},w.config.chromePolicy,{noIncognito:on})},'No incognito or private windows','Chrome, Edge, Brave and Firefox. Also turns off guest windows.'),
+   row(function(){return !!w.win.blockExtensions},function(on){w.win.blockExtensions=on},'No browser extensions','Chrome, Edge and Brave. Extensions already installed are switched off too (VPN extensions get around filters).'),
+   row(function(){return w.win.blockOtherBrowsers!==false},function(on){w.win.blockOtherBrowsers=on},'Close other browsers','Tor, Opera, Vivaldi and other browsers the filter cannot lock are closed the moment they start. Chrome, Edge, Brave and Firefox stay.'),
+   row(function(){return w.win.blockVpnApps!==false},function(on){w.win.blockVpnApps=on},'Close VPN and proxy programs','About 50 known VPN programs (NordVPN, ProtonVPN, Psiphon, Cloudflare WARP...) are closed the moment they start.'),
+   h('div',{class:'mute small',style:'margin-top:8px'},'Check what Chrome received by typing chrome://policy in its address bar (edge://policy in Edge).')));
+  const bp=h('textarea',{rows:4,style:'width:100%',placeholder:'one program per line, e.g. steam.exe'});bp.value=(w.win.blockedPrograms||[]).join('\n');
+  m.append(h('div',{class:'card'},h('h2',null,'Blocked programs'),h('div',{class:'mute'},'Closed the moment they start. Use the program\'s file name: find it in Task Manager → Details.'),bp,
+   h('div',{style:'margin-top:8px'},btn('Save programs','',function(){w.win.blockedPrograms=bp.value.split(/\n+/).map(function(x){return x.trim().toLowerCase()}).filter(Boolean);save('Saved.')}))));
+  const controls=h('div',{class:'card'},h('h2',null,'Internet only for chosen programs'),h('div',{class:'mute'},'Stricter than the web filter: every program except the ones listed below is cut off from the internet altogether (they still open). Leave off unless you need it.'));
+  controls.append(h('div',{class:'setting'},h('div',{class:'grow'},'Only the programs below may use the internet'),sw(w.enabled,async function(on){
+   await call('PUT','/api/windevices/'+w.id+'/config',{enabled:on});snack(on?'Applies within a minute.':'Turned off.');load()})));
+  if(w.enabled!==w.reportedEnabled)controls.append(h('div',{class:'mute small',style:'margin-top:4px'},'⏳ Waiting for the computer to apply this.'));
+  m.append(controls);
+  const progCard=h('div',{class:'card'},h('h2',null,'Allowed programs'),
   h('div',{class:'mute'},'Everything else on this computer stays installed and opens normally — it just can\'t reach the internet. Full path to the .exe, e.g. C:\\Program Files\\Outlook\\outlook.exe'));
  const list=h('div',{style:'margin-top:8px'});
  (w.allowedPrograms||[]).forEach(function(p,i){
   list.append(h('div',{class:'row',style:'align-items:center'},h('div',{class:'grow mono small'},p),
-   btn('Remove','outline',async function(){const next=w.allowedPrograms.filter(function(_,j){return j!==i});await call('PUT','/api/windevices/'+w.id+'/config',{enabled:w.enabled,allowedPrograms:next});load()})))});
+   btn('Remove','outline',async function(){const next=w.allowedPrograms.filter(function(_,j){return j!==i});await call('PUT','/api/windevices/'+w.id+'/config',{allowedPrograms:next});load()})))});
  if(!(w.allowedPrograms||[]).length)list.append(h('div',{class:'mute small'},'Nothing allowed yet.'));
  progCard.append(list,h('div',{style:'margin-top:10px'},btn('Add a program','',async function(){
   const path=prompt('Full path to the program\'s .exe on that computer');if(!path)return;
-  const next=[...(w.allowedPrograms||[]),path];await call('PUT','/api/windevices/'+w.id+'/config',{enabled:w.enabled,allowedPrograms:next});load()})));
+  const next=[...(w.allowedPrograms||[]),path];await call('PUT','/api/windevices/'+w.id+'/config',{allowedPrograms:next});load()})));
  m.append(progCard);
+ }
+ else if(winTab==='history')renderSitesVisited(m,dv);
+ else{
+  const controls=h('div',{class:'card'},h('h2',null,'This computer'),kv('Name on the computer',w.info.hostname||'unknown'),kv('Last check-in',ago(w.lastSeen)),kv('LockGuard version',w.info.version||'unknown'));
+  controls.append(h('div',{class:'row',style:'margin-top:12px;flex-wrap:wrap'},
+   btn('Rename','outline',async function(){const name=prompt('Name for this computer',w.name);if(!name)return;await call('PUT','/api/windevices/'+w.id,{name:name});load()}),
+   btn('Uninstall from this computer','danger',async function(){if(!confirm('Remove LockGuard from '+w.name+' entirely? It puts the network settings, firewall and browser settings back, next time it checks in.'))return;await call('POST','/api/windevices/'+w.id+'/command',{type:'uninstall'});snack('Queued.');load()}),
+   btn('Remove from this list','outline',async function(){if(!confirm('Remove '+w.name+' from the dashboard? Only do this if it is already gone. Otherwise use "Uninstall from this computer" first.'))return;await call('DELETE','/api/windevices/'+w.id);load()})));
+  m.append(controls);
+  const ll=h('div',{class:'card'},h('h2',null,'Computer log'));
+  if(!(w.events||[]).length)ll.append(h('div',{class:'mute small'},'Nothing logged yet.'));
+  for(const e of (w.events||[]).slice().reverse())ll.append(h('div',{class:'act'},e.m+' · '+ago(e.at)));
+  m.append(ll)}
 }
 
 /* ---------- codes ---------- */

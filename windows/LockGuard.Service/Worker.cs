@@ -5,23 +5,36 @@ using LockGuard.Common;
 namespace LockGuard.Service;
 
 /// <summary>
-/// The service's whole lifecycle: bootstrap the default code on first run, keep the firewall
-/// matching config.json, reapply it on a timer so someone deleting a rule by hand (or a
-/// Windows update resetting firewall state) gets corrected within a minute instead of silently
-/// leaving a hole open, and -- if this build has a dashboard URL baked in -- check in with it on
-/// the same timer so it can be controlled remotely, the same way the Android agent is.
+/// The service's whole lifecycle:
+/// - "internet only for these programs" (the original lockdown): keep the firewall matching config.json;
+/// - the web filter: run the lookup filter (DnsProxy), point the network at it (NetworkDns), close
+///   other lookup routes (firewall), lock browser settings (BrowserPolicies) and close blocked
+///   programs (AppBlocker);
+/// - check in with the dashboard, which is authoritative for both.
+/// Everything is re-applied every 30 seconds, so a setting changed by hand (or by Windows) is put
+/// back within a minute instead of silently leaving a hole open.
 /// </summary>
 public sealed class Worker : BackgroundService
 {
     private static readonly TimeSpan ReapplyInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ReportInterval = TimeSpan.FromMinutes(5);
 
     private readonly ILogger<Worker> _logger;
     private readonly CodeStore _codeStore = new();
     private readonly DashboardClient? _dashboard = CreateDashboardClient();
+    private readonly CategoryLists _lists = new();
+    private readonly SiteLog _siteLog = new();
+    private readonly List<object> _events = new();
+    private readonly DnsProxy _proxy;
+    private volatile FilterPolicy _filter = FilterPolicy.Load();
+    private bool _filterApplied;
+    private DateTime _lastReport = DateTime.UtcNow;
+    private CancellationToken _stopping;
 
     public Worker(ILogger<Worker> logger)
     {
         _logger = logger;
+        _proxy = new DnsProxy(() => _filter, _lists, _siteLog);
     }
 
     /// <summary>
@@ -46,23 +59,34 @@ public sealed class Worker : BackgroundService
         }
     }
 
+    private void Note(string text)
+    {
+        lock (_events) _events.Add(new { k = "security", m = text, at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _stopping = stoppingToken;
         Directory.CreateDirectory(Paths.RootDir);
         _codeStore.InitializeWithDefault();
 
         var pipeServer = new PipeServer(onConfigChanged: ApplyNow, onUninstallRequested: BeginUninstall);
         var pipeTask = pipeServer.RunAsync(stoppingToken);
 
+        // The filter starts first: after a restart the network may already point at it.
+        if (_filter.On) _proxy.Start(stoppingToken);
         ApplyNow();
+        await ApplyFilterAsync();
+        _ = BlockerLoop(stoppingToken);
 
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                await SyncDashboardAsync();
                 await Task.Delay(ReapplyInterval, stoppingToken);
                 ApplyNow();
-                await SyncDashboardAsync();
+                await ApplyFilterAsync();
             }
         }
         catch (OperationCanceledException)
@@ -72,6 +96,64 @@ public sealed class Worker : BackgroundService
 
         await pipeTask;
     }
+
+    private async Task BlockerLoop(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                foreach (var n in AppBlocker.Sweep(_filter)) Note(n);
+                await Task.Delay(2000, ct);
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception e) { _logger.LogWarning(e, "Program check failed."); }
+        }
+    }
+
+    /// <summary>Turns the web filter on or off to match the current settings.</summary>
+    private async Task ApplyFilterAsync()
+    {
+        var p = _filter;
+        try
+        {
+            if (p.On)
+            {
+                _proxy.Start(_stopping);
+                if (!_proxy.Running) return; // could not start; leave the network alone (see status)
+                if (NetworkDns.Apply() && _filterApplied) Note("The computer's network settings were changed; the filter put them back.");
+                FirewallManager.SetFilterRules(true);
+                BrowserPolicies.Apply(p);
+                _filterApplied = true;
+                await _lists.EnsureAsync(p.Base, p.Level);
+            }
+            else if (_filterApplied || File.Exists(Path.Combine(Paths.RootDir, "dns-original.json")))
+            {
+                NetworkDns.Restore();
+                FirewallManager.SetFilterRules(false);
+                BrowserPolicies.Remove();
+                _filterApplied = false;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Could not apply the web filter.");
+        }
+    }
+
+    private object Info() => new
+    {
+        hostname = Environment.MachineName,
+        tz = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes,
+        version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
+        filter = new
+        {
+            on = _filter.On,
+            running = _proxy.Running,
+            listsReady = _lists.Ready(_filter.Level) || _filter.Level == "approved",
+            error = _proxy.LastError ?? _lists.LastError ?? BrowserPolicies.LastError,
+        },
+    };
 
     /// <summary>
     /// The dashboard is treated as authoritative, same as the Android agent's policy from the
@@ -85,8 +167,16 @@ public sealed class Worker : BackgroundService
         try
         {
             var config = LockConfig.Load();
-            var result = await _dashboard.SyncAsync(config.Enabled, config.AllowedPrograms, Environment.MachineName);
+            List<object>? log = null, events = null;
+            bool report = DateTime.UtcNow - _lastReport > ReportInterval; // sites go up every 5 minutes, not every check-in
+            if (report)
+            {
+                log = _siteLog.Drain();
+                lock (_events) { events = new List<object>(_events); _events.Clear(); }
+            }
+            var result = await _dashboard.SyncAsync(config.Enabled, config.AllowedPrograms, Info(), log, events);
             if (result is null) return;
+            if (report) _lastReport = DateTime.UtcNow;
 
             if (result.Enabled != config.Enabled || !result.AllowedPrograms.SequenceEqual(config.AllowedPrograms))
             {
@@ -94,6 +184,16 @@ public sealed class Worker : BackgroundService
                 config.AllowedPrograms = result.AllowedPrograms;
                 config.Save();
                 ApplyNow();
+            }
+
+            var next = result.Filter ?? new FilterPolicy { On = false };
+            if (next.Json() != _filter.Json())
+            {
+                next.Save();
+                _filter = next;
+                _proxy.ClearCache();
+                NetworkDns.FlushCache();
+                await ApplyFilterAsync();
             }
 
             if (result.Commands.Any(c => c.Type == "uninstall")) BeginUninstall();
@@ -125,18 +225,21 @@ public sealed class Worker : BackgroundService
     /// <summary>
     /// Removing the lockdown and the service itself has to happen from OUTSIDE this process --
     /// a Windows Service can't delete its own registration or binary file while it's the one
-    /// running. This hands off to a detached PowerShell script that waits for this process to
-    /// actually stop, then finishes the job, and exits this process right after to trigger that.
+    /// running. Everything this app changed (firewall, network lookups, browser policies) is put
+    /// back first, then a detached PowerShell script finishes the job.
     /// </summary>
     private void BeginUninstall()
     {
         try
         {
             FirewallManager.RemoveLockdown();
+            FirewallManager.SetFilterRules(false);
+            NetworkDns.Restore();
+            BrowserPolicies.Remove();
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Could not remove the firewall lockdown before uninstalling.");
+            _logger.LogError(e, "Could not undo everything before uninstalling.");
         }
 
         var scriptPath = Path.Combine(Path.GetTempPath(), "lockguard-uninstall.ps1");
@@ -156,10 +259,8 @@ Remove-Item -Force '{scriptPath}' -ErrorAction SilentlyContinue
         });
 
         // This method is called from inside PipeServer.Handle(), which still needs to write its
-        // "Removing..." response back to Setup before the pipe goes away -- exiting immediately
-        // here (as this used to) kills the process mid-handler, so Setup always saw a timeout
-        // instead of that confirmation, even though the uninstall itself had already kicked off.
-        // A short delay on a separate thread lets that response actually reach the pipe first.
+        // "Removing..." response back to Setup before the pipe goes away -- a short delay on a
+        // separate thread lets that response actually reach the pipe first.
         new Thread(() =>
         {
             Thread.Sleep(500);
