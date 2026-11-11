@@ -261,6 +261,45 @@ final class Agent {
         }
     }
 
+    // ---------- asked for on the User screen: "open the Play Store" or one blocked app, reported on the next sync ----------
+
+    static synchronized void addAppRequest(Context c, String kind, String pkg, String label) {
+        try {
+            JSONArray arr = new JSONArray(prefs(c).getString("appRequests", "[]"));
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.getJSONObject(i);
+                if (kind.equals(o.optString("kind")) && (pkg == null ? "" : pkg).equals(o.optString("pkg"))) return; // already queued
+            }
+            JSONObject r = new JSONObject();
+            r.put("kind", kind);
+            if (pkg != null) r.put("pkg", pkg);
+            if (label != null) r.put("label", label);
+            arr.put(r);
+            JSONArray keep = new JSONArray();
+            for (int i = Math.max(0, arr.length() - 20); i < arr.length(); i++) keep.put(arr.get(i));
+            prefs(c).edit().putString("appRequests", keep.toString()).apply();
+        } catch (JSONException ignored) {
+        }
+    }
+
+    static synchronized JSONArray peekAppRequests(Context c) {
+        try {
+            return new JSONArray(prefs(c).getString("appRequests", "[]"));
+        } catch (JSONException e) {
+            return new JSONArray();
+        }
+    }
+
+    static synchronized void dropAppRequests(Context c, int count) {
+        try {
+            JSONArray arr = new JSONArray(prefs(c).getString("appRequests", "[]"));
+            JSONArray rest = new JSONArray();
+            for (int i = count; i < arr.length(); i++) rest.put(arr.get(i));
+            prefs(c).edit().putString("appRequests", rest.toString()).apply();
+        } catch (JSONException ignored) {
+        }
+    }
+
     // ---------- free-text messages to the administrator (bug reports, questions, anything), reported on the next sync ----------
 
     static synchronized void addMessage(Context c, String text) {

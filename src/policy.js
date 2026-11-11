@@ -289,6 +289,38 @@ export function normalizeFrpAccounts(list) {
 }
 
 export const BROWSER_FILTERS = ["off", "moderate", "strict"];
+
+// Whole groups of apps that can be blocked with one switch, like other parental-control apps offer.
+// An app you explicitly set to Allow is never blocked by its group, so you can block "all social
+// media" and still leave one in. Messaging apps (WhatsApp, Signal, SMS) are deliberately not here.
+export const APP_GROUPS = {
+  social: {
+    label: "Social media apps",
+    packages: [
+      "com.facebook.katana", "com.facebook.lite", "com.facebook.orca", "com.facebook.mlite",
+      "com.instagram.android", "com.instagram.lite", "com.instagram.barcelona",
+      "com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.zhiliaoapp.musically.go",
+      "com.snapchat.android", "com.twitter.android", "com.twitter.android.lite",
+      "com.reddit.frontpage", "com.pinterest", "com.tumblr", "com.discord",
+      "org.telegram.messenger", "tv.twitch.android.app", "com.bereal.ft",
+    ],
+  },
+};
+
+// The buttons on the phone's own "User" screen. Each can be hidden per phone from the dashboard.
+export const USER_MENU = {
+  site: "Request a site",
+  app: "Request a blocked app",
+  store: "Open Google Play Store",
+  message: "Message the administrator",
+  install: "Install an app from a file (with a code)",
+  updates: "Check for app updates",
+};
+function normalizeUserMenu(m) {
+  const out = {};
+  for (const k of Object.keys(USER_MENU)) out[k] = !(m && typeof m === "object" && m[k] === false); // shown unless switched off
+  return out;
+}
 // YouTube in the browsers: "channels" = only allowed channels and videos open; "restricted" = YouTube
 // opens with search but no recommendations (home, feeds and Shorts are blocked); "auto" (the default)
 // = follow the browser filter level: Moderate -> restricted, Strict or Off -> channels.
@@ -341,6 +373,8 @@ export function normalizeConfig(input) {
     // "moderate" and "strict" open the web but block whole categories (see tools/build-blocklists.mjs).
     browserFilter: BROWSER_FILTERS.includes(c.browserFilter) ? c.browserFilter : "off",
     youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "auto",
+    blockAppGroups: [...new Set((Array.isArray(c.blockAppGroups) ? c.blockAppGroups : []).filter((g) => Object.prototype.hasOwnProperty.call(APP_GROUPS, g)))],
+    userMenu: normalizeUserMenu(c.userMenu),
     // Optional: the Agent installs a certificate of its own and runs a local proxy, so browsers' secure
     // pages can be filtered by what is on them (see TlsInspection.java). Off unless chosen, per phone.
     tlsInspection: c.tlsInspection === true,
@@ -498,9 +532,15 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
       show.add(pkg);
     }
   }
+  const groupBlocked = new Set();
+  for (const g of cfg.blockAppGroups) for (const pkg of APP_GROUPS[g].packages) groupBlocked.add(pkg);
   for (const pkg of reportedPackages) {
     const mode = apps[pkg]?.mode;
     if (mode === "block" || mode === "allow" || mode === "force" || mode === "soft") continue; // handled above
+    if (groupBlocked.has(pkg)) {
+      hide.add(pkg); // its whole group is blocked and nothing was said about this app in particular
+      continue;
+    }
     if (cfg.approveNew && known && !known.has(pkg) && !isProtected(pkg)) {
       hide.add(pkg);
       pending.push(pkg);
@@ -520,6 +560,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // outright via `hide`, same as it always is outside home-screen mode too.
   const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
   if (cfg.approveNew && known) out.known = [...known];
+  out.userMenu = cfg.userMenu;
   return out;
 }
 
@@ -560,6 +601,14 @@ export function summarizeConfigChange(before, after) {
     if (b !== a) lines.push((afterApps[pkg]?.label || beforeApps[pkg]?.label || pkg) + ": " + (a || "default"));
   }
   if ((before.browserFilter || "off") !== (after.browserFilter || "off")) lines.push("Browser filter: " + (after.browserFilter || "off"));
+  for (const [g, info] of Object.entries(APP_GROUPS)) {
+    const b = (before.blockAppGroups || []).includes(g), a = (after.blockAppGroups || []).includes(g);
+    if (a !== b) lines.push(info.label + ": " + (a ? "blocked" : "no longer blocked as a group"));
+  }
+  for (const [k, label] of Object.entries(USER_MENU)) {
+    const b = !before.userMenu || before.userMenu[k] !== false, a = !after.userMenu || after.userMenu[k] !== false;
+    if (a !== b) lines.push('Phone menu "' + label + '": ' + (a ? "shown" : "hidden"));
+  }
   if (!!before.tlsInspection !== !!after.tlsInspection) lines.push("Browser inspection: " + (after.tlsInspection ? "on" : "off"));
   if ((before.youtubeMode || "auto") !== (after.youtubeMode || "auto")) lines.push("YouTube in the browsers: " + (after.youtubeMode || "auto"));
   if (JSON.stringify(before.frpAccounts) !== JSON.stringify(after.frpAccounts)) lines.push("Factory Reset Protection accounts changed");

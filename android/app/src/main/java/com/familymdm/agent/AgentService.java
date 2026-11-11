@@ -143,6 +143,9 @@ public class AgentService extends Service {
                 Log.w(TAG, "timed lock check failed: " + e);
             }
             try {
+                // Wake up in time to close a Play Store window on the minute, not at the next check-in.
+                int storeLeft = StoreAccess.minutesLeft(this);
+                if (StoreAccess.open(this) && storeLeft >= 0) sleepSeconds = Math.min(sleepSeconds, storeLeft * 60L + 2);
                 Thread.sleep(Math.max(3, sleepSeconds) * 1000L);
             } catch (InterruptedException e) {
                 if (!running) return; // otherwise this was a wake-up call: check in now
@@ -191,6 +194,8 @@ public class AgentService extends Service {
         }
         long browseUntil = Agent.prefs(this).getLong("browseUntil", 0);
         if (browseUntil > System.currentTimeMillis()) o.put("browseUntil", browseUntil);
+        long storeUntil = StoreAccess.reportUntil(this);
+        if (storeUntil != 0) o.put("storeUntil", storeUntil); // -1 = open until closed
         return o;
     }
 
@@ -219,6 +224,8 @@ public class AgentService extends Service {
         body.put("events", events);
         JSONArray siteRequests = Agent.peekSiteRequests(this);
         body.put("siteRequests", siteRequests);
+        JSONArray appRequests = Agent.peekAppRequests(this);
+        body.put("appRequests", appRequests);
         JSONArray messages = Agent.peekMessages(this);
         body.put("messages", messages);
         JSONArray trafficLog = TrafficLog.peekPending(this);
@@ -301,6 +308,7 @@ public class AgentService extends Service {
         Agent.dropResults(this, results.length());
         Agent.dropEvents(this, events.length());
         Agent.dropSiteRequests(this, siteRequests.length());
+        Agent.dropAppRequests(this, appRequests.length());
         Agent.dropMessages(this, messages.length());
         TrafficLog.dropPending(this, trafficLog.length());
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
@@ -458,6 +466,16 @@ public class AgentService extends Service {
                     msg = Installer.uninstall(this, args.getString("packageName"));
                     break;
                 case "sync":
+                    break;
+                case "openStore": {
+                    int minutes = args.optInt("minutes", 60);
+                    StoreAccess.start(this, minutes, "from the dashboard");
+                    msg = minutes <= 0 ? "Play Store open until closed" : "Play Store open for " + minutes + " minutes";
+                    break;
+                }
+                case "closeStore":
+                    StoreAccess.stop(this, "from the dashboard");
+                    msg = "Play Store closed";
                     break;
                 case "listSystemApps":
                     msg = PolicyApplier.collectSystemPackages(this).toString();

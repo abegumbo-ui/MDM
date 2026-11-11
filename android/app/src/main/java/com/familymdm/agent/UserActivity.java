@@ -18,6 +18,7 @@ import java.io.InputStream;
 public class UserActivity extends Activity {
     private static final int PICK_APK = 1;
     private static final int REQUEST_CODE_ENTRY = 2;
+    private static final int REQUEST_STORE_CODE = 3;
     private static final long PICK_WINDOW_MS = 5 * 60 * 1000;
 
     private boolean showingUpdates;
@@ -41,18 +42,162 @@ public class UserActivity extends Activity {
         if (showingUpdates) {
             buildUpdatesSection(root);
         } else {
-            GridLayout grid = Ui.tileGrid(this);
-            Ui.addTile(grid, Ui.tile(this, "Install\nan App", R.drawable.ic_apps_tile, 96, v -> promptInstallCode()));
-            Ui.addTile(grid, Ui.tile(this, "Updates", R.drawable.ic_update_tile, 96, v -> {
-                showingUpdates = true;
-                build();
-            }));
-            Ui.add(root, grid, 16);
+            buildMenu(root);
         }
 
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
+    }
+
+    /** Whether the administrator left this button on (see the dashboard's "Phone menu" switches). Shown unless switched off. */
+    private boolean menuOn(String key) {
+        try {
+            org.json.JSONObject menu = new org.json.JSONObject(Agent.prefs(this).getString("policy", "{}")).optJSONObject("userMenu");
+            return menu == null || menu.optBoolean(key, true);
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    /** The list of things the person holding the phone can do or ask for, without any code. */
+    private void buildMenu(LinearLayout root) {
+        boolean online = !Agent.standalone(this) && Agent.prefs(this).getString("token", null) != null;
+        int n = 0;
+        if (online && menuOn("site")) {
+            Ui.add(root, Ui.rowTile(this, "Request a site", R.drawable.ic_browser_tile, v -> promptSiteRequest()), n++ == 0 ? 16 : 8);
+        }
+        if (online && menuOn("app")) {
+            Ui.add(root, Ui.rowTile(this, "Request a blocked app", R.drawable.ic_apps_tile, v -> promptAppRequest()), n++ == 0 ? 16 : 8);
+        }
+        if (menuOn("store")) {
+            String label = "Open Google Play Store";
+            if (StoreAccess.open(this)) {
+                int left = StoreAccess.minutesLeft(this);
+                label += left < 0 ? "\nopen for now" : "\nopen for " + left + " more min";
+            }
+            Ui.add(root, Ui.rowTile(this, label, R.drawable.ic_flash, v -> openStore(online)), n++ == 0 ? 16 : 8);
+        }
+        if (menuOn("message")) {
+            Ui.add(root, Ui.rowTile(this, "Message the administrator", R.drawable.ic_message_tile, v -> promptMessage(online)), n++ == 0 ? 16 : 8);
+        }
+        if (menuOn("install")) {
+            Ui.add(root, Ui.rowTile(this, "Install an app from a file", R.drawable.ic_device_tile, v -> promptInstallCode()), n++ == 0 ? 16 : 8);
+        }
+        if (menuOn("updates")) {
+            Ui.add(root, Ui.rowTile(this, "App updates", R.drawable.ic_update_tile, v -> {
+                showingUpdates = true;
+                build();
+            }), n++ == 0 ? 16 : 8);
+        }
+        if (online) {
+            Ui.add(root, Ui.rowTile(this, "Refresh (check in now)", R.drawable.ic_wifi_tile, v -> {
+                AgentService.requestSync();
+                toast("Checking in...");
+            }), n++ == 0 ? 16 : 8);
+        }
+        if (n == 0) {
+            LinearLayout card = Ui.card(this, root);
+            card.addView(Ui.body(this, "Nothing to do here right now.", true));
+        }
+    }
+
+    private void promptSiteRequest() {
+        final android.widget.EditText input = Ui.field(this, "Site, e.g. example.com");
+        Ui.alertDialog(this)
+                .setTitle("Request a site")
+                .setMessage("Type the site you would like. The administrator sees your request and decides.")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Send", (d, w) -> {
+                    String site = input.getText().toString().trim();
+                    if (site.isEmpty() || site.contains(" ") || !site.contains(".")) {
+                        toast("That does not look like a site address.");
+                        return;
+                    }
+                    Agent.addSiteRequest(this, site.contains("://") ? site : "https://" + site);
+                    AgentService.requestSync();
+                    toast("Sent. You will be able to open it once it is approved.");
+                })
+                .show();
+    }
+
+    /** The apps on this phone that are blocked right now, with their names. */
+    private void promptAppRequest() {
+        final java.util.List<String> pkgs = new java.util.ArrayList<>();
+        final java.util.List<String> labels = new java.util.ArrayList<>();
+        android.content.pm.PackageManager pm = getPackageManager();
+        for (String pkg : new java.util.TreeSet<>(Agent.getSet(this, "hidden"))) {
+            String label = pkg;
+            try {
+                label = pm.getApplicationInfo(pkg, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES).loadLabel(pm).toString();
+            } catch (Exception ignored) {
+            }
+            if (label.equals(pkg) && !pkg.equals(StoreAccess.PKG)) continue; // a nameless system part: not something to ask for
+            pkgs.add(pkg);
+            labels.add(label);
+        }
+        if (pkgs.isEmpty()) {
+            toast("No apps are blocked on this phone.");
+            return;
+        }
+        Ui.alertDialog(this)
+                .setTitle("Which app would you like?")
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
+                    Agent.addAppRequest(this, "app", pkgs.get(which), labels.get(which));
+                    AgentService.requestSync();
+                    toast("Sent. " + labels.get(which) + " will appear once it is approved.");
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void openStore(boolean online) {
+        if (StoreAccess.open(this) || !StoreAccess.hidden(this)) {
+            if (!StoreAccess.launch(this)) toast("The Play Store is not available on this phone.");
+            return;
+        }
+        android.app.AlertDialog.Builder b = Ui.alertDialog(this)
+                .setTitle("The Play Store is closed")
+                .setMessage(online ? "Ask the administrator to open it for a while, or enter a code if you were given one." : "Enter the code to open it for a while.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("I have a code", (d, w) -> startActivityForResult(new Intent(this, CodeEntryActivity.class)
+                        .putExtra(CodeEntryActivity.EXTRA_TITLE, "Open the Play Store")
+                        .putExtra(CodeEntryActivity.EXTRA_SUBTITLE, "Enter the code you were given.")
+                        .putExtra(CodeEntryActivity.EXTRA_BUTTON, "Open"), REQUEST_STORE_CODE));
+        if (online) {
+            b.setNeutralButton("Ask", (d, w) -> {
+                Agent.addAppRequest(this, "store", null, null);
+                AgentService.requestSync();
+                toast("Sent. It opens once the administrator approves.");
+            });
+        }
+        b.show();
+    }
+
+    private void promptMessage(final boolean online) {
+        final android.widget.EditText input = Ui.field(this, "Message");
+        Ui.alertDialog(this)
+                .setTitle("Message the administrator")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Send", (d, w) -> {
+                    String text = input.getText().toString().trim();
+                    if (text.isEmpty()) return;
+                    AdminMessages.add(this, text, null); // kept on the phone for the Administrator screen
+                    if (online) {
+                        Agent.addMessage(this, text); // and sent to the dashboard
+                        AgentService.requestSync();
+                    }
+                    toast(online ? "Sent." : "Saved for the administrator.");
+                })
+                .show();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!showingUpdates) build(); // the Play Store row shows the time left
     }
 
     private void buildUpdatesSection(LinearLayout root) {
@@ -139,6 +284,27 @@ public class UserActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_STORE_CODE) {
+            if (resultCode == RESULT_OK && data != null) {
+                String code = data.getStringExtra(CodeEntryActivity.EXTRA_CODE);
+                CodeRedeem.redeemTimed(this, "playstore", code == null ? "" : code.trim(), (err, minutes) -> {
+                    if (err != null) {
+                        toast(err);
+                        return;
+                    }
+                    final int mins = minutes;
+                    new Thread(() -> {
+                        StoreAccess.start(this, mins, "a code on the phone");
+                        runOnUiThread(() -> {
+                            toast("The Play Store is open for " + mins + " minutes.");
+                            build();
+                            StoreAccess.launch(this);
+                        });
+                    }).start();
+                });
+            }
+            return;
+        }
         if (requestCode == REQUEST_CODE_ENTRY) {
             if (resultCode == RESULT_OK && data != null) {
                 String code = data.getStringExtra(CodeEntryActivity.EXTRA_CODE);

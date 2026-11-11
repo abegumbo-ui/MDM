@@ -194,10 +194,11 @@ let subs={};try{subs=JSON.parse(sessionStorage.getItem('subs')||'{}')||{}}catch(
 function saveSubs(){try{sessionStorage.setItem('subs',JSON.stringify(subs))}catch(e){}}
 const GROUPS=[
  {key:'overview',label:'Overview',icon:'home',subs:[['status','Status'],['messages','Messages'],['log','Activity log']]},
- {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['browser','Browser']]},
- {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['traffic','Traffic log'],['inspect','Browser inspection']]},
+ {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
+ {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
+ {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['traffic','Traffic log']]},
  {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
- {key:'device',label:'Device',icon:'device',subs:[['menu','Settings menu'],['updates','Updates'],['device','Controls']]}];
+ {key:'device',label:'Device',icon:'device',subs:[['usermenu','Phone menu'],['menu','Settings menu'],['updates','Updates'],['device','Controls']]}];
 function getSub(g){const G=GROUPS.find(function(x){return x.key===g});const v=subs[g];return G.subs.some(function(x){return x[0]===v})?v:G.subs[0][0]}
 function goTo(g,sub){setDeviceSection(g);if(sub){subs[g]=sub;saveSubs()}render()}
 let state=null,devices=[],browsers=[],windevices=[],clients=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
@@ -322,10 +323,11 @@ function render(){
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
-const NAMES={lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app'};
+const NAMES={openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app'};
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒',watchdog:'👀'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
+function storeOpen(d){const u=d.info&&d.info.storeUntil;return u===-1||(u>0&&u>Date.now())}
 function browsingFreely(d){return d.info.browseUntil&&d.info.browseUntil>Date.now()}
 function needsUpdate(d){return latest&&d.info.versionCode&&d.info.versionCode<latest.versionCode}
 function pendingApps(d){const want=new Set(d.applied.hide);return d.packages.filter(function(p){return want.has(p.p)!==p.h})}
@@ -341,6 +343,7 @@ function chipsFor(d,full){
   wf.transport==='wifi'?(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?('SIM card'+(wf.carrier?' — '+wf.carrier:'')):'No connection'));
  if(d.inflight.some(function(x){return x.type==='lock'})||d.pending)c.append(h('span',{class:'chip warn'},'Command pending'));
  if(lockedNow(d))c.append(h('span',{class:'chip warn'},'Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+ if(storeOpen(d))c.append(h('span',{class:'chip warn'},'Play Store open'+(d.info.storeUntil>0?' until '+new Date(d.info.storeUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'')));
  if(browsingFreely(d))c.append(h('span',{class:'chip warn'},'Free browsing until '+new Date(d.info.browseUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
  if(d.info.kiosk)c.append(h('span',{class:'chip ok'},'Home screen mode'));
  if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
@@ -467,6 +470,8 @@ function phoneLocalNote(m,text){
 function buildAppsHub(m,dv){
  const appsSub=getSub('apps');
  if(appsSub==='regular'){
+  renderAppRequests(m,dv);
+  renderAppGroups(m,dv);
   // Same gating as the phone's own Regular Apps section (AdminActivity.buildAppsSection): while
   // Home screen mode is on, app allow/block decisions only come from the Allowed Apps editor in
   // the Home Screen Mode tab -- showing the same editor here too would just be two controls
@@ -537,8 +542,9 @@ function buildAppsHub(m,dv){
    h('div',{class:'mute'},'Specific screens (exact app components) to bounce away from the instant they open -- set directly on the phone\'s own Administrator screen (Apps → Blocking → Block Apps/Screens). Picking the exact screen needs the phone itself (it offers an autocomplete built from what\'s actually been seen in the foreground there), so this one box stays phone-only.'));
   m.append(bCard);
   renderWholeAppBlocklist(m,dv);
- } else if(appsSub==='browser'){
-  renderSites(m,dv);
+ } else if(appsSub==='store'){
+  renderAppRequests(m,dv);
+  renderStore(m,dv);
  } else if(appsSub==='system'){
   const sal=h('div',{class:'card'},h('h2',null,'System apps'),
    h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "Apps on this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
@@ -568,11 +574,11 @@ function buildInternetGroup(m,dv){
  if(sub==='network')renderNetworkSection(m,dv);
  else if(sub==='dns'){renderDnsBlocklist(m,dv);renderDnsAllowlist(m,dv)}
  else if(sub==='traffic')renderTrafficLog(m,dv);
- else if(sub==='inspect')renderInspection(m,dv);
 }
 function buildDeviceGroup(m,dv){
  const sub=getSub('device');
  if(sub==='menu')phoneLocalNote(m,'Most of the 16 categories here already work with no setup at all -- they point at a standard Android settings screen (Wi-Fi, Bluetooth, sound, display…) that works the same on every phone, or (Android Auto) jump straight into that app itself. A handful are this phone brand\'s own screens with no standard Android way to open them by name (notably some Motorola-only ones), so for just those few, Settings → Settings Menu → Learn on the phone itself captures the exact screen once, by physically going there -- genuinely needs to happen on the phone, there is no remote equivalent for an unlisted manufacturer screen. Everything else needs nothing here.');
+ else if(sub==='usermenu')renderUserMenu(m,dv);
  else if(sub==='updates')renderUpdatesSection(m,dv);
  else if(sub==='device')renderDeviceCard(m,dv);
 }
@@ -590,6 +596,7 @@ function renderDeviceDetail(m,d){
  // the dashboard's own equivalent of AdminActivity's Overview toggle+status card) -----
  const ov=h('section',{class:'cols'});
  if(d.syncPaused)ov.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Not connected'),h('div',{class:'mute'},'This device is not connected to the dashboard because it was turned off (from this phone\'s own Admin screen, to save battery). It keeps enforcing whatever it had last. It reconnects only when someone turns it back on there — nothing here can reach it in the meantime.')));
+ renderAppRequests(ov,d);
  const info=h('div',{class:'card'},h('h2',null,'Phone'));
  info.append(kv('Recovery code',d.fallbackCode||'not seen yet (needs a check-in on a current build)'),
   kv('Android',d.info.android||'?'),kv('Agent build',(d.info.versionCode||'?')+(latest?' (latest '+latest.versionCode+')':'')),
@@ -727,8 +734,9 @@ function renderDeviceDetail(m,d){
 
 
  const internet=h('section');buildInternetGroup(internet,d);
+ const brg=h('section');buildBrowserGroup(brg,d);
  const devg=h('section');buildDeviceGroup(devg,d);
- const body={overview:{status:ov,messages:msgs,log:lg},apps:ap,internet:internet,security:lk,device:devg};
+ const body={overview:{status:ov,messages:msgs,log:lg},apps:ap,browser:brg,internet:internet,security:lk,device:devg};
 
  // ----- search: every group and tab -----
  const searchIndex=[
@@ -736,8 +744,8 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser: allowed sites','apps','browser'],
-  ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','internet','inspect'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Play Store: block, open for a while, codes','apps','store'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
  const sWrap=h('div',{class:'search',style:'margin:0;width:260px;max-width:100%'});
@@ -759,11 +767,12 @@ function renderDeviceDetail(m,d){
  // ----- side menu (5 groups) + tabs along the top of the chosen group -----
  const sec=GROUPS.some(function(g){return g.key===deviceSection})?deviceSection:'overview';
  const G=GROUPS.find(function(g){return g.key===sec});
- const nMsg=(d.messages||[]).length;
+ const nMsg=(d.messages||[]).length,nApp=(d.appRequests||[]).length,nSite=(d.siteRequests||[]).length;
  const side=h('nav',{class:'side'});
  for(const g of GROUPS){
   const b=h('button',{class:'nav'+(g.key===sec?' on':'')},svgIcon(g.icon,'currentColor'),g.label);
-  if(g.key==='overview'&&nMsg)b.append(h('span',{class:'badge'},String(nMsg)));
+  const nBadge=g.key==='overview'?nMsg+nApp:g.key==='browser'?nSite:0;
+  if(nBadge)b.append(h('span',{class:'badge'},String(nBadge)));
   b.onclick=function(){goTo(g.key)};side.append(b)}
  const content=h('div',{class:'content'});
  const cur=getSub(sec);
@@ -1058,15 +1067,117 @@ function renderWebAccess(m,dv){
   try{await saveConfigFor(dv,'Saved. The browser picks it up at its next check-in.')}catch(e){snack(e.message,1)}
   render()};
  card.append(h('div',{class:'setting',style:'display:block;margin-top:12px'},h('div',{style:'font-weight:500'},'YouTube'),
-  h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Browser inspection (Internet tab).'),ytSel));
+  h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Inspection (the last tab here).'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists, our own browsers stay on approved sites only, but Chrome and other browsers are not filtered yet (the phone cannot cut off the whole internet to wait for them). In Chrome the filter works on site names, not pages, and while it is on QUIC (a faster web protocol) is switched off so browsers use the kind of connection the filter can see. A browser using its own encrypted DNS can sometimes get around the name lookup, though the connection itself is still checked.'));
  m.append(card)}
+/* ---------- Browser group: everything about what this phone can open on the web, in one place ---------- */
+function buildBrowserGroup(m,dv){
+ const sub=getSub('browser');
+ if(sub==='summary')renderBrowserSummary(m,dv);
+ else if(sub==='access')renderWebAccess(m,dv);
+ else if(sub==='sites')renderSites(m,dv,'sites');
+ else if(sub==='apps')renderSites(m,dv,'apps');
+ else if(sub==='inspect')renderInspection(m,dv);
+}
+function ytModeOf(dv){const y=dv.config.youtubeMode||'auto';return y==='channels'||y==='restricted'?y:((dv.config.browserFilter||'off')==='moderate'?'restricted':'channels')}
+/** A plain-English picture of this phone's browsing, with a button to the tab that changes each line. */
+function renderBrowserSummary(m,dv){
+ const c=dv.config,level=c.browserFilter||'off',sites=Object.values(c.sites||{});
+ const nCh=sites.filter(function(x){return x.type==='youtube'}).length,nSites=sites.length-nCh,nReq=(dv.siteRequests||[]).length;
+ const card=h('div',{class:'card'},h('h2',null,'What this phone can open'),h('div',{class:'mute'},'A summary of the settings on the other tabs. Each line has a button to change it.'));
+ const line=function(title,text,chipText,chipCls,sub){
+  const go=h('button',{class:'btn outline'},'Change');go.onclick=function(){goTo('browser',sub)};
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title,' ',chipText?h('span',{class:'chip '+(chipCls||'')},chipText):null),h('div',{class:'mute'},text)),go))};
+ line('Filter level',level==='off'?'Nothing opens in our browsers unless it is on the allowed list.':level==='moderate'?'The web is open, except adult, gambling, drugs, scam and piracy sites.':'The web is open, except adult, gambling, drugs, scam, piracy and social media sites.',
+  level==='off'?'Approved sites only':level==='moderate'?'Moderate':'Strict',level==='off'?'ok':'warn','access');
+ line('YouTube',ytModeOf(dv)==='restricted'?'He can search YouTube and watch. No home feed, Shorts, trending, suggestions or comments.':'Only the channels and videos on the allowed list open. No YouTube home page or search.',
+  ytModeOf(dv)==='restricted'?'Restricted':'Allowed channels only','','access');
+ line('Allowed sites',nSites+(nSites===1?' site':' sites')+' and '+nCh+(nCh===1?' YouTube channel':' YouTube channels')+' are always allowed.'+(nReq?' '+nReq+(nReq===1?' request is':' requests are')+' waiting for you.':''),
+  nReq?nReq+' waiting':'',nReq?'warn':'','sites');
+ line('Chrome and other browsers',level==='off'?(c.restrictBrowsing?'Web links open in our browser only. Chrome itself is not filtered: block it under Apps if it should not be used.':'Not filtered. Only our own browsers follow the allowed list. Block Chrome under Apps, or pick Moderate or Strict to filter it.'):'Filtered by site name through the Agent\'s site filter, with the same categories as above.',
+  level==='off'?'Not filtered':'Filtered','','apps');
+ line('Inspection (certificate)',c.tlsInspection?'On: the Agent can look inside pages in Chrome and other browsers, so Restricted YouTube applies there too.':'Off. Our own browsers do not need it. Only needed to apply page-level rules (Restricted YouTube) inside Chrome.',
+  c.tlsInspection?'On':'Off',c.tlsInspection?'warn':'','inspect');
+ m.append(card);
+ const ev=(dv.events||[]).filter(function(e){return /filter|Browser|inspection|certificate|site/i.test(e.m||'')}).slice(-8).reverse();
+ const log=h('div',{class:'card'},h('h2',null,'What the phone reported'),h('div',{class:'mute'},'The latest browser and filter lines from the phone\'s own log. Nothing here until a phone has checked in with these features.'));
+ if(!ev.length)log.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing yet.'));
+ for(const e of ev)log.append(h('div',{class:'act'},e.m+' · '+ago(e.at)));
+ m.append(log)}
+
+/* ---------- requests from the phone's own menu: the Play Store, or one blocked app ---------- */
+function renderAppRequests(m,dv){
+ const reqs=dv.appRequests||[];if(!reqs.length)return;
+ const rc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Requests from the phone ('+reqs.length+')'),h('div',{class:'mute'},'Asked for from the phone\'s own menu.'));
+ for(const r of reqs){
+  const dismiss=async function(){await call('DELETE','/api/devices/'+dv.id+'/app-requests?key='+encodeURIComponent(r.key));load()};
+  const row=h('div',{class:'row',style:'margin-top:8px'});
+  if(r.kind==='store'){
+   const open=function(label,minutes){return btn(label,'',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:'openStore',args:{minutes:minutes}});snack('The Play Store opens at the phone\'s next check-in.');await dismiss()})};
+   row.append(open('Open for 1 hour',60),open('Open for 15 minutes',15),open('Open until I close it',0));
+  }else{
+   row.append(btn('Allow this app','',async function(){dv.config.apps[r.pkg]={mode:'allow',label:r.label||r.pkg};await saveConfigFor(dv,'Allowed. It appears on the phone within about 5 minutes.');await dismiss()}));
+  }
+  row.append(btn('Dismiss','outline',dismiss));
+  rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.kind==='store'?'Open the Google Play Store':'App: '+(r.label||r.pkg)),
+   h('div',{class:'mute small'},(r.kind==='app'?r.pkg+' · ':'')+ago(r.at)),row)))}
+ m.append(rc)}
+
+/* ---------- whole groups of apps, one switch each ---------- */
+function renderAppGroups(m,dv){
+ const groups=state.appGroups||{};if(!Object.keys(groups).length)return;
+ const card=h('div',{class:'card'},h('h2',null,'App groups'),h('div',{class:'mute'},'Block a whole kind of app with one switch. An app you set to Allow below stays allowed, so you can block the group and still leave one in.'));
+ for(const g in groups){
+  const on=(dv.config.blockAppGroups||[]).includes(g);
+  const here=dv.packages.filter(function(p){return groups[g].packages.includes(p.p)}).map(function(p){return p.l||p.p});
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block '+groups[g].label.toLowerCase()),
+   h('div',{class:'mute'},here.length?'On this phone: '+here.join(', ')+'.':'None of them are installed on this phone right now. If one is installed later, it is blocked.')),
+   sw(on,async function(v){
+    const set=new Set(dv.config.blockAppGroups||[]);v?set.add(g):set.delete(g);dv.config.blockAppGroups=[...set];
+    try{await saveConfigFor(dv,v?'Blocked. Applies within about 5 minutes.':'No longer blocked as a group.')}catch(e){snack(e.message,1)}render()})))}
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Messaging apps such as WhatsApp are not part of this group. More groups (games, video, dating) can be added.'));
+ m.append(card)}
+
+/* ---------- the Play Store: blocked or not, open for a while, codes ---------- */
+function renderStore(m,dv){
+ const PKG='com.android.vending',blocked=(dv.config.apps[PKG]||{}).mode==='block',open=storeOpen(dv);
+ const card=h('div',{class:'card'},h('div',{class:'row'},h('h2',{class:'grow'},'Google Play Store'),h('span',{class:'chip '+(open?'warn':blocked?'ok':'')},open?'Open right now':blocked?'Blocked':'Not blocked')),
+  h('div',{class:'mute'},'Keep the Play Store closed, and open it only when you choose: for a set time from here, when he asks from the phone, or with a one-time code you give him.'));
+ card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Keep the Play Store closed'),
+  h('div',{class:'mute'},'Hides the Play Store on this phone. App updates you send from here still work.')),
+  sw(blocked,async function(v){
+   if(v)dv.config.apps[PKG]={mode:'block',label:'Google Play Store'};else delete dv.config.apps[PKG];
+   try{await saveConfigFor(dv,v?'The Play Store closes within about 5 minutes.':'The Play Store is no longer blocked.')}catch(e){snack(e.message,1)}render()})));
+ const send=function(label,type,args){return btn(label,'tonal',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone does it at its next check-in (within about 5 minutes).');load()})};
+ card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Open it for a while'),
+  h('div',{class:'row',style:'margin-top:8px'},send('15 minutes','openStore',{minutes:15}),send('1 hour','openStore',{minutes:60}),send('2 hours','openStore',{minutes:120}),send('Until I close it','openStore',{minutes:0}),send('Close now','closeStore')));
+ const out=h('div',{style:'margin-top:10px'});
+ const mins=h('select',null,new Option('15 minutes','15'),new Option('30 minutes','30'),new Option('1 hour','60'),new Option('2 hours','120'));mins.value='60';
+ card.append(h('div',{style:'font-weight:500;margin-top:12px'},'One-time code'),h('div',{class:'mute'},'He taps "Open Google Play Store" on the phone and types it. Works once, on this phone only, within the next hour.'),
+  h('div',{class:'row',style:'margin-top:8px'},mins,btn('Get a code','',async function(){
+   const r=await call('POST','/api/codes',{type:'playstore',deviceId:dv.id,minutes:parseInt(mins.value,10)});
+   out.textContent='';out.append(h('div',{class:'code'},r.code),h('div',{class:'mute small'},'Opens the Play Store for '+r.minutes+' minutes.'))})),out);
+ card.append(h('div',{class:'mute small',style:'margin-top:10px'},'While it is open, the phone also lifts "block installing apps" if you had that on, and puts it back afterwards. With "approve new apps" on, anything he installs stays hidden until you approve it.'));
+ m.append(card)}
+
+/* ---------- which buttons the person sees on the phone's own menu ---------- */
+function renderUserMenu(m,dv){
+ const labels=state.userMenu||{};
+ const card=h('div',{class:'card'},h('h2',null,'Phone menu'),h('div',{class:'mute'},'The buttons on the phone\'s own "User" screen (open the MDM Agent app, then User). Switch off anything he should not see.'));
+ for(const k in labels){
+  const on=!dv.config.userMenu||dv.config.userMenu[k]!==false;
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},labels[k]),sw(on,async function(v){
+   dv.config.userMenu=dv.config.userMenu||{};dv.config.userMenu[k]=v;
+   try{await saveConfigFor(dv,'Saved. The phone\'s menu changes within about 5 minutes.')}catch(e){snack(e.message,1)}})))}
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'"Refresh" always shows. Requests he sends arrive on this phone\'s Overview and, if alerts are set up, on your own phone.'));
+ m.append(card)}
+
 /** Optional: the phone gets its own certificate and a local proxy, so browsers' secure pages can be filtered by their content. */
 function renderInspection(m,dv){
  if(dv.isBrowser){m.append(h('div',{class:'card'},h('div',{class:'mute'},'This only applies to phones managed by the Agent app.')));return}
  const on=!!dv.config.tlsInspection;
  const card=h('div',{class:'card'},h('div',{class:'row'},h('h2',{class:'grow'},'Browser inspection (advanced)'),h('span',{class:'chip '+(on?'warn':'')},on?'On':'Off')),
-  h('div',{class:'mute'},'Lets this phone filter what is on a web page, not just which site it is, in Chrome and other browsers (not only our own). Today that means Restricted YouTube everywhere: set it under Apps → Browser → Web access, and it then also applies in Chrome.'));
+  h('div',{class:'mute'},'Lets this phone filter what is on a web page, not just which site it is, in Chrome and other browsers (not only our own). Today that means Restricted YouTube everywhere: set it under Browser → Filter level, and it then also applies in Chrome.'));
  const row=h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Look inside browsers\' secure pages on this phone'),
   h('div',{class:'mute'},'The Agent gives this phone its own certificate and runs a small filter inside the Agent. The phone shows a permanent "network may be monitored" notice while it is on.')),
   sw(on,async function(v){
@@ -1085,7 +1196,7 @@ function renderInspection(m,dv){
  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Needs the phone to be managed by the Agent (device owner). Check Activity → Phone log for "Browser inspection turned on". If browsing ever fails on the phone, turn this off.'));
  m.append(card)}
 function renderSitesEditor(m,dv){
- renderWebAccess(m,dv);
+ if(dv.isBrowser)renderWebAccess(m,dv); // a phone has this on its own "Filter level" tab
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
@@ -1118,13 +1229,18 @@ function renderSitesEditor(m,dv){
   row.append(col);list.append(row)}
  m.append(list);
 }
-function renderSites(m,dv){
+function renderSites(m,dv,part){
+ if(part==='sites'){renderSitesPart(m,dv);return}
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser add-on'),
   h('div',{class:'mute'},'A lighter Browser built right into the agent app, its own icon, nothing extra installed. Opens only the sites on this same allowlist. The separate standalone Browser app below is untouched either way.')),
   sw(dv.config.browserAddonEnabled,async function(on){dv.config.browserAddonEnabled=on;try{await saveConfigFor(dv,on?'Browser add-on on. Its icon is on the phone now.':'Browser add-on off.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
   h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the App rules box so it can\'t be opened directly.')),
   sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it within about 5 minutes.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
+ if(part==='apps')return;
+ renderSitesPart(m,dv);
+}
+function renderSitesPart(m,dv){
  renderRequestsCard(m,(dv.siteRequests||[]).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at}}),dv);
  renderCloneCard(m,dv);
  renderSitesEditor(m,dv);

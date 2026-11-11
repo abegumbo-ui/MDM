@@ -1,0 +1,128 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import vm from "node:vm";
+import worker from "../src/index.js";
+import { dashboardPage } from "../src/ui.js";
+
+// Runs the dashboard's real page script against a small stand-in for the browser's page, signed in
+// to a real (in-memory) copy of the server with a phone that has a bit of everything, and opens
+// every group and every tab. A mistake that only shows when a tab is opened (a misspelt name, a
+// missing function) fails here instead of leaving a blank screen in front of the administrator.
+
+class El {
+  constructor(tag, reg) { this.tagName = tag; this.children = []; this.style = {}; this.attrs = {}; this.className = ""; this._text = ""; this._reg = reg; this.nodeType = 1; this.files = []; this.value = ""; this.classList = { add() {}, remove() {}, toggle() {} }; }
+  append(...xs) { for (const x of xs) if (x != null) this.children.push(x); }
+  appendChild(x) { this.children.push(x); return x; }
+  insertBefore(n, ref) { const i = this.children.indexOf(ref); if (i < 0) this.children.push(n); else this.children.splice(i, 0, n); return n; }
+  replaceWith() {}
+  remove() {}
+  get lastChild() { return this.children[this.children.length - 1] || null; }
+  get firstChild() { return this.children[0] || null; }
+  set textContent(v) { this.children = []; this._text = String(v); }
+  get textContent() { return this._text + this.children.map((c) => (typeof c === "string" ? c : c.textContent || "")).join(" "); }
+  setAttribute(k, v) { this.attrs[k] = v; if (k === "id") this._reg.set(v, this); }
+  getAttribute(k) { return this.attrs[k]; }
+  addEventListener() {}
+  dispatchEvent() {}
+  querySelector() { return null; }
+  querySelectorAll() { return []; }
+  focus() {} click() {} showModal() {} close() {} setSelectionRange() {} scrollIntoView() {}
+}
+
+async function setUp() {
+  const kv = new Map();
+  const env = { ADMIN_PASSWORD: "pw", STATE: {
+    get: async (k, t) => (kv.has(k) ? (t === "json" ? JSON.parse(kv.get(k)) : kv.get(k)) : null),
+    put: async (k, v) => void kv.set(k, v), delete: async (k) => void kv.delete(k),
+    list: async ({ prefix }) => ({ keys: [...kv.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }) } };
+  const call = (path, init) => worker.fetch(new Request("https://x.test" + path, init), env);
+  const login = await call("/login", { method: "POST", body: new URLSearchParams({ password: "pw" }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const J = { "content-type": "application/json" };
+  const { code } = await (await call("/api/codes", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await call("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Pixel", manufacturer: "Test" } }) })).json();
+  await call("/agent/sync", { method: "POST", headers: { ...J, authorization: "Bearer " + token }, body: JSON.stringify({
+    packages: [{ p: "com.google.android.apps.maps", l: "Maps", s: false, h: false }, { p: "com.instagram.android", l: "Instagram", s: false, h: true }, { p: "com.android.vending", l: "Google Play Store", s: true, h: false }],
+    info: { deviceOwner: true, android: "14", versionCode: 400, battery: { pct: 80, charging: false }, wifi: { transport: "wifi", ssid: "Home" }, storeUntil: -1 },
+    siteRequests: [{ url: "https://example.com/page" }],
+    appRequests: [{ kind: "store" }, { kind: "app", pkg: "com.instagram.android", label: "Instagram" }],
+    messages: [{ msg: "hello" }],
+    events: [{ k: "restriction", m: "DNS/TLS filter turned on (0 host(s) blocked, plus the browser category filter)" }] }) });
+  const dev = (await (await call("/api/devices", { headers: { cookie } })).json())[0];
+  await call(`/api/devices/${dev.id}/config`, { method: "PUT", headers: { ...J, cookie }, body: JSON.stringify({
+    browserFilter: "moderate", blockAppGroups: ["social"], tlsInspection: true, userMenu: { store: false },
+    sites: { a: { type: "domain", url: "example.org" }, b: { type: "youtube", id: "@somechannel" } },
+    apps: { "com.android.vending": { mode: "block", label: "Google Play Store" } } }) });
+  await (await call("/browser/register", { method: "POST", headers: J, body: JSON.stringify({ info: { model: "B" } }) })).json();
+  return { call, cookie };
+}
+
+test("every dashboard page, group and tab opens without an error", async () => {
+  const { call, cookie } = await setUp();
+  const reg = new Map();
+  const mk = (tag) => new El(tag, reg);
+  for (const id of ["main", "snack", "crumbs", "who", "tabs"]) mk("div").setAttribute("id", id);
+  const errors = [];
+  const store = new Map();
+  const ctx = vm.createContext({
+    console, URL, URLSearchParams, TextEncoder, TextDecoder, Date, Math, JSON, Promise, crypto: globalThis.crypto,
+    setTimeout, clearTimeout, setInterval: () => 0, clearInterval: () => {},
+    document: { createElement: mk, createElementNS: (ns, tag) => mk(tag), createTextNode: (t) => String(t), getElementById: (id) => reg.get(id) || null, body: mk("body"), querySelector: () => null, addEventListener() {} },
+    location: { hash: "#devices", origin: "https://x.test", reload() {} },
+    sessionStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => void store.set(k, String(v)), removeItem: (k) => void store.delete(k) },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    confirm: () => true, prompt: () => null, alert() {},
+    Option: function (text, value) { const o = mk("option"); o._text = String(text); o.value = value; return o; },
+    CustomEvent: function () {},
+    qrcode: () => ({ addData() {}, make() {}, createDataURL: () => "data:," }),
+    fetch: (path, init = {}) => call(path, { ...init, headers: { ...(init.headers || {}), cookie } }),
+    scrollTo() {}, addEventListener() {},
+  });
+  ctx.window = ctx;
+  const html = dashboardPage();
+  const script = html.match(/<script>([\s\S]*)<\/script>\s*<\/body>/)[1];
+  process.on("unhandledRejection", (e) => errors.push("unhandled: " + (e && e.stack ? e.stack.split("\n").slice(0, 2).join(" | ") : e)));
+  vm.runInContext(script, ctx);
+  for (let i = 0; i < 100 && !vm.runInContext("typeof state!=='undefined'&&state&&devices.length", ctx); i++) await new Promise((r) => setTimeout(r, 20));
+  assert.ok(vm.runInContext("devices.length", ctx) === 1, "the page loaded its data");
+
+  const tryRender = (label, code) => {
+    try {
+      vm.runInContext(code, ctx);
+    } catch (e) {
+      errors.push(label + ": " + e.message);
+    }
+    return reg.get("main").textContent;
+  };
+  const seen = {};
+  seen.list = tryRender("device list", "tab='devices';openId=null;openBrowserId=null;openWinId=null;render()");
+  for (const page of ["codes", "settings", "clients", "audit"]) seen[page] = tryRender(page, `tab='${page}';openId=null;render()`);
+  const groups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,g.subs.map(function(s){return s[0]})]}))", ctx);
+  for (const [g, subs] of JSON.parse(groups)) {
+    for (const sub of subs) {
+      seen[g + "/" + sub] = tryRender(g + "/" + sub, `tab='devices';openId=devices[0].id;deviceSection='${g}';subs['${g}']='${sub}';render()`);
+    }
+  }
+  seen.browserDevice = tryRender("standalone browser page", "tab='devices';openId=null;openBrowserId=browsers[0].id;render()");
+  await new Promise((r) => setTimeout(r, 150)); // let the cards that fetch their own data finish
+  assert.deepEqual(errors, [], "no tab threw an error");
+
+  // A few things that must actually be on the screen, not just "no crash".
+  assert.match(seen["overview/status"], /Requests from the phone \(2\)/);
+  assert.match(seen["overview/status"], /Play Store open/);
+  assert.match(seen["apps/regular"], /Block social media apps/);
+  assert.match(seen["apps/regular"], /On this phone: Instagram/);
+  assert.match(seen["apps/store"], /Keep the Play Store closed/);
+  assert.match(seen["browser/summary"], /What this phone can open/);
+  assert.match(seen["browser/summary"], /Moderate/);
+  assert.match(seen["browser/summary"], /He can search YouTube and watch/);
+  assert.match(seen["browser/summary"], /browser category filter/, "the phone's own filter log line is shown");
+  assert.match(seen["browser/access"], /Web access/);
+  assert.match(seen["browser/sites"], /Site requests \(1\)/);
+  assert.match(seen["browser/sites"], /YouTube channel/);
+  assert.match(seen["browser/apps"], /Make this the only browser/);
+  assert.match(seen["browser/inspect"], /Never look inside these sites/);
+  assert.match(seen["device/usermenu"], /Open Google Play Store/);
+  assert.match(seen.browserDevice, /Web access/, "a standalone Browser still has its filter card");
+  assert.match(seen.list, /Pixel/);
+});
