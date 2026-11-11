@@ -548,6 +548,12 @@ export function normalizeConfig(input) {
     recordSites: c.recordSites === true,
     // Web pages inside apps: "off", "tabs" (the browser page an app opens over itself), "all" (also pages built into apps).
     inAppBrowsers: ["tabs", "all"].includes(c.inAppBrowsers) ? c.inAppBrowsers : "off",
+    // WhatsApp: close Status (watching statuses) and/or Channels; chats and calls keep working.
+    blockWaStatus: c.blockWaStatus === true,
+    blockWaChannels: c.blockWaChannels === true,
+    // Contacts: send the phone's contacts to the dashboard; put the allowed numbers into the phone's contacts.
+    reportContacts: c.reportContacts === true,
+    syncContacts: c.syncContacts === true,
     inAppExceptions: [...new Set((Array.isArray(c.inAppExceptions) ? c.inAppExceptions : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 200),
     // A different filter level at set times, in the phone's own time (see effectiveFilter).
     filterSchedule: normalizeFilterSchedule(c.filterSchedule),
@@ -756,6 +762,10 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.filterSkipApps = cfg.filterSkipApps;
   out.recordSites = cfg.recordSites;
   out.inAppBrowsers = cfg.inAppBrowsers;
+  out.blockWaStatus = cfg.blockWaStatus;
+  out.blockWaChannels = cfg.blockWaChannels;
+  out.reportContacts = cfg.reportContacts;
+  out.contactsToAdd = cfg.syncContacts ? cfg.callNumbers.map((n) => ({ name: n.name, number: n.number })) : [];
   out.inAppExceptions = cfg.inAppExceptions;
   out.callsIn = cfg.callsIn;
   out.callsOut = cfg.callsOut;
@@ -817,6 +827,10 @@ export function summarizeConfigChange(before, after) {
   if (!!before.internetOnlyApps !== !!after.internetOnlyApps || JSON.stringify(before.internetApps || []) !== JSON.stringify(after.internetApps || [])) lines.push("Internet only for chosen apps: " + (after.internetOnlyApps ? "on (" + (after.internetApps || []).length + " apps)" : "off"));
   if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
   if (JSON.stringify(before.filterSkipApps || []) !== JSON.stringify(after.filterSkipApps || [])) lines.push("Apps not filtered: " + (after.filterSkipApps || []).length);
+  if (!!before.blockWaStatus !== !!after.blockWaStatus) lines.push("WhatsApp Status: " + (after.blockWaStatus ? "closed" : "allowed"));
+  if (!!before.blockWaChannels !== !!after.blockWaChannels) lines.push("WhatsApp Channels: " + (after.blockWaChannels ? "closed" : "allowed"));
+  if (!!before.reportContacts !== !!after.reportContacts) lines.push("Contacts shown on the dashboard: " + (after.reportContacts ? "on" : "off"));
+  if (!!before.syncContacts !== !!after.syncContacts) lines.push("Allowed numbers in the phone's contacts: " + (after.syncContacts ? "on" : "off"));
   if ((before.inAppBrowsers || "off") !== (after.inAppBrowsers || "off")) lines.push("Web pages inside apps: " + ({ off: "allowed", tabs: "browser pages opened by apps closed", all: "all closed" })[after.inAppBrowsers || "off"]);
   if (JSON.stringify(before.inAppExceptions || []) !== JSON.stringify(after.inAppExceptions || [])) lines.push("Apps allowed web pages: " + (after.inAppExceptions || []).length);
   if (!!before.recordSites !== !!after.recordSites) lines.push("Sites visited list: " + (after.recordSites ? "on" : "off"));

@@ -242,6 +242,28 @@ Dashboard: the **Calls & texts** group.
 4. With "Block apps' accessibility services" on (Security), check the Agent's own switch in
    Settings → Accessibility can still be turned on, and other apps' cannot.
 
+## 7h. WhatsApp, contacts, videos, other parents
+
+1. **Apps → Apps → WhatsApp → Close Status** (the Agent's accessibility switch must be on, see 7g).
+   Open WhatsApp → Updates and tap someone's status.
+   You should see: it closes at once with a message; chats and calls work. If the status still
+   plays, open **Apps → Blocked** on the dashboard, find the WhatsApp screen names the phone
+   reported, and tell me them (WhatsApp may have renamed the screen).
+2. Same with **Close Channels**: open a channel.
+3. **Calls & texts → Contacts → Show the phone's contacts here**.
+   You should see: the phone's contacts within a check-in or two; "Allow calls" adds one to the
+   allowed numbers.
+4. Switch on **Put the allowed numbers into the phone's contacts**.
+   You should see: the allowed numbers appear by name in the phone's Contacts/Phone app. Remove
+   one from the allowed list: it disappears from the phone's contacts too. Contacts that were
+   already on the phone are never touched.
+5. Phone: **User → Request a site or video**, paste a YouTube video link.
+   You should see on the dashboard: the request with the video's title, "Allow this video" and
+   "Allow all videos from ...". After approving, it is on the browser's start page.
+6. **Settings → Other parents**: add a "View only" login, sign in with it in another browser.
+   You should see: the phones, but any change says "This login can only look". A "Full" login
+   can change settings; both appear by name in **Activity**.
+
 ## 8. Inspection (certificate) - one test phone only
 
 1. Dashboard: **Browser → Inspection (advanced)**, switch it on, confirm.

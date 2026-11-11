@@ -76,7 +76,7 @@ public class UserActivity extends Activity {
                     .show()), n++ == 0 ? 16 : 8);
         }
         if (online && menuOn("site")) {
-            Ui.add(root, Ui.rowTile(this, "Request a site", R.drawable.ic_browser_tile, v -> promptSiteRequest()), n++ == 0 ? 16 : 8);
+            Ui.add(root, Ui.rowTile(this, "Request a site or video", R.drawable.ic_browser_tile, v -> promptSiteRequest()), n++ == 0 ? 16 : 8);
         }
         if (online && menuOn("app")) {
             Ui.add(root, Ui.rowTile(this, "Request a blocked app", R.drawable.ic_apps_tile, v -> promptAppRequest()), n++ == 0 ? 16 : 8);
@@ -114,9 +114,9 @@ public class UserActivity extends Activity {
     }
 
     private void promptSiteRequest() {
-        final android.widget.EditText input = Ui.field(this, "Site, e.g. example.com");
+        final android.widget.EditText input = Ui.field(this, "Site or YouTube link");
         Ui.alertDialog(this)
-                .setTitle("Request a site")
+                .setTitle("Request a site or video")
                 .setMessage("Type the site you would like. The administrator sees your request and decides.")
                 .setView(input)
                 .setNegativeButton("Cancel", null)

@@ -178,6 +178,17 @@ async function getSession(request, env) {
   const tag = decodeURIComponent(m[2]);
   if (!safeEqual(m[3], await hmac(env.ADMIN_PASSWORD, `sess:${tag}:${exp}`))) return null;
   if (tag === "admin") return { role: "admin" };
+  const hm = /^helper:(.+)$/.exec(tag);
+  if (hm) {
+    // Another parent's login: sees exactly what its owner (the administrator, or one client) sees.
+    const hp = await getJSON(env, `helper:${hm[1]}`, null);
+    if (!hp) return null; // removed since this cookie was issued
+    const extra = { helper: hp.id, helperName: hp.name, viewOnly: !!hp.viewOnly };
+    if (hp.owner === "admin") return { role: "admin", ...extra };
+    const oc = await getJSON(env, `client:${hp.owner}`, null);
+    if (!oc) return null;
+    return { role: "client", id: hp.owner, name: oc.name, ...extra };
+  }
   const cm = /^client:(.+)$/.exec(tag);
   if (!cm) return null;
   const c = await getJSON(env, `client:${cm[1]}`, null);
@@ -268,6 +279,8 @@ const publicDevice = (d) => ({
   trafficLog: (d.trafficLog || []).slice(-150),
   locations: (d.locations || []).slice(-100),
   calls: (d.calls || []).slice(-200),
+  contacts: d.contacts || [],
+  contactsAt: d.contactsAt || 0,
   siteHistory: siteHistoryView(d.siteHistory),
   texts: (d.texts || []).slice(-200),
   overrides: d.overrides || {},
@@ -477,7 +490,7 @@ async function adminApi(request, env, url, session) {
     const change = describeChange(method, url.pathname, body);
     if (change) {
       await auditAdd(env, {
-        who: session.role === "admin" ? "Administrator" : `Client "${session.name}"`,
+        who: session.helper ? `Parent "${session.helperName}"` : session.role === "admin" ? "Administrator" : `Client "${session.name}"`,
         text: change.text,
         ...(change.target && { target: change.target }),
       });
@@ -489,6 +502,42 @@ async function adminApi(request, env, url, session) {
 async function adminApiInner(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
+
+  // ---- other parents' logins ----
+  if (session.viewOnly && method !== "GET" && method !== "HEAD") return json({ error: "This login can only look, not change anything." }, 403);
+  if (session.helper && (path.startsWith("/api/2fa") || path.startsWith("/api/helpers") || (path.startsWith("/api/clients") && method !== "GET"))) {
+    return json({ error: "Only the main login can do this." }, 403);
+  }
+  const hpm = /^\/api\/helpers(?:\/([a-z0-9_-]{3,32}))?$/.exec(path);
+  if (hpm) {
+    const owner = session.role === "admin" ? "admin" : session.id;
+    if (!hpm[1] && method === "GET") {
+      const out = [];
+      for (const k of (await env.STATE.list({ prefix: "helper:" })).keys) {
+        const hp = await getJSON(env, k.name, null);
+        if (hp && hp.owner === owner) out.push({ id: hp.id, name: hp.name, viewOnly: !!hp.viewOnly, createdAt: hp.createdAt });
+      }
+      return json(out.sort((a, b) => a.createdAt - b.createdAt));
+    }
+    if (!hpm[1] && method === "POST") {
+      const hb = await request.json().catch(() => ({}));
+      const loginName = String(hb.loginName || "").trim().toLowerCase();
+      const password = String(hb.password || "");
+      if (!LOGIN_NAME_RE.test(loginName)) return json({ error: "Login name must be 3-32 lowercase letters, numbers, - or _, starting with a letter or number" }, 400);
+      if (password.length < 8) return json({ error: "Password must be at least 8 characters" }, 400);
+      if ((await getJSON(env, `helper:${loginName}`, null)) || (await getJSON(env, `client:${loginName}`, null))) return json({ error: "That login name is already taken" }, 400);
+      const rec = { id: loginName, name: String(hb.name || loginName).trim().slice(0, 60) || loginName, owner, viewOnly: hb.viewOnly === true, createdAt: Date.now(), ...(await hashClientPassword(password)) };
+      await putJSON(env, `helper:${loginName}`, rec);
+      return json({ id: rec.id, name: rec.name, viewOnly: rec.viewOnly, createdAt: rec.createdAt });
+    }
+    if (hpm[1] && method === "DELETE") {
+      const hp = await getJSON(env, `helper:${hpm[1]}`, null);
+      if (!hp || hp.owner !== owner) return json({ error: "Not found" }, 404);
+      await env.STATE.delete(`helper:${hpm[1]}`);
+      return json({ ok: true });
+    }
+    return json({ error: "Not found" }, 404);
+  }
 
   // ---- templates: a phone's settings saved under a name, to apply to other phones ----
   const tpl = /^\/api\/templates(?:\/([0-9a-f]{12})(\/apply)?)?$/.exec(path);
@@ -678,7 +727,7 @@ async function adminApiInner(request, env, url, session) {
     const password = String(body.password || "");
     if (!LOGIN_NAME_RE.test(loginName)) return json({ error: "Login name must be 3-32 lowercase letters, numbers, - or _, starting with a letter or number" }, 400);
     if (password.length < 6) return json({ error: "Password must be at least 6 characters" }, 400);
-    if (await getJSON(env, `client:${loginName}`, null)) return json({ error: "That login name is already taken" }, 400);
+    if ((await getJSON(env, `client:${loginName}`, null)) || (await getJSON(env, `helper:${loginName}`, null))) return json({ error: "That login name is already taken" }, 400);
     const rec = { id: loginName, name, createdAt: Date.now(), ...(await hashClientPassword(password)) };
     await putJSON(env, `client:${loginName}`, rec);
     return json(publicClient(rec));
@@ -700,7 +749,10 @@ async function adminApiInner(request, env, url, session) {
       userMenu: USER_MENU,
       origin: url.origin,
       masterIterations: MASTER_ITERATIONS,
-      session: session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name },
+      session: {
+        ...(session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name }),
+        ...(session.helper ? { helper: session.helperName, viewOnly: !!session.viewOnly } : {}),
+      },
     });
   }
   const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from|owner)$/.exec(path);
@@ -1316,6 +1368,12 @@ async function agentApi(request, env, url, ctx) {
       ...(x && Number.isFinite(Number(x.secs)) ? { secs: Math.max(0, Math.round(Number(x.secs))) } : {}),
       ...(x && typeof x.text === "string" ? { text: x.text.slice(0, 310) } : {}),
     });
+    if (Array.isArray(body.contacts)) {
+      d.contacts = body.contacts.slice(0, 1000).filter((x) => x && typeof x === "object")
+        .map((x) => ({ name: String(x.name || "").slice(0, 80), number: String(x.number || "").slice(0, 40) }));
+      d.contactsAt = now;
+      dirty = true;
+    }
     if (Array.isArray(body.calls) && body.calls.length) {
       d.calls = [...(d.calls || []), ...body.calls.slice(0, 150).map((x) => logRow(x, ["in", "out", "missed", "voicemail", "rejected", "blocked"]))].slice(-MAX_CALLS);
       dirty = true;
@@ -1651,8 +1709,14 @@ export default {
         // lookup itself already takes a different amount of time depending on whether the key
         // exists. That's fine: it's no worse than any login form ever is about that.
         const c = await getJSON(env, `client:${loginName}`, null);
-        if (!c || !(await verifyClientPassword(password, c))) return failed("Wrong login name or password.");
-        return succeeded(`client:${loginName}`, `Client "${c.name}"`);
+        if (c) {
+          if (!(await verifyClientPassword(password, c))) return failed("Wrong login name or password.");
+          return succeeded(`client:${loginName}`, `Client "${c.name}"`);
+        }
+        // Another parent's login (Settings → Other parents).
+        const hp = await getJSON(env, `helper:${loginName}`, null);
+        if (!hp || !(await verifyClientPassword(password, hp))) return failed("Wrong login name or password.");
+        return succeeded(`helper:${loginName}`, `Parent "${hp.name}"`);
       }
       if (url.pathname === "/logout") {
         return new Response(null, { status: 303, headers: { location: "/", "set-cookie": "sess=; Max-Age=0; Path=/" } });

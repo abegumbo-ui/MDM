@@ -40,8 +40,10 @@ final class Protection {
                 .putString("filterSkipApps", join(policy.optJSONArray("filterSkipApps")))
                 .putString("inAppMode", policy.optString("inAppBrowsers", "off"))
                 .putString("inAppExceptions", join(policy.optJSONArray("inAppExceptions")))
+                .putBoolean("waStatus", policy.optBoolean("blockWaStatus", false))
+                .putBoolean("waChannels", policy.optBoolean("blockWaChannels", false))
                 .apply();
-        if (!"off".equals(inAppMode(c)) && !Agent.accessibilityServiceOn(c)) remindAccessibility(c);
+        if ((!"off".equals(inAppMode(c)) || waStatus(c) || waChannels(c)) && !Agent.accessibilityServiceOn(c)) remindAccessibility(c);
     }
 
     private static String join(JSONArray a) {
@@ -68,6 +70,14 @@ final class Protection {
             cachedSkipFrom = s;
         }
         return cachedSkip.contains(pkg);
+    }
+
+    static boolean waStatus(Context c) {
+        return Agent.prefs(c).getBoolean("waStatus", false);
+    }
+
+    static boolean waChannels(Context c) {
+        return Agent.prefs(c).getBoolean("waChannels", false);
     }
 
     /** "Web pages inside apps": off, tabs or all (see InAppRules and BlockAccessibilityService). */

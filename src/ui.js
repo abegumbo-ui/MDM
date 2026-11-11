@@ -205,7 +205,7 @@ const GROUPS=[
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
  {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
  {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['history','Sites visited'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
- {key:'calls',label:'Calls & texts',icon:'phone',subs:[['rules','Who can call'],['calllog','Call log'],['texts','Texts']]},
+ {key:'calls',label:'Calls & texts',icon:'phone',subs:[['rules','Who can call'],['contacts','Contacts'],['calllog','Call log'],['texts','Texts']]},
 {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['appnet','Internet for apps'],['traffic','Traffic log']]},
  {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
  {key:'device',label:'Device',icon:'device',subs:[['location','Location'],['usermenu','Phone menu'],['menu','Settings menu'],['updates','Updates'],['device','Controls']]}];
@@ -317,7 +317,7 @@ function setCrumbs(parts){
 function pageHead(m,title,sub){m.append(h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,title),sub?h('div',{class:'sub'},sub):null)))}
 function render(){
  const m=document.getElementById('main');m.textContent='';
- const who=document.getElementById('who');if(who&&state&&state.session)who.textContent=state.session.role==='admin'?'Administrator':'Client account';
+ const who=document.getElementById('who');if(who&&state&&state.session)who.textContent=state.session.helper?state.session.helper+(state.session.viewOnly?' (view only)':''):state.session.role==='admin'?'Administrator':'Client account';
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){setCrumbs([['Devices','devices'],[d.name]]);renderDeviceDetail(m,d);return}openId=null}
  if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){setCrumbs([['Devices','devices'],[b.name]]);renderBrowserDetail(m,b);return}openBrowserId=null}
  if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){setCrumbs([['Devices','devices'],[w.name]]);renderWinDetail(m,w);return}openWinId=null}
@@ -483,7 +483,7 @@ function phoneLocalNote(m,text){
 /* ---------- Apps hub: Regular Apps / Home Screen Mode / Blocking / System Apps ---------- */
 function buildAppsHub(m,dv){
  const appsSub=getSub('apps');
- if(appsSub==='regular'){
+ if(appsSub==='regular'){renderWhatsApp(m,dv);
   renderAppRequests(m,dv);
   renderAppGroups(m,dv);
   // Same gating as the phone's own Regular Apps section (AdminActivity.buildAppsSection): while
@@ -603,6 +603,7 @@ function renderDeviceDetail(m,d){
  if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceSection(null);subs={};saveSubs()}
  const headBox=h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('device','currentColor')),h('div',{class:'grow'},h('h1',null,d.name),chipsFor(d,true)),btn('Refresh','tonal',load));
  m.append(headBox);
+ if(state.session&&state.session.viewOnly)m.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('div',{class:'mute'},'This login can only look. Changes have to be made from a full login.')));
 
  const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it at its next check-in (within about 5 minutes).');load()};
  const cmd=function(box,label,type,args,confirmMsg,cls){box.append(btn(label,cls||'tonal',async function(){
@@ -765,7 +766,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Per app: filtered, not filtered, or no internet','internet','appnet'],['Sites visited (browsing history)','browser','history'],['Web pages inside apps (links in Instagram, Gmail...)','browser','apps'],['Filter schedule: a different level at set times','browser','access'],['Weekly report','settings',null],['Who can call the phone, and who it can call','calls','rules'],['Allowed phone numbers','calls','rules'],['Call log','calls','calllog'],['Texts (SMS) log','calls','texts'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Per app: filtered, not filtered, or no internet','internet','appnet'],['Sites visited (browsing history)','browser','history'],['Web pages inside apps (links in Instagram, Gmail...)','browser','apps'],['Filter schedule: a different level at set times','browser','access'],['Weekly report','settings',null],['Who can call the phone, and who it can call','calls','rules'],['Allowed phone numbers','calls','rules'],['Call log','calls','calllog'],['Contacts on the phone','calls','contacts'],['WhatsApp Status and Channels','apps','regular'],['Other parents: more logins','settings',null],['Texts (SMS) log','calls','texts'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1139,6 +1140,7 @@ function buildCallsGroup(m,dv){
  const sub=getSub('calls');
  if(sub==='rules')renderCallRules(m,dv);
  else if(sub==='calllog')renderCallLog(m,dv);
+ else if(sub==='contacts')renderContacts(m,dv);
  else if(sub==='texts')renderTexts(m,dv);
 }
 const CALL_MODE_OPTS=[['all','Anyone'],['contacts','Only the phone\'s contacts and the numbers below'],['list','Only the numbers below']];
@@ -1174,6 +1176,19 @@ function renderCallRules(m,dv){
   for(const x of recent)nc.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},(x.name?x.name+' · ':'')+x.number),btn('Add','tonal',function(){c.callNumbers=(c.callNumbers||[]).concat([{name:x.name||'',number:x.number}]);save('Number added.')})))}
  m.append(nc);
  m.append(h('div',{class:'card'},h('div',{class:'mute small'},'Also in Security → Restrictions: "Block making calls" (all calls except emergency) and "Block sending and receiving SMS" (all texts). Android does not let an app block texts from just some numbers.')))}
+function renderContacts(m,dv){
+ const c=dv.config,save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const sw2=function(key,title,desc,on,off){return h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc)),sw(c[key],function(v){c[key]=v;save(v?on:off)}))};
+ m.append(h('div',{class:'card'},h('h2',null,'Contacts'),
+  sw2('reportContacts','Show the phone\'s contacts here','The list is sent whenever it changes on the phone.','The list arrives with the next check-in.','Switched off.'),
+  sw2('syncContacts','Put the allowed numbers into the phone\'s contacts','Every number under Who can call → Allowed numbers shows up by name in the phone app. Only contacts added this way are ever changed or removed. Android has no way to stop him adding contacts himself; for full control set calls to "Only the numbers below".','Allowed numbers go into the phone\'s contacts at the next check-in.','The contacts added this way are removed at the next check-in.')));
+ const list=dv.contacts||[],allowed=(c.callNumbers||[]).map(function(n){return n.number.replace(/\D/g,'').slice(-9)});
+ const card=h('div',{class:'card'},h('h2',null,'On the phone ('+list.length+')'));
+ if(dv.contactsAt)card.append(h('div',{class:'mute small'},'Updated '+ago(dv.contactsAt)));
+ if(!list.length)card.append(h('div',{class:'mute'},c.reportContacts?'Nothing yet. The list arrives with the phone\'s next check-in.':'Switch on "Show the phone\'s contacts here" above.'));
+ for(const x of list){const k=x.number.replace(/\D/g,'').slice(-9),ok=k&&allowed.includes(k);
+  card.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},(x.name||'(no name)')+' · '+x.number),ok?h('span',{class:'chip'},'allowed to call'):btn('Allow calls','tonal',function(){c.callNumbers=(c.callNumbers||[]).concat([{name:x.name,number:x.number}]);save('Added to the allowed numbers.')})))}
+ m.append(card)}
 function logToggle(m,dv,title,desc,key,extra){
  const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc)),
@@ -1210,6 +1225,17 @@ function renderAppFilterModes(m,dv){
  const rest=apps.filter(function(a){return !changed.includes(a)});
  if(rest.length){const more=h('details',{style:'margin-top:8px'},h('summary',{style:'cursor:pointer'},(changed.length?'Other apps':'All apps')+' ('+rest.length+')'));for(const a of rest)more.append(row(a));card.append(more)}
  if(!apps.length)card.append(h('div',{class:'mute'},'The phone has not reported its apps yet.'));
+ m.append(card)}
+
+/* ---------- Apps: WhatsApp Status and Channels ---------- */
+function renderWhatsApp(m,dv){
+ if(dv.isBrowser)return;
+ const c=dv.config,on=(dv.info||{}).accessibility;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const row=function(key,title,desc){return h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc)),sw(c[key],function(v){c[key]=v;save(v?'Saved. Applies at the next check-in.':'Allowed again.')}))};
+ const card=h('div',{class:'card'},h('h2',null,'WhatsApp'),h('div',{class:'mute'},'Chats, groups and calls keep working. These close parts of WhatsApp the moment they open. They work by the name of WhatsApp\'s screens, so a WhatsApp update can stop them working until we adjust; the phone log says "Closed WhatsApp Status" each time it works.'),
+  row('blockWaStatus','Close Status','Watching other people\'s statuses.'),row('blockWaChannels','Close Channels','Following and reading channels.'));
+ if((c.blockWaStatus||c.blockWaChannels)&&on===false)card.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--warn)'},'One step left on the phone: tap the notification "Finish setting up: turn on MDM Agent" and switch it on.'));
  m.append(card)}
 
 /* ---------- Browser: web pages inside apps ---------- */
@@ -1346,6 +1372,20 @@ function renderTemplateCard(m,dv){
   if(!list.length){pick.append(new Option('No templates yet',''));return}
   pick.append(new Option('Choose a template…',''));for(const t of list)pick.append(new Option(t.name,t.id))}).catch(function(){pick.textContent='';pick.append(new Option('Could not load templates',''))});
  m.append(card)}
+/* ---------- Settings: other parents ---------- */
+function renderHelpers(m){
+ const card=h('div',{class:'card'},h('h2',null,'Other parents'),h('div',{class:'mute'},'Give another parent their own login to the same phones. "Full" can change everything you can, except two-step login and other logins. "View only" can look but not change anything. Every change is recorded in Activity with who made it.'));
+ const box=h('div',{style:'margin-top:10px'},h('div',{class:'mute'},'Loading…'));card.append(box);
+ const draw=function(){call('GET','/api/helpers').then(function(list){box.textContent='';
+  if(!list.length)box.append(h('div',{class:'mute small'},'No other logins yet.'));
+  for(const x of list)box.append(h('div',{class:'row',style:'margin:6px 0'},h('span',{class:'grow'},x.name+' · login name '+x.id),h('span',{class:'chip'},x.viewOnly?'View only':'Full'),btn('Remove','danger',async function(){if(!confirm('Remove the login "'+x.id+'"? They are signed out at once.'))return;await call('DELETE','/api/helpers/'+x.id);draw()})));
+ }).catch(function(e){box.textContent='';box.append(h('div',{class:'mute'},e.message))})};
+ const name=h('input',{type:'text',placeholder:'Name, e.g. Sarah',style:'flex:1;min-width:120px'}),login=h('input',{type:'text',placeholder:'Login name',style:'flex:1;min-width:120px'}),pw=h('input',{type:'password',placeholder:'Password (8 or more)',style:'flex:1;min-width:140px'});
+ const vo=h('input',{type:'checkbox'});
+ card.append(h('div',{class:'row',style:'margin-top:12px;flex-wrap:wrap'},name,login,pw,h('label',{class:'row',style:'cursor:pointer'},vo,'View only'),btn('Add login','',async function(){
+  try{await call('POST','/api/helpers',{name:name.value.trim(),loginName:login.value.trim().toLowerCase(),password:pw.value,viewOnly:vo.checked});snack('Added. They sign in at this same address with their login name and password.');name.value='';login.value='';pw.value='';draw()}catch(e){snack(e.message,1)}})));
+ draw();m.append(card)}
+
 function renderTemplates(m){
  const box=h('div',null,h('div',{class:'card'},h('div',{class:'mute'},'Loading…')));m.append(box);
  call('GET','/api/templates').then(function(list){
@@ -1873,7 +1913,8 @@ function renderSettings(m){
   btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up within about 5 minutes.');render()}),
   btn('Remove logo','outline',async function(){await call('DELETE','/api/logo');iconVer.__logo=Date.now();snack('Logo removed.');render()})));
  m.append(logoCard);
- if(state.session.role==='admin'){renderTwoStep(m);renderAlerts(m)}
+ if(state.session.role==='admin'){if(!state.session.helper)renderTwoStep(m);renderAlerts(m)}
+ if(!state.session.helper)renderHelpers(m);
  m.append(h('div',{class:'card'},h('h2',null,'Everything else moved'),
   h('div',{class:'mute'},'New-apps approval, Factory Reset Protection, Home screen mode, auto-update, Wi-Fi reporting, the master code, and every restriction switch are now each phone\'s own — open a phone and look for its Settings box.')));
 }

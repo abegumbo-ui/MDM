@@ -36,6 +36,21 @@ public final class InAppRules {
         return c.contains("customtab") || c.contains("custom_tab");
     }
 
+    public static final Set<String> WHATSAPP = new HashSet<>(Arrays.asList("com.whatsapp", "com.whatsapp.w4b"));
+
+    /**
+     * WhatsApp Status (watching someone's status) and Channels, recognised by the name of the
+     * screen that opens. Chats, calls and groups are other screens and keep working. WhatsApp can
+     * rename its screens in an update; the dashboard's "Blocked apps and screens" lists every
+     * screen the phone has seen, which is how a new name would be found.
+     */
+    public static boolean whatsAppBlocks(String pkg, String className, boolean status, boolean channels) {
+        if (pkg == null || className == null || !WHATSAPP.contains(pkg)) return false;
+        String c = className.toLowerCase(Locale.ROOT);
+        if (status && (c.contains("statusplayback") || c.contains(".status.playback") || c.contains("mystatus") || c.contains("statusesactivity"))) return true;
+        return channels && (c.contains("newsletter") || c.contains("channel"));
+    }
+
     /** Should this screen be closed? hasWebView: the app's screen contains a web page. */
     public static boolean blocks(String mode, String pkg, String className, boolean hasWebView, Collection<String> exceptions) {
         if (mode == null || "off".equals(mode)) return false;

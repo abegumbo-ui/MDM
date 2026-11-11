@@ -214,6 +214,8 @@ export async function auditList(env) {
 
 /** A plain-English line for an admin or client action, or null for ones not worth recording. */
 export function describeChange(method, path, body) {
+  if (path === "/api/helpers" && method === "POST") return { text: `Added another parent's login "${(body && body.loginName) || ""}"${body && body.viewOnly ? " (view only)" : ""}` };
+  if (/^\/api\/helpers\/[^/]+$/.test(path) && method === "DELETE") return { text: "Removed another parent's login " + path.split("/").pop() };
   const m = /^\/api\/(devices|browsers|windevices)\/([0-9a-f]+)(\/[a-z-]+)?$/.exec(path);
   const target = m ? { kind: m[1], id: m[2] } : null;
   const sub = m ? m[3] || "" : "";
