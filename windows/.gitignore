@@ -1,5 +1,6 @@
 LockGuard.Installer/Resources/
 LockGuard.Service/DashboardUrl.txt
+LockGuard.Service/Build.txt
 
 bin/
 obj/

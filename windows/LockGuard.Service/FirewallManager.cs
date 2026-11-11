@@ -110,6 +110,9 @@ public static class FirewallManager
     /// </summary>
     public static bool SetFilterRules(bool on)
     {
+        // The same block in the layer under every firewall, which still counts when another
+        // firewall (Avast...) has taken over from Windows Firewall. See WfpBlocker.
+        WfpBlocker.Set(on);
         try
         {
             dynamic policy = CreatePolicy();

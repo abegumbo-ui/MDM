@@ -373,6 +373,29 @@ function startSites(allow) {
   return allow.filter((h) => !EMAIL_HELPERS.has(h)).slice(0, 24);
 }
 
+/** The newest published LockGuard (GitHub release "lockguard-vN" with LockGuard-Setup.exe), cached 10 minutes. */
+let lockguardCache = { at: 0, value: null };
+async function latestLockguard(env) {
+  if (Date.now() - lockguardCache.at < 10 * 60 * 1000) return lockguardCache.value;
+  lockguardCache.at = Date.now();
+  try {
+    const repo = env.GITHUB_REPO || DEFAULT_REPO;
+    const r = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, { headers: { "user-agent": "family-mdm-dashboard", accept: "application/vnd.github+json" } });
+    if (!r.ok) return lockguardCache.value;
+    for (const rel of await r.json()) {
+      const m = /^lockguard-v(\d+)$/.exec(rel.tag_name || "");
+      const asset = (rel.assets || []).find((a) => a.name === "LockGuard-Setup.exe");
+      if (!m || !asset || rel.draft || rel.prerelease) continue;
+      const digest = /^sha256:([0-9a-f]{64})$/i.exec(asset.digest || "");
+      lockguardCache.value = { build: Number(m[1]), url: asset.browser_download_url, sha256: digest ? digest[1] : "" };
+      break;
+    }
+  } catch {
+    // keep whatever was known before
+  }
+  return lockguardCache.value;
+}
+
 /** The browsers' start page on a PC with "approved sites only": big buttons to the allowed sites. */
 function startPageHtml(sites) {
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -1720,6 +1743,8 @@ async function windowsApi(request, env, url, ctx) {
       allowedPrograms: d.allowedPrograms || [],
       commands,
       filter: winFilter(env, d, now, url.hostname),
+      // Only computers that can update themselves report a build number.
+      ...(Number(body.info && body.info.build) > 0 ? await (async () => { const u = await latestLockguard(env); return u && u.build > Number(body.info.build) ? { update: u } : {}; })() : {}),
       pollSeconds: POLL_SECONDS,
     });
   }

@@ -64,6 +64,20 @@ test("a new PC gets the web filter: Moderate, SafeSearch, YouTube, no incognito,
   assert.deepEqual(after.siteHistory[day]["bet365.com"], [1, 1, ""]);
   assert.equal(after.events[0].m, "Closed a blocked program: tor.exe");
 
+  // A computer that can update itself is told about a newer LockGuard; an up-to-date one is not.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u) => String(u).startsWith("https://api.github.com/")
+    ? new Response(JSON.stringify([{ tag_name: "latest", assets: [] }, { tag_name: "lockguard-v40", assets: [{ name: "LockGuard-Setup.exe", browser_download_url: "https://github.com/x/releases/download/lockguard-v40/LockGuard-Setup.exe", digest: "sha256:" + "ab".repeat(32) }] }]))
+    : realFetch(u);
+  try {
+    const u1 = await sync({ info: { build: 33 } });
+    assert.deepEqual(u1.update, { build: 40, url: "https://github.com/x/releases/download/lockguard-v40/LockGuard-Setup.exe", sha256: "ab".repeat(32) });
+    assert.equal((await sync({ info: { build: 40 } })).update, undefined);
+    assert.equal((await sync({ info: {} })).update, undefined, "a computer built locally never updates");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
   // Filter off: the computer is told to undo it.
   await put({ filterOn: false });
   assert.equal((await sync()).filter, null);
