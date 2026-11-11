@@ -112,6 +112,9 @@ public class BrowserAddonActivity extends Activity {
             JSONObject policy = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
             WebFilter.setPolicy(this, policy.optString("browserFilter", "off"), policy.optString("browserFilterBase", ""));
             WebFilter.setYoutubeMode(this, policy.optString("youtubeMode", "channels"));
+            boolean noPictures = policy.optBoolean("blockImages", false);
+            webView.getSettings().setBlockNetworkImage(noPictures);
+            webView.getSettings().setLoadsImagesAutomatically(!noPictures);
         } catch (Exception e) {
             WebFilter.setPolicy(this, "off", "");
             WebFilter.setYoutubeMode(this, "channels");

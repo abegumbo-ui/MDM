@@ -23,9 +23,38 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     private final boolean restricted;
     private final Set<String> bypass;
 
+    private final boolean blockImages;
+    private final Set<String> imagesAllow;
+    // A 1x1 see-through picture, sent in place of a blocked one so pages keep their shape without "broken image" marks.
+    private static final byte[] BLANK_GIF = {0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, (byte) 0x80, 0, 0, 0, 0, 0, (byte) 0xff, (byte) 0xff, (byte) 0xff,
+            0x21, (byte) 0xf9, 4, 1, 0, 0, 0, 0, 0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 1, 0, 0x3b};
+
     public YoutubeInspector(boolean restricted, Set<String> bypass) {
+        this(restricted, bypass, false, java.util.Collections.<String>emptySet());
+    }
+
+    /** blockImages: replace every picture on web pages with a blank, except on (or from) the sites in imagesAllow. */
+    public YoutubeInspector(boolean restricted, Set<String> bypass, boolean blockImages, Set<String> imagesAllow) {
         this.restricted = restricted;
         this.bypass = bypass;
+        this.blockImages = blockImages;
+        this.imagesAllow = imagesAllow;
+    }
+
+    private boolean listed(String host) {
+        if (host == null) return false;
+        for (String a : imagesAllow) if (host.equals(a) || host.endsWith("." + a)) return true;
+        return false;
+    }
+
+    private boolean imageBlocked(InspectProxy.Request r) {
+        if (!blockImages || !r.method.equals("GET")) return false;
+        String dest = r.headers.get("Sec-Fetch-Dest");
+        boolean image = dest != null ? dest.equals("image")
+                : r.path.toLowerCase(java.util.Locale.ROOT).matches("[^?]*\\.(jpe?g|png|gif|webp|avif|bmp|svg|ico)(\\?.*)?");
+        if (!image) return false;
+        // Allowed if the page showing it, or the picture's own site, is on the "show pictures" list.
+        return !listed(SitePolicy.hostOf(r.headers.get("Referer"))) && !listed(SitePolicy.hostOf(r.host));
     }
 
     static boolean isYoutube(String host) {
@@ -51,6 +80,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
 
     @Override
     public InspectProxy.Response onRequest(InspectProxy.Request r) {
+        if (imageBlocked(r)) return new InspectProxy.Response(200, "image/gif", BLANK_GIF);
         if (!restricted || !isYoutube(r.host)) return null;
         r.headers.set(YoutubeRestricted.RESTRICT_HEADER, YoutubeRestricted.RESTRICT_VALUE);
         if (!isDocument(r)) return null;

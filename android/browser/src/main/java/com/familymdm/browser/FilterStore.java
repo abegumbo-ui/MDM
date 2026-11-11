@@ -90,6 +90,15 @@ final class FilterStore {
         prefs(c).edit().putString("youtubeMode", "restricted".equals(mode) ? "restricted" : "channels").apply();
     }
 
+    /** "Block pictures on web pages" from the dashboard: every site, not just the ones marked one by one. */
+    static void setBlockImages(Context c, boolean on) {
+        prefs(c).edit().putBoolean("blockAllImages", on).apply();
+    }
+
+    static boolean blockImages(Context c) {
+        return prefs(c).getBoolean("blockAllImages", false);
+    }
+
     static boolean youtubeRestricted(Context c) {
         return "restricted".equals(prefs(c).getString("youtubeMode", "channels"));
     }

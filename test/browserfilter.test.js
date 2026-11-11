@@ -93,3 +93,24 @@ test("browser inspection is off unless exactly true, and its skip list is saniti
   assert.equal(buildAgentPolicy(normalizeConfig({}), []).tlsInspection, false);
   assert.deepEqual(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ tlsInspection: true })).filter((l) => l.startsWith("Browser inspection")), ["Browser inspection: on"]);
 });
+
+test("safe search, YouTube Restricted Mode everywhere and picture blocking are off unless chosen, and reach the phone", async () => {
+  const d = normalizeConfig({});
+  assert.deepEqual([d.safeSearch, d.youtubeDns, d.blockImages, d.imagesAllow], [false, "off", false, []]);
+  for (const bad of ["true", 1, null]) assert.equal(normalizeConfig({ safeSearch: bad, blockImages: bad }).safeSearch || normalizeConfig({ blockImages: bad }).blockImages, false);
+  for (const bad of ["Strict", "on", true, ""]) assert.equal(normalizeConfig({ youtubeDns: bad }).youtubeDns, "off", String(bad));
+  const p = buildAgentPolicy({ safeSearch: true, youtubeDns: "moderate", blockImages: true, imagesAllow: ["Maps.Google.com", "not a host!"] }, []);
+  assert.deepEqual([p.safeSearch, p.youtubeDns, p.blockImages, p.imagesAllow], [true, "moderate", true, ["maps.google.com"]]);
+  assert.deepEqual(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ safeSearch: true, youtubeDns: "strict", blockImages: true })).filter((l) => /SafeSearch|Restricted Mode|pictures/.test(l)),
+    ["Forced SafeSearch: on", "YouTube Restricted Mode everywhere: strict", "Block pictures on web pages: on"]);
+
+  // A standalone Browser is told to hide pictures too.
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const reg = await (await req("/browser/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ info: { model: "P" } }) })).json();
+  const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
+  const sync = async () => await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json();
+  assert.equal((await sync()).filter.blockImages, false);
+  await req(`/api/browsers/${reg.token.split(".")[0]}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ blockImages: true }) });
+  assert.equal((await sync()).filter.blockImages, true);
+});

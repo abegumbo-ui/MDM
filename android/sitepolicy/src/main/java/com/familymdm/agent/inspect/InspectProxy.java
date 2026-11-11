@@ -306,6 +306,7 @@ public final class InspectProxy implements Closeable {
             try {
                 up = upstream.open(host, p, tls);
             } catch (IOException e) {
+                if (Boolean.getBoolean("mdm.inspect.debug")) e.printStackTrace(); // java -Dmdm.inspect.debug=true, when a check needs explaining
                 writeSimple(out, 502, "Could not reach " + host, true);
                 return;
             }

@@ -93,6 +93,23 @@ Dashboard: **Browser → At a glance** should describe each setting in plain wor
    blocked. Under a video there are no suggested videos and no comments.
 4. Watch for: suggested videos or comments showing anyway (YouTube changes its pages; tell me).
 
+## 7b. Safe search, YouTube Restricted Mode, pictures
+
+Dashboard: **Browser → Filter level → Safe search and pictures**.
+
+1. Switch on **Force SafeSearch**. On the phone, in Chrome, search Google for something and open
+   Google's search settings.
+   You should see: SafeSearch is on and cannot be turned off ("locked by your network" or similar).
+   The same in Bing. A key/VPN icon is in the status bar.
+2. Set **YouTube Restricted Mode everywhere** to Strict. Open the YouTube app.
+   You should see: under the profile menu, Restricted Mode is on and locked; comments are hidden.
+3. Watch for: Google, Bing, or YouTube not loading at all while these are on. Note which one.
+4. Switch on **Block pictures on web pages**. Open a news site in the Agent's browser.
+   You should see: the page loads with no pictures.
+5. Open the same site in Chrome.
+   You should see: pictures still show, unless Inspection (section 8) is on, in which case they
+   are gone there too. A site on the "show pictures" list keeps its pictures in Chrome.
+
 ## 8. Inspection (certificate) - one test phone only
 
 1. Dashboard: **Browser → Inspection (advanced)**, switch it on, confirm.

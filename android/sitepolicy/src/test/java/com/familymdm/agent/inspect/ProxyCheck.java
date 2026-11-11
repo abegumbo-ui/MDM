@@ -339,6 +339,25 @@ public class ProxyCheck {
         YoutubeInspector off = new YoutubeInspector(false, Collections.<String>emptySet());
         check(off.onRequest(new InspectProxy.Request("GET", "www.youtube.com", 443, true, "/", dh)) == null && !off.rewrites(hr, "text/html"), "with the setting off, YouTube is untouched");
 
+        // ---- pictures ----
+        YoutubeInspector pics = new YoutubeInspector(false, Collections.<String>emptySet(), true, new HashSet<>(Collections.singleton("school.test")));
+        InspectProxy.Headers ih = new InspectProxy.Headers();
+        ih.add("Sec-Fetch-Dest", "image");
+        ih.add("Referer", "https://news.test/story");
+        InspectProxy.Response blank = pics.onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a", ih));
+        check(blank != null && blank.status == 200 && blank.contentType.equals("image/gif") && blank.body.length == 43 && blank.body[0] == 'G', "a picture is replaced by a blank one");
+        InspectProxy.Headers ph = new InspectProxy.Headers();
+        ph.add("Sec-Fetch-Dest", "document");
+        check(pics.onRequest(new InspectProxy.Request("GET", "news.test", 443, true, "/story", ph)) == null, "the page itself still loads");
+        check(pics.onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/photo.JPG?w=200", new InspectProxy.Headers())) != null, "a picture is recognised by its file name when the browser does not say");
+        check(pics.onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/data.json", new InspectProxy.Headers())) == null, "other files are untouched");
+        InspectProxy.Headers sh = new InspectProxy.Headers();
+        sh.add("Sec-Fetch-Dest", "image");
+        sh.add("Referer", "https://www.school.test/lesson");
+        check(pics.onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a", sh)) == null, "pictures show on a page from the 'show pictures' list");
+        check(pics.onRequest(new InspectProxy.Request("GET", "img.school.test", 443, true, "/a", ih)) == null, "pictures from a listed site show anywhere");
+        check(new YoutubeInspector(false, Collections.<String>emptySet()).onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a", ih)) == null, "with the setting off, pictures are untouched");
+
         proxy2.close();
         System.out.println(failures == 0 ? "ALL OK" : failures + " FAILED");
         System.exit(failures == 0 ? 0 : 1);

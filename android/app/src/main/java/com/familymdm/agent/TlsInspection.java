@@ -106,7 +106,16 @@ final class TlsInspection {
                 if (!h.isEmpty()) bypass.add(h);
             }
         }
-        rules = new YoutubeInspector("restricted".equals(policy.optString("youtubeMode", "channels")), bypass);
+        Set<String> imagesAllow = new HashSet<>();
+        JSONArray ia = policy.optJSONArray("imagesAllow");
+        if (ia != null) {
+            for (int i = 0; i < ia.length(); i++) {
+                String h = ia.optString(i, "").trim().toLowerCase(Locale.ROOT);
+                if (!h.isEmpty()) imagesAllow.add(h.startsWith("www.") ? h.substring(4) : h);
+            }
+        }
+        rules = new YoutubeInspector("restricted".equals(policy.optString("youtubeMode", "channels")), bypass,
+                policy.optBoolean("blockImages", false), imagesAllow);
     }
 
     private static void enable(Context c, DevicePolicyManager dpm, ComponentName admin, boolean applied) throws Exception {

@@ -159,11 +159,13 @@ public class BrowserActivity extends Activity {
                 Bundle b = rm == null ? null : rm.getApplicationRestrictions();
                 FilterStore.setPolicy(this, b == null ? "off" : b.getString("filterTier", "off"), b == null ? "" : b.getString("filterBase", ""));
                 FilterStore.setYoutubeMode(this, b == null ? "channels" : b.getString("youtubeMode", "channels"));
+                FilterStore.setBlockImages(this, b != null && b.getBoolean("blockImages", false));
             } else if (m == Mode.ONLINE) {
                 FilterStore.refreshAsync(this, false);
             } else {
                 FilterStore.setPolicy(this, "off", "");
                 FilterStore.setYoutubeMode(this, "channels");
+                FilterStore.setBlockImages(this, false);
             }
             filterModeOk = (m == Mode.AGENT || m == Mode.ONLINE) && !"off".equals(FilterStore.tier(this));
         } catch (Exception e) {
@@ -609,8 +611,8 @@ public class BrowserActivity extends Activity {
                 return false;
             }
             if (SitePolicy.youtubeRestrictedAllows(url)) {
-                t.webView.getSettings().setBlockNetworkImage(false);
-                t.webView.getSettings().setLoadsImagesAutomatically(true);
+                t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
+                t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
                 return true;
             }
             showNotAvailable(t, "This part of YouTube isn't available.");
@@ -623,14 +625,14 @@ public class BrowserActivity extends Activity {
             int yt = youtubeCheck(t, url, sitesNow);
             if (yt == YT_PENDING) return false;
             if (yt == YT_ALLOW) {
-                t.webView.getSettings().setBlockNetworkImage(false);
-                t.webView.getSettings().setLoadsImagesAutomatically(true);
+                t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
+                t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
                 return true;
             }
             if (mode == Mode.AGENT && browseWindowActive()) {
                 reportNewHostOnce(url);
-                t.webView.getSettings().setBlockNetworkImage(false);
-                t.webView.getSettings().setLoadsImagesAutomatically(true);
+                t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
+                t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
                 return true;
             }
             // Moderate / Strict filter: everything is open except the blocked categories. Only once the
@@ -638,16 +640,16 @@ public class BrowserActivity extends Activity {
             if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.active(this)) {
                 String host = SitePolicy.hostOf(url);
                 if (host != null && !FilterStore.blocks(this, host)) {
-                    t.webView.getSettings().setBlockNetworkImage(false);
-                    t.webView.getSettings().setLoadsImagesAutomatically(true);
+                    t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
+                    t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
                     return true;
                 }
             }
             showBlocked(t, url, mode);
             return false;
         }
-        t.webView.getSettings().setBlockNetworkImage(match.blockImages);
-        t.webView.getSettings().setLoadsImagesAutomatically(!match.blockImages);
+        t.webView.getSettings().setBlockNetworkImage(match.blockImages || FilterStore.blockImages(this));
+        t.webView.getSettings().setLoadsImagesAutomatically(!(match.blockImages || FilterStore.blockImages(this)));
         return true;
     }
 
@@ -821,6 +823,7 @@ public class BrowserActivity extends Activity {
                 if (filter != null) FilterStore.setPolicy(this, filter.optString("tier", "off"), filter.optString("base", ""));
                 else FilterStore.setPolicy(this, "off", ""); // an older dashboard that does not know about filtering
                 FilterStore.setYoutubeMode(this, filter == null ? "channels" : filter.optString("youtube", "channels"));
+                FilterStore.setBlockImages(this, filter != null && filter.optBoolean("blockImages", false));
                 filterModeOk = !"off".equals(FilterStore.tier(this));
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list
