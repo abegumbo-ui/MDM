@@ -100,7 +100,7 @@ final class TcpRelay {
             // -- otherwise this is a syscall on every single TCP connection the device makes, for
             // a feature nobody's using.
             int uid = -1;
-            if (!NetworkBlocklist.list(context).isEmpty()) {
+            if (!NetworkBlocklist.list(context).isEmpty() || BrowserCategoryFilter.needsUid(context)) {
                 uid = uidResolver.uidFor(NetUtil.IPPROTO_TCP, new InetSocketAddress(ipToInet(srcIp), srcPort), new InetSocketAddress(ipToInet(dstIp), dstPort));
                 tcb.pkg = uidResolver.packageFor(uid);
                 tcb.networkBlocked = NetworkBlocklist.isBlocked(context, tcb.pkg);
@@ -179,7 +179,7 @@ final class TcpRelay {
                     // PerAppDnsAllowlist). No SNI at all means no hostname to check, so blocked.
                     blocked = hostname == null || !PerAppDnsAllowlist.allows(context, tcb.pkg, hostname);
                 } else {
-                    blocked = hostname != null && DnsBlocklist.blocks(context, hostname) && !DnsAllowlist.allows(context, hostname);
+                    blocked = hostname != null && (DnsBlocklist.blocks(context, hostname) || BrowserCategoryFilter.blocks(context, tcb.pkg, hostname)) && !DnsAllowlist.allows(context, hostname);
                 }
                 logAndMaybeBlock(tcb, hostname, blocked);
                 if (blocked) return; // logAndMaybeBlock already RST + removed it
