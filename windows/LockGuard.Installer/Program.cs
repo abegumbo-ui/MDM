@@ -19,8 +19,16 @@ internal static class Program
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "LockGuard");
 
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
+        // "/quiet": the service updating itself (it runs as the system, so already elevated).
+        // No windows, no messages, and Setup is not opened.
+        bool quiet = args.Any(a => a.Equals("/quiet", StringComparison.OrdinalIgnoreCase));
+        if (quiet && IsElevated())
+        {
+            try { Install(); return 0; }
+            catch { return 1; }
+        }
         // The app manifest already asks Windows for requireAdministrator, which should elevate
         // this before Main() ever runs -- but single-file published apps have been seen not to
         // honor that reliably. This is the same fallback a plain "right-click, Run as

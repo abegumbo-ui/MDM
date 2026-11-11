@@ -27,6 +27,7 @@ jobs:
           DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
         run: |
           if ($env:DASHBOARD_URL) { Set-Content -Path windows\LockGuard.Service\DashboardUrl.txt -Value $env:DASHBOARD_URL -NoNewline }
+          Set-Content -Path windows\LockGuard.Service\Build.txt -Value "${{ github.run_number }}" -NoNewline
 
       - name: Test the filter rules
         run: dotnet test windows\LockGuard.Tests\LockGuard.Tests.csproj -c Release

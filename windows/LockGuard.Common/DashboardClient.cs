@@ -57,6 +57,15 @@ public sealed class DashboardClient
         /// <summary>The web filter's settings; null = no web filter on this computer.</summary>
         [JsonPropertyName("filter")] public FilterPolicy? Filter { get; set; }
         [JsonPropertyName("pollSeconds")] public int PollSeconds { get; set; }
+        /// <summary>The newest published LockGuard, when newer than the build this computer reported.</summary>
+        [JsonPropertyName("update")] public UpdateInfo? Update { get; set; }
+    }
+
+    public sealed class UpdateInfo
+    {
+        [JsonPropertyName("build")] public int Build { get; set; }
+        [JsonPropertyName("url")] public string Url { get; set; } = "";
+        [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
     }
 
     public sealed class DashboardCommand

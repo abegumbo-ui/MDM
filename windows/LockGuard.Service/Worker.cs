@@ -146,13 +146,14 @@ public sealed class Worker : BackgroundService
         hostname = Environment.MachineName,
         tz = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes,
         version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
+        build = Updater.Build,
         accounts = Accounts.Report(),
         filter = new
         {
             on = _filter.On,
             running = _proxy.Running,
             listsReady = _lists.Ready(_filter.Level) || _filter.Level == "approved",
-            error = _proxy.LastError ?? _lists.LastError ?? BrowserPolicies.LastError,
+            error = _proxy.LastError ?? _lists.LastError ?? BrowserPolicies.LastError ?? (_filter.On ? WfpBlocker.LastError : null),
         },
     };
 
@@ -197,7 +198,8 @@ public sealed class Worker : BackgroundService
                 await ApplyFilterAsync();
             }
 
-            if (result.Commands.Any(c => c.Type == "uninstall")) BeginUninstall();
+            if (result.Commands.Any(c => c.Type == "uninstall")) { BeginUninstall(); return; }
+            await Updater.MaybeUpdateAsync(result.Update, Note);
         }
         catch (Exception e)
         {

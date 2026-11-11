@@ -25,6 +25,10 @@
     <EmbeddedResource Include="DashboardUrl.txt" Condition="Exists('DashboardUrl.txt')">
       <LogicalName>DashboardUrl.txt</LogicalName>
     </EmbeddedResource>
+    <!-- The CI run number (= the "lockguard-vN" release), for self-updating. Absent locally. -->
+    <EmbeddedResource Include="Build.txt" Condition="Exists('Build.txt')">
+      <LogicalName>Build.txt</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>
