@@ -24,6 +24,8 @@
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <application
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:name=".LockdownApplication"
         android:allowBackup="false"
         android:label="Lockdown Setup"

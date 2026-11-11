@@ -118,7 +118,8 @@ public class BrowserActivity extends Activity {
         super.onCreate(savedInstanceState);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Color.WHITE); // the page area: web pages are drawn on white
+        getWindow().setStatusBarColor(BAR_DARK);
 
         root.addView(buildTabStrip());
         root.addView(buildToolbar());
@@ -206,6 +207,17 @@ public class BrowserActivity extends Activity {
 
     // ---------- the two toolbars ----------
 
+    // The same dark look as the Agent and the dashboard (see res/values/colors.xml).
+    private static final int BAR_DARK = 0xFF0B0D12, BAR = 0xFF12151C, FIELD = 0xFF1D222C, ON_BAR = 0xFFE4E7EC,
+            ON_BAR_MUTED = 0xFF98A2B3, INK = 0xFF101828, INK_MUTED = 0xFF475467, ACCENT = 0xFF4F46E5;
+
+    private android.graphics.drawable.GradientDrawable rounded(int fill, int radiusDp) {
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
     private HorizontalScrollView buildTabStrip() {
         tabStrip = new LinearLayout(this);
         tabStrip.setOrientation(LinearLayout.HORIZONTAL);
@@ -213,7 +225,7 @@ public class BrowserActivity extends Activity {
         HorizontalScrollView scroll = new HorizontalScrollView(this);
         scroll.setHorizontalScrollBarEnabled(false);
         scroll.addView(tabStrip);
-        scroll.setBackgroundColor(Color.parseColor("#ECECEC"));
+        scroll.setBackgroundColor(BAR_DARK);
         return scroll;
     }
 
@@ -221,7 +233,7 @@ public class BrowserActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setBackgroundColor(Color.parseColor("#ECECEC"));
+        bar.setBackgroundColor(BAR);
         int pad = dp(6);
         bar.setPadding(pad, pad, pad, pad);
 
@@ -237,8 +249,11 @@ public class BrowserActivity extends Activity {
         addressBar.setHint("Type a full web address, e.g. example.com");
         addressBar.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         addressBar.setImeOptions(EditorInfo.IME_ACTION_GO);
-        addressBar.setBackgroundColor(Color.WHITE);
-        addressBar.setPadding(dp(12), dp(8), dp(12), dp(8));
+        addressBar.setBackground(rounded(FIELD, 20));
+        addressBar.setTextColor(ON_BAR);
+        addressBar.setHintTextColor(ON_BAR_MUTED);
+        addressBar.setTextSize(15);
+        addressBar.setPadding(dp(14), dp(9), dp(14), dp(9));
         addressBar.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
                 go(addressBar.getText().toString());
@@ -270,7 +285,7 @@ public class BrowserActivity extends Activity {
         android.graphics.Paint paint = new android.graphics.Paint();
         paint.setAntiAlias(true);
         paint.setTextSize(dp(20));
-        paint.setColor(Color.DKGRAY);
+        paint.setColor(ON_BAR);
         paint.setTextAlign(android.graphics.Paint.Align.CENTER);
         android.graphics.Rect b = new android.graphics.Rect();
         paint.getTextBounds(glyph, 0, glyph.length(), b);
@@ -295,6 +310,7 @@ public class BrowserActivity extends Activity {
             Bundle b = rm == null ? null : rm.getApplicationRestrictions();
             long until = b == null ? 0 : b.getLong("browseUntil", 0);
             TextView notice = body("Free browsing until " + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(until)));
+            notice.setTextColor(getColor(R.color.m3_on_surface_variant)); // this one sits on the dark menu, not a white page
             notice.setPadding(0, dp(4), 0, dp(12));
             box.addView(notice);
         }
@@ -318,7 +334,7 @@ public class BrowserActivity extends Activity {
         TextView row = new TextView(this);
         row.setText(label);
         row.setTextSize(16);
-        row.setTextColor(Color.parseColor("#FFFFFF"));
+        row.setTextColor(getColor(R.color.m3_on_surface));
         row.setPadding(dp(4), dp(14), dp(4), dp(14));
         row.setOnClickListener(onClick);
         box.addView(row);
@@ -332,7 +348,7 @@ public class BrowserActivity extends Activity {
         TextView label2 = new TextView(this);
         label2.setText(label);
         label2.setTextSize(16);
-        label2.setTextColor(Color.parseColor("#FFFFFF"));
+        label2.setTextColor(getColor(R.color.m3_on_surface));
         row.addView(label2, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         android.widget.CheckBox box2 = new android.widget.CheckBox(this);
         box2.setButtonTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.m3_primary)));
@@ -429,15 +445,16 @@ public class BrowserActivity extends Activity {
             chip.setOrientation(LinearLayout.HORIZONTAL);
             chip.setGravity(Gravity.CENTER_VERTICAL);
             chip.setPadding(dp(12), dp(8), dp(8), dp(8));
-            chip.setBackgroundColor(i == currentIndex ? Color.WHITE : Color.parseColor("#ECECEC"));
+            if (i == currentIndex) chip.setBackground(rounded(BAR, 10));
+            else chip.setBackgroundColor(Color.TRANSPARENT);
             TextView label = new TextView(this);
             String title = t.title == null || t.title.isEmpty() ? "New tab" : t.title;
             label.setText(title.length() > 16 ? title.substring(0, 16) + "…" : title);
-            label.setTextColor(Color.DKGRAY);
+            label.setTextColor(i == currentIndex ? ON_BAR : ON_BAR_MUTED);
             chip.addView(label);
             TextView close = new TextView(this);
             close.setText("  ×");
-            close.setTextColor(Color.GRAY);
+            close.setTextColor(ON_BAR_MUTED);
             close.setOnClickListener(v -> closeTab(idx));
             chip.addView(close);
             chip.setOnClickListener(v -> showTab(idx));
@@ -922,7 +939,8 @@ public class BrowserActivity extends Activity {
             t.overlay = new LinearLayout(this);
             t.overlay.setOrientation(LinearLayout.VERTICAL);
             int pad = dp(20);
-            t.overlay.setPadding(pad, pad, pad, pad);
+            t.overlay.setPadding(pad, dp(40), pad, pad);
+            t.overlay.setBackgroundColor(Color.WHITE);
             t.root.addView(t.overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         }
     }
@@ -1133,7 +1151,7 @@ public class BrowserActivity extends Activity {
     private void renderUnconfigured(LinearLayout box, Tab t, String pendingUrl) {
         add(box, button("Connect (whitelist mode)", v -> promptWhitelistMode(t, pendingUrl)));
         TextView advanced = body("Advanced setup options");
-        advanced.setTextColor(Color.parseColor("#6750A4"));
+        advanced.setTextColor(ACCENT);
         advanced.setOnClickListener(v -> showAdvancedSetupDialog(t, pendingUrl));
         add(box, advanced, 16);
     }
@@ -1331,6 +1349,12 @@ public class BrowserActivity extends Activity {
         android.widget.Button b = new android.widget.Button(this);
         b.setText(label);
         b.setAllCaps(false);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(15);
+        b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        b.setStateListAnimator(null);
+        b.setBackground(rounded(ACCENT, 12));
+        b.setPadding(dp(20), dp(12), dp(20), dp(12));
         b.setOnClickListener(l);
         return b;
     }
@@ -1339,6 +1363,8 @@ public class BrowserActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(text);
         t.setTextSize(22);
+        t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        t.setTextColor(INK);
         t.setGravity(Gravity.CENTER_HORIZONTAL);
         return t;
     }
@@ -1347,7 +1373,7 @@ public class BrowserActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(text);
         t.setTextSize(15);
-        t.setTextColor(Color.GRAY);
+        t.setTextColor(INK_MUTED);
         t.setGravity(Gravity.CENTER_HORIZONTAL);
         return t;
     }
