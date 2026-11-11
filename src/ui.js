@@ -1031,15 +1031,15 @@ function renderWebAccess(m,dv){
    render()};
   card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow'},h('div',{style:'font-weight:500'},o[1]),h('div',{class:'mute'},o[2]))))}
  const ytSel=h('select',{style:'margin-top:6px;max-width:100%'});
- ytSel.append(new Option('Only allowed channels and videos (default)','channels'),new Option('Restricted YouTube: search works, no recommendations','restricted'));
- ytSel.value=dv.config.youtubeMode||'channels';
+ ytSel.append(new Option('Follow the filter level (recommended)','auto'),new Option('Only allowed channels and videos','channels'),new Option('Restricted YouTube: search works, no recommendations','restricted'));
+ ytSel.value=dv.config.youtubeMode||'auto';
  ytSel.onchange=async function(){
-  if(ytSel.value==='restricted'&&!confirm('This opens YouTube for searching and watching, without its home page, feeds, Shorts, recommendations or comments. YouTube\'s own filtering is not perfect, so unsuitable videos can still turn up in search. Continue?')){ytSel.value=dv.config.youtubeMode||'channels';return}
+  if(ytSel.value==='restricted'&&!confirm('This opens YouTube for searching and watching, without its home page, feeds, Shorts, recommendations or comments. YouTube\'s own filtering is not perfect, so unsuitable videos can still turn up in search. Continue?')){ytSel.value=dv.config.youtubeMode||'auto';return}
   dv.config.youtubeMode=ytSel.value;
   try{await saveConfigFor(dv,'Saved. The browser picks it up at its next check-in.')}catch(e){snack(e.message,1)}
   render()};
  card.append(h('div',{class:'setting',style:'display:block;margin-top:12px'},h('div',{style:'font-weight:500'},'YouTube'),
-  h('div',{class:'mute'},'Allowed channels and videos work either way. Restricted YouTube behaves like a filtered YouTube: he can search for a video, but sees no recommendation feed, no Shorts and no trending page.'),ytSel));
+  h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Browser inspection (Internet tab).'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists it stays on approved sites only.'));
  m.append(card)}
 /** Optional: the phone gets its own certificate and a local proxy, so browsers' secure pages can be filtered by their content. */
