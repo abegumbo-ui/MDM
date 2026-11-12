@@ -43,7 +43,7 @@ Tick items off here as they merge, so a resumed session knows where to continue.
 All Windows changes must pass windows/ci-e2e.ps1 (extend it for new behaviour).
 
 ## C. Wrap-up for the morning
-- [ ] Short plain summary for the user: what was built, what is tested, what still needs the phone.
+- [x] Short plain summary for the user: what was built, what is tested, what still needs the phone.
 
 ## Done overnight (merged, live)
 - #207 Rules on the phone · #208 Tap to block · #209 weekend limit, internet off, camera, new-app + search alerts, ✓ Block this screen
