@@ -198,6 +198,7 @@ public sealed class SetupForm : Form
     {
         StatusCards(s);
         if (!_uninstallMode) AskForSiteCard();
+        if (!_uninstallMode) WhatParentSees(s);
         var c = Card(_uninstallMode ? "Remove LockGuard" : "Make changes");
         c.Controls.Add(Para(_uninstallMode
             ? "To remove LockGuard from this computer, enter the removal code. Get it on the dashboard: open this computer → Computer → Make a removal code."
@@ -220,6 +221,16 @@ public sealed class SetupForm : Form
             if (_uninstallMode) await UninstallAsync();
             else await RefreshAsync();
         };
+    }
+
+    /// <summary>Every kind of monitoring that is on, in plain words: nothing is secret from the person at the computer.</summary>
+    private void WhatParentSees(PipeResponse s)
+    {
+        var c = Card("What your parent can see");
+        if (s.RecordSites) c.Controls.Add(Para("•  Which websites this computer opens.", Normal, Color.Black));
+        c.Controls.Add(Para("•  The list of programs installed on this computer.", Normal, Color.Black));
+        c.Controls.Add(Para("•  Websites you ask for here.", Normal, Color.Black));
+        c.Controls.Add(Para("Nothing else: not your files, your screen or what you type.", Small, Muted));
     }
 
     /// <summary>Anyone may ask for a website (no code); the parent allows it on the dashboard.</summary>

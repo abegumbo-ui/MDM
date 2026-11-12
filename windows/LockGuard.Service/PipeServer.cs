@@ -163,6 +163,7 @@ public sealed class PipeServer
             ProtectedFromAdmins = Hardening.On,
             LastCheckIn = Worker.LastCheckIn,
             Build = Updater.Build,
+            RecordSites = filter.On && filter.RecordSites,
         };
     }
 }

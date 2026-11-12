@@ -32,6 +32,7 @@ public sealed class PipeResponse
     [JsonPropertyName("protectedFromAdmins")] public bool ProtectedFromAdmins { get; set; }
     [JsonPropertyName("lastCheckIn")] public long LastCheckIn { get; set; }
     [JsonPropertyName("build")] public int Build { get; set; }
+    [JsonPropertyName("recordSites")] public bool RecordSites { get; set; }
 }
 
 public static class PipeActions
