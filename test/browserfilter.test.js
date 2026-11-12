@@ -138,3 +138,19 @@ test("a Browser connects only with a dashboard code, and every switch reaches it
   assert.deepEqual([f.tier, f.safeSearch, f.adultBlock, f.allowSearch, f.pictureGuard], ["open", false, false, false, "skin"], "every switch can be turned off, and the picture setting is kept");
   assert.equal(f.look, "chrome", "the look is set on the dashboard");
 });
+
+test("Browser: sites opened are listed, and pictures can be turned off per site", async () => {
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const reg = await (await enrollBrowser(req, cookie, { model: "Sites" })).json();
+  const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
+  const id = reg.token.split(".")[0];
+  await req("/browser/sync", { method: "POST", headers: auth, body: JSON.stringify({ visited: [{ host: "www.amazon.com", at: Date.now() }, { host: "news.example.org", at: Date.now(), blocked: true }] }) });
+  const b = (await (await req("/api/browsers", { headers: { cookie } })).json()).find((x) => x.id === id);
+  const day = Object.keys(b.siteHistory)[0];
+  assert.ok(b.siteHistory[day]["amazon.com"], "amazon.com is listed");
+  assert.equal(b.siteHistory[day]["example.org"][1], 1, "the blocked one is marked");
+  await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ noPictureSites: ["https://www.Amazon.com/", "not a site!"] }) });
+  const f = (await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json()).filter;
+  assert.deepEqual(f.noPictureSites, ["amazon.com"], "cleaned up, and nonsense dropped");
+});

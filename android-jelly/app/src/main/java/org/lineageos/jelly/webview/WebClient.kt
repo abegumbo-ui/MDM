@@ -91,8 +91,12 @@ internal class WebClient(
     }
 
     override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-        super.onReceivedSslError(view, handler, error)
-        urlBarLayout.onSslError(error)
+        super.onReceivedSslError(view, handler, error) // refuses it: a bad certificate never loads
+        // Only the page itself makes the address bar say "not trusted" (like Chrome). An ad or
+        // other piece of the page with a bad certificate is simply left out.
+        val pageHost = Uri.parse(view.url ?: "").host
+        val errorHost = Uri.parse(error.url ?: "").host
+        if (pageHost == null || pageHost == errorHost) urlBarLayout.onSslError(error)
     }
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {

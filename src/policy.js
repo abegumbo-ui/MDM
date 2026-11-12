@@ -595,6 +595,8 @@ export function normalizeConfig(input) {
     textLog: c.textLog === true,
     textContent: c.textContent === true,
     imagesAllow: normalizeDnsAllowlist(c.imagesAllow),
+    // Sites whose pictures are off (the page itself works): our Browser, and Chrome with Inspection.
+    noPictureSites: [...new Set(normalizeDnsAllowlist(c.noPictureSites).map((h) => h.replace(/^www\./, "")))],
     blockAppGroups: [...new Set((Array.isArray(c.blockAppGroups) ? c.blockAppGroups : []).filter((g) => Object.prototype.hasOwnProperty.call(APP_GROUPS, g)))],
     userMenu: normalizeUserMenu(c.userMenu),
     // Optional: the Agent installs a certificate of its own and runs a local proxy, so browsers' secure
@@ -820,6 +822,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.textLog = cfg.textLog;
   out.textContent = cfg.textContent;
   out.imagesAllow = cfg.imagesAllow;
+  out.noPictureSites = cfg.noPictureSites;
   return out;
 }
 

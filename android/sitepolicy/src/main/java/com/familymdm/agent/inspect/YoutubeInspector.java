@@ -46,6 +46,19 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     }
 
     private volatile PictureFilter pictureFilter;
+    private volatile Set<String> noPictureSites = java.util.Collections.emptySet();
+
+    /** "No pictures on these sites": a picture on (or from) one of them is replaced by a blank one. */
+    public void setNoPictureSites(Set<String> sites) {
+        noPictureSites = sites == null ? java.util.Collections.<String>emptySet() : sites;
+    }
+
+    private static boolean inList(Set<String> list, String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(java.util.Locale.ROOT);
+        for (String a : list) if (h.equals(a) || h.endsWith("." + a)) return true;
+        return false;
+    }
 
     public void setPictureFilter(PictureFilter f) {
         pictureFilter = f;
@@ -94,11 +107,14 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     }
 
     private boolean imageBlocked(InspectProxy.Request r) {
-        if (!blockImages || !r.method.equals("GET")) return false;
+        if (!r.method.equals("GET")) return false;
+        boolean perSite = !noPictureSites.isEmpty() && (inList(noPictureSites, SitePolicy.hostOf(r.headers.get("Referer"))) || inList(noPictureSites, r.host));
+        if (!blockImages && !perSite) return false;
         String dest = r.headers.get("Sec-Fetch-Dest");
         boolean image = dest != null ? dest.equals("image")
                 : r.path.toLowerCase(java.util.Locale.ROOT).matches("[^?]*\\.(jpe?g|png|gif|webp|avif|bmp|svg|ico)(\\?.*)?");
         if (!image) return false;
+        if (perSite) return true;
         // Allowed if the page showing it, or the picture's own site, is on the "show pictures" list.
         return !listed(SitePolicy.hostOf(r.headers.get("Referer"))) && !listed(SitePolicy.hostOf(r.host));
     }
