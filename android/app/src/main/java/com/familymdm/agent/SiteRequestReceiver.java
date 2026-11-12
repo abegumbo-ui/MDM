@@ -14,7 +14,7 @@ public class SiteRequestReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         String url = intent.getStringExtra("url");
         if (url == null || url.isEmpty()) return;
-        Agent.addSiteRequest(context, url);
+        Agent.addSiteRequest(context, url, intent.getStringExtra("note"));
         if (Agent.enrolled(context)) AgentService.requestSync();
     }
 }

@@ -44,6 +44,22 @@ class WebViewExt @JvmOverloads constructor(
     var lastLoadedUrl: String? = null
         private set
 
+    private var adScriptHandler: androidx.webkit.ScriptHandler? = null
+    private var adScriptOn = false
+
+    /** "Block ads": YouTube's ad remover runs before YouTube's own scripts (where the phone supports it). */
+    fun syncAdBlock() {
+        val js = Guard.adBlockScript(context)
+        if ((js != null) == adScriptOn) return
+        adScriptHandler?.remove()
+        adScriptHandler = null
+        adScriptOn = js != null
+        if (js != null && androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            adScriptHandler = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, js,
+                setOf("https://www.youtube.com", "https://m.youtube.com", "https://youtube.com", "https://music.youtube.com"))
+        }
+    }
+
     /** The page is an allowed YouTube channel or video: its pictures and videos show as they are. */
     @Volatile
     var trustedPage = false

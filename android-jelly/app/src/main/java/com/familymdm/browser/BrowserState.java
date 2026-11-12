@@ -57,11 +57,17 @@ final class BrowserState {
     // ---------- pages requested that weren't on the list, reported to the dashboard on the next sync ----------
 
     static synchronized void addSiteRequest(Context c, String url) {
+        addSiteRequest(c, url, null);
+    }
+
+    /** A request for the dashboard, with the child's own message (optional). */
+    static synchronized void addSiteRequest(Context c, String url, String note) {
         try {
             JSONArray arr = new JSONArray(prefs(c).getString("siteRequests", "[]"));
             for (int i = 0; i < arr.length(); i++) if (url.equals(arr.getJSONObject(i).optString("url"))) return;
             JSONObject r = new JSONObject();
             r.put("url", url);
+            if (note != null && !note.trim().isEmpty()) r.put("note", note.trim());
             arr.put(r);
             prefs(c).edit().putString("siteRequests", arr.toString()).apply();
         } catch (JSONException ignored) {

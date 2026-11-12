@@ -123,7 +123,7 @@ const MAX_FREEBROWSE_MINUTES = 240;
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
 // Settings the phone's own Administrator screen may change (sent up as configPatch).
-const PHONE_EDITABLE = ["browserFilter", "safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "pauseUntil", "recordSites", "inAppBrowsers", "internetOnlyApps", "screenTime", "callsIn", "callsOut", "callLog", "textLog", "textContent", "reportContacts", "syncContacts", "locationEvery", "blockAppGroups", "approveNew", "blockUnlisted", "blockWaStatus", "blockWaChannels", "messageAlerts", "messageGroups", "messageWords", "freezeUpdates", "disableBiometricUnlock", "autoUpdate", "reportWifi", "chromePolicy", "youtubeMode", "blockedParts", "internetOffUntil", "recordSearches", "blockAds", "waTextOnly", "sites", "callNumbers", "places", "filterSchedule", "internetApps", "recordVideos", "nudityAlerts", "pictureGuard", "browserLook", "noPictureSites", "skinWho"];
+const PHONE_EDITABLE = ["browserFilter", "safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "pauseUntil", "recordSites", "inAppBrowsers", "internetOnlyApps", "screenTime", "callsIn", "callsOut", "callLog", "textLog", "textContent", "reportContacts", "syncContacts", "locationEvery", "blockAppGroups", "approveNew", "blockUnlisted", "blockWaStatus", "blockWaChannels", "messageAlerts", "messageGroups", "messageWords", "freezeUpdates", "disableBiometricUnlock", "autoUpdate", "reportWifi", "chromePolicy", "youtubeMode", "blockedParts", "internetOffUntil", "recordSearches", "blockAds", "waTextOnly", "sites", "callNumbers", "places", "filterSchedule", "internetApps", "recordVideos", "nudityAlerts", "pictureGuard", "browserLook", "noPictureSites", "skinWho", "youtubeAddon", "youtubeOffMessage"];
 // Friendly names for the chat apps message alerts look at.
 const CHAT_APPS = { 'com.android.chrome': 'Chrome', 'org.mozilla.firefox': 'Firefox', 'com.sec.android.app.sbrowser': 'Samsung Internet', 'com.brave.browser': 'Brave', 'com.microsoft.emmx': 'Edge', 'com.google.android.youtube': 'YouTube', 'com.google.android.googlequicksearchbox': 'the Google app', 'com.familymdm.browser': 'our Browser', 'com.pinterest': 'Pinterest', 'com.whatsapp': 'WhatsApp', 'com.whatsapp.w4b': 'WhatsApp Business', 'org.telegram.messenger': 'Telegram', 'com.instagram.android': 'Instagram', 'com.facebook.orca': 'Messenger', 'com.facebook.mlite': 'Messenger Lite', 'com.snapchat.android': 'Snapchat', 'org.thoughtcrime.securesms': 'Signal', 'com.discord': 'Discord', 'com.zhiliaoapp.musically': 'TikTok', 'com.google.android.apps.messaging': 'Messages', 'com.samsung.android.messaging': 'Samsung Messages', 'com.kik.android': 'Kik', 'com.viber.voip': 'Viber', 'com.google.android.apps.dynamite': 'Google Chat', texts: 'a text message' };
 export const appName = (pkg) => CHAT_APPS[pkg] || (pkg ? 'a chat app (' + pkg + ')' : 'a chat app');
@@ -1011,7 +1011,7 @@ async function adminApiInner(request, env, url, session) {
       // An omitted browserFilter becomes "off" (allowlist-only), the stricter setting, so a stale
       // dashboard tab can never accidentally open the web.
       d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages, blockedWords: body.blockedWords, blockImageSearch: body.blockImageSearch,
-        pictureGuard: body.pictureGuard, openWeb: body.openWeb, safeSearchOff: body.safeSearchOff, adultListOff: body.adultListOff, searchOff: body.searchOff, browserLook: body.browserLook, noPictureSites: body.noPictureSites, skinWho: body.skinWho });
+        pictureGuard: body.pictureGuard, openWeb: body.openWeb, safeSearchOff: body.safeSearchOff, adultListOff: body.adultListOff, searchOff: body.searchOff, browserLook: body.browserLook, noPictureSites: body.noPictureSites, skinWho: body.skinWho, blockAds: body.blockAds, youtubeOffMessage: body.youtubeOffMessage });
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -1300,7 +1300,7 @@ const categoriesOf = (d) => Object.fromEntries((d.packages || []).filter((p) => 
 
 // ---- agent API (per-device bearer token) ----
 // Where the Browser downloads its category blocklists from (the fixed "blocklists" release the weekly job publishes).
-const filterFor = (env, config) => ({ tier: config.openWeb ? "open" : config.browserFilter || "off", safeSearch: !config.safeSearchOff, adultBlock: !config.adultListOff, allowSearch: !config.searchOff, look: config.browserLook || "classic", noPictureSites: config.noPictureSites || [], skinWho: config.skinWho || "all", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, pictureGuard: config.pictureGuard || "off", imageSearch: !!config.blockImageSearch, words: config.blockedWords || [], base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
+const filterFor = (env, config) => ({ tier: config.openWeb ? "open" : config.browserFilter || "off", safeSearch: !config.safeSearchOff, adultBlock: !config.adultListOff, allowSearch: !config.searchOff, look: config.browserLook || "classic", noPictureSites: config.noPictureSites || [], skinWho: config.skinWho || "all", blockAds: !!config.blockAds, youtubeOffMessage: config.youtubeOffMessage || "", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, pictureGuard: config.pictureGuard || "off", imageSearch: !!config.blockImageSearch, words: config.blockedWords || [], base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
 
 async function agentApi(request, env, url, ctx) {
   const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);
@@ -1725,17 +1725,14 @@ async function agentApi(request, env, url, ctx) {
       dirty = true;
     }
     if (Array.isArray(body.siteRequests) && body.siteRequests.length) {
-      // Pages the person tried to open that weren't on the allowlist; shown on the dashboard to approve or deny.
+      // Pages the person tried to open that weren't on the allowlist (with the child's own message,
+      // if any); shown on the dashboard to approve or deny.
       const existing = d.siteRequests || [];
       const urls = new Set(existing.map((r) => r.url));
-      const added = body.siteRequests
-        .slice(0, 20)
-        .map((r) => String(r.url || "").slice(0, 500))
-        .filter((u) => u && !urls.has(u) && (urls.add(u), true))
-        .map((url) => ({ url, at: now }));
+      const added = siteRequestsFrom(body.siteRequests, urls, now);
       if (added.length) {
         d.siteRequests = [...existing, ...added].slice(-30);
-        for (const r of added) toAlert.push({ kind: "requests", text: `Asked to open ${r.url}` });
+        for (const r of added) toAlert.push({ kind: "requests", text: `Asked to open ${r.url}${r.note ? " — \"" + r.note + "\"" : ""}` });
         dirty = true;
       }
     }
@@ -1828,7 +1825,16 @@ async function agentApi(request, env, url, ctx) {
 }
 
 // ---- standalone Browser API (per-device bearer token, no agent/MDM involved) ----
-async function browserApi(request, env, url) {
+/** Requests sent from a phone or a Browser: the address and the child's own message (if any). */
+function siteRequestsFrom(list, seen, now) {
+  return list
+    .slice(0, 20)
+    .map((r) => ({ url: String((r && r.url) || "").slice(0, 500), note: String((r && r.note) || "").trim().slice(0, 300) }))
+    .filter((r) => r.url && !seen.has(r.url) && (seen.add(r.url), true))
+    .map((r) => ({ url: r.url, at: now, ...(r.note ? { note: r.note } : {}) }));
+}
+
+async function browserApi(request, env, url, ctx) {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
 
@@ -1868,14 +1874,16 @@ async function browserApi(request, env, url) {
     if (Array.isArray(body.siteRequests) && body.siteRequests.length) {
       const existing = d.siteRequests || [];
       const urls = new Set(existing.map((r) => r.url));
-      const added = body.siteRequests
-        .slice(0, 20)
-        .map((r) => String(r.url || "").slice(0, 500))
-        .filter((u) => u && !urls.has(u) && (urls.add(u), true))
-        .map((url) => ({ url, at: now }));
+      const added = siteRequestsFrom(body.siteRequests, urls, now);
       if (added.length) {
         d.siteRequests = [...existing, ...added].slice(-30);
         dirty = true;
+        const a = await getAlerts(env);
+        if (alertsOn(a) && a.requests) {
+          const p = sendAlert(env, d.name, added.map((r) => "Asked to open " + r.url + (r.note ? " — \"" + r.note + "\"" : "")).join("\n"), a);
+          if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
+          else await p;
+        }
       }
     }
     if (Array.isArray(body.visited) && body.visited.length) {
@@ -2015,7 +2023,7 @@ export default {
 
     try {
       if (url.pathname.startsWith("/agent/")) return await agentApi(request, env, url, ctx);
-      if (url.pathname.startsWith("/browser/")) return await browserApi(request, env, url);
+      if (url.pathname.startsWith("/browser/")) return await browserApi(request, env, url, ctx);
       if (url.pathname.startsWith("/windows/")) return await windowsApi(request, env, url, ctx);
 
       // Public, harmless files that let the dashboard be installed to a phone's home screen.

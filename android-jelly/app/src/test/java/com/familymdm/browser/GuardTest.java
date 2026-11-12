@@ -66,7 +66,8 @@ public class GuardTest {
         Guard.Decision d = Guard.check(c, "https://example.com/", null);
         assertFalse(d.allow);
         assertTrue(d.html.contains("Ask for access"));
-        assertTrue(d.html.contains("mdmguard://request?u="));
+        assertTrue(d.html.contains("mdmguard://ask?u="));
+        assertTrue("the ask page has a message box and sends to the dashboard", Guard.askPage("https://example.com/").contains("mdmguard://request?u=") && Guard.askPage(null).contains("Message to your parent"));
         assertNull("no searching on approved-only", Guard.searchUrl(c, "cats"));
     }
 
@@ -228,5 +229,25 @@ public class GuardTest {
         assertTrue("the home page lists them", js.contains("\"@nasa\"") && js.contains("NASA") && js.contains("dQw4w9WgXcQ") && js.contains("A song"));
         assertTrue(js.contains("mdm-yt-home"));
         assertFalse("no data placeholder left", js.contains("__MDM_DATA__"));
+    }
+
+    @Test
+    public void blockAds_youtubeAdsAndAdServers_andTheOffMessage() throws Exception {
+        connected("open");
+        assertNull("off by default", Guard.adBlockScript(c));
+        FilterStore.setBlockAds(c, true);
+        String js = Guard.adBlockScript(c);
+        assertTrue(js != null && js.contains("__mdmNoAds") && js.contains("adPlacements"));
+        assertTrue(com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest("https://googleads.g.doubleclick.net/pagead/id"));
+        assertTrue(com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest("https://www.youtube.com/api/stats/ads?ver=2"));
+        assertTrue(com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest("https://m.youtube.com/pagead/viewthroughconversion/1"));
+        assertFalse("the video itself is not an ad", com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest("https://rr1---sn-abc.googlevideo.com/videoplayback?id=1"));
+        assertFalse(com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest("https://m.youtube.com/watch?v=dQw4w9WgXcQ"));
+        FilterStore.setYoutubeMode(c, "blocked");
+        FilterStore.setYoutubeOffMessage(c, "Homework first, then YouTube.");
+        Guard.Decision d = Guard.check(c, "https://m.youtube.com/", null);
+        assertFalse(d.allow);
+        assertTrue("the parent's own message", d.html.contains("Homework first, then YouTube."));
+        assertTrue(d.html.contains("Ask to open YouTube"));
     }
 }

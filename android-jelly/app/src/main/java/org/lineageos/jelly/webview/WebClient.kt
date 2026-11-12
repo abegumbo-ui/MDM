@@ -61,6 +61,7 @@ internal class WebClient(
 
     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
+        (view as? WebViewExt)?.syncAdBlock()
         urlBarLayout.onPageLoadStarted(url)
         if (view.settings.javaScriptEnabled) {
             view.evaluateJavascript(scripts, null)
@@ -91,6 +92,8 @@ internal class WebClient(
 
     override fun onPageCommitVisible(view: WebView, url: String) {
         super.onPageCommitVisible(view, url)
+        // Also here, for phones that cannot run it before the page's own scripts (it only runs once per page).
+        if (Uri.parse(url).host?.endsWith("youtube.com") == true) Guard.adBlockScript(context)?.let { view.evaluateJavascript(it, null) }
         // As early as possible, so YouTube's feed never shows before it is emptied.
         Guard.afterLoadScript(context, url)?.let { view.evaluateJavascript(it, null) }
     }

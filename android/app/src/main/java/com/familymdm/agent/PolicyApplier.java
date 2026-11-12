@@ -193,6 +193,7 @@ final class PolicyApplier {
             Agent.prefs(c).edit().putLong("browserAddonRev", System.currentTimeMillis()).putBoolean("browserAddonValue", true).apply();
         } else {
             applyBrowserAddon(c, policy.optBoolean("browserAddonEnabled", false));
+        applyYoutubeAddon(c, policy.optBoolean("youtubeAddon", false));
         }
         if (WholeAppBlocklist.rev(c) == 0 && !WholeAppBlocklist.list(c).isEmpty()) {
             WholeAppBlocklist.seed(c);
@@ -794,6 +795,16 @@ final class PolicyApplier {
     /** Same on/off switch as the phone's own Add-ons screen (BrowserAddon.setEnabled()), just
      * reachable from the dashboard too -- a no-op when the policy's value already matches what's
      * on the phone, so a local toggle between syncs isn't stomped back and forth needlessly. */
+    private static void applyYoutubeAddon(Context c, boolean wanted) {
+        try {
+            if (YoutubeAddon.isEnabled(c) == wanted) return;
+            YoutubeAddon.setEnabled(c, wanted);
+            Agent.addEvent(c, "restriction", wanted ? "YouTube add-on turned on" : "YouTube add-on turned off");
+        } catch (Exception e) {
+            errorOnce(c, "youtubeaddon", "Could not change the YouTube add-on: " + e.getMessage());
+        }
+    }
+
     private static void applyBrowserAddon(Context c, boolean wanted) {
         try {
             if (BrowserAddon.isEnabled(c) == wanted) return;

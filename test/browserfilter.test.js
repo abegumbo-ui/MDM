@@ -156,3 +156,22 @@ test("Browser: sites opened are listed, and pictures can be turned off per site"
   const f = (await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json()).filter;
   assert.deepEqual(f.noPictureSites, ["amazon.com"], "cleaned up, and nonsense dropped");
 });
+
+
+test("requests keep the child's message; Block ads, the YouTube off message and the YouTube add-on reach the devices", async () => {
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const reg = await (await enrollBrowser(req, cookie, { model: "Asks" })).json();
+  const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
+  const id = reg.token.split(".")[0];
+  await req("/browser/sync", { method: "POST", headers: auth, body: JSON.stringify({ siteRequests: [{ url: "https://www.youtube.com/results?search_query=lego%20videos", note: "For my school project" }] }) });
+  const b = (await (await req("/api/browsers", { headers: { cookie } })).json()).find((x) => x.id === id);
+  assert.equal(b.siteRequests[0].note, "For my school project");
+  await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ blockAds: true, youtubeOffMessage: "Homework first." }) });
+  const f = (await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json()).filter;
+  assert.equal(f.blockAds, true);
+  assert.equal(f.youtubeOffMessage, "Homework first.");
+  const p = buildAgentPolicy(normalizeConfig({ youtubeAddon: true, youtubeOffMessage: "Ask Dad." }), []);
+  assert.equal(p.youtubeAddon, true, "the phone gets the YouTube add-on switch");
+  assert.equal(p.youtubeOffMessage, "Ask Dad.");
+});

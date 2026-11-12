@@ -93,6 +93,8 @@ public final class Guard {
             FilterStore.setSwitches(c, b.getBoolean("safeSearch", true), b.getBoolean("adultBlock", true), b.getBoolean("allowSearch", true));
             FilterStore.setNoPictureSites(c, b.getStringArray("noPictureSites"));
             FilterStore.setSkinWho(c, b.getString("skinWho", "all"));
+            FilterStore.setBlockAds(c, b.getBoolean("blockAds", false));
+            FilterStore.setYoutubeOffMessage(c, b.getString("youtubeOffMessage", ""));
         } else if (m == Mode.ONLINE) {
             sync(c, false);
         } else {
@@ -171,6 +173,8 @@ public final class Guard {
                 for (int i = 0; i < npSites.length; i++) npSites[i] = np.optString(i);
                 FilterStore.setNoPictureSites(c, npSites);
                 FilterStore.setSkinWho(c, f == null ? "all" : f.optString("skinWho", "all"));
+                FilterStore.setBlockAds(c, f != null && f.optBoolean("blockAds", false));
+                FilterStore.setYoutubeOffMessage(c, f == null ? "" : f.optString("youtubeOffMessage", ""));
                 FilterStore.refreshAsync(c, false);
             } catch (Exception ignored) {
                 // offline or the dashboard unreachable: keep the last settings
@@ -288,7 +292,7 @@ public final class Guard {
             return Decision.no(page("Not available", "Image search is turned off.", homeButton()));
         String ytMode = FilterStore.youtubeMode(c);
         if ("blocked".equals(ytMode) && SitePolicy.isYoutubeHost(SitePolicy.hostOf(url)))
-            return Decision.no(page("YouTube is turned off", "YouTube does not open in this browser.", homeButton()));
+            return Decision.no(page("YouTube is off", esc(FilterStore.youtubeOffMessage(c)), askButton("https://www.youtube.com/", "Ask to open YouTube") + homeButton()));
         // A single allowed video opens in every mode, whatever extras its link carries (start time, share code).
         String videoId = SitePolicy.isYoutubeHost(SitePolicy.hostOf(url)) || "youtu.be".equals(SitePolicy.hostOf(url)) ? SitePolicy.youtubeVideoId(url) : null;
         if (videoId != null && allowedVideoIds(c).contains(videoId)) return Decision.trustedYes();
@@ -327,7 +331,7 @@ public final class Guard {
             return Decision.yes(noPics);
         if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host))
             return Decision.no(page("This part of YouTube isn't allowed", "Only the channels and videos your parent allowed open here.",
-                    "<a class=b href='" + SCHEME + "://request?u=" + Uri.encode(url) + "'>Ask for access</a>" + homeButton()));
+                    askButton(url, "Ask for access") + homeButton()));
         if (mode == Mode.AGENT && browseWindow(c)) {
             reportOnce(c, url);
             return Decision.yes(noPics);
@@ -339,8 +343,7 @@ public final class Guard {
             FilterStore.refreshAsync(c, true);
             note = "<p class=n>The filter lists are still downloading. Until they are ready, only approved sites open. Try again in a minute.</p>";
         }
-        return Decision.no(page("This page isn't allowed", esc(url) + note,
-                "<a class=b href='" + SCHEME + "://request?u=" + Uri.encode(url) + "'>Ask for access</a>" + homeButton()));
+        return Decision.no(page("This page isn't allowed", esc(url) + note, askButton(url, "Ask for access") + homeButton()));
     }
 
     private static boolean isYoutubeAddress(String url) {
@@ -406,9 +409,19 @@ public final class Guard {
             String host = SitePolicy.hostOf(url);
             if (FilterStore.active(c) && host != null && FilterStore.blocks(c, host) && SitePolicy.matching(url, sites(c)) == null)
                 return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
+            if (FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
         } catch (Exception ignored) {
         }
         return null;
+    }
+
+    private static WebResourceResponse noContent() {
+        return new WebResourceResponse("text/plain", "utf-8", 204, "No Content", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
+    }
+
+    /** "Block ads" on YouTube: the script that takes the ads out (run before YouTube's own), or null. */
+    public static String adBlockScript(Context ctx) {
+        return FilterStore.blockAds(ctx.getApplicationContext()) ? com.familymdm.agent.sitepolicy.YoutubeScripts.adBlock() : null;
     }
 
     public static WebResourceResponse intercept(Context ctx, WebResourceRequest request) {
@@ -419,6 +432,7 @@ public final class Guard {
             boolean filterBlocks = FilterStore.active(c) && host != null && FilterStore.blocks(c, host)
                     && SitePolicy.matching(url, sites(c)) == null && !(mode(c) == Mode.AGENT && browseWindow(c));
             if (filterBlocks) return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
+            if (FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
             String guard = FilterStore.pictureGuard(c);
             if (!"off".equals(guard) && !FilterStore.blockImages(c) && PictureGuard.isPicture(request) && !isAllowedVideoThumb(c, url))
                 return PictureGuard.handle(c, request, guard);
@@ -500,17 +514,9 @@ public final class Guard {
                     videos.put(new JSONObject().put("v", id).put("t", "YouTube video".equals(t) || t.equals(h) ? "" : t).put("i", thumb));
                 }
             }
-            if (channels.length() == 0 && videos.length() == 0) return null;
-            if (shelfJs == null) {
-                try (java.io.InputStream in = c.getAssets().open("youtube_shelf.js")) {
-                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-                    byte[] b = new byte[8192];
-                    for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
-                    shelfJs = out.toString("UTF-8");
-                }
-            }
-            String data = new JSONObject().put("channels", channels).put("videos", videos).toString().replace("</", "<\\/");
-            return shelfJs.replace("__MDM_DATA__", data);
+            boolean ask = "channels".equals(FilterStore.youtubeMode(c)) && mode(c) != Mode.UNCONFIGURED;
+            if (channels.length() == 0 && videos.length() == 0 && !ask) return null;
+            return com.familymdm.agent.sitepolicy.YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).toString());
         } catch (Exception e) {
             return null;
         }
@@ -555,16 +561,20 @@ public final class Guard {
         Uri u = Uri.parse(url);
         String what = u.getHost() == null ? "" : u.getHost();
         switch (what) {
+            case "ask":
+                showPage(v, null, askPage(u.getQueryParameter("u")));
+                return true;
             case "request": {
                 String target = u.getQueryParameter("u");
+                String note = u.getQueryParameter("note");
                 if (!TextUtils.isEmpty(target)) {
                     if (mode(c) == Mode.AGENT) {
                         try {
-                            c.sendBroadcast(new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", target), "com.familymdm.agent.permission.BROWSER");
+                            c.sendBroadcast(new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", target).putExtra("note", note == null ? "" : note), "com.familymdm.agent.permission.BROWSER");
                         } catch (Exception ignored) {
                         }
                     } else {
-                        BrowserState.addSiteRequest(c, target);
+                        BrowserState.addSiteRequest(c, target, note);
                         sync(c, true);
                     }
                 }
@@ -630,6 +640,27 @@ public final class Guard {
                 "<form onsubmit=\"location.href='" + SCHEME + "://connect?code='+encodeURIComponent(this.c.value);return false\">"
                         + "<input name=c autocapitalize=characters autocomplete=off placeholder='Code' style='font-size:20px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px'>"
                         + "<button class=b style='border:0;width:100%'>Connect</button></form>");
+    }
+
+    private static String askButton(String url, String label) {
+        return "<a class=b href='" + SCHEME + "://ask?u=" + Uri.encode(url) + "'>" + esc(label) + "</a>";
+    }
+
+    /**
+     * "Ask your parent": which page (already known, or typed: a link or just a name, which becomes a
+     * YouTube search the parent can run from the dashboard) and a message.
+     */
+    static String askPage(String url) {
+        boolean known = url != null && !url.isEmpty();
+        String field = known
+                ? "<p>" + esc(url) + "</p><input type=hidden name=w value='x'>"
+                : "<input name=w autocomplete=off placeholder='A link, or the name of a channel or video' style='font-size:17px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px'>";
+        return page(known ? "Ask your parent" : "Ask for a channel or video", known ? "Your parent gets this on the dashboard." : "Paste a link, or write what you are looking for.",
+                "<form onsubmit=\"var v=this.w.value.trim();if(!v)return false;var u=this.u.value||(/youtu\\.?be|youtube\\.com|^https?:/i.test(v)?(v.indexOf('://')<0?'https://'+v:v):'https://www.youtube.com/results?search_query='+encodeURIComponent(v));"
+                        + "location.href='" + SCHEME + "://request?u='+encodeURIComponent(u)+'&note='+encodeURIComponent(this.n.value.trim());return false\">"
+                        + "<input type=hidden name=u value='" + (known ? esc(url) : "") + "'>" + field
+                        + "<textarea name=n rows=3 placeholder='Message to your parent (optional)' style='margin-top:12px;font-size:16px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px'></textarea>"
+                        + "<button class=b style='border:0;width:100%'>Send</button></form>" + homeButton());
     }
 
     private static String homeButton() {

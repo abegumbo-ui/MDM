@@ -30,6 +30,8 @@ export const TIERS = {
   strict: ["adult", "gambling", "drugs", "scams", "piracy", "social"],
   // "Block ads" on top of a level (phones ask for these; older ones never do).
   "moderate+ads": ["adult", "gambling", "drugs", "scams", "piracy", "ads"],
+  // "Open: no filter" with "Block ads" on (our Browser): only the ad servers.
+  ads: ["ads"],
   "strict+ads": ["adult", "gambling", "drugs", "scams", "piracy", "social", "ads"],
 };
 
