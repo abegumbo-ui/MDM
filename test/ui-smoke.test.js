@@ -158,7 +158,11 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen.list, /Pixel/);
   assert.match(seen["browser/access"], /Blocked words \(2\)/);
   assert.match(seen["browser/access"], /Block image search/);
-  assert.match(seen["overview/status"], /Protection level/);
+  assert.match(seen["overview/status"], /Ready-made setups/);
+  assert.match(seen["overview/status"], /Kosher phone/);
+  assert.match(seen["safety/health"], /Health check/);
+  assert.match(seen["safety/msgalerts"], /Message alerts/);
+  assert.match(seen["safety/screenshots"], /Take a screenshot now/);
   assert.match(seen["overview/status"], /Pause web filtering/);
   assert.match(seen["internet/appnet"], /Internet only for chosen apps/);
   assert.match(seen["device/location"], /School · within 200 m/);
@@ -171,6 +175,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["calls/contacts"], /Show the phone's contacts here/);
   assert.match(seen["apps/regular"], /Close Status/);
   assert.match(seen.settings, /Other parents/);
+  assert.match(seen.settings, /Get notifications on this device/);
   // The Windows computer's page, every tab.
   for (const wt of ["filter", "programs", "history", "computer"]) {
     seen["win/" + wt] = tryRender("win/" + wt, `tab='devices';openId=null;openBrowserId=null;openWinId=windevices[0].id;winTab='${wt}';render()`);

@@ -17,10 +17,26 @@ import java.util.ArrayDeque;
  * 1. Blocked app screens (AppBlocklist): backs out of them the instant they open.
  * 2. Web pages inside apps (InAppRules): closes the browser page an app opens on top of itself
  *    and, in the stricter mode, any app screen that contains a web page.
- * It looks only at what kind of screen is open (class names), never at what is written on it.
+ * 3. Message alerts and screenshots on request (see Monitor), only when switched on from the
+ *    dashboard; the phone tells the child when either is used. Otherwise it looks only at what
+ *    kind of screen is open (class names), never at what is written on it.
  */
 public class BlockAccessibilityService extends AccessibilityService {
+    /** The running service, for Monitor.screenshot(); null while switched off. */
+    static volatile BlockAccessibilityService instance;
     private String lastPkg;
+
+    @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        instance = this;
+    }
+
+    @Override
+    public void onDestroy() {
+        instance = null;
+        super.onDestroy();
+    }
     private long lastWindowAt, lastCheckAt, lastNoteAt;
 
     @Override
@@ -53,7 +69,9 @@ public class BlockAccessibilityService extends AccessibilityService {
             lastPkg = pkg;
             lastWindowAt = now;
             checkInApp(pkg, clsCs.toString(), now);
+            if (Monitor.on(this)) Monitor.scan(this, pkg, getRootInActiveWindow());
         } else if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            if (Monitor.on(this)) Monitor.scan(this, pkg, getRootInActiveWindow());
             // A web page often appears a moment after the screen opens: look again for a few
             // seconds after each new screen, at most every half second.
             if (pkg.equals(lastPkg) && now - lastWindowAt < 4000 && now - lastCheckAt > 500) checkInApp(pkg, null, now);

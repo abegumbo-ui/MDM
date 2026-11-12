@@ -202,6 +202,7 @@ let subs={};try{subs=JSON.parse(sessionStorage.getItem('subs')||'{}')||{}}catch(
 function saveSubs(){try{sessionStorage.setItem('subs',JSON.stringify(subs))}catch(e){}}
 const GROUPS=[
  {key:'overview',label:'Overview',icon:'home',subs:[['status','Status'],['messages','Messages'],['log','Activity log']]},
+ {key:'safety',label:'Safety',icon:'message',subs:[['health','Health check'],['msgalerts','Message alerts'],['screenshots','Screenshots']]},
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
  {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
  {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['history','Sites visited'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
@@ -324,7 +325,7 @@ function render(){
  if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){setCrumbs([['Devices','devices'],[b.name]]);renderBrowserDetail(m,b);return}openBrowserId=null}
  if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){setCrumbs([['Devices','devices'],[w.name]]);renderWinDetail(m,w);return}openWinId=null}
  if(tab==='codes'||tab==='settings'||tab==='clients'||tab==='audit'||tab==='templates'){
-  const T={codes:'Codes',clients:'Clients',settings:'Settings',audit:'Activity',templates:'Templates'}[tab];
+  const T={codes:'Add a device',clients:'Clients',settings:'Settings',audit:'Activity',templates:'Templates'}[tab];
   setCrumbs([['Devices','devices'],[T]]);
   pageHead(m,T);
   if(tab==='codes')renderCodes(m);
@@ -338,7 +339,7 @@ function render(){
 window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
-const NAMES={addTime:'Extra screen time',openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app'};
+const NAMES={addTime:'Extra screen time',openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app',screenshot:'Screenshot'};
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒',watchdog:'👀'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
@@ -616,6 +617,7 @@ function renderDeviceDetail(m,d){
  const ov=h('section',{class:'cols'});
  if(d.syncPaused)ov.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Not connected'),h('div',{class:'mute'},'This device is not connected to the dashboard because it was turned off (from this phone\'s own Admin screen, to save battery). It keeps enforcing whatever it had last. It reconnects only when someone turns it back on there — nothing here can reach it in the meantime.')));
  renderSos(ov,d);
+ renderHealthSummary(ov,d);
  renderAppRequests(ov,d);
  renderPause(ov,d);
  renderLevels(ov,d);
@@ -760,11 +762,13 @@ function renderDeviceDetail(m,d){
  const brg=h('section');buildBrowserGroup(brg,d);
  const tmg=h('section');buildTimeGroup(tmg,d);
  const devg=h('section');buildDeviceGroup(devg,d);
- const body={overview:{status:ov,messages:msgs,log:lg},apps:ap,time:tmg,browser:brg,calls:callsg,internet:internet,security:lk,device:devg};
+ const safety={health:h('section'),msgalerts:h('section'),screenshots:h('section')};
+ renderHealth(safety.health,d);renderMsgAlerts(safety.msgalerts,d);renderScreenshots(safety.screenshots,d);
+ const body={overview:{status:ov,messages:msgs,log:lg},safety:safety,apps:ap,time:tmg,browser:brg,calls:callsg,internet:internet,security:lk,device:devg};
 
  // ----- search: every group and tab -----
  const searchIndex=[
-  ['Status, location and activity','overview','status'],['Messages from the phone','overview','messages'],['Activity log','overview','log'],
+  ['Status, location and activity','overview','status'],['Health check: is everything working on the phone?','safety','health'],['Message alerts: worrying words in chats (WhatsApp, Instagram, texts...)','safety','msgalerts'],['Screenshot: see what is on the phone\'s screen','safety','screenshots'],['Ready-made setups: young child, teen, kosher phone','overview','status'],['Messages from the phone','overview','messages'],['Activity log','overview','log'],
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
@@ -795,7 +799,7 @@ function renderDeviceDetail(m,d){
  const side=h('nav',{class:'side'});
  for(const g of GROUPS){
   const b=h('button',{class:'nav'+(g.key===sec?' on':'')},svgIcon(g.icon,'currentColor'),g.label);
-  const nBadge=g.key==='overview'?nMsg+nApp:g.key==='browser'?nSite:0;
+  const nBadge=g.key==='overview'?nMsg+nApp:g.key==='browser'?nSite:g.key==='safety'?healthProblems(d).filter(function(x){return x.level==='bad'}).length+(d.msgAlerts||[]).length:0;
   if(nBadge)b.append(h('span',{class:'badge'},String(nBadge)));
   b.onclick=function(){goTo(g.key)};side.append(b)}
  const content=h('div',{class:'content'});
@@ -805,6 +809,7 @@ function renderDeviceDetail(m,d){
   const b=h('button',{class:sub[0]===cur?'on':''},sub[1]+(sec==='overview'&&sub[0]==='messages'&&nMsg?' ('+nMsg+')':''));
   b.onclick=function(){subs[sec]=sub[0];saveSubs();render()};pills.append(b)}
  content.append(pills);
+ if(GROUP_HELP[sec])content.append(h('div',{class:'mute small',style:'margin:-4px 0 12px'},GROUP_HELP[sec]));
  content.append(typeof body[sec].nodeType==='number'?body[sec]:body[sec][cur]);
  m.append(h('div',{class:'shell'},side,content));
 }
@@ -1113,6 +1118,12 @@ function renderPause(box,d){
   card.append(row)}
  box.append(card)}
 const LEVELS={
+ young:{label:'Young child (under 10)',desc:'Only sites you approve. No pictures on web pages, no image search, no web pages inside apps. Every app group blocked; new apps wait for you. WhatsApp Status and Channels closed. Message alerts on.',
+  set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:true,blockImageSearch:true,blockAppGroups:'all',approveNew:true,noIncognito:true,blockWaStatus:true,blockWaChannels:true,inAppBrowsers:'all',messageAlerts:true}},
+ teen:{label:'Teen',desc:'Strict filter (adult, gambling, drugs, scam, piracy sites blocked). SafeSearch, YouTube Restricted Mode, no image search. Dating apps blocked, new apps wait for you. Browser pages that apps open are closed. Message alerts on.',
+  set:{browserFilter:'strict',safeSearch:true,youtubeDns:'moderate',blockImages:false,blockImageSearch:true,blockAppGroups:['dating'],approveNew:true,noIncognito:true,inAppBrowsers:'tabs',messageAlerts:true}},
+ kosher:{label:'Kosher phone',desc:'Only sites you approve, no pictures on web pages, no image search, no web pages inside apps. Social media, video, games, dating and shopping apps blocked; new apps wait for you. WhatsApp chats and calls work; Status and Channels closed.',
+  set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:true,blockImageSearch:true,blockAppGroups:'all',approveNew:true,noIncognito:true,blockWaStatus:true,blockWaChannels:true,inAppBrowsers:'all'}},
  strictest:{label:'Strictest',desc:'Approved sites only. SafeSearch on, strict YouTube Restricted Mode, no pictures on web pages, no image search. Every app group blocked (social media, games, video, dating, shopping). New apps wait for you. No incognito in Chrome.',
   set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:true,blockImageSearch:true,blockAppGroups:'all',approveNew:true,noIncognito:true}},
  recommended:{label:'Recommended',desc:'Strict filter: adult, gambling, drugs, scam, piracy and social media sites blocked. SafeSearch on, YouTube Restricted Mode, no image search. Social media and dating apps blocked. New apps wait for you. No incognito in Chrome.',
@@ -1122,12 +1133,13 @@ const LEVELS={
 function applyLevel(c,s){const groups=Object.keys(state.appGroups||{});
  c.browserFilter=s.browserFilter;c.safeSearch=s.safeSearch;c.youtubeDns=s.youtubeDns;c.blockImages=s.blockImages;c.blockImageSearch=s.blockImageSearch;
  c.blockAppGroups=s.blockAppGroups==='all'?groups:s.blockAppGroups.filter(function(g){return groups.includes(g)});
- c.approveNew=s.approveNew;c.chromePolicy=Object.assign({},c.chromePolicy||{},{noIncognito:s.noIncognito})}
+ c.approveNew=s.approveNew;c.chromePolicy=Object.assign({},c.chromePolicy||{},{noIncognito:s.noIncognito});
+ for(const k of ['blockWaStatus','blockWaChannels','inAppBrowsers','messageAlerts'])if(s[k]!==undefined)c[k]=s[k]}
 function renderLevels(box,d){
- const card=h('div',{class:'card'},h('h2',null,'Protection level'),h('div',{class:'mute'},'One tap sets many settings at once. Afterwards you can still change any single setting in its own tab. Your allowed sites, and apps you set to Allow, are kept.'));
+ const card=h('div',{class:'card'},h('h2',null,'Ready-made setups'),h('div',{class:'mute'},'Not sure what to switch on? Pick the one that fits. One tap sets many settings at once; you can still change any single setting afterwards. Your allowed sites, and apps you set to Allow, are kept.'));
  for(const k of Object.keys(LEVELS)){const L=LEVELS[k];
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},L.label),h('div',{class:'mute small'},L.desc)),btn('Use this','tonal',async function(){
-   if(!confirm('Set this phone to "'+L.label+'"? This changes its filter level, safe search, YouTube, picture, Chrome and app-group settings.'))return;
+   if(!confirm('Set this phone to "'+L.label+'"?\n\n'+L.desc))return;
    applyLevel(d.config,L.set);try{await saveConfigFor(d,'Set to '+L.label+'. The phone picks it up within about 5 minutes.')}catch(e){snack(e.message,1)}render()})))}
  box.append(card)}
 
@@ -1869,10 +1881,18 @@ function renderWinDetail(m,w){
 
 /* ---------- codes ---------- */
 const CODE_INFO={
- enroll:['Enrollment code','Connects a new phone to this dashboard. Used in the adb command or typed into the agent app. Valid 1 hour, one use.'],
+ enroll:['With a computer instead (advanced)','Only if you set phones up with a computer and adb, or type a code into the MDM Agent app by hand. The QR code above is easier. Valid 1 hour, one use.'],
  browser:['Browser connect code','Connects a standalone Browser app directly to this dashboard — no agent, no device owner, nothing else installed. Until it\'s connected (or set up on its own with a master code), that Browser allows nothing at all. Valid 1 hour, one use.']};
 function renderCodes(m){
- m.append(h('div',{class:'card'},h('div',{class:'mute'},'Install, removal, and "browse freely" codes are generated from inside each phone\'s own page now, so they only ever work on that one phone. These two can\'t be tied to a phone — an enrollment code is how a phone gets an identity in the first place, and a Browser connect code is for a device with no agent at all.')));
+ m.append(h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Add a phone: step by step'),
+  h('ol',{style:'margin:8px 0 0 18px;line-height:1.7'},
+   h('li',null,'The phone must be new, or reset to factory settings (Settings → System → Reset → Erase all data). Back up anything on it first.'),
+   h('li',null,'Turn it on. On the first "Welcome" screen, tap the same empty spot 6 times quickly. A camera opens to scan a QR code.'),
+   h('li',null,'Below, under "Set up with a QR code", type your Wi-Fi name and password, then press "Generate enrollment QR".'),
+   h('li',null,'Scan the QR code with the phone. It downloads MDM Agent and sets itself up. Just tap Next / Accept on the phone.'),
+   h('li',null,'When it is done, the phone shows up on the Devices list (Refresh). Open it, go to Overview → Ready-made setups, and pick one.'),
+   h('li',null,'Open Safety → Health check on the dashboard and do anything it shows in red (usually one switch on the phone).')),
+  h('div',{class:'mute small',style:'margin-top:8px'},'The tapping step works on almost every Android phone from Android 7 on. If no camera opens, the phone may need its own Wi-Fi first: some phones ask for Wi-Fi before the scanner appears.')));
  for(const type of ['enroll','browser']){
   const card=h('div',{class:'card'},h('h2',null,CODE_INFO[type][0]),h('div',{class:'mute'},CODE_INFO[type][1]));
   const out=h('div');
@@ -1880,7 +1900,7 @@ function renderCodes(m){
    const r=await call('POST','/api/codes',{type:type});out.textContent='';
    out.append(h('div',{class:'code'},r.code),h('div',{class:'mute small'},'Valid for 1 hour. Shown once; generate another any time.'));
    if(type==='enroll'){
-    out.append(h('div',{class:'mute',style:'margin-top:8px'},'On your computer, with the phone connected and USB debugging on:'),
+    out.append(h('div',{class:'mute',style:'margin-top:8px'},'Advanced, only if you set phones up with a computer. On the computer, with the phone connected and USB debugging on:'),
      h('pre',{class:'cmd'},'adb install mdm-agent-enroll.apk\nadb shell dpm set-device-owner com.familymdm.agent/.AdminReceiver\nadb shell am start -n com.familymdm.agent/.MainActivity --es code '+r.code),
      h('div',{class:'mute small'},'Get mdm-agent-enroll.apk from GitHub → Releases → "Latest agent build" (it\'s the same app with a couple of permissions it doesn\'t need yet left out, so it looks less suspicious to Play Protect on a first install — it switches itself to the full build right after enrolling). If this build has the dashboard address baked in, that\'s all you need to type — otherwise tap "Use a different dashboard" on the phone once and enter '+r.server+'. No Google account needed for either command.'),
      h('div',{class:'mute small',style:'margin-top:8px'},'Prefer no computer at all? Use the QR code below instead — scan it on a brand-new or freshly reset phone, nothing to type.'))}
@@ -1888,7 +1908,9 @@ function renderCodes(m){
     out.append(h('div',{class:'mute',style:'margin-top:8px'},'In the Browser app (no agent needed), tap "Connect to a dashboard" and enter:'),
      h('pre',{class:'cmd'},'Dashboard address: '+r.server+'\nCode: '+r.code),
      h('div',{class:'mute small'},'Get mdm-browser.apk from GitHub → Releases → "Latest agent build", same place as the agent. It shows up on the Devices list once connected.'))}
-  })),out);m.append(card);
+  })),out);
+  const later=card;
+  if(type!=='enroll')m.append(card);
   if(type==='enroll'){
    const qrCard=h('div',{class:'card'},h('h2',null,'Set up with a QR code (no computer)'),
     h('div',{class:'mute'},'Works on a brand-new or freshly factory-reset phone, before it finishes its own setup wizard. Tap the Welcome screen 6 times, scan this, and the phone downloads the agent, becomes managed, and enrolls itself — nothing to type.'));
@@ -1911,7 +1933,8 @@ function renderCodes(m){
     const qr=qrcode(0,'M');qr.addData(JSON.stringify(payload));qr.make();
     qrOut.append(h('img',{src:qr.createDataURL(6,8),alt:'Enrollment QR code',style:'background:#fff;padding:4px;border-radius:12px;display:block'}),
      h('div',{class:'mute small',style:'margin-top:8px'},'Valid for 1 hour, one use. On the new phone: tap the Welcome screen 6 times, then scan.'))})));
-   m.append(qrCard)}}
+   m.append(qrCard,later)}}
+ m.append(h('div',{class:'card'},h('div',{class:'mute small'},'Codes to install or remove apps, or to browse freely for a while, are made on each phone\'s own page, so they only work on that one phone.')))
 }
 
 /* ---------- activity: who changed what ---------- */
@@ -1958,7 +1981,10 @@ function renderTwoStep(m){
  draw()}
 function renderAlerts(m){
  const card=h('div',{class:'card'},h('h2',null,'Alerts'),
-  h('div',{class:'mute'},'Get a message on your phone when something needs attention. Paste the address of a notification service. Easiest: install the free ntfy app, pick a private topic name, and use https://ntfy.sh/your-topic-name . Discord, Slack and Teams webhook addresses also work. Nothing is sent until you add one.'));
+  h('div',{class:'mute'},'Get told when something needs attention. Easiest: press "Get notifications on this device" on your own phone. You can also (or instead) paste a notification-service address below.'));
+ const pushRow=h('div',{class:'row',style:'margin-top:10px'},btn('Get notifications on this device','',enablePush),btn('Stop them on this device','outline',disablePush));
+ card.append(pushRow,h('div',{class:'mute small',style:'margin-top:6px'},'Android: works in Chrome; installing the dashboard to the home screen (browser menu → Add to Home screen) is best. iPhone: first tap Share → Add to Home Screen, open the dashboard from that new icon, then press the button. Each phone or computer signs up once.'),
+  h('div',{class:'mute small',style:'margin-top:10px'},'Other ways, for advanced use: the free ntfy app (address https://ntfy.sh/your-private-topic) or a Discord, Slack or Teams webhook address.'));
  const body=h('div',{style:'margin-top:12px'},h('div',{class:'mute'},'Loading…'));card.append(body);m.append(card);
  call('GET','/api/alerts').then(function(a){
   body.textContent='';
@@ -1980,9 +2006,122 @@ function renderAlerts(m){
   opt('requests','A phone asks to open a site or sends you a message');
   opt('tamper','Something security related: a phone restarted, its SIM card removed or changed, or a blocked attempt');
   opt('places','A phone arrived at or left a place you saved (Device → Location)');
+  opt('messages','Worrying words in a child\'s chats (phones with Safety → Message alerts on)');
+  if(a.pushCount)body.prepend(h('div',{class:'mute small',style:'margin-bottom:8px'},a.pushCount+(a.pushCount===1?' phone or computer gets':' phones or computers get')+' notifications.'));
   opt('weekly','Weekly report, Sunday evening: screen time, sites, calls, requests for each phone');
   card.append(h('div',{class:'mute small',style:'margin-top:8px'},'When someone taps "I need help" on a phone, you always get an alert.'));
  }).catch(function(e){body.textContent='';body.append(h('div',{class:'mute'},e.message))})}
+
+
+/* ---------- Safety: health check, message alerts, screenshots ---------- */
+const GROUP_HELP={
+ overview:'How the phone is doing, a ready-made setup to start from, and messages the phone sent you.',
+ safety:'Is everything working on the phone, alerts about worrying chats, and a look at the screen.',
+ apps:'Which apps the phone can open, and the home screen.',
+ time:'How long the phone was used, and limits like bedtime.',
+ browser:'Which websites can open, and how strict the filter is.',
+ calls:'Who can call the phone and whom it can call, contacts, and the call and text lists.',
+ internet:'Wi-Fi, blocking or allowing single sites by name, and which apps may use the internet.',
+ security:'Screen lock, a PIN for the MDM app, your administrator code, and restrictions so the phone cannot be changed or reset.',
+ device:'Location, buttons on the phone, updates, and controls like restart.'};
+/** What is not working on the phone, in plain words with how to fix it. level: bad (must fix) / warn (should fix). */
+function healthProblems(d){
+ const out=[],i=d.info||{},c=d.config||{};
+ const add=function(level,what,fix){out.push({level:level,what:what,fix:fix})};
+ if(d.syncPaused)add('bad','The phone is not connected to the dashboard (turned off on the phone itself).','On the phone: open MDM Agent → Administrator, and turn the connection back on.');
+ else if(!isOnline(d))add(d.lastSeen&&Date.now()-d.lastSeen<6*3600000?'warn':'bad','The phone has not checked in for '+ago(d.lastSeen).replace(' ago','')+'.','Make sure the phone is on and has Wi-Fi or mobile data. Everything you set keeps working on the phone meanwhile.');
+ if(i.deviceOwner===false)add('bad','MDM Agent is not in full control of the phone, so most settings cannot work.','Set the phone up again with the QR code (Add device → step by step).');
+ const needFilter=(c.browserFilter&&c.browserFilter!=='off')||c.safeSearch||(c.youtubeDns&&c.youtubeDns!=='off')||c.internetOnlyApps;
+ if(needFilter&&i.filterRunning===false)add('bad','The website filter is not running on the phone.','Restart the phone. If this stays red, update MDM Agent (Device → Updates).');
+ const needA11y=c.messageAlerts||(c.inAppBrowsers&&c.inAppBrowsers!=='off')||c.blockWaStatus||c.blockWaChannels||(d.shots&&d.shots.length)||(d.config&&d.config.wholeAppBlocklist&&d.config.wholeAppBlocklist.length);
+ if(i.accessibility===false&&needA11y)add('bad','One switch on the phone is still off, so message alerts, screenshots, WhatsApp and in-app web page controls cannot work.','On the phone: Settings → Accessibility → MDM Agent (sometimes under "Installed apps" or "Downloaded apps") → turn it on. The phone also shows a notification that opens this screen. Needed once.');
+ if(c.locationEvery&&i.locationPerm===false)add('bad','Location is not allowed for MDM Agent, so location history cannot work.','On the phone: Settings → Location → turn on. Then Settings → Apps → MDM Agent → Permissions → Location → Allow all the time.');
+ if(i.batteryUnrestricted===false)add('warn','The phone\'s battery saver may put MDM Agent to sleep, so it checks in late.','On the phone: Settings → Apps → MDM Agent → Battery → Unrestricted (or "Don\'t optimize").');
+ if(needsUpdate(d))add('warn','A newer MDM Agent is available.','Device → Updates → Update agent. It installs by itself.');
+ if(i.battery&&i.battery.pct<=15&&!i.battery.charging)add('warn','The battery is at '+i.battery.pct+'%.','Charge the phone.');
+ if(i.screenLock===false)add('warn','The phone has no screen lock, so anyone who picks it up can use it.','Security → Screen lock → Set PIN.');
+ if(i.filterRunning===undefined&&i.deviceOwner)add('warn','This phone has an older MDM Agent that does not report everything the health check looks at.','Device → Updates → Update agent.');
+ return out}
+function renderHealthSummary(box,d){
+ const p=healthProblems(d);if(!p.length)return;
+ const bad=p.filter(function(x){return x.level==='bad'}).length;
+ box.append(h('div',{class:'card',style:'border-color:var(--'+(bad?'error':'warn')+')'},h('h2',null,bad?bad+(bad===1?' thing needs fixing':' things need fixing'):'Something to look at'),
+  h('div',{class:'mute'},p[0].what),h('div',{style:'margin-top:8px'},btn('Open the health check','tonal',function(){goTo('safety','health')}))))}
+function renderHealth(m,d){
+ const p=healthProblems(d);
+ const card=h('div',{class:'card'},h('h2',null,'Health check'),h('div',{class:'mute'},'Everything that has to work on the phone for your settings to work. Anything red needs fixing; it says how.'));
+ if(!p.length)card.append(h('div',{style:'margin-top:10px;font-weight:500;color:var(--ok)'},'✅ Everything is working.'));
+ for(const x of p)card.append(h('div',{class:'setting',style:'align-items:flex-start'},h('div',{style:'font-size:20px;margin-right:8px'},x.level==='bad'?'🔴':'🟡'),
+  h('div',{class:'grow'},h('div',{style:'font-weight:500'},x.what),h('div',{class:'mute small'},'How to fix: '+x.fix))));
+ const i=d.info||{},okRow=function(on,label){if(on)card.append(h('div',{class:'mute small',style:'margin-top:4px'},'✅ '+label))};
+ card.append(h('div',{style:'margin-top:12px;font-weight:500'},'Working'));
+ okRow(isOnline(d),'Connected (checked in '+ago(d.lastSeen)+')');okRow(i.deviceOwner,'MDM Agent is in full control');okRow(i.filterRunning,'Website filter running');
+ okRow(i.accessibility,'Accessibility switch on');okRow(i.batteryUnrestricted,'Battery saver leaves it alone');okRow(i.screenLock,'Screen lock set');
+ m.append(card)}
+
+function renderMsgAlerts(m,dv){
+ const c=dv.config,groups=state.messageWordGroups||{};
+ if(!Array.isArray(c.messageGroups))c.messageGroups=Object.keys(groups);
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Message alerts'),
+  h('div',{class:'mute small'},'You get an alert when worrying words show up in a chat on the phone, with the sentence they were in. It looks at chats in WhatsApp, Instagram, Snapchat, Messenger, Telegram, Signal, Discord, TikTok, Viber and text messages. Nothing else is sent: not the other messages, not other apps.')),
+  sw(c.messageAlerts,function(on){c.messageAlerts=on;save(on?'Message alerts on. The phone tells the child that this is on.':'Message alerts off.')})));
+ card.append(h('div',{class:'mute small',style:'margin-top:6px'},'Good to know: the child sees a notice on the phone that message alerts are on. It only sees messages that appear on the screen (a chat that is opened), not pictures or voice notes. Needs one switch on the phone (Safety → Health check shows it if it is off). Alerts reach you by notification if you set that up (Settings → Alerts).'));
+ if(c.messageAlerts){
+  card.append(h('div',{style:'margin-top:12px;font-weight:500'},'Look for'));
+  for(const g of Object.keys(groups)){
+   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',null,groups[g].label),h('div',{class:'mute small'},'For example: '+groups[g].words.slice(0,4).join(', '))),
+    sw(c.messageGroups.includes(g),function(on){c.messageGroups=on?c.messageGroups.concat([g]):c.messageGroups.filter(function(x){return x!==g});save('Saved.')})))}
+  const own=h('textarea',{rows:3,style:'width:100%;margin-top:8px',placeholder:'Your own words or phrases, separated by commas. For example: a name, a place, a word.'});own.value=(c.messageWords||[]).join(', ');
+  card.append(h('div',{style:'margin-top:12px;font-weight:500'},'Your own words'),own,h('div',{style:'margin-top:8px'},btn('Save my words','tonal',function(){c.messageWords=own.value.split(/[,\n]/).map(function(x){return x.trim()}).filter(Boolean);save('Saved. The phone gets them at its next check-in.')})))}
+ m.append(card);
+ const list=dv.msgAlerts||[];
+ const lc=h('div',{class:'card'},h('h2',null,'Found ('+list.length+')'));
+ if(!list.length)lc.append(h('div',{class:'mute'},c.messageAlerts?'Nothing found yet.':'Message alerts are off.'));
+ for(const a of list.slice().reverse())lc.append(h('div',{class:'act'},h('div',null,h('b',null,'"'+a.word+'"'),' in '+(CHAT_NAMES[a.app]||a.app)+(a.who?' ('+a.who+')':'')+' · '+ago(a.at)),h('div',{class:'mute small'},a.text)));
+ if(list.length)lc.append(h('div',{style:'margin-top:8px'},btn('Clear the list','outline',async function(){if(!confirm('Clear the list of found messages?'))return;await call('DELETE','/api/devices/'+dv.id+'/msg-alerts');load()})));
+ m.append(lc)}
+const CHAT_NAMES={'com.whatsapp':'WhatsApp','com.whatsapp.w4b':'WhatsApp Business','org.telegram.messenger':'Telegram','com.instagram.android':'Instagram','com.facebook.orca':'Messenger','com.snapchat.android':'Snapchat','org.thoughtcrime.securesms':'Signal','com.discord':'Discord','com.zhiliaoapp.musically':'TikTok','com.google.android.apps.messaging':'Messages','com.samsung.android.messaging':'Samsung Messages','com.viber.voip':'Viber',texts:'a text message'};
+
+function renderScreenshots(m,dv){
+ const i=dv.info||{};
+ const card=h('div',{class:'card'},h('h2',null,'See the phone\'s screen'),
+  h('div',{class:'mute'},'Takes one picture of whatever is on the phone\'s screen right now and shows it here. The phone shows "A screenshot was sent to your parent". Pictures are kept for 7 days (the last 10).'));
+ if(i.canScreenshot===false)card.append(h('div',{class:'mute small',style:'margin-top:6px;color:var(--warn)'},'This phone\'s Android is too old for this (it needs Android 11 or later).'));
+ card.append(h('div',{style:'margin-top:10px'},btn('Take a screenshot now','',async function(){
+  await call('POST','/api/devices/'+dv.id+'/command',{type:'screenshot',args:{}});snack('Asked the phone. The picture shows up here in a minute or two (tap Refresh).');load()})));
+ const last=(dv.results||[]).slice().reverse().find(function(r){return r.type==='screenshot'});
+ if(last&&!last.ok)card.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--error)'},'Last try did not work: '+last.msg));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Needs one switch on the phone: Safety → Health check shows it if it is off. Some apps (banking, some video apps) block screenshots; then the picture is black.'));
+ m.append(card);
+ const shots=(dv.shots||[]).slice().reverse();
+ const g=h('div',{class:'card'},h('h2',null,'Pictures ('+shots.length+')'));
+ if(!shots.length)g.append(h('div',{class:'mute'},'None yet.'));
+ const grid=h('div',{style:'display:flex;flex-wrap:wrap;gap:12px;margin-top:8px'});
+ for(const s of shots){const src='/api/devices/'+dv.id+'/shots/'+s.id;
+  grid.append(h('a',{href:src,target:'_blank',rel:'noopener',style:'display:block;width:160px;text-decoration:none;color:inherit'},h('img',{src:src,alt:'Screenshot',loading:'lazy',style:'width:160px;border-radius:10px;border:1px solid var(--outline);display:block'}),
+   h('div',{class:'mute small'},ago(s.at)+(s.app?' · '+(CHAT_NAMES[s.app]||s.app):''))))}
+ g.append(grid);m.append(g)}
+
+/* ---------- notifications on this phone or computer (Web Push) ---------- */
+async function enablePush(){
+ try{
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){snack('This browser cannot show notifications. On iPhone: Share → Add to Home Screen first, then open the dashboard from that icon.',1);return}
+  const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted'){snack('Notifications were not allowed. Allow them for this site in the browser settings and try again.',1);return}
+  const k=await call('GET','/api/push/key');let b=k.publicKey.replace(/-/g,'+').replace(/_/g,'/');while(b.length%4)b+='=';
+  const key=Uint8Array.from(atob(b),function(ch){return ch.charCodeAt(0)});
+  let sub=await reg.pushManager.getSubscription();
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+  await call('POST','/api/push/subscribe',{endpoint:sub.endpoint});
+  snack('Notifications are on for this device. Press "Send a test" to try.');render()
+ }catch(e){snack('Could not turn on notifications: '+(e.message||e),1)}}
+async function disablePush(){
+ try{const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=reg&&await reg.pushManager.getSubscription();
+  if(!sub){snack('This device was not getting notifications.');return}
+  await call('POST','/api/push/unsubscribe',{endpoint:sub.endpoint});await sub.unsubscribe();snack('Notifications stopped on this device.');render()
+ }catch(e){snack(e.message||String(e),1)}}
 
 /* ---------- settings ---------- */
 /** The only things left that aren't a specific phone's own: branding shown on every phone. */
