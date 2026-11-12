@@ -46,6 +46,25 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     }
 
     private volatile PictureFilter pictureFilter;
+    private volatile String pageScript;
+
+    /** A script added to every web page (the video skin covering); null for none. */
+    public void setPageScript(String js) {
+        pageScript = js == null || js.isEmpty() ? null : js;
+    }
+
+    /** The video skin covering, packed with this code (video_skin.js, same as the Browser's). */
+    public static String videoSkinScript() {
+        try (java.io.InputStream in = YoutubeInspector.class.getResourceAsStream("video_skin.js")) {
+            if (in == null) return null;
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[8192];
+            for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+            return out.toString("UTF-8");
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
     private volatile Set<String> noPictureSites = java.util.Collections.emptySet();
 
     /** "No pictures on these sites": a picture on (or from) one of them is replaced by a blank one. */
@@ -166,12 +185,13 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
 
     @Override
     public boolean wantsIdentity(InspectProxy.Request r) {
-        return restricted && isYoutube(r.host) && isDocument(r);
+        return isDocument(r) && ((restricted && isYoutube(r.host)) || pageScript != null);
     }
 
     @Override
     public boolean rewrites(InspectProxy.Request r, String contentType) {
         if (filtersPicture(r, contentType)) return true;
+        if (pageScript != null && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return true;
         return restricted && isYoutube(r.host) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html");
     }
 
@@ -186,9 +206,11 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
                 return body;
             }
         }
-        if (!(restricted && isYoutube(r.host))) return body;
+        boolean yt = restricted && isYoutube(r.host);
+        String js = pageScript;
+        if (!yt && js == null) return body;
         String html = new String(body, StandardCharsets.UTF_8);
-        String tag = "<style>" + YoutubeRestricted.HIDE_CSS + "</style>";
+        String tag = (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style>" : "") + (js != null ? "<script>" + js + "</script>" : "");
         int head = html.toLowerCase(java.util.Locale.ROOT).indexOf("<head");
         if (head >= 0) {
             int close = html.indexOf('>', head);
