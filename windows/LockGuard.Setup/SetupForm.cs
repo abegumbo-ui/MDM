@@ -197,6 +197,7 @@ public sealed class SetupForm : Form
     private void ShowStatusAndGate(PipeResponse s)
     {
         StatusCards(s);
+        if (!_uninstallMode) AskForSiteCard();
         var c = Card(_uninstallMode ? "Remove LockGuard" : "Make changes");
         c.Controls.Add(Para(_uninstallMode
             ? "To remove LockGuard from this computer, enter the removal code. Get it on the dashboard: open this computer → Computer → Make a removal code."
@@ -218,6 +219,29 @@ public sealed class SetupForm : Form
             _unlockedCode = code.Text;
             if (_uninstallMode) await UninstallAsync();
             else await RefreshAsync();
+        };
+    }
+
+    /// <summary>Anyone may ask for a website (no code); the parent allows it on the dashboard.</summary>
+    private void AskForSiteCard()
+    {
+        var c = Card("Ask for a website");
+        c.Controls.Add(Para("Need a site that is blocked? Type its address and send it. Your parent sees it on the dashboard and can allow it.", Normal, Muted));
+        var box = Box(false);
+        box.PlaceholderText = "for example: school-website.org";
+        c.Controls.Add(box);
+        var send = Btn("Send", primary: false);
+        var note = new Label { AutoSize = true, ForeColor = Good, MaximumSize = new Size(660, 0), Margin = new Padding(0, 4, 0, 0) };
+        c.Controls.Add(send);
+        c.Controls.Add(note);
+        send.Click += async (_, _) =>
+        {
+            send.Enabled = false;
+            var r = await PipeClient.SendAsync(new PipeRequest { Action = PipeActions.RequestSite, Arg = box.Text });
+            send.Enabled = true;
+            note.ForeColor = r.Ok ? Good : Bad;
+            note.Text = r.Message;
+            if (r.Ok) box.Text = "";
         };
     }
 

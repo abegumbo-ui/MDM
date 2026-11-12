@@ -1862,6 +1862,14 @@ function renderWinDetail(m,w){
  m.append(tabs);
  if(winTab==='filter'){
   renderWinWhatsOn(m,w);
+  if((w.siteRequests||[]).length){
+   const rq=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Asked for on the computer ('+w.siteRequests.length+')'));
+   for(const r of w.siteRequests.slice().reverse()){
+    const host=hostOfUrl(r.url);
+    rq.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},host||r.url),h('div',{class:'mute small'},r.url+' · '+ago(r.at))),
+     btn('Allow','',async function(){w.config.dnsAllowlist=[...new Set([...(w.config.dnsAllowlist||[]),host])];await saveConfigFor(w,host+' allowed.');await call('DELETE','/api/windevices/'+w.id+'/site-requests?url='+encodeURIComponent(r.url));load()}),
+     btn('Dismiss','outline',async function(){await call('DELETE','/api/windevices/'+w.id+'/site-requests?url='+encodeURIComponent(r.url));load()})))}
+   m.append(rq)}
   let status='The filter is off: every website opens.';
   if(w.filterOn){
    if(!f)status='Waiting for the computer to check in (it needs the latest LockGuard).';

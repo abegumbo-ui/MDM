@@ -256,7 +256,9 @@ public sealed class Worker : BackgroundService
             {
                 try { programs = ProgramList.Find().Select(p => (object)new { name = p.Name, path = p.Path }).ToList(); } catch { }
             }
-            var result = await _dashboard.SyncAsync(config.Enabled, config.AllowedPrograms, Info(), log, events, programs);
+            var asked = SiteRequests.Take();
+            var result = await _dashboard.SyncAsync(config.Enabled, config.AllowedPrograms, Info(), log, events, programs, asked);
+            if (result is null) SiteRequests.Restore(asked);
             if (programs != null && result != null) _lastPrograms = DateTime.UtcNow;
             if (result is null) return;
             if (report) _lastReport = DateTime.UtcNow;
