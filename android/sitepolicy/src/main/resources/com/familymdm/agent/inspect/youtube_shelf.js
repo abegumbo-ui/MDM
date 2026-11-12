@@ -1,13 +1,16 @@
-// The family Browser: on YouTube's home page (its own feed emptied), shows "Your channels" and
-// "Your videos" -- what the parent allowed on the dashboard -- in YouTube's own style.
-// __MDM_DATA__ is replaced by Guard with {"channels":[{"h":"@x","t":"Name","i":"pic"}],"videos":[{"v":"id","t":"Title","i":"pic"}]}.
+// The family Browser and the YouTube add-on: on YouTube's home page (its own feed emptied), shows
+// "Ask for a channel or video", "Your channels" and "Your videos" -- what the parent allowed on the
+// dashboard -- in YouTube's own style.
+// __MDM_DATA__ is replaced with {"channels":[{"h":"@x","t":"Name","i":"pic"}],"videos":[{"v":"id","t":"Title","i":"pic"}],"ask":true}.
 (function (data) {
   if (window.__mdmShelf) return;
   window.__mdmShelf = true;
-  if (!data || (!data.channels.length && !data.videos.length)) return;
+  if (!data || (!data.channels.length && !data.videos.length && !data.ask)) return;
   var css = '#mdm-shelf{font-family:Roboto,Arial,sans-serif;padding:12px 12px 4px;color:#0f0f0f}' +
     'html[dark] #mdm-shelf,html[darker-dark-theme] #mdm-shelf{color:#f1f1f1}' +
     '#mdm-shelf h3{font-size:18px;font-weight:700;margin:8px 0 12px}' +
+    '#mdm-shelf .ask{display:inline-flex;align-items:center;gap:8px;margin:4px 0 8px;padding:9px 16px;border-radius:18px;background:rgba(0,0,0,.05);color:inherit;text-decoration:none;font-size:14px;font-weight:500}' +
+    'html[dark] #mdm-shelf .ask{background:rgba(255,255,255,.1)}' +
     '#mdm-shelf .row{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px}' +
     '#mdm-shelf .ch{flex:0 0 auto;width:76px;text-align:center;color:inherit;text-decoration:none;font-size:12px}' +
     '#mdm-shelf .ch img{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#ccc;display:block;margin:0 auto 6px}' +
@@ -26,6 +29,10 @@
     if (!host) return;
     if (!document.getElementById('mdm-shelf-css')) { var st = el('style'); st.id = 'mdm-shelf-css'; st.textContent = css; (document.head || document.documentElement).appendChild(st); }
     box = el('div'); box.id = 'mdm-shelf';
+    if (data.ask) {
+      var ask = el('a', 'ask', '＋ Ask for a channel or video'); ask.href = 'mdmguard://ask';
+      box.appendChild(ask);
+    }
     if (data.channels.length) {
       box.appendChild(el('h3', null, 'Your channels'));
       var row = el('div', 'row');

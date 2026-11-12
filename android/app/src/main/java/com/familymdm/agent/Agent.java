@@ -228,6 +228,11 @@ final class Agent {
     // ---------- browser: pages requested that weren't on the allowlist, reported on the next sync ----------
 
     static synchronized void addSiteRequest(Context c, String url) {
+        addSiteRequest(c, url, null);
+    }
+
+    /** A request for the dashboard, with the child's own message (optional). */
+    static synchronized void addSiteRequest(Context c, String url, String note) {
         try {
             JSONArray arr = new JSONArray(prefs(c).getString("siteRequests", "[]"));
             for (int i = 0; i < arr.length(); i++) {
@@ -235,6 +240,7 @@ final class Agent {
             }
             JSONObject r = new JSONObject();
             r.put("url", url);
+            if (note != null && !note.trim().isEmpty()) r.put("note", note.trim().length() > 300 ? note.trim().substring(0, 300) : note.trim());
             arr.put(r);
             JSONArray keep = new JSONArray();
             for (int i = Math.max(0, arr.length() - 30); i < arr.length(); i++) keep.put(arr.get(i));

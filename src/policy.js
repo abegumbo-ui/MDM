@@ -556,6 +556,9 @@ export function normalizeConfig(input) {
     browserLook: c.browserLook === "chrome" ? "chrome" : "classic",
     // Ad servers blocked phone-wide (with Moderate or Strict): the "+ads" lists.
     blockAds: c.blockAds === true,
+    // The YouTube add-on (its own icon in the MDM app) and what YouTube shows when it is turned off.
+    youtubeAddon: c.youtubeAddon === true,
+    youtubeOffMessage: typeof c.youtubeOffMessage === "string" ? c.youtubeOffMessage.trim().slice(0, 200) : "",
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
     pauseUntil: Number.isFinite(Number(c.pauseUntil)) && Number(c.pauseUntil) > 0 ? Math.floor(Number(c.pauseUntil)) : 0,
     // The internet is off for every app (except Android's essentials and "internet only" apps) until this time (ms).
@@ -804,6 +807,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.skinWho = cfg.skinWho;
   out.browserLook = cfg.browserLook;
   out.blockAds = cfg.blockAds;
+  out.youtubeAddon = cfg.youtubeAddon;
+  out.youtubeOffMessage = cfg.youtubeOffMessage;
   out.pauseUntil = cfg.pauseUntil;
   out.internetOffUntil = cfg.internetOffUntil;
   out.internetOnlyApps = cfg.internetOnlyApps;

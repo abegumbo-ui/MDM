@@ -55,7 +55,7 @@ final class FilterStore {
         boolean changed = !t.equals(p.getString("filterTier", "off")) || !b.equals(p.getString("filterBase", ""));
         if (changed) p.edit().putString("filterTier", t).putString("filterBase", b).apply();
         if (changed) synchronized (LOCK) { loaded = null; loadedFor = ""; }
-        if (("moderate".equals(t) || "strict".equals(t)) && !b.isEmpty()) refreshAsync(c, changed);
+        if (listTier(c) != null && !b.isEmpty()) refreshAsync(c, changed);
     }
 
     /** For the dashboard: what the filter is really doing on this phone. */
@@ -82,9 +82,42 @@ final class FilterStore {
         return prefs(c).getString("filterTier", "off");
     }
 
-    private static boolean wanted(Context c) {
+    /**
+     * Which published lists to use: the level's own, plus the ad servers when "Block ads" is on (on
+     * "Open: no filter", only the ad servers). Null when no list is needed.
+     */
+    static String listTier(Context c) {
         String t = tier(c);
-        return ("moderate".equals(t) || "strict".equals(t)) && !prefs(c).getString("filterBase", "").isEmpty();
+        boolean ads = blockAds(c);
+        if ("moderate".equals(t) || "strict".equals(t)) return ads ? t + "+ads" : t;
+        if ("open".equals(t) && ads) return "ads";
+        return null;
+    }
+
+    /** What YouTube shows when the dashboard has it Off ("" = the standard message). */
+    static void setYoutubeOffMessage(Context c, String m) {
+        prefs(c).edit().putString("youtubeOffMessage", m == null ? "" : m).apply();
+    }
+
+    static String youtubeOffMessage(Context c) {
+        String m = prefs(c).getString("youtubeOffMessage", "");
+        return m.isEmpty() ? "Sorry, YouTube is not available right now. Ask your administrator to open it." : m;
+    }
+
+    /** "Block ads" from the dashboard: ad servers on every page, and YouTube's ads (YoutubeAds). */
+    static void setBlockAds(Context c, boolean on) {
+        if (on == blockAds(c)) return;
+        prefs(c).edit().putBoolean("blockAds", on).apply();
+        synchronized (LOCK) { loaded = null; loadedFor = ""; }
+        refreshAsync(c, true);
+    }
+
+    static boolean blockAds(Context c) {
+        return prefs(c).getBoolean("blockAds", false);
+    }
+
+    private static boolean wanted(Context c) {
+        return listTier(c) != null && !prefs(c).getString("filterBase", "").isEmpty();
     }
 
     /** True only when the level is on AND all its lists are downloaded and verified. */
@@ -220,7 +253,7 @@ final class FilterStore {
             String m = prefs(c).getString("filterManifest", null);
             if (m == null) return null;
             JSONObject man = new JSONObject(m);
-            JSONArray cats = man.getJSONObject("tiers").optJSONArray(tier(c));
+            JSONArray cats = man.getJSONObject("tiers").optJSONArray(listTier(c));
             if (cats == null || cats.length() == 0) return null;
             Map<String, JSONObject> out = new HashMap<>();
             for (int i = 0; i < cats.length(); i++) {
@@ -235,7 +268,7 @@ final class FilterStore {
     }
 
     private static void ensureLoaded(Context c) {
-        String key = tier(c) + "|" + prefs(c).getString("filterManifest", "");
+        String key = listTier(c) + "|" + prefs(c).getString("filterManifest", "");
         if (loaded != null && key.equals(loadedFor)) return;
         loaded = null;
         loadedFor = key;
@@ -288,7 +321,7 @@ final class FilterStore {
         String base = prefs(c).getString("filterBase", "");
         String manifestText = new String(fetch(base + "/manifest.json", 256 * 1024), "UTF-8");
         JSONObject man = new JSONObject(manifestText);
-        JSONArray cats = man.getJSONObject("tiers").optJSONArray(tier(c));
+        JSONArray cats = man.getJSONObject("tiers").optJSONArray(listTier(c));
         if (cats == null || cats.length() == 0) throw new Exception("unknown level");
         for (int i = 0; i < cats.length(); i++) {
             JSONObject cat = man.getJSONObject("categories").getJSONObject(cats.getString(i));

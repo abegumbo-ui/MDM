@@ -1059,11 +1059,19 @@ function renderRequestsCard(m,reqs,dv){
   h('div',{class:'mute'},'Pages tried on this device that weren\'t on its allowlist.'));
   for(const r of reqs){
    const dismiss=async function(){await call('DELETE',r.path+'?url='+encodeURIComponent(r.url));load()};
-   const isVideo=!!ytVideoIdOf(r.url);
+   const isVideo=!!ytVideoIdOf(r.url),ytCh=ytChannelOf(r.url),ytFind=(/^https:\/\/(www\.|m\.)?youtube\.com\/results\?search_query=([^&]*)/.exec(r.url)||[])[2];
    const detail=h('div',{class:'mute small'},isVideo?'Looking up the video…':'');
-   const titleEl=h('div',{style:'font-weight:500;word-break:break-all'},r.url);
+   const titleEl=h('div',{style:'font-weight:500;word-break:break-all'},ytFind!==undefined?'YouTube: "'+decodeURIComponent(ytFind.replace(/\+/g,' '))+'"':ytCh?'YouTube channel '+ytCh:r.url);
    let info=null;
    const buttons=h('div',{class:'row',style:'margin-top:8px'});
+   if(ytFind!==undefined){
+    buttons.append(btn('Find it','',function(){findOnYoutube(dv,decodeURIComponent(ytFind.replace(/\+/g,' ')))}),btn('Dismiss','outline',dismiss));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    continue}
+   if(ytCh){
+    buttons.append(btn('Allow this channel','',async function(){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+ytCh,id:ytCh,label:ytCh});await dismiss()}),btn('Dismiss','outline',dismiss));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    continue}
    buttons.append(btn(isVideo?'Allow this video':'Allow this page only','',async function(){
      const label=info&&info.title?info.title+(info.author?' — '+info.author:''):hostOfUrl(r.url);
      await addSite(dv,{type:'exact',url:r.url,label:label});await dismiss()}));
@@ -1072,7 +1080,7 @@ function renderRequestsCard(m,reqs,dv){
      await addSite(dv,{type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}));
    }
    buttons.append(btn('Dismiss','outline',dismiss));
-   rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,detail,
+   rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,detail,r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,
     h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
    if(isVideo){
     call('GET','/api/youtube-info?url='+encodeURIComponent(r.url)).then(function(i){
@@ -1212,9 +1220,9 @@ function renderLevels(box,d){
 
 /** "Images" tab of Google, Bing and DuckDuckGo. */
 /** Ad servers blocked phone-wide (with Moderate or Strict). */
-function renderBlockAds(m,dv){const c=dv.config;if(dv.isBrowser||dv.isWindows)return;
+function renderBlockAds(m,dv){const c=dv.config;if(dv.isWindows)return;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block ads'),
-  h('div',{class:'mute small'},'Ad servers are blocked in every app and browser on the phone. Works with the Moderate or Strict level. A few apps may show empty boxes where ads were; switch it off if one stops working.')),
+  h('div',{class:'mute small'},dv.isBrowser?'No ads on web pages in this Browser, and no ads on YouTube (before or during videos, banners, promoted videos). Best effort on YouTube: it changes its pages from time to time.':'Ad servers are blocked in every app and browser on the phone (works with the Moderate or Strict level), and YouTube ads in our Browser and the YouTube app. A few apps may show empty boxes where ads were; switch it off if one stops working.')),
   sw(c.blockAds,async function(on){c.blockAds=on;try{await saveConfigFor(dv,on?'Ads blocked from the next check-in.':'Ads allowed again.')}catch(e){snack(e.message,1)}render()}))))}
 function renderImageSearch(m,dv){const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block image search'),
@@ -1858,6 +1866,12 @@ function renderYoutube(m,dv){
  card.append(seg,h('div',{class:'mute',style:'margin-top:10px'},(YT_CHOICES.find(function(x){return x[0]===cur})||YT_CHOICES[0])[2]));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},dv.isBrowser?'In this Browser.':'In our Browser, and in Chrome, Samsung Internet and Edge when Inspection is on. The YouTube app itself is not affected: block it under Apps if needed.'));
  m.append(card);
+ if(!dv.isBrowser&&!dv.isWindows)m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube app on the phone'),
+  h('div',{class:'mute'},'A YouTube icon on the phone, built into the MDM app, so YouTube works even when browsers are blocked. It follows everything on this page: the choice above, your channels and videos, ad blocking and picture covering. When YouTube is Off it shows your message below.')),
+  sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears on the phone at its next check-in.':'The YouTube icon is removed at the next check-in.')}))));
+ const msg=h('input',{type:'text',class:'grow',maxlength:'200',placeholder:'Sorry, YouTube is not available right now. Ask your administrator to open it.',value:c.youtubeOffMessage||''});
+ m.append(h('div',{class:'card'},h('h2',null,'When YouTube is off'),h('div',{class:'mute'},'What the child sees instead of YouTube. Leave empty for the standard message.'),
+  h('div',{class:'row',style:'margin-top:8px'},msg,btn('Save','tonal',function(){c.youtubeOffMessage=msg.value.trim();save('Saved.')}))));
  renderYoutubeSearch(m,dv);
  const sites=c.sites||{},keys=Object.keys(sites).filter(function(k){const s=sites[k];return s.type==='youtube'||isYoutubeUrl(s.url||'')});
  const lc=h('div',{class:'card'},h('h2',null,'Allowed channels and videos ('+keys.length+')'));
@@ -1877,6 +1891,11 @@ function renderYoutube(m,dv){
  m.append(lc)}
 /** Find a YouTube channel or video by name and allow it with one tap. */
 let ytResults=null,ytQuery='',ytKind='channel';
+/** From a request: open this device's YouTube section and search for what the child asked for. */
+async function findOnYoutube(dv,text){
+ ytQuery=text;ytKind='channel';ytResults='loading';
+ if(dv.isBrowser){browserSection='youtube';try{sessionStorage.setItem('browserSection','youtube')}catch(e){}render()}else goTo('browser','youtube');
+ try{ytResults=(await call('GET','/api/youtube/search?type=channel&q='+encodeURIComponent(text))).results}catch(e){ytResults=[]}render()}
 function renderYoutubeSearch(m,dv){
  const card=h('div',{class:'card'},h('h2',null,'Find on YouTube'));
  const inp=h('input',{type:'text',placeholder:'Search YouTube, e.g. a channel or a topic',class:'grow',value:ytQuery});
@@ -1963,7 +1982,7 @@ function renderBrowserDetail(m,b){
  const content=h('div',{class:'content'});
  const requests=function(){renderRequestsCard(content,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b)};
  if(sec==='overview'){renderBrowserGlance(content,b);requests();renderBrowserSitesOpened(content,b)}
- else if(sec==='web'){renderWebAccess(content,b);renderBrowserSwitches(content,b);renderBlockedWords(content,b);renderImageSearch(content,b)}
+ else if(sec==='web'){renderWebAccess(content,b);renderBrowserSwitches(content,b);renderBlockAds(content,b);renderBlockedWords(content,b);renderImageSearch(content,b)}
  else if(sec==='youtube')renderYoutube(content,b);
  else if(sec==='pictures'){renderSearchPictures(content,b);renderNoPictureSites(content,b)}
  else if(sec==='sites'){requests();renderSitesEditor(content,b)}

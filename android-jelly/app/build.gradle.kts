@@ -41,6 +41,7 @@ android {
 
     // The dashboard's shared rules (site lists, YouTube, word filter, picture checks).
     sourceSets["main"].java.srcDir("../../android/sitepolicy/src/main/java")
+    sourceSets["main"].resources.srcDir("../../android/sitepolicy/src/main/resources")
 
     buildFeatures {
         resValues = true
@@ -106,6 +107,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.tensorflow.lite)
+    implementation(libs.androidx.webkit)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)

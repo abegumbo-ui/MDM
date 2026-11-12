@@ -94,6 +94,27 @@
              (see AdminActivity.buildAddonsSection() and BrowserAddon.setEnabled()). An
              activity-alias instead of a separate APK: there's nothing to install, sign, or keep in
              sync, since it's already part of this same build. -->
+        <!-- The YouTube add-on (YoutubeAddonActivity): its own "YouTube" icon, off until the dashboard's
+             YouTube section turns it on (YoutubeAddon.setEnabled from PolicyApplier). -->
+        <activity
+            android:name=".YoutubeAddonActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity-alias
+            android:name=".YoutubeAddon"
+            android:targetActivity=".YoutubeAddonActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_youtube_addon"
+            android:roundIcon="@drawable/ic_youtube_addon"
+            android:label="YouTube">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <activity-alias
             android:name=".BrowserAddon"
             android:targetActivity=".BrowserAddonActivity"
