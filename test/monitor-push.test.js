@@ -121,3 +121,17 @@ test("searches typed on the phone are kept only while the switch is on", async (
   assert.equal(r.policy.recordSearches, true);
   assert.deepEqual((await list()).searches.map((s) => s.q), ["minecraft"]);
 });
+
+test("daily summary: today's screen time, blocked sites, worrying words and requests, in plain words", async () => {
+  const { dailyReport } = await import("../src/alerts.js");
+  const text = dailyReport([
+    { name: "Kid", usage: { "2026-11-12": { ok: true, total: 130, apps: [{ l: "YouTube", m: 60 }, { l: "Maps", m: 5 }] } },
+      siteHistory: { "2026-11-12": { "bad.com": [3, 2], "ok.com": [5, 0] } }, msgAlerts: [{ at: Date.parse("2026-11-12T10:00:00Z") }], appRequests: [{}] },
+    { name: "Quiet" },
+  ], "2026-11-12");
+  assert.match(text, /Kid\n- Screen time: 2 h 10 min \(most: YouTube 1 h 0 min, Maps 5 min\)/);
+  assert.match(text, /Blocked sites: 1 \(bad\.com\)/);
+  assert.match(text, /Worrying words: 1/);
+  assert.match(text, /Requests waiting for you: 1/);
+  assert.ok(!text.includes("Quiet"), "a phone with nothing to say is left out");
+});

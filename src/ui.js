@@ -2092,6 +2092,7 @@ function renderAlerts(m){
   opt('apps','A new app was installed on a phone');
   if(a.pushCount)body.prepend(h('div',{class:'mute small',style:'margin-bottom:8px'},a.pushCount+(a.pushCount===1?' phone or computer gets':' phones or computers get')+' notifications.'));
   opt('weekly','Weekly report, Sunday evening: screen time, sites, calls, requests for each phone');
+  opt('daily','A short summary of today, every evening at 8: screen time, blocked sites, worrying words, requests');
   card.append(h('div',{class:'mute small',style:'margin-top:8px'},'When someone taps "I need help" on a phone, you always get an alert.'));
  }).catch(function(e){body.textContent='';body.append(h('div',{class:'mute'},e.message))})}
 
