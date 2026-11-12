@@ -48,7 +48,7 @@ function ShowLogs() {
 
 # A second copy of curl.exe somewhere else: Windows sees it as a different program.
 $curl2 = Join-Path $env:TEMP 'curl-copy\curl.exe'; New-Item -ItemType Directory -Force (Split-Path $curl2) | Out-Null; Copy-Item "$env:SystemRoot\System32\curl.exe" $curl2 -Force
-function CurlTry($exe) { $out = & $exe -sS -o NUL -m 15 https://example.com 2>&1; $code = $LASTEXITCODE; if ($code -ne 0) { Out ("  ($exe exit ${code}: $out)") }; return ($code -eq 0) }
+function CurlTry($exe) { $ErrorActionPreference = 'Continue'; $out = & $exe -sS -o NUL -m 15 https://example.com 2>&1 | Out-String; $code = $LASTEXITCODE; if ($code -ne 0) { Out ("  ($exe exit ${code}: $out)") }; return ($code -eq 0) }
 function OtherWorks() { return (CurlTry $curl2) }
 Step 'Before: normal lookups work'
 Check (Lookup $null) 'lookups work'
@@ -70,6 +70,11 @@ Check ((TaskExists 'LockGuard Guard')) 'the guard task exists'
 function CurlWorks() { & "$env:SystemRoot\System32\curl.exe" -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
 Check (WaitFor 'curl.exe to lose its internet' 60 { -not (CurlWorks) }) 'a program set to "No internet" (curl.exe) cannot go online'
 Check (OtherWorks) 'other programs still can (a copy of curl.exe elsewhere)'
+# Diagnostics: LockGuard's per-program blocks as Windows has them.
+$ErrorActionPreference = 'Continue'
+netsh wfp show filters file="$env:TEMP\wfp.xml" | Out-Null
+if (Test-Path "$env:TEMP\wfp.xml") { [xml]$x = Get-Content "$env:TEMP\wfp.xml"; foreach ($f in $x.SelectNodes('//item[displayData/name="LockGuard: no internet for a program"]')) { Out ('  WFP filter: layer ' + $f.layerKey + ' action ' + $f.action.type + ' conditions ' + $f.filterCondition.numItems + ': ' + ($f.filterCondition.item | ForEach-Object { $_.fieldKey + ' ' + $_.matchType + ' ' + $_.conditionValue.type + ' ' + ($_.conditionValue.byteBlob.asString) }) -join ' | ') } }
+$ErrorActionPreference = 'Stop'
 
 Step 'The unlock file: in Downloads, every restriction is off; deleted, back on'
 # What the dashboard would send (written as the system, since the folder is locked to it).
