@@ -340,6 +340,14 @@ final class PolicyApplier {
         for (String r : strings(policy.optJSONArray("restrictions"))) {
             if (ALLOWED_RESTRICTIONS.contains(r)) wanted.add(r);
         }
+        // Switches flipped on this phone that the dashboard has not confirmed yet win over the
+        // dashboard's (older) list -- otherwise a switch turned off a moment ago flips back on.
+        JSONObject pendingR = Agent.getRestrictionOverrides(c);
+        for (java.util.Iterator<String> it = pendingR.keys(); it.hasNext(); ) {
+            String k = it.next();
+            if (!ALLOWED_RESTRICTIONS.contains(k)) continue;
+            if (pendingR.optBoolean(k)) wanted.add(k); else wanted.remove(k);
+        }
         // While the agent itself is installing or uninstalling something (an update, an uploaded APK, the
         // Uninstall button), those restrictions are paused for a couple of minutes, then restored.
         boolean window = System.currentTimeMillis() < Agent.prefs(c).getLong("installWindowUntil", 0) || StoreAccess.open(c);

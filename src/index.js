@@ -1435,7 +1435,8 @@ async function agentApi(request, env, url, ctx) {
       d.known = [...new Set([...d.known, ...reported])];
       dirty = true;
     }
-    if (body.overrides && typeof body.overrides === "object" && Number(body.overridesRev) > (d.overridesRev || 0)) {
+    if (body.overrides && typeof body.overrides === "object" && Object.keys(body.overrides).length && Number(body.overridesRev) > 0 && Number(body.overridesRev) > (d.overridesPhoneRev || 0)) {
+      d.overridesPhoneRev = Number(body.overridesRev); // compared with this phone's own last change, never with our clock (a phone's clock may be behind)
       // A change made on the phone itself becomes the real setting here, instead of a second,
       // parallel state that would otherwise keep silently winning over the dashboard forever --
       // the two are meant to mirror each other, not permanently disagree until someone remembers
@@ -1453,7 +1454,8 @@ async function agentApi(request, env, url, ctx) {
       d.overridesRev = Date.now();
       dirty = true;
     }
-    if (body.restrictionOverrides && typeof body.restrictionOverrides === "object" && Number(body.restrictionOverridesRev) > (d.restrictionOverridesRev || 0)) {
+    if (body.restrictionOverrides && typeof body.restrictionOverrides === "object" && Object.keys(body.restrictionOverrides).length && Number(body.restrictionOverridesRev) > 0 && Number(body.restrictionOverridesRev) > (d.restrictionOverridesPhoneRev || 0)) {
+      d.restrictionOverridesPhoneRev = Number(body.restrictionOverridesRev); // not compared with our clock
       // Same mirroring as app overrides above: a restriction flipped on the phone's own
       // Administrator screen becomes the real dashboard setting, not a second state that would
       // otherwise silently disagree with the dashboard forever.

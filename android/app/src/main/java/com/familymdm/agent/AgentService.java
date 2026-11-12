@@ -259,10 +259,12 @@ public class AgentService extends Service {
         if (searches.length() > 0) body.put("searches", searches);
         JSONObject configPatch = PhoneRules.pendingPatch(this);
         if (configPatch != null) body.put("configPatch", configPatch); // Administrator → Rules changes
+        long sentOverridesRev = Agent.overridesRev(this);
         body.put("overrides", Agent.getOverrides(this));
-        body.put("overridesRev", Agent.overridesRev(this));
+        body.put("overridesRev", sentOverridesRev);
+        long sentRestrictionRev = Agent.restrictionOverridesRev(this);
         body.put("restrictionOverrides", Agent.getRestrictionOverrides(this));
-        body.put("restrictionOverridesRev", Agent.restrictionOverridesRev(this));
+        body.put("restrictionOverridesRev", sentRestrictionRev);
         body.put("fallbackCode", Agent.fallbackCode(this));
         body.put("syncPaused", Agent.syncPaused(this));
         long hsRev = Agent.prefs(this).getLong("homeScreenRev", 0);
@@ -346,8 +348,8 @@ public class AgentService extends Service {
         Calls.dropCalls(this, calls.length());
         Calls.dropTexts(this, texts.length());
         if (contacts != null) ContactSync.sent(this);
-        Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
-        Agent.adoptRestrictionOverrides(this, reply.optJSONObject("restrictionOverrides"), reply.optLong("restrictionOverridesRev", 0));
+        Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0), sentOverridesRev);
+        Agent.adoptRestrictionOverrides(this, reply.optJSONObject("restrictionOverrides"), reply.optLong("restrictionOverridesRev", 0), sentRestrictionRev);
         Master.store(this, reply.optJSONObject("master"));
         PhoneRules.adopt(this, reply);
         if (!iconsSent.isEmpty()) {
