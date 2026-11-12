@@ -46,9 +46,14 @@ function ShowLogs() {
     foreach ($f in 'install.log', 'guard.log') { $p = Join-Path $guardDir $f; if (Test-Path $p) { Write-Host "--- $f"; Get-Content $p | Select-Object -Last 25 } }
 }
 
+# A second copy of curl.exe somewhere else: Windows sees it as a different program.
+$curl2 = Join-Path $env:TEMP 'curl-copy\curl.exe'; New-Item -ItemType Directory -Force (Split-Path $curl2) | Out-Null; Copy-Item "$env:SystemRoot\System32\curl.exe" $curl2 -Force
+function CurlTry($exe) { $out = & $exe -sS -o NUL -m 15 https://example.com 2>&1; $code = $LASTEXITCODE; if ($code -ne 0) { Out ("  ($exe exit ${code}: $out)") }; return ($code -eq 0) }
+function OtherWorks() { return (CurlTry $curl2) }
 Step 'Before: normal lookups work'
 Check (Lookup $null) 'lookups work'
 Check (Lookup '8.8.8.8') 'lookups straight to 8.8.8.8 work'
+Check (OtherWorks) 'before LockGuard: the copy of curl.exe can go online'
 
 Step 'Install build 1 with the web filter on'
 # The filter settings the dashboard would send, paused (everything allowed) so this machine keeps
@@ -64,9 +69,6 @@ Check (-not (Lookup '8.8.8.8')) 'going around the filter (8.8.8.8) is blocked'
 Check ((TaskExists 'LockGuard Guard')) 'the guard task exists'
 function CurlWorks() { & "$env:SystemRoot\System32\curl.exe" -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
 Check (WaitFor 'curl.exe to lose its internet' 60 { -not (CurlWorks) }) 'a program set to "No internet" (curl.exe) cannot go online'
-function WebWorks() { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; return ((Invoke-WebRequest https://example.com -UseBasicParsing -TimeoutSec 20).StatusCode -eq 200) } catch { Out "  (web request: $($_.Exception.Message))"; return $false } }
-$curl2 = Join-Path $env:TEMP 'curl-copy\curl.exe'; New-Item -ItemType Directory -Force (Split-Path $curl2) | Out-Null; Copy-Item "$env:SystemRoot\System32\curl.exe" $curl2 -Force
-function OtherWorks() { & $curl2 -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
 Check (OtherWorks) 'other programs still can (a copy of curl.exe elsewhere)'
 
 Step 'The unlock file: in Downloads, every restriction is off; deleted, back on'
