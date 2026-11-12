@@ -1450,11 +1450,17 @@ public class MainActivity extends Activity {
                 + "Settings categories, calls and texts) -- turning those on will break that specific feature, "
                 + "so only do it if that trade-off is actually wanted here.", true));
         Set<String> enabled = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS));
-        for (String key : LockdownPolicy.RESTRICTIONS.keySet()) {
-            String label = LockdownPolicy.RESTRICTIONS.get(key);
-            String desc = LockdownPolicy.conflictsWithBuiltins(key)
-                    ? "Will break Wi-Fi/Connected devices Settings or calls/texts if this app uses them." : null;
-            Ui.add(card, Ui.checkRow(this, label, desc, enabled.contains(key), (box, checked) -> {
+        String[] titles = {"Recommended", "More", "Advanced (rarely needed)"};
+        for (int g = 1; g <= (showAllRestrictions ? 3 : 2); g++) {
+          LinearLayout groupCard = Ui.card(this, root);
+          groupCard.addView(Ui.titleText(this, titles[g - 1]));
+          for (String[] info : RestrictionInfo.ALL) {
+            String key = info[0];
+            if (Integer.parseInt(info[3]) != g || !LockdownPolicy.RESTRICTIONS.containsKey(key)) continue;
+            String label = info[1];
+            String desc = (info[2].isEmpty() ? "" : info[2]) + (LockdownPolicy.conflictsWithBuiltins(key)
+                    ? (info[2].isEmpty() ? "" : " ") + "Will break Wi-Fi/Connected devices Settings or calls/texts if this app uses them." : "");
+            Ui.add(groupCard, Ui.checkRow(this, label, desc, enabled.contains(key), (box, checked) -> {
                 Set<String> s = new LinkedHashSet<>(prefs().getStringSet("extraRestrictions", LockdownPolicy.DEFAULT_ON_RESTRICTIONS));
                 if (checked) s.add(key); else s.remove(key);
                 prefs().edit().putStringSet("extraRestrictions", s).apply();
@@ -1469,8 +1475,16 @@ public class MainActivity extends Activity {
                     }
                 }
             }), 6);
+          }
         }
+        LinearLayout moreCard = Ui.card(this, root);
+        Ui.add(moreCard, Ui.button(this, showAllRestrictions ? "Show fewer" : "Show all (advanced)", Ui.OUTLINED, v -> {
+            showAllRestrictions = !showAllRestrictions;
+            build();
+        }), 0);
     }
+
+    private boolean showAllRestrictions;
 
     // ---------- the bulk-list picker ----------
     /** For pasting a list an outside AI tool produced after going through a full dump of every app
