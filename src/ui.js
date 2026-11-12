@@ -1333,7 +1333,15 @@ function renderSitesVisited(m,dv){
   if(srch.length){sc.append(h('div',{style:'margin-top:10px;font-weight:500'},'Searches ('+srch.length+')'));
    for(const x of srch.slice(0,150))sc.append(h('div',{class:'act'},h('b',null,x.q),' · '+(CHAT_NAMES[x.app]||SEARCH_NAMES[x.app]||x.app)+' · '+ago(x.at)))}
   else if(c.recordSearches)sc.append(h('div',{class:'mute small',style:'margin-top:8px'},'No searches yet.'));
-  m.append(sc)}
+  m.append(sc);
+  const vc=h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Keep a list of YouTube videos watched'),
+   h('div',{class:'mute small'},'The name of each video watched for at least 10 seconds in the YouTube app. The child is told this is on. Needs the accessibility switch on the phone.')),
+   sw(c.recordVideos,async function(on){c.recordVideos=on;try{await saveConfigFor(dv,on?'From the next check-in videos are listed.':'Switched off.')}catch(e){snack(e.message,1)}render()})));
+  const vids=(dv.videos||[]).slice().reverse();
+  if(vids.length){vc.append(h('div',{style:'margin-top:10px;font-weight:500'},'Videos ('+vids.length+')'));
+   for(const x of vids.slice(0,150))vc.append(h('div',{class:'act'},h('b',null,x.title),' · '+ago(x.at)))}
+  else if(c.recordVideos)vc.append(h('div',{class:'mute small',style:'margin-top:8px'},'No videos yet.'));
+  m.append(vc)}
  const card=h('div',{class:'card'},h('h2',null,'Sites visited'));
  if(!daysList.length){card.append(h('div',{class:'mute'},'Nothing yet. Sites show up after the phone\'s next check-ins.'));m.append(card);return}
  if(!sitesDay||!hist[sitesDay])sitesDay=daysList[0];

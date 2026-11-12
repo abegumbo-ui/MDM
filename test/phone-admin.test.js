@@ -111,3 +111,18 @@ test("a switch flipped on a phone whose clock is behind the dashboard still coun
   s = await sync({ restrictionOverrides: { no_camera: true }, restrictionOverridesRev: old + 500 });
   assert.ok(!s.policy.restrictions.includes("no_camera"), "an older change from the same phone is still ignored");
 });
+
+test("YouTube videos watched are kept only while the switch is on", async () => {
+  const r = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = r.headers.get("set-cookie").split(";")[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token, id } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Videos" } }) })).json();
+  const sync = async (body) => (await req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) })).json();
+  const dev = async () => (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.model === "Videos" || d.id === id || (d.info && d.info.model === "Videos"));
+  await sync({ videos: [{ title: "Not kept", at: Date.now() }] });
+  assert.equal(((await dev()).videos || []).length, 0, "off by default");
+  let s = await sync({ configPatch: { rev: 1, values: { recordVideos: true } } });
+  assert.equal(s.policy.recordVideos, true);
+  await sync({ videos: [{ title: "How volcanoes work", at: Date.now() }] });
+  assert.deepEqual(((await dev()).videos || []).map((v) => v.title), ["How volcanoes work"]);
+});

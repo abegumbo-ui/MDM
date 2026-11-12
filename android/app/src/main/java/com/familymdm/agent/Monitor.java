@@ -57,6 +57,10 @@ final class Monitor {
         boolean hadSearches = Agent.prefs(c).getBoolean("recordSearches", false);
         Agent.prefs(c).edit().putBoolean("recordSearches", searches).apply();
         if (searches && !hadSearches) tellChild(c, "Searches are kept", "Your parent can see what is searched for on this phone (Google, YouTube, browsers).");
+        boolean videos = policy.optBoolean("recordVideos", false);
+        boolean hadVideos = Agent.prefs(c).getBoolean("recordVideos", false);
+        Agent.prefs(c).edit().putBoolean("recordVideos", videos).apply();
+        if (videos && !hadVideos) tellChild(c, "YouTube videos are listed", "Your parent can see the names of the YouTube videos watched on this phone.");
         boolean was = Agent.prefs(c).getBoolean("msgAlerts", false);
         Agent.prefs(c).edit().putBoolean("msgAlerts", on).putString("msgWords", sb.toString()).apply();
         if (on && !was) tellChild(c, "Message alerts are on",
@@ -171,6 +175,81 @@ final class Monitor {
             JSONArray list = peekSearches(c), out = new JSONArray();
             for (int i = count; i < list.length(); i++) out.put(list.get(i));
             Agent.prefs(c).edit().putString(SEARCHES, out.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /* ---- YouTube videos watched ("Keep a list of YouTube videos") ---- */
+    private static final String VIDEOS = "videoPending";
+    private static String seenTitle, keptTitle;
+    private static long seenSince, lastVideoLook;
+
+    /**
+     * Reads the title of the video playing in the YouTube app from the screen: only while a player is
+     * on the screen (the watch page or the mini player), and only once the same title has stayed for
+     * 10 seconds, so scrolling past videos in the feed is not counted. YouTube's screen layout is not
+     * documented, so this looks for views whose id mentions "player" and "title".
+     */
+    static void trackVideo(Context c, String pkg, AccessibilityNodeInfo root) {
+        if (root == null || !"com.google.android.youtube".equals(pkg) || !Agent.prefs(c).getBoolean("recordVideos", false)) return;
+        long now = System.currentTimeMillis();
+        if (now - lastVideoLook < 2000) return;
+        lastVideoLook = now;
+        boolean player = false;
+        String title = null;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        while (!q.isEmpty() && seen++ < 600) {
+            AccessibilityNodeInfo n = q.poll();
+            String id = n.getViewIdResourceName();
+            if (id != null) {
+                String low = id.toLowerCase(java.util.Locale.ROOT);
+                if (low.contains("player")) player = true;
+                if (title == null && low.contains("title") && !low.contains("channel") && n.getText() != null) {
+                    String t = n.getText().toString().trim();
+                    if (t.length() >= 3 && t.length() <= 200) title = t;
+                }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo ch = n.getChild(i);
+                if (ch != null) q.add(ch);
+            }
+        }
+        if (!player || title == null) { seenTitle = null; return; }
+        if (!title.equals(seenTitle)) { seenTitle = title; seenSince = now; return; }
+        if (now - seenSince < 10000 || title.equals(keptTitle)) return;
+        keptTitle = title;
+        keepVideo(c, title, seenSince);
+    }
+
+    private static synchronized void keepVideo(Context c, String title, long at) {
+        try {
+            JSONArray list = new JSONArray(Agent.prefs(c).getString(VIDEOS, "[]"));
+            JSONObject o = new JSONObject();
+            o.put("title", title);
+            o.put("at", at);
+            list.put(o);
+            JSONArray out = new JSONArray();
+            for (int i = Math.max(0, list.length() - 100); i < list.length(); i++) out.put(list.get(i));
+            Agent.prefs(c).edit().putString(VIDEOS, out.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    static synchronized JSONArray peekVideos(Context c) {
+        try {
+            return new JSONArray(Agent.prefs(c).getString(VIDEOS, "[]"));
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    static synchronized void dropVideos(Context c, int count) {
+        try {
+            JSONArray list = peekVideos(c), out = new JSONArray();
+            for (int i = count; i < list.length(); i++) out.put(list.get(i));
+            Agent.prefs(c).edit().putString(VIDEOS, out.toString()).apply();
         } catch (Exception ignored) {
         }
     }

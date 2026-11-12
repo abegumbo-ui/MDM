@@ -122,7 +122,7 @@ const MAX_FREEBROWSE_MINUTES = 240;
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
 // Settings the phone's own Administrator screen may change (sent up as configPatch).
-const PHONE_EDITABLE = ["browserFilter", "safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "pauseUntil", "recordSites", "inAppBrowsers", "internetOnlyApps", "screenTime", "callsIn", "callsOut", "callLog", "textLog", "textContent", "reportContacts", "syncContacts", "locationEvery", "blockAppGroups", "approveNew", "blockUnlisted", "blockWaStatus", "blockWaChannels", "messageAlerts", "messageGroups", "messageWords", "freezeUpdates", "disableBiometricUnlock", "autoUpdate", "reportWifi", "chromePolicy", "youtubeMode", "blockedParts", "internetOffUntil", "recordSearches", "blockAds", "waTextOnly", "sites", "callNumbers", "places", "filterSchedule", "internetApps"];
+const PHONE_EDITABLE = ["browserFilter", "safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "pauseUntil", "recordSites", "inAppBrowsers", "internetOnlyApps", "screenTime", "callsIn", "callsOut", "callLog", "textLog", "textContent", "reportContacts", "syncContacts", "locationEvery", "blockAppGroups", "approveNew", "blockUnlisted", "blockWaStatus", "blockWaChannels", "messageAlerts", "messageGroups", "messageWords", "freezeUpdates", "disableBiometricUnlock", "autoUpdate", "reportWifi", "chromePolicy", "youtubeMode", "blockedParts", "internetOffUntil", "recordSearches", "blockAds", "waTextOnly", "sites", "callNumbers", "places", "filterSchedule", "internetApps", "recordVideos"];
 // Friendly names for the chat apps message alerts look at.
 const CHAT_APPS = { 'com.android.chrome': 'Chrome', 'org.mozilla.firefox': 'Firefox', 'com.sec.android.app.sbrowser': 'Samsung Internet', 'com.brave.browser': 'Brave', 'com.microsoft.emmx': 'Edge', 'com.google.android.youtube': 'YouTube', 'com.google.android.googlequicksearchbox': 'the Google app', 'com.familymdm.browser': 'our Browser', 'com.pinterest': 'Pinterest', 'com.whatsapp': 'WhatsApp', 'com.whatsapp.w4b': 'WhatsApp Business', 'org.telegram.messenger': 'Telegram', 'com.instagram.android': 'Instagram', 'com.facebook.orca': 'Messenger', 'com.facebook.mlite': 'Messenger Lite', 'com.snapchat.android': 'Snapchat', 'org.thoughtcrime.securesms': 'Signal', 'com.discord': 'Discord', 'com.zhiliaoapp.musically': 'TikTok', 'com.google.android.apps.messaging': 'Messages', 'com.samsung.android.messaging': 'Samsung Messages', 'com.kik.android': 'Kik', 'com.viber.voip': 'Viber', 'com.google.android.apps.dynamite': 'Google Chat', texts: 'a text message' };
 export const appName = (pkg) => CHAT_APPS[pkg] || (pkg ? 'a chat app (' + pkg + ')' : 'a chat app');
@@ -300,6 +300,7 @@ const publicDevice = (d) => ({
   messages: d.messages || [],
   msgAlerts: (d.msgAlerts || []).slice(-100),
   searches: (d.searches || []).slice(-300),
+  videos: (d.videos || []).slice(-300),
   shots: d.shots || [],
   pushLog: (d.pushLog || []).slice(-30),
   ownerId: d.ownerId || null,
@@ -1620,6 +1621,13 @@ async function agentApi(request, env, url, ctx) {
       const add = body.searches.slice(0, 50).filter((x) => x && typeof x.q === "string" && x.q.trim())
         .map((x) => ({ app: String(x.app || "").slice(0, 100), q: x.q.trim().slice(0, 200), at: Number(x.at) || now }));
       d.searches = [...(d.searches || []), ...add].slice(-300);
+      dirty = true;
+    }
+    // YouTube videos watched (with "Keep a list of YouTube videos" on).
+    if (config.recordVideos && Array.isArray(body.videos) && body.videos.length) {
+      const add = body.videos.slice(0, 50).filter((x) => x && typeof x.title === "string" && x.title.trim())
+        .map((x) => ({ title: x.title.trim().slice(0, 200), at: Number(x.at) || now }));
+      d.videos = [...(d.videos || []), ...add].slice(-300);
       dirty = true;
     }
     // Message alerts: worrying words found on the phone (in a chat on the screen), and in texts sent here.

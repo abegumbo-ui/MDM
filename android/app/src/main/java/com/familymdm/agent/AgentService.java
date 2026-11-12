@@ -257,6 +257,8 @@ public class AgentService extends Service {
         if (msgAlerts.length() > 0) body.put("msgAlerts", msgAlerts);
         JSONArray searches = Monitor.peekSearches(this);
         if (searches.length() > 0) body.put("searches", searches);
+        JSONArray videos = Monitor.peekVideos(this);
+        if (videos.length() > 0) body.put("videos", videos);
         JSONObject configPatch = PhoneRules.pendingPatch(this);
         if (configPatch != null) body.put("configPatch", configPatch); // Administrator → Rules changes
         long sentOverridesRev = Agent.overridesRev(this);
@@ -345,6 +347,7 @@ public class AgentService extends Service {
         Whereabouts.drop(this, locations.length());
         Monitor.drop(this, msgAlerts.length());
         Monitor.dropSearches(this, searches.length());
+        Monitor.dropVideos(this, videos.length());
         Calls.dropCalls(this, calls.length());
         Calls.dropTexts(this, texts.length());
         if (contacts != null) ContactSync.sent(this);
