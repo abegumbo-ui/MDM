@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import worker from "../src/index.js";
 import { buildAgentPolicy, normalizeBlockedWords, normalizeConfig, summarizeConfigChange } from "../src/policy.js";
 
+// Connecting a Browser needs a code made on the dashboard.
+async function enrollBrowser(fetcher, cookie, info) {
+  const { code } = await (await fetcher("/api/codes", { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ type: "browser" }) })).json();
+  return fetcher("/browser/enroll", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, info }) });
+}
+
 const kv = new Map();
 const env = {
   ADMIN_PASSWORD: "correct horse",
@@ -24,7 +30,7 @@ test("blocked words are cleaned the same way the phone cleans them, and reach th
   assert.ok(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ blockedWords: ["a", "b"] })).includes("Blocked words: 2"));
   const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
   const cookie = login.headers.get("set-cookie").split(";")[0];
-  const reg = await (await req("/browser/register", { method: "POST", headers: J, body: JSON.stringify({ info: { model: "W" } }) })).json();
+  const reg = await (await enrollBrowser(req, cookie, { model: "W" })).json();
   await req(`/api/browsers/${reg.token.split(".")[0]}/config`, { method: "PUT", headers: { cookie, ...J }, body: JSON.stringify({ blockedWords: ["Casino"] }) });
   const s = await (await req("/browser/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${reg.token}` }, body: "{}" })).json();
   assert.deepEqual(s.filter.words, ["casino"]);
