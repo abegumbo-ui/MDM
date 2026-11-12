@@ -203,7 +203,9 @@ final class PolicyApplier {
         String filterTier = policy.optString("browserFilter", "off");
         String filterBase = policy.optString("browserFilterBase", "");
         try {
-            WebFilter.setPolicy(c, filterTier, filterBase); // starts downloading the category lists if needed
+            // "Block ads" asks for the level's "+ads" lists (the same level without ads until they are published).
+            String withAds = policy.optBoolean("blockAds", false) && !"off".equals(filterTier) ? filterTier + "+ads" : filterTier;
+            WebFilter.setPolicy(c, withAds, filterBase); // starts downloading the category lists if needed
         } catch (Exception e) {
             Log.w(TAG, "category lists: " + e);
         }
