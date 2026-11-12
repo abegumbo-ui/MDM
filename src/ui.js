@@ -1832,6 +1832,25 @@ function adminWarning(w){
  return h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Administrator accounts on this computer'),
   h('div',{class:'mute'},'These Windows accounts are administrators: '+a.admins.join(', ')+'. Anyone using one of them can remove any filter, this one included. The child\'s account should be a Standard user: on the computer, Settings → Accounts → Other users → the account → Change account type → Standard User. Keep the administrator password to yourself.'),
   others.length?h('div',{class:'mute small',style:'margin-top:6px'},'Standard accounts: '+others.join(', ')+'.'):null)}
+/** "What's on for this computer": every rule in force, one plain line each. */
+function renderWinWhatsOn(m,w){
+ const c=w.config||{},win=w.win||{},now=Date.now(),rows=[];
+ if(!w.filterOn)rows.push('🌐  Web filter: off');
+ else rows.push('🌐  Web filter: '+({off:'approved sites only',moderate:'Moderate',strict:'Strict'}[c.browserFilter||'off'])+(c.safeSearch?', SafeSearch forced':'')+(c.youtubeDns&&c.youtubeDns!=='off'?', YouTube restricted':''));
+ if((c.pauseUntil||0)>now)rows.push('⏸  Paused until '+hhmm(c.pauseUntil));
+ if((c.internetOffUntil||0)>now)rows.push('📵  Internet off until '+hhmm(c.internetOffUntil));
+ const fs2=c.filterSchedule;if(fs2&&fs2.on)rows.push('🕘  '+fs2.level+' from '+fs2.from+' to '+fs2.to);
+ const rules=Object.values(win.programRules||{}),noNet=rules.filter(function(x){return x==='noInternet'}).length,blk=rules.filter(function(x){return x==='blocked'}).length+(win.blockedPrograms||[]).length;
+ if(blk)rows.push('🚫  '+blk+' program'+(blk===1?'':'s')+' closed when started');
+ if(noNet)rows.push('🔌  '+noNet+' program'+(noNet===1?'':'s')+' with no internet');
+ if(win.blockOtherBrowsers!==false)rows.push('🧭  Other browsers closed (Chrome, Edge, Brave, Firefox stay)');
+ if(win.blockVpnApps!==false)rows.push('🛡  VPN programs closed');
+ if(w.enabled)rows.push('🔒  Only chosen programs may use the internet');
+ rows.push(win.protectFromAdmins!==false?'🔐  Administrators cannot remove LockGuard':'🔓  Administrators can manage LockGuard');
+ if(win.unlockName&&win.unlockText)rows.push('🗝  Unlock file set'+(w.info&&w.info.unlocked?' and IN USE right now: everything is off':''));
+ const card=h('div',{class:'card'},h('h2',null,"What's on for this computer"));
+ for(const r of rows)card.append(h('div',{class:'act'},r));
+ m.append(card)}
 function renderWinDetail(m,w){
  w.isWindows=true;w.packages=w.packages||[];w.config=w.config||{};w.win=w.win||{};
  const dv=w,f=(w.info&&w.info.filter)||null;
@@ -1842,6 +1861,7 @@ function renderWinDetail(m,w){
  for(const [k,l] of [['filter','Web filter'],['programs','Programs & browsers'],['history','Sites visited'],['computer','Computer']])tabs.append(btn(l,winTab===k?'':'tonal',function(){winTab=k;render()}));
  m.append(tabs);
  if(winTab==='filter'){
+  renderWinWhatsOn(m,w);
   let status='The filter is off: every website opens.';
   if(w.filterOn){
    if(!f)status='Waiting for the computer to check in (it needs the latest LockGuard).';
