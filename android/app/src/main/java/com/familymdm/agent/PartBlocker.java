@@ -88,6 +88,7 @@ final class PartBlocker {
     /** Called for every screen change of any app. */
     static void onScreen(AccessibilityService s, String pkg) {
         if (picking) return;
+        if (EmergencyUnlock.isActive(s)) { if (!covers.isEmpty()) clearCovers(s); return; } // every restriction is off during an emergency unlock
         if (pkg == null || pkg.equals(s.getPackageName()) || pkg.equals("com.android.systemui")) return;
         if (!anyFor(s, pkg)) {
             if (coveredPkg != null && !pkg.equals(coveredPkg)) clearCovers(s);
