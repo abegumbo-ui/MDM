@@ -70,6 +70,8 @@ Check ((TaskExists 'LockGuard Guard')) 'the guard task exists'
 function CurlWorks() { & "$env:SystemRoot\System32\curl.exe" -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
 Check (WaitFor 'curl.exe to lose its internet' 60 { -not (CurlWorks) }) 'a program set to "No internet" (curl.exe) cannot go online'
 Check (OtherWorks) 'other programs still can (a copy of curl.exe elsewhere)'
+# Diagnostics: what the filter answers for example.com, and LockGuard's per-program blocks as Windows has them.
+try { Out ('  example.com resolves to: ' + ((Resolve-DnsName example.com -DnsOnly -ErrorAction Stop | Where-Object IPAddress | ForEach-Object IPAddress) -join ', ')) } catch { Out ('  example.com did not resolve: ' + $_.Exception.Message) }
 # Diagnostics: LockGuard's per-program blocks as Windows has them.
 $ErrorActionPreference = 'Continue'
 netsh wfp show filters file="$env:TEMP\wfp.xml" | Out-Null
