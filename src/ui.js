@@ -1220,9 +1220,9 @@ function renderLevels(box,d){
 
 /** "Images" tab of Google, Bing and DuckDuckGo. */
 /** Ad servers blocked phone-wide (with Moderate or Strict). */
-function renderBlockAds(m,dv){const c=dv.config;if(dv.isWindows)return;
+function renderBlockAds(m,dv){const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block ads'),
-  h('div',{class:'mute small'},dv.isBrowser?'No ads on web pages in this Browser, and no ads on YouTube (before or during videos, banners, promoted videos). Best effort on YouTube: it changes its pages from time to time.':'Ad servers are blocked in every app and browser on the phone, on every level (Chrome, Samsung Internet and the rest too). YouTube\'s own ads are removed in our Browser, the YouTube app, and Chrome with Inspection. A few apps may show empty boxes where ads were; switch it off if one stops working.')),
+  h('div',{class:'mute small'},dv.isWindows?'Ad servers are blocked in every browser and program on this computer (on Moderate and Strict). Needs LockGuard from November 13 or later; it updates itself.':dv.isBrowser?'No ads on web pages in this Browser, and no ads on YouTube (before or during videos, banners, promoted videos). Best effort on YouTube: it changes its pages from time to time.':'Ad servers are blocked in every app and browser on the phone, on every level (Chrome, Samsung Internet and the rest too). YouTube\'s own ads are removed in our Browser, the YouTube app, and Chrome with Inspection. A few apps may show empty boxes where ads were; switch it off if one stops working.')),
   sw(c.blockAds,async function(on){c.blockAds=on;try{await saveConfigFor(dv,on?'Ads blocked from the next check-in.':'Ads allowed again.')}catch(e){snack(e.message,1)}render()}))))}
 /** Sites that will not open with ads blocked: their ads load, covered in black (our Browser). */
 function renderAdsCovered(m,dv){const c=dv.config;if(dv.isWindows||!c.blockAds)return;
@@ -2136,11 +2136,14 @@ function renderWinDetail(m,w){
  if(winTab==='filter'){
   renderWinWhatsOn(m,w);
   if((w.siteRequests||[]).length){
-   const rq=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Asked for on the computer ('+w.siteRequests.length+')'));
+   const rq=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Asked for on the computer ('+w.siteRequests.length+')'),allowForPicker());
    for(const r of w.siteRequests.slice().reverse()){
     const host=hostOfUrl(r.url);
-    rq.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},host||r.url),h('div',{class:'mute small'},r.url+' · '+ago(r.at))),
-     btn('Allow','',async function(){w.config.dnsAllowlist=[...new Set([...(w.config.dnsAllowlist||[]),host])];await saveConfigFor(w,host+' allowed.');await call('DELETE','/api/windevices/'+w.id+'/site-requests?url='+encodeURIComponent(r.url));load()}),
+    rq.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},host||r.url),r.note?h('div',{style:'margin-top:2px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.url+' · '+ago(r.at))),
+     btn('Allow','',async function(){const until=allowUntil();if(until<0){snack('Choose how long to allow it (at least one minute).',1);return}allowFor='always';
+      if(until)w.config.dnsAllowTimed=[...(w.config.dnsAllowTimed||[]).filter(function(t){return t.host!==host}),{host:host,until:until}];
+      else w.config.dnsAllowlist=[...new Set([...(w.config.dnsAllowlist||[]),host])];
+      await saveConfigFor(w,host+' allowed'+(until?' '+untilText(until):'')+'.');await call('DELETE','/api/windevices/'+w.id+'/site-requests?url='+encodeURIComponent(r.url));load()}),
      btn('Dismiss','outline',async function(){await call('DELETE','/api/windevices/'+w.id+'/site-requests?url='+encodeURIComponent(r.url));load()})))}
    m.append(rq)}
   let status='The filter is off: every website opens.';
@@ -2180,6 +2183,17 @@ function renderWinDetail(m,w){
    const lines=function(t){return t.value.split(/\n+/).map(function(x){return x.trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'')}).filter(Boolean)};
    m.append(h('div',{class:'card'},h('h2',null,'Sites'),h('div',{style:'font-weight:500;margin-top:6px'},'Always allowed'),h('div',{class:'mute small'},'Open whatever the level. A site includes everything under it (chabad.org also allows www.chabad.org).'),al,
     h('div',{style:'font-weight:500;margin-top:12px'},'Always blocked'),bl,h('div',{style:'margin-top:8px'},btn('Save sites','',function(){w.config.dnsAllowlist=lines(al);w.config.dnsBlocklist=lines(bl);save('Saved.')}))));
+   const timed=(w.config.dnsAllowTimed||[]).filter(function(t){return t.until>Date.now()});
+   const tc=h('div',{class:'card'},h('h2',null,'Allowed for a while'),h('div',{class:'mute small'},'Each one is blocked again by itself when its time is up (within a minute).'));
+   const tin=h('input',{type:'text',class:'grow',placeholder:'a site, e.g. khanacademy.org'});
+   tc.append(h('div',{class:'row',style:'margin-top:8px'},tin,btn('Allow','tonal',function(){const host=tin.value.trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'');if(!host)return;
+    const until=allowUntil();if(until<=0){snack(until<0?'Choose how long to allow it (at least one minute).':'For no end, use "Always allowed" above. Choose how long here.',1);return}allowFor='always';
+    w.config.dnsAllowTimed=[...timed.filter(function(t){return t.host!==host}),{host:host,until:until}];save(host+' allowed '+untilText(until)+'.')})),allowForPicker());
+   for(const t of timed)tc.append(h('div',{class:'row',style:'margin:6px 0'},h('span',{class:'grow'},t.host),h('span',{class:'chip warn'},untilText(t.until)),
+    btn('End now','outline',function(){w.config.dnsAllowTimed=timed.filter(function(x){return x.host!==t.host});save(t.host+' is blocked again.')})));
+   if(!timed.length)tc.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing right now.'));
+   m.append(tc);
+   renderBlockAds(m,dv);
    renderBlockedWords(m,dv);
   }
  }

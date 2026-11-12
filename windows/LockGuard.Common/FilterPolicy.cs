@@ -20,6 +20,8 @@ public sealed class FilterPolicy
     [JsonPropertyName("essential")] public List<string> Essential { get; set; } = new();
     [JsonPropertyName("words")] public List<string> Words { get; set; } = new();
     [JsonPropertyName("safeSearch")] public bool SafeSearch { get; set; }
+    /// <summary>"Block ads": the ad list on top of the level's lists (Moderate and Strict).</summary>
+    [JsonPropertyName("ads")] public bool Ads { get; set; }
     /// <summary>"off", "moderate" or "strict".</summary>
     [JsonPropertyName("youtube")] public string Youtube { get; set; } = "off";
     [JsonPropertyName("pauseUntil")] public long PauseUntil { get; set; }
