@@ -427,6 +427,42 @@ final class PhoneRules {
                 a.startActivity(home);
             }
         }), 8);
+        // Quick blocks: known tabs of popular apps, found by their button's (English) name.
+        String[][] quick = {
+                {"YouTube: Shorts", "com.google.android.youtube", "Shorts"},
+                {"Instagram: Reels", "com.instagram.android", "Reels"},
+                {"Instagram: Search and explore", "com.instagram.android", "Search and explore"},
+                {"Facebook: Reels", "com.facebook.katana", "Reels"}};
+        JSONArray have = current(a).optJSONArray("blockedParts");
+        for (String[] q : quick) {
+            boolean on = false;
+            for (int k = 0; have != null && k < have.length(); k++) {
+                JSONObject x = have.optJSONObject(k);
+                if (x != null && q[1].equals(x.optString("pkg")) && q[2].equals(x.optString("desc"))) on = true;
+            }
+            final boolean was = on;
+            Ui.add(card, Ui.button(a, (on ? "✓ " : "Quick block: ") + q[0], on ? Ui.OUTLINED : Ui.TONAL, v -> {
+                try {
+                    JSONArray cur = current(a).optJSONArray("blockedParts");
+                    JSONArray next = new JSONArray();
+                    for (int k = 0; cur != null && k < cur.length(); k++) {
+                        JSONObject x = cur.optJSONObject(k);
+                        if (x != null && !(q[1].equals(x.optString("pkg")) && q[2].equals(x.optString("desc")))) next.put(x);
+                    }
+                    if (!was) {
+                        JSONObject p = new JSONObject();
+                        p.put("pkg", q[1]);
+                        p.put("desc", q[2]);
+                        p.put("mode", "cover");
+                        p.put("label", q[0]);
+                        next.put(p);
+                    }
+                    set1(a, "blockedParts", next, (was ? "allowed " : "covered ") + q[0]);
+                } catch (Exception ignored) {
+                }
+                rebuild.run();
+            }), 6);
+        }
         JSONArray parts = current(a).optJSONArray("blockedParts");
         for (int i = 0; parts != null && i < parts.length(); i++) {
             JSONObject p = parts.optJSONObject(i);
