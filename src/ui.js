@@ -2178,6 +2178,8 @@ function healthProblems(d){
  const needA11y=c.messageAlerts||(c.inAppBrowsers&&c.inAppBrowsers!=='off')||c.blockWaStatus||c.blockWaChannels||(d.shots&&d.shots.length)||(d.config&&d.config.wholeAppBlocklist&&d.config.wholeAppBlocklist.length);
  if(i.accessibility===false&&needA11y)add('bad','One switch on the phone is still off, so message alerts, screenshots, WhatsApp and in-app web page controls cannot work.','On the phone: Settings → Accessibility → MDM Agent (sometimes under "Installed apps" or "Downloaded apps") → turn it on. The phone also shows a notification that opens this screen. Needed once.');
  if(c.locationEvery&&i.locationPerm===false)add('bad','Location is not allowed for MDM Agent, so location history cannot work.','On the phone: Settings → Location → turn on. Then Settings → Apps → MDM Agent → Permissions → Location → Allow all the time.');
+ const stc=c.screenTime||{};
+ if(i.usageAccess===false&&(stc.dailyLimit||Object.keys(stc.appLimits||{}).length))add('bad','Usage access is off on the phone, so the daily limit and app limits cannot count minutes.','On the phone: Settings → Apps → Special app access → Usage access → MDM Agent → allow. (Administrator → Rules → Safety on the phone has a Fix it button.)');
  if(i.batteryUnrestricted===false)add('warn','The phone\'s battery saver may put MDM Agent to sleep, so it checks in late.','On the phone: Settings → Apps → MDM Agent → Battery → Unrestricted (or "Don\'t optimize").');
  if(needsUpdate(d))add('warn','A newer MDM Agent is available.','Device → Updates → Update agent. It installs by itself.');
  if(i.battery&&i.battery.pct<=15&&!i.battery.charging)add('warn','The battery is at '+i.battery.pct+'%.','Charge the phone.');
@@ -2226,7 +2228,7 @@ function renderHealth(m,d){
  const i=d.info||{},okRow=function(on,label){if(on)card.append(h('div',{class:'mute small',style:'margin-top:4px'},'✅ '+label))};
  card.append(h('div',{style:'margin-top:12px;font-weight:500'},'Working'));
  okRow(isOnline(d),'Connected (checked in '+ago(d.lastSeen)+')');okRow(i.deviceOwner,'MDM Agent is in full control');okRow(i.filterRunning,'Website filter running');
- okRow(i.accessibility,'Accessibility switch on');okRow(i.batteryUnrestricted,'Battery saver leaves it alone');okRow(i.screenLock,'Screen lock set');
+ okRow(i.accessibility,'Accessibility switch on');okRow(i.batteryUnrestricted,'Battery saver leaves it alone');okRow(i.screenLock,'Screen lock set');okRow(i.usageAccess,'Usage access on (screen time can count)');
  m.append(card)}
 
 function renderMsgAlerts(m,dv){
