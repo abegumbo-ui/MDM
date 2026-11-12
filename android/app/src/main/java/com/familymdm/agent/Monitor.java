@@ -53,6 +53,10 @@ final class Monitor {
             String s = w.optString(i, "").trim();
             if (!s.isEmpty()) sb.append(sb.length() == 0 ? "" : "\n").append(s);
         }
+        boolean searches = policy.optBoolean("recordSearches", false);
+        boolean hadSearches = Agent.prefs(c).getBoolean("recordSearches", false);
+        Agent.prefs(c).edit().putBoolean("recordSearches", searches).apply();
+        if (searches && !hadSearches) tellChild(c, "Searches are kept", "Your parent can see what is searched for on this phone (Google, YouTube, browsers).");
         boolean was = Agent.prefs(c).getBoolean("msgAlerts", false);
         Agent.prefs(c).edit().putBoolean("msgAlerts", on).putString("msgWords", sb.toString()).apply();
         if (on && !was) tellChild(c, "Message alerts are on",
@@ -102,6 +106,72 @@ final class Monitor {
                 AccessibilityNodeInfo ch = n.getChild(i);
                 if (ch != null) q.add(ch);
             }
+        }
+    }
+
+    /* ---- searches list ("Keep a list of searches") ---- */
+    private static final String SEARCHES = "searchPending";
+    private static String typingPkg, typing, lastKept;
+
+    /** Watches search boxes; a search is kept once the screen moves on from it (results opened). */
+    static void trackSearch(Context c, String pkg, AccessibilityNodeInfo root, boolean newScreen) {
+        if (!Agent.prefs(c).getBoolean("recordSearches", false) || pkg == null) return;
+        if (newScreen || (typingPkg != null && !typingPkg.equals(pkg))) keepTyped(c);
+        if (root == null || !SEARCH_APPS.contains(pkg)) return;
+        String now = null;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        while (!q.isEmpty() && seen++ < 300) {
+            AccessibilityNodeInfo n = q.poll();
+            if (n.isEditable() && !n.isPassword() && n.getText() != null && !(android.os.Build.VERSION.SDK_INT >= 26 && n.isShowingHintText())) {
+                String t = n.getText().toString().trim();
+                if (t.length() >= 2 && t.length() <= 200 && !t.startsWith("http")) { now = t; break; }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo ch = n.getChild(i);
+                if (ch != null) q.add(ch);
+            }
+        }
+        if (now == null) { keepTyped(c); return; }
+        typingPkg = pkg;
+        typing = now;
+    }
+
+    private static synchronized void keepTyped(Context c) {
+        String q = typing, pkg = typingPkg;
+        typing = null;
+        typingPkg = null;
+        if (q == null || q.equals(lastKept)) return;
+        lastKept = q;
+        try {
+            JSONArray list = new JSONArray(Agent.prefs(c).getString(SEARCHES, "[]"));
+            JSONObject o = new JSONObject();
+            o.put("app", pkg);
+            o.put("q", q);
+            o.put("at", System.currentTimeMillis());
+            list.put(o);
+            JSONArray out = new JSONArray();
+            for (int i = Math.max(0, list.length() - 100); i < list.length(); i++) out.put(list.get(i));
+            Agent.prefs(c).edit().putString(SEARCHES, out.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    static synchronized JSONArray peekSearches(Context c) {
+        try {
+            return new JSONArray(Agent.prefs(c).getString(SEARCHES, "[]"));
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    static synchronized void dropSearches(Context c, int count) {
+        try {
+            JSONArray list = peekSearches(c), out = new JSONArray();
+            for (int i = count; i < list.length(); i++) out.put(list.get(i));
+            Agent.prefs(c).edit().putString(SEARCHES, out.toString()).apply();
+        } catch (Exception ignored) {
         }
     }
 

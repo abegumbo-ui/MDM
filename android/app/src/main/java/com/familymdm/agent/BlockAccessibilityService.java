@@ -25,6 +25,7 @@ public class BlockAccessibilityService extends AccessibilityService {
     /** The running service, for Monitor.screenshot(); null while switched off. */
     static volatile BlockAccessibilityService instance;
     private String lastPkg;
+    private long lastSearchLook;
 
     @Override
     protected void onServiceConnected() {
@@ -76,7 +77,12 @@ public class BlockAccessibilityService extends AccessibilityService {
             lastWindowAt = now;
             checkInApp(pkg, clsCs.toString(), now);
             if (Monitor.on(this)) Monitor.scan(this, pkg, getRootInActiveWindow());
+            Monitor.trackSearch(this, pkg, getRootInActiveWindow(), true);
         } else if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            if (now - lastSearchLook > 1000) {
+                lastSearchLook = now;
+                Monitor.trackSearch(this, pkg, getRootInActiveWindow(), false);
+            }
             if (Monitor.on(this)) {
                 Monitor.scan(this, pkg, getRootInActiveWindow());
                 Monitor.scanSearch(this, pkg, getRootInActiveWindow());

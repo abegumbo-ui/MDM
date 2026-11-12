@@ -553,6 +553,8 @@ export function normalizeConfig(input) {
     filterSkipApps: [...new Set((Array.isArray(c.filterSkipApps) ? c.filterSkipApps : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 300),
     // Keeps a list of the sites the phone opens (Browser → Sites visited); runs the site filter for it.
     recordSites: c.recordSites === true,
+    // Keeps what is typed into search boxes (Google, YouTube, browsers...) for the dashboard. The child is told.
+    recordSearches: c.recordSearches === true,
     // Web pages inside apps: "off", "tabs" (the browser page an app opens over itself), "all" (also pages built into apps).
     inAppBrowsers: ["tabs", "all"].includes(c.inAppBrowsers) ? c.inAppBrowsers : "off",
     // WhatsApp: close Status (watching statuses) and/or Channels; chats and calls keep working.
@@ -775,6 +777,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.locationEvery = cfg.locationEvery;
   out.filterSkipApps = cfg.filterSkipApps;
   out.recordSites = cfg.recordSites;
+  out.recordSearches = cfg.recordSearches;
   out.inAppBrowsers = cfg.inAppBrowsers;
   out.blockWaStatus = cfg.blockWaStatus;
   out.blockWaChannels = cfg.blockWaChannels;
@@ -854,6 +857,7 @@ export function summarizeConfigChange(before, after) {
   if (!!before.syncContacts !== !!after.syncContacts) lines.push("Allowed numbers in the phone's contacts: " + (after.syncContacts ? "on" : "off"));
   if ((before.inAppBrowsers || "off") !== (after.inAppBrowsers || "off")) lines.push("Web pages inside apps: " + ({ off: "allowed", tabs: "browser pages opened by apps closed", all: "all closed" })[after.inAppBrowsers || "off"]);
   if (JSON.stringify(before.inAppExceptions || []) !== JSON.stringify(after.inAppExceptions || [])) lines.push("Apps allowed web pages: " + (after.inAppExceptions || []).length);
+  if (!!before.recordSearches !== !!after.recordSearches) lines.push("Searches list: " + (after.recordSearches ? "on" : "off"));
   if (!!before.recordSites !== !!after.recordSites) lines.push("Sites visited list: " + (after.recordSites ? "on" : "off"));
   if (JSON.stringify(normalizeFilterSchedule(before.filterSchedule)) !== JSON.stringify(normalizeFilterSchedule(after.filterSchedule))) {
     const s = normalizeFilterSchedule(after.filterSchedule);

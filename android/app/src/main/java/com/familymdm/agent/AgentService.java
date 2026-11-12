@@ -255,6 +255,8 @@ public class AgentService extends Service {
         if (locations.length() > 0) body.put("locations", locations);
         JSONArray msgAlerts = Monitor.peek(this);
         if (msgAlerts.length() > 0) body.put("msgAlerts", msgAlerts);
+        JSONArray searches = Monitor.peekSearches(this);
+        if (searches.length() > 0) body.put("searches", searches);
         JSONObject configPatch = PhoneRules.pendingPatch(this);
         if (configPatch != null) body.put("configPatch", configPatch); // Administrator → Rules changes
         body.put("overrides", Agent.getOverrides(this));
@@ -340,6 +342,7 @@ public class AgentService extends Service {
         TrafficLog.dropPending(this, trafficLog.length());
         Whereabouts.drop(this, locations.length());
         Monitor.drop(this, msgAlerts.length());
+        Monitor.dropSearches(this, searches.length());
         Calls.dropCalls(this, calls.length());
         Calls.dropTexts(this, texts.length());
         if (contacts != null) ContactSync.sent(this);
