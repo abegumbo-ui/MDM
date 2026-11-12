@@ -65,7 +65,11 @@ jobs:
           mkdir -p out
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/NudeDetect.java tools/nudenet/DetectCheck.java
       - name: Build and check the detector
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          gh release download v3.4-weights -R notAI-tech/NudeNet -p 320n.pt
+          ls -la 320n.pt
           python -m pip install --quiet ultralytics nudenet scikit-image opencv-python-headless
           python tools/nudenet/convert.py
       - name: Publish to the "models" release (main only)

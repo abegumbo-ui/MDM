@@ -22,7 +22,7 @@ urllib.request.urlretrieve("https://ultralytics.com/images/bus.jpg", "bus.jpg")
 cv2.imwrite("astronaut.jpg", cv2.cvtColor(data.astronaut(), cv2.COLOR_RGB2BGR))
 
 # NudeNet's own weights (same model as 320n.onnx), converted with Ultralytics' exporter (YOLOv8).
-urllib.request.urlretrieve("https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/320n.pt", "320n.pt")
+# 320n.pt is downloaded by the workflow (gh release download), next to this run.
 from ultralytics import YOLO
 print("labels in the weights:", YOLO("320n.pt").names)
 exported = YOLO("320n.pt").export(format="tflite", imgsz=320, half=True)
