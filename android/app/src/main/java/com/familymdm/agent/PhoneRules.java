@@ -301,6 +301,7 @@ final class PhoneRules {
         choice(a, card, c, "inAppBrowsers", "Web pages inside apps", "Links opened inside Instagram, Gmail and other apps.",
                 new String[]{"off", "tabs", "all"}, new String[]{"Allowed", "Close browser pages that apps open", "Close every web page inside apps"}, "off", rebuild);
         approvedSites(a, card, c, rebuild);
+        filterSchedule(a, card, c, rebuild);
         words(a, card, c, "blockedWords", "Blocked words", "Searches and site names containing these words are blocked. One per line.", rebuild);
 
         LinearLayout net = Ui.card(a, root);
@@ -830,6 +831,62 @@ final class PhoneRules {
                 rebuild.run();
             }).setNegativeButton("Cancel", null).show();
         });
+    }
+
+    /** A different filter level at set times (for example approved sites only at night), in the phone's own time. */
+    private static void filterSchedule(Activity a, LinearLayout card, JSONObject c, Runnable rebuild) {
+        JSONObject fs = c.optJSONObject("filterSchedule");
+        final JSONObject sch;
+        try {
+            sch = fs != null ? new JSONObject(fs.toString()) : new JSONObject();
+        } catch (Exception e) {
+            return;
+        }
+        boolean on = sch.optBoolean("on", false);
+        String[] levels = {"off", "moderate", "strict"}, names = {"Approved sites only", "Moderate", "Strict"};
+        String lvl = sch.optString("level", "strict");
+        String lvlName = names[2];
+        for (int i = 0; i < levels.length; i++) if (levels[i].equals(lvl)) lvlName = names[i];
+        Switch s = sw(a, card, "A different level at set times", on ? lvlName + " from " + sch.optString("from", "08:00") + " to " + sch.optString("to", "15:00") + ", in the phone's own time." : "Off.", on);
+        s.setOnCheckedChangeListener((b, now) -> {
+            try {
+                sch.put("on", now);
+                if (!sch.has("level")) sch.put("level", "off");
+                if (!sch.has("from")) sch.put("from", "21:00");
+                if (!sch.has("to")) sch.put("to", "07:00");
+                if (!sch.has("days")) sch.put("days", new JSONArray(new int[]{0, 1, 2, 3, 4, 5, 6}));
+            } catch (Exception ignored) {
+            }
+            set1(a, "filterSchedule", sch, now ? "filter schedule on" : "filter schedule off");
+            rebuild.run();
+        });
+        if (!on) return;
+        int sel = 0;
+        for (int i = 0; i < levels.length; i++) if (levels[i].equals(lvl)) sel = i;
+        final int selected = sel;
+        Ui.add(card, Ui.button(a, "Level then: " + lvlName, Ui.OUTLINED, v -> Ui.alertDialog(a).setTitle("Level at those times").setSingleChoiceItems(names, selected, (d, w) -> {
+            d.dismiss();
+            try {
+                sch.put("level", levels[w]);
+            } catch (Exception ignored) {
+            }
+            set1(a, "filterSchedule", sch, "filter schedule level " + names[w]);
+            rebuild.run();
+        }).show()), 6);
+        for (String end : new String[]{"from", "to"}) {
+            String cur = sch.optString(end, end.equals("from") ? "21:00" : "07:00");
+            Ui.add(card, Ui.button(a, (end.equals("from") ? "Starts " : "Ends ") + cur, Ui.OUTLINED, v -> {
+                int h = Integer.parseInt(cur.substring(0, 2)), m = Integer.parseInt(cur.substring(3, 5));
+                new TimePickerDialog(a, (tp, hh, mm) -> {
+                    try {
+                        sch.put(end, String.format(Locale.US, "%02d:%02d", hh, mm));
+                    } catch (Exception ignored) {
+                    }
+                    set1(a, "filterSchedule", sch, "filter schedule " + sch.optString("from") + "-" + sch.optString("to"));
+                    rebuild.run();
+                }, h, m, true).show();
+            }), 6);
+        }
     }
 
     /** Approved sites (websites only; YouTube channels and single pages are kept as the dashboard set them). */
