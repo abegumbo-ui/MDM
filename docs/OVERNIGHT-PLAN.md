@@ -58,3 +58,15 @@ All Windows changes must pass windows/ci-e2e.ps1 (extend it for new behaviour).
 ## Later overnight (merged, live)
 - #214 PC internet off · #215 searches list · #216 What's on for this phone · #217 Lockdown Tap to block · #218 Block ads (lists published: 229,823 ad sites) · #219/#220 review fixes (Pick a part timer, dashboard loading crash, lost phone change after reset, cover flicker)
 - Emulator test skipped: 0.8 GB free memory on the PC; would have frozen it.
+
+## After 2am (merged, live)
+- #222 school-time lunch break + dashboard tests now run automatically on GitHub (found 2 stale tests)
+- #223 push contact fix · #224 app names in alerts · #225 daily summary at 8pm (opt-in) · #226 lock screen 'Call Mom' buttons
+- #227 Tap to block respects Lockdown's switch and emergency unlock · #228 WhatsApp text and calls only (test first!)
+- #229 quick blocks: Maps Explore, Snapchat Spotlight · #230 Teen/Recommended block ads · #231 PC 'What's on for this computer'
+- #232 phone menu 'What your parent can see' · #233 PC 'Ask for a website' · #234 LockGuard window 'What your parent can see'
+
+## Notes for the morning
+- 'Regular tablet app' = the MDM Agent on the tablet: it already had the unlock file (emergency unlock), dashboard one-time codes and per-app internet, so the PC features already have their phone/tablet versions.
+- Not built: YouTube 'videos watched' report (no reliable way to read the title), nude-photo detection (needs an image model), PC screen-time limits and PC screenshots (LockGuard runs outside the user's session).
+- Nothing was installed or changed on the user's PC. Downloads\\Fix-Internet-After-LockGuard.cmd still needs one 'Yes' click to clear the old lookup block.
