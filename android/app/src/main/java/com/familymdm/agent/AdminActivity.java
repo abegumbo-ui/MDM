@@ -72,7 +72,7 @@ public class AdminActivity extends Activity {
     private static final String[][] SUB_LABELS = {
             {"Status", "Messages"},
             PhoneRules.SUB_LABELS,
-            {"Apps", "Home screen", "Blocked", "System apps", "Browser"},
+            {"Apps", "Home screen", "Blocked", "System apps", "Add-ons"},
             {"Wi-Fi", "Website filter", "Network cutoff", "Traffic log"},
             {"Screen lock", "App lock", "Restrictions", "App access"},
             {"Settings menu", "Updates", "Controls"}};
@@ -217,6 +217,7 @@ public class AdminActivity extends Activity {
     private void build() {
         root.removeAllViews();
         Ui.add(root, Ui.banner(this, "Administrator"), 0);
+        buildSearch(root);
         final int g = groupIndex();
         Ui.add(root, Ui.tabs(this, GROUP_LABELS, g, false, i -> {
             group = GROUPS[i];
@@ -265,6 +266,84 @@ public class AdminActivity extends Activity {
                 else if ("controls".equals(sub)) buildDeviceSection(root);
                 else buildSettingsMenuSection(root);
         }
+    }
+
+    // ---------- search every setting ----------
+
+    private String searchText = "";
+
+    /** Every tab, plus the things people look for by name, each leading to its tab. */
+    private java.util.List<String[]> searchIndex() {
+        java.util.List<String[]> out = new java.util.ArrayList<>();
+        for (int g = 0; g < GROUPS.length; g++)
+            for (int s = 0; s < SUBS[g].length; s++) out.add(new String[]{GROUP_LABELS[g] + " › " + SUB_LABELS[g][s], GROUPS[g], SUBS[g][s]});
+        String[][] extra = {
+                {"Add-ons: Browser add-on, YouTube icon, Browser app (put in or take out)", "apps", "browser"},
+                {"YouTube icon on the phone (put in or take out)", "apps", "browser"},
+                {"Install or remove the Browser app", "apps", "browser"},
+                {"Uninstall an app", "apps", "regular"},
+                {"Show or hide apps: allow, block, schedule", "apps", "regular"},
+                {"Install an APK file", "apps", "regular"},
+                {"Tap to block part of an app (Shorts, Reels)", "apps", "blocked"},
+                {"Block a whole app (hard block)", "apps", "blocked"},
+                {"Home screen mode", "apps", "kiosk"},
+                {"SafeSearch, filter level, blocked words, block ads", "rules", "web"},
+                {"YouTube: only what I allow, restricted, off", "rules", "web"},
+                {"Screen time: daily limit, bedtime, school time", "rules", "time"},
+                {"Who can call, texts", "rules", "calls"},
+                {"Ready-made setups (Young child, Teen...)", "rules", "setups"},
+                {"Health check, message alerts", "rules", "safety"},
+                {"Block or allow websites (website filter)", "internet", "filter"},
+                {"No internet for one app (network cutoff)", "internet", "cutoff"},
+                {"Lock the screen, PIN", "security", "lock"},
+                {"Restrictions: factory reset, USB debugging, adding accounts", "security", "restrictions"},
+                {"Release the phone, sync with the dashboard", "device", "controls"},
+                {"Recovery code", "overview", "status"}};
+        java.util.Collections.addAll(out, extra);
+        return out;
+    }
+
+    private void buildSearch(LinearLayout root) {
+        final EditText field = Ui.field(this, "Search every setting…");
+        field.setSingleLine(true);
+        field.setText(searchText);
+        final LinearLayout results = new LinearLayout(this);
+        results.setOrientation(LinearLayout.VERTICAL);
+        Ui.add(root, field, 4);
+        Ui.add(root, results, 4);
+        field.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                searchText = s.toString();
+                showSearchResults(results);
+            }
+        });
+        showSearchResults(results);
+    }
+
+    private void showSearchResults(LinearLayout results) {
+        results.removeAllViews();
+        String q = searchText.trim().toLowerCase(java.util.Locale.ROOT);
+        if (q.isEmpty()) return;
+        String[] words = q.split("\\s+");
+        int n = 0;
+        for (final String[] e : searchIndex()) {
+            String label = e[0].toLowerCase(java.util.Locale.ROOT);
+            boolean all = true;
+            for (String w : words) if (!label.contains(w)) { all = false; break; }
+            if (!all) continue;
+            Ui.add(results, Ui.rowTile(this, e[0], R.drawable.ic_shield, v -> {
+                if (!unlocked()) return;
+                searchText = "";
+                group = e[1];
+                subOf.put(e[1], e[2]);
+                resetSubState();
+                build();
+            }), 4);
+            if (++n >= 8) break;
+        }
+        if (n == 0) results.addView(Ui.body(this, "Nothing found. Try another word.", true));
     }
 
     /** Overview > Status: this phone's details, its recovery code, and the sync / phone-settings button. */
@@ -559,6 +638,29 @@ public class AdminActivity extends Activity {
      * below is untouched by this -- turning the add-on on or off never installs, removes, or
      * migrates anything about that separate app; an administrator has to act on each on its own. */
     private void buildAddonsSection(LinearLayout root) {
+        // YouTube, built into this app: its own icon, following the dashboard's YouTube settings.
+        LinearLayout yt = Ui.card(this, root);
+        yt.addView(Ui.titleText(this, "YouTube"));
+        final boolean ytOn = YoutubeAddon.isEnabled(this);
+        yt.addView(Ui.body(this, ytOn
+                ? "On: a YouTube icon on this phone, built into this app. It follows the YouTube settings (only what you allow, restricted, or off)."
+                : "Off. Turning it on puts a YouTube icon on this phone, built into this app, so YouTube works even when browsers are blocked.", true));
+        action(yt, ytOn ? "Take out YouTube" : "Put in YouTube", ytOn ? Ui.OUTLINED : Ui.TONAL, v -> {
+            try {
+                boolean on = !ytOn;
+                YoutubeAddon.setEnabled(this, on);
+                JSONObject policy = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
+                policy.put("youtubeAddon", on);
+                Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+                PhoneRules.set(this, new JSONObject().put("youtubeAddon", on), "YouTube icon " + (on ? "put in" : "taken out"));
+                toast(on ? "YouTube is on this phone now." : "YouTube is taken out.");
+            } catch (Exception e) {
+                toast("Could not change it: " + e.getMessage());
+            }
+            build();
+        });
+        if (ytOn) action(yt, "Open YouTube", Ui.TONAL, v -> startActivity(new Intent(this, YoutubeAddonActivity.class)));
+
         LinearLayout addon = Ui.card(this, root);
         addon.addView(Ui.titleText(this, "Browser add-on"));
         boolean addonOn = BrowserAddon.isEnabled(this);
@@ -620,7 +722,46 @@ public class AdminActivity extends Activity {
                 else toast("The Browser app isn't installed on this phone yet.");
             });
             action(browser, "Browse freely for a while…", Ui.OUTLINED, v -> askFreebrowse());
+            action(browser, "Take out the Browser app", Ui.OUTLINED, v -> confirmUninstall(null, "com.familymdm.browser", "Browser"));
         }
+    }
+
+    /** Apps that can really be removed (not system apps, not this app). */
+    private boolean canUninstall(String pkg) {
+        if (pkg.equals(getPackageName())) return false;
+        try {
+            android.content.pm.ApplicationInfo ai = getPackageManager().getApplicationInfo(pkg, 0);
+            return (ai.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 || (ai.flags & android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void confirmUninstall(final LinearLayout gridHolder, final String pkg, final String label) {
+        Ui.alertDialog(this)
+                .setTitle("Uninstall " + label + "?")
+                .setMessage("Removes the app and its data from this phone. It can be installed again later.")
+                .setPositiveButton("Uninstall", (d, w) -> {
+                    if (!unlocked()) return;
+                    new Thread(() -> {
+                        String msg;
+                        try {
+                            Installer.uninstall(this, pkg);
+                            Agent.addEvent(this, "local", "Master code on phone: uninstalled \"" + pkg + "\"");
+                            msg = label + " is being uninstalled.";
+                        } catch (Exception e) {
+                            msg = "Could not uninstall " + label + ": " + e.getMessage();
+                        }
+                        final String text = msg;
+                        runOnUiThread(() -> {
+                            toast(text);
+                            if (gridHolder != null) root.postDelayed(() -> renderAppsGrid(gridHolder), 2500);
+                            else root.postDelayed(this::build, 2500);
+                        });
+                    }).start();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void buildKioskSection(LinearLayout root) {
@@ -2198,6 +2339,12 @@ public class AdminActivity extends Activity {
             dialog.dismiss();
             promptSchedule(gridHolder, pkg, label);
         }), 8);
+        if (canUninstall(pkg)) {
+            Ui.add(box, Ui.rowTile(this, "Uninstall", R.drawable.ic_remove_tile, v -> {
+                dialog.dismiss();
+                confirmUninstall(gridHolder, pkg, label);
+            }), 8);
+        }
         Ui.add(box, Ui.button(this, "Cancel", Ui.OUTLINED, v -> dialog.dismiss()), 16);
 
         dialog.show();
