@@ -480,7 +480,36 @@ final class PhoneRules {
         String[] labels = {"Anyone", "Only contacts and allowed numbers", "Only allowed numbers"};
         choice(a, card, c, "callsIn", "Who can call this phone", "Calls from anyone else are rejected. Emergency numbers always work.", modes, labels, "all", rebuild);
         choice(a, card, c, "callsOut", "Whom this phone can call", "Emergency numbers always work.", modes, labels, "all", rebuild);
-        card.addView(Ui.body(a, "The list of allowed numbers is kept on the dashboard (Calls & texts → Who can call).", true));
+        JSONArray nums = c.optJSONArray("callNumbers");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; nums != null && i < nums.length(); i++) {
+            JSONObject n = nums.optJSONObject(i);
+            if (n == null) continue;
+            sb.append(sb.length() == 0 ? "" : "\n").append(n.optString("name").isEmpty() ? "" : n.optString("name") + " ").append(n.optString("number"));
+        }
+        int count = nums == null ? 0 : nums.length();
+        row(a, card, "Allowed numbers", "One per line, a name and the number, for example: Mom 052-123-4567", count == 0 ? "None" : count + (count == 1 ? " number" : " numbers"), v -> {
+            EditText f = new EditText(a);
+            f.setMinLines(5);
+            f.setText(sb.toString());
+            new AlertDialog.Builder(a).setTitle("Allowed numbers").setView(f).setPositiveButton("Save", (d, w) -> {
+                JSONArray out = new JSONArray();
+                for (String line : f.getText().toString().split("\n")) {
+                    String l = line.trim();
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(.*?)\\s*([+*]?[0-9][0-9 ()\\-]{2,24})$").matcher(l);
+                    if (!m.find()) continue;
+                    try {
+                        JSONObject n = new JSONObject();
+                        n.put("name", m.group(1).trim());
+                        n.put("number", m.group(2).trim());
+                        out.put(n);
+                    } catch (Exception ignored) {
+                    }
+                }
+                set1(a, "callNumbers", out, "allowed numbers (" + out.length() + ")");
+                rebuild.run();
+            }).setNegativeButton("Cancel", null).show();
+        });
         if (off) return;
         LinearLayout logs = Ui.card(a, root);
         logs.addView(Ui.titleText(a, "Shown on the dashboard"));
