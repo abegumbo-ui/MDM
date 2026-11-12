@@ -70,6 +70,7 @@ jobs:
         run: |
           gh release download v3.4-weights -R notAI-tech/NudeNet -p 320n.pt
           ls -la 320n.pt
+          python -m pip install --quiet "torch==2.4.1" "torchvision==0.19.1" --index-url https://download.pytorch.org/whl/cpu
           python -m pip install --quiet "ultralytics==8.3.40" "tensorflow-cpu==2.17.1" "tf-keras==2.17.0" "onnx==1.16.2" "onnxruntime==1.19.2" "onnx2tf==1.22.3" "sng4onnx==1.0.4" "onnx-graphsurgeon==0.5.2" "onnxslim==0.1.36" "tflite-support==0.4.4" nudenet scikit-image opencv-python-headless
           export YOLO_AUTOINSTALL=false
           python tools/nudenet/convert.py
