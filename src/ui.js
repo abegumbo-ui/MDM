@@ -1134,6 +1134,8 @@ function renderInternetOff(box,d){
   card.append(row)}
  box.append(card)}
 const LEVELS={
+ email:{label:'Email only',desc:'Only email apps (Gmail, Outlook, Yahoo Mail, Samsung Email) can use the internet. Calls and texts work as usual. Browsers open approved sites only; new apps wait for you.',
+  set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:false,blockImageSearch:true,blockAppGroups:[],approveNew:true,noIncognito:true,internetOnlyApps:true,internetApps:['com.google.android.gm','com.microsoft.office.outlook','com.yahoo.mobile.client.android.mail','com.samsung.android.email.provider','com.android.email']}},
  young:{label:'Young child (under 10)',desc:'Only sites you approve. No pictures on web pages, no image search, no web pages inside apps. Every app group blocked; new apps wait for you. WhatsApp Status and Channels closed. Message alerts on.',
   set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:true,blockImageSearch:true,blockAppGroups:'all',approveNew:true,noIncognito:true,blockWaStatus:true,blockWaChannels:true,inAppBrowsers:'all',messageAlerts:true}},
  teen:{label:'Teen',desc:'Strict filter (adult, gambling, drugs, scam, piracy sites blocked). SafeSearch, YouTube Restricted Mode, no image search. Dating apps blocked, new apps wait for you. Browser pages that apps open are closed. Message alerts on. Ads blocked.',
@@ -1150,7 +1152,9 @@ function applyLevel(c,s){const groups=Object.keys(state.appGroups||{});
  c.browserFilter=s.browserFilter;c.safeSearch=s.safeSearch;c.youtubeDns=s.youtubeDns;c.blockImages=s.blockImages;c.blockImageSearch=s.blockImageSearch;
  c.blockAppGroups=s.blockAppGroups==='all'?groups:s.blockAppGroups.filter(function(g){return groups.includes(g)});
  c.approveNew=s.approveNew;c.chromePolicy=Object.assign({},c.chromePolicy||{},{noIncognito:s.noIncognito});
- for(const k of ['blockWaStatus','blockWaChannels','inAppBrowsers','messageAlerts','blockAds'])if(s[k]!==undefined)c[k]=s[k]}
+ for(const k of ['blockWaStatus','blockWaChannels','inAppBrowsers','messageAlerts','blockAds'])if(s[k]!==undefined)c[k]=s[k];
+ // Only "Email only" limits the internet to chosen apps; every other setup switches that off again.
+ c.internetOnlyApps=!!s.internetOnlyApps;if(s.internetApps)c.internetApps=s.internetApps.slice()}
 function renderLevels(box,d){
  const card=h('div',{class:'card'},h('h2',null,'Ready-made setups'),h('div',{class:'mute'},'Not sure what to switch on? Pick the one that fits. One tap sets many settings at once; you can still change any single setting afterwards. Your allowed sites, and apps you set to Allow, are kept.'));
  for(const k of Object.keys(LEVELS)){const L=LEVELS[k];

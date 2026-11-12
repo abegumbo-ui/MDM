@@ -229,6 +229,7 @@ final class PhoneRules {
         card.addView(Ui.titleText(a, "Ready-made setups"));
         card.addView(Ui.body(a, "Not sure what to switch on? Pick the one that fits. It sets many rules at once; you can still change any single one afterwards.", true));
         String[][] L = {
+                {"email", "Email only", "Only email apps (Gmail, Outlook, Yahoo Mail, Samsung Email) can use the internet. Calls and texts work as usual. Browsers open approved sites only; new apps wait for you."},
                 {"young", "Young child (under 10)", "Only sites you approve. No pictures on web pages, no image search, no web pages inside apps. Every app group blocked; new apps wait for you. WhatsApp Status and Channels closed. Message alerts on."},
                 {"teen", "Teen", "Strict filter (adult, gambling, drugs, scam, piracy sites blocked). SafeSearch, YouTube Restricted Mode, no image search. Dating apps blocked, new apps wait for you. Browser pages that apps open are closed. Message alerts on. Ads blocked."},
                 {"kosher", "Kosher phone", "Only sites you approve, no pictures on web pages, no image search, no web pages inside apps. Social media, video, games, dating and shopping apps blocked; new apps wait for you. WhatsApp chats and calls work; Status and Channels closed."},
@@ -278,6 +279,17 @@ final class PhoneRules {
             if (teen || rec) v.put("blockAds", true);
             }
             if (young || kosher) { v.put("blockWaStatus", true); v.put("blockWaChannels", true); v.put("inAppBrowsers", "all"); }
+            boolean email = which.equals("email");
+            v.put("internetOnlyApps", email);
+            if (email) {
+                v.put("browserFilter", "off");
+                v.put("blockImages", false);
+                v.put("youtubeDns", "strict");
+                JSONArray mail = new JSONArray();
+                for (String p : new String[]{"com.google.android.gm", "com.microsoft.office.outlook", "com.yahoo.mobile.client.android.mail", "com.samsung.android.email.provider", "com.android.email"}) mail.put(p);
+                v.put("internetApps", mail);
+                if (!off) v.put("blockAppGroups", new JSONArray());
+            }
             else if (teen) v.put("inAppBrowsers", "tabs");
         } catch (Exception ignored) {
         }
