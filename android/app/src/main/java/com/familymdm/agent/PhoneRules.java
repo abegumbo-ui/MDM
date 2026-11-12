@@ -145,7 +145,7 @@ final class PhoneRules {
     static void addOfflineExtras(Context c, JSONObject policy) {
         try {
             JSONObject x = new JSONObject(Agent.prefs(c).getString("localExtras", "{}"));
-            String[] pass = {"safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "inAppBrowsers", "blockWaStatus",
+            String[] pass = {"safeSearch", "youtubeDns", "blockImages", "pictureGuard", "blockImageSearch", "blockedWords", "inAppBrowsers", "blockWaStatus",
                     "blockWaChannels", "screenTime", "callsIn", "callsOut", "pauseUntil", "freezeUpdates", "disableBiometricUnlock", "blockedParts", "internetOffUntil"};
             for (String k : pass) if (x.has(k)) policy.put(k, x.get(k));
             if (x.has("browserFilter")) {

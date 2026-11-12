@@ -1,0 +1,177 @@
+package com.familymdm.browser;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.util.LruCache;
+import android.webkit.CookieManager;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+
+import com.familymdm.agent.sitepolicy.NudityPrep;
+import com.familymdm.agent.sitepolicy.SkinMask;
+
+import org.tensorflow.lite.Interpreter;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * "Pictures in our Browser" (set on the dashboard): every picture a page loads is fetched here
+ * first and checked on the phone before the page gets it.
+ * - "nudity": a picture that may show nudity (the same on-phone checker as photo alerts) is
+ *   replaced by a plain grey picture of the same size.
+ * - "skin": that, and every skin-coloured patch of every picture is covered with grey blocks
+ *   (SkinMask: by colour, so faces and hands are covered too).
+ * Pictures that cannot be read are not shown. Tiny pictures (icons) and SVG drawings pass through.
+ * Videos are not touched: Android plays them where the Browser cannot paint over them.
+ */
+final class PictureGuard {
+    private PictureGuard() {}
+
+    private static final int MAX_BYTES = 8 * 1024 * 1024, MAX_SIDE = 1024, TINY = 48;
+    private static final LruCache<String, byte[]> cache = new LruCache<String, byte[]>(16 * 1024 * 1024) {
+        @Override
+        protected int sizeOf(String k, byte[] v) {
+            return v.length;
+        }
+    };
+    private static Interpreter interp;
+    private static boolean noModel;
+
+    static boolean isPicture(WebResourceRequest r) {
+        if (!"GET".equalsIgnoreCase(r.getMethod()) || r.isForMainFrame()) return false;
+        String scheme = r.getUrl().getScheme();
+        if (!"http".equals(scheme) && !"https".equals(scheme)) return false;
+        String accept = null;
+        for (Map.Entry<String, String> e : r.getRequestHeaders().entrySet()) if ("accept".equalsIgnoreCase(e.getKey())) accept = e.getValue();
+        if (accept != null && accept.startsWith("image/")) return true;
+        String p = r.getUrl().getPath() == null ? "" : r.getUrl().getPath().toLowerCase(java.util.Locale.ROOT);
+        return p.endsWith(".jpg") || p.endsWith(".jpeg") || p.endsWith(".png") || p.endsWith(".webp") || p.endsWith(".gif") || p.endsWith(".avif") || p.endsWith(".heic");
+    }
+
+    /** The checked picture, or null to let the WebView load it itself (could not be fetched here). */
+    static WebResourceResponse handle(Context c, WebResourceRequest r, String mode) {
+        String url = r.getUrl().toString();
+        byte[] done = cache.get(mode + "|" + url);
+        if (done != null) return png(done);
+        byte[] raw;
+        String type;
+        try {
+            HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
+            con.setConnectTimeout(10000);
+            con.setReadTimeout(15000);
+            con.setInstanceFollowRedirects(true);
+            for (Map.Entry<String, String> e : r.getRequestHeaders().entrySet()) con.setRequestProperty(e.getKey(), e.getValue());
+            String cookie = CookieManager.getInstance().getCookie(url);
+            if (cookie != null) con.setRequestProperty("Cookie", cookie);
+            int code = con.getResponseCode();
+            if (code < 200 || code >= 300) return null;
+            type = con.getContentType() == null ? "" : con.getContentType().toLowerCase(java.util.Locale.ROOT);
+            try (InputStream in = con.getInputStream()) {
+                ByteArrayOutputStream all = new ByteArrayOutputStream();
+                byte[] buf = new byte[32768];
+                for (int n; (n = in.read(buf)) > 0; ) {
+                    all.write(buf, 0, n);
+                    if (all.size() > MAX_BYTES) return blank(1, 1);
+                }
+                raw = all.toByteArray();
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        if (type.contains("svg")) return passThrough(raw, type);
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(raw, 0, raw.length, bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return blank(1, 1); // cannot be read, so cannot be checked
+        if (bounds.outWidth < TINY && bounds.outHeight < TINY) return passThrough(raw, type);
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inSampleSize = 1;
+        while (Math.max(bounds.outWidth, bounds.outHeight) / (o.inSampleSize * 2) >= MAX_SIDE) o.inSampleSize *= 2;
+        o.inMutable = true;
+        Bitmap b = BitmapFactory.decodeByteArray(raw, 0, raw.length, o);
+        if (b == null) return blank(bounds.outWidth, bounds.outHeight);
+        int w = b.getWidth(), h = b.getHeight();
+        float score = score(c, b);
+        if (score >= NudityPrep.THRESHOLD) {
+            byte[] grey = encode(Bitmap.createBitmap(new int[]{SkinMask.GREY}, 1, 1, Bitmap.Config.ARGB_8888), w, h);
+            cache.put(mode + "|" + url, grey);
+            return png(grey);
+        }
+        if (score < 0 && noModel && "nudity".equals(mode)) return passThrough(raw, type); // no checker in this build
+        if ("skin".equals(mode)) {
+            int[] px = new int[w * h];
+            b.getPixels(px, 0, w, 0, 0, w, h);
+            if (SkinMask.cover(px, w, h) > 0) {
+                b.setPixels(px, 0, w, 0, 0, w, h);
+                byte[] out = encode(b, w, h);
+                cache.put(mode + "|" + url, out);
+                return png(out);
+            }
+        }
+        return passThrough(raw, type);
+    }
+
+    private static byte[] encode(Bitmap b, int w, int h) {
+        Bitmap s = b.getWidth() == w && b.getHeight() == h ? b : Bitmap.createScaledBitmap(b, w, h, false);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        s.compress(Bitmap.CompressFormat.PNG, 100, out);
+        return out.toByteArray();
+    }
+
+    private static WebResourceResponse png(byte[] bytes) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Cache-Control", "no-store");
+        return new WebResourceResponse("image/png", null, 200, "OK", headers, new ByteArrayInputStream(bytes));
+    }
+
+    private static WebResourceResponse passThrough(byte[] raw, String type) {
+        String mime = type.isEmpty() ? "image/jpeg" : type.split(";")[0].trim();
+        return new WebResourceResponse(mime, null, 200, "OK", new HashMap<>(), new ByteArrayInputStream(raw));
+    }
+
+    private static WebResourceResponse blank(int w, int h) {
+        Bitmap one = Bitmap.createBitmap(new int[]{SkinMask.GREY}, 1, 1, Bitmap.Config.ARGB_8888);
+        return png(encode(one, Math.max(1, Math.min(w, 2000)), Math.max(1, Math.min(h, 2000))));
+    }
+
+    /** The same on-phone checker as the Agent's photo alerts; -1 when this build has none. */
+    private static synchronized float score(Context c, Bitmap picture) {
+        if (interp == null && !noModel) {
+            try (InputStream in = c.getAssets().open("nsfw.tflite")) {
+                ByteArrayOutputStream all = new ByteArrayOutputStream();
+                byte[] buf = new byte[65536];
+                for (int n; (n = in.read(buf)) > 0; ) all.write(buf, 0, n);
+                ByteBuffer model = ByteBuffer.allocateDirect(all.size()).order(ByteOrder.nativeOrder());
+                model.put(all.toByteArray()).rewind();
+                Interpreter.Options opt = new Interpreter.Options();
+                opt.setNumThreads(2);
+                interp = new Interpreter(model, opt);
+            } catch (Throwable e) {
+                noModel = true;
+            }
+        }
+        if (interp == null) return -1;
+        try {
+            Bitmap s = Bitmap.createScaledBitmap(picture, NudityPrep.SCALED, NudityPrep.SCALED, true);
+            int[] px = new int[NudityPrep.SCALED * NudityPrep.SCALED];
+            s.getPixels(px, 0, NudityPrep.SCALED, 0, 0, NudityPrep.SCALED, NudityPrep.SCALED);
+            float[] in = NudityPrep.toInput(px);
+            ByteBuffer input = ByteBuffer.allocateDirect(in.length * 4).order(ByteOrder.nativeOrder());
+            input.asFloatBuffer().put(in);
+            float[][] out = new float[1][2];
+            interp.run(input, out);
+            return out[0][1];
+        } catch (Throwable e) {
+            return -1;
+        }
+    }
+}

@@ -54,4 +54,6 @@ android {
 
 dependencies {
     implementation project(':sitepolicy')
+    // PictureGuard's on-phone checker; the model file comes from the "models" release at build time.
+    implementation 'org.tensorflow:tensorflow-lite:2.16.1'
 }

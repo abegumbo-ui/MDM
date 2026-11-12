@@ -1493,6 +1493,11 @@ function renderSearchPictures(m,dv){
  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block pictures on web pages'),
   h('div',{class:'mute'},dv.isBrowser?'Pages load without any pictures in this browser.':'Pages load without pictures in our own browsers and in Chrome. Other browsers (Firefox, Samsung Internet...) only with Inspection (the last tab) on'+(c.tlsInspection?', which it is.':', which it is not right now.'))),
   sw(c.blockImages,function(v){c.blockImages=v;save()})));
+ if(!c.blockImages){
+  const pg=h('select',null);for(const [v,l] of [['off','Show all pictures'],['nudity','Hide pictures that may show nudity'],['skin','Hide those, and cover skin in every picture']])pg.append(new Option(l,v));
+  pg.value=c.pictureGuard||'off';pg.onchange=function(){c.pictureGuard=pg.value;save(pg.value==='off'?'All pictures shown.':'Saved. Pictures are checked on the phone from the next check-in.')};
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Pictures in our Browser'),
+   h('div',{class:'mute'},'Every picture on a web page is checked on the phone before it shows. "Hide" greys out a picture that may show nudity. "Cover skin" also paints grey blocks over every skin-coloured patch (faces and hands too; it goes by colour). Only in our own Browser, not in Chrome; videos are not covered; pages with many pictures load a little slower.')),pg))}
  if(!dv.isBrowser){
   const ta=h('textarea',{rows:3,style:'width:100%;margin-top:8px',placeholder:'one site per line, e.g. maps.google.com'});ta.value=(c.imagesAllow||[]).join('\n');
   card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Show pictures on these sites anyway'),
