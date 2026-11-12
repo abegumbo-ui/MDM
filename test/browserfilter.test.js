@@ -58,7 +58,8 @@ test("a dashboard-connected Browser is told its filter level and where to downlo
 
 test("YouTube follows the filter level by default, and an explicit choice always wins", async () => {
   assert.equal(normalizeConfig({}).youtubeMode, "auto");
-  for (const bad of ["Restricted", "open", "", null, 1, "restricted "]) assert.equal(normalizeConfig({ youtubeMode: bad }).youtubeMode, "auto", String(bad));
+  for (const bad of ["Restricted", "Open", "", null, 1, "restricted "]) assert.equal(normalizeConfig({ youtubeMode: bad }).youtubeMode, "auto", String(bad));
+  for (const ok of ["open", "blocked", "channels", "restricted"]) assert.equal(normalizeConfig({ youtubeMode: ok }).youtubeMode, ok, "the YouTube section's choices are kept: " + ok);
   const mode = (c) => buildAgentPolicy(normalizeConfig(c), []).youtubeMode;
   // auto: Moderate -> restricted (search works); Strict and Off -> only allowed channels/videos
   assert.equal(mode({}), "channels");

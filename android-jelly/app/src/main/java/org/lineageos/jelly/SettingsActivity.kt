@@ -72,6 +72,10 @@ class SettingsActivity : AppCompatActivity() {
         override fun onCreatePreferences(savedInstance: Bundle?, rootKey: String?) {
             // Load the preferences from an XML resource
             setPreferencesFromResource(R.xml.settings, rootKey)
+            // The family dashboard's rules need JavaScript (video covering) and no web debugging:
+            // those two switches are not offered.
+            findPreference<Preference>("key_javascript")?.isVisible = false
+            findPreference<Preference>("key_web_debugging")?.isVisible = false
 
             findPreference<Preference>("key_home_page")?.let {
                 it.onPreferenceChangeListener = this

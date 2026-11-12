@@ -39,7 +39,13 @@ public final class YoutubeRestricted {
             "ytm-watch-next-secondary-results-renderer", "ytm-comments-entry-point-header-renderer", "ytm-comment-section-renderer",
             ".ytp-endscreen-content", ".ytp-ce-element", ".ytp-autonav-endscreen-countdown-container",
             "ytd-reel-shelf-renderer", "ytm-reel-shelf-renderer", "ytm-shorts-lockup-view-model", "a[href^=\"/shorts\"]",
-            "ytd-browse[page-subtype=\"home\"] ytd-rich-grid-renderer") + "{display:none !important}";
+            "ytd-browse[page-subtype=\"home\"] ytd-rich-grid-renderer",
+            // The home page keeps YouTube's own look (top bar, search, bottom bar) with its feed empty:
+            "html.mdm-yt-home ytm-rich-grid-renderer", "html.mdm-yt-home ytm-section-list-renderer", "html.mdm-yt-home ytm-chip-cloud-renderer",
+            "html.mdm-yt-home ytd-rich-grid-renderer", "html.mdm-yt-home #chips-wrapper",
+            // The Shorts tab in the bottom bar:
+            ".pivot-shorts", "ytm-pivot-bar-item-renderer:has(.pivot-shorts)", "ytd-guide-entry-renderer:has(a[title=\"Shorts\"])",
+            "ytd-mini-guide-entry-renderer[aria-label=\"Shorts\"]") + "{display:none !important}";
 
     private static String jsString(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
@@ -48,5 +54,8 @@ public final class YoutubeRestricted {
     /** The same rules as a script a browser can run once a page has loaded. */
     public static final String HIDE_SCRIPT = "(function(){if(window.__mdmYt)return;window.__mdmYt=true;"
             + "var st=document.createElement('style');st.textContent=" + jsString(HIDE_CSS)
-            + ";(document.head||document.documentElement).appendChild(st);})();";
+            + ";(document.head||document.documentElement).appendChild(st);"
+            // YouTube changes pages without reloading: mark the home page (and feeds) so only there the feed is emptied.
+            + "var mark=function(){var p=location.pathname;document.documentElement.classList.toggle('mdm-yt-home',p==='/'||p==='/feed/trending'||p==='/feed/explore');};"
+            + "mark();setInterval(mark,400);})();";
 }

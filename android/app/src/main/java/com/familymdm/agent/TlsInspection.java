@@ -123,6 +123,7 @@ final class TlsInspection {
         rules = new YoutubeInspector("restricted".equals(policy.optString("youtubeMode", "channels")), bypass,
                 policy.optBoolean("blockImages", false), imagesAllow, words);
         rules.setBlockImageSearch(policy.optBoolean("blockImageSearch", false));
+        rules.setYoutubeOff("blocked".equals(policy.optString("youtubeMode", "")));
         Set<String> noPics = new HashSet<>();
         JSONArray np = policy.optJSONArray("noPictureSites");
         for (int i = 0; np != null && i < np.length(); i++) {

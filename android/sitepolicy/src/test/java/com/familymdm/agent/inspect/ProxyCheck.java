@@ -320,7 +320,7 @@ public class ProxyCheck {
         InspectProxy.Headers dh = new InspectProxy.Headers();
         dh.add("Sec-Fetch-Dest", "document");
         InspectProxy.Response home = yt.onRequest(new InspectProxy.Request("GET", "www.youtube.com", 443, true, "/", dh));
-        check(home != null && home.status == 200 && new String(home.body).contains("search_query"), "YouTube's home page becomes a plain search page");
+        check(home == null, "YouTube's own home page loads (its feed is emptied by the script added to the page)");
         check(dh.get("YouTube-Restrict") != null && dh.get("YouTube-Restrict").equals("Strict"), "YouTube requests carry the strict header");
         InspectProxy.Response shorts = yt.onRequest(new InspectProxy.Request("GET", "www.youtube.com", 443, true, "/shorts/abcdefghijk", dh));
         check(shorts != null && shorts.status == 403, "Shorts are refused");

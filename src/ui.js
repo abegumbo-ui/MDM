@@ -79,6 +79,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 .sw input:checked+i{background:var(--primary)}
 .sw input:checked+i::after{left:20px}
 .setting{display:flex;gap:16px;align-items:center;padding:12px 0;border-top:1px solid var(--outline-variant)}
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.seg button{border:1px solid var(--outline-variant);background:transparent;color:inherit;border-radius:999px;padding:8px 14px;font:inherit;cursor:pointer}.seg button.on{background:var(--primary);border-color:var(--primary);color:var(--on-primary,#fff)}
+.setting .grow>.mute,.card>.mute:first-of-type{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.setting .grow>.mute.open,.card>.mute:first-of-type.open{display:block;-webkit-line-clamp:unset;overflow:visible}
 .setting:first-child{border-top:0}
 .act{padding:8px 0;border-top:1px solid var(--outline-variant);font-size:13px}
 .act:first-child{border-top:0}
@@ -205,7 +208,7 @@ const GROUPS=[
  {key:'safety',label:'Safety',icon:'message',subs:[['health','Health check'],['msgalerts','Message alerts'],['screenshots','Screenshots']]},
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
  {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
- {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['history','Sites visited'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
+ {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['youtube','YouTube'],['history','Sites visited'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
  {key:'calls',label:'Calls & texts',icon:'phone',subs:[['rules','Who can call'],['contacts','Contacts'],['calllog','Call log'],['texts','Texts']]},
 {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['appnet','Internet for apps'],['traffic','Traffic log']]},
  {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
@@ -219,6 +222,8 @@ function route(){const x=(location.hash||'#devices').slice(1);
  else if(x.indexOf('win/')===0){tab='devices';openWinId=x.slice(4);openId=null;openBrowserId=null}
  else{tab=x||'devices';openId=null;openBrowserId=null;openWinId=null}}
 route();
+// Explanations show two lines; tapping one shows the rest (and tapping again folds it).
+document.addEventListener('click',function(e){const t=e.target&&e.target.closest?e.target.closest('.setting .grow>.mute,.card>.mute'):null;if(t&&!e.target.closest('a,button,input,select,textarea'))t.classList.toggle('open')});
 const draft={},open={};
 
 /* ---------- tiny DOM helpers (text only, never innerHTML) ---------- */
@@ -1102,26 +1107,24 @@ function renderBrowserSitesOpened(m,b){
     btn(isOff?'Pictures back':'No pictures',isOff?'outline':'tonal',async function(){c.noPictureSites=isOff?(c.noPictureSites||[]).filter(function(x){return x!==site}):[...new Set([...(c.noPictureSites||[]),site])];
      try{await saveConfigFor(b,isOff?'Pictures back on '+site+'.':'Pictures off on '+site+'.')}catch(e){snack(e.message,1)}render()})))}}
  m.append(card)}
+/** How the (old) Browser looks; the new Browser follows the phone's light/dark setting. */
+function renderBrowserLook(m,b){
+ const c=b.config;
+ const look=h('select',null,new Option('Classic (dark, tabs on top)','classic'),new Option('Like Chrome (white bar, tab count)','chrome'));look.value=c.browserLook||'classic';
+ look.onchange=async function(){c.browserLook=look.value;try{await saveConfigFor(b,'Saved.')}catch(e){snack(e.message,1)}render()};
+ m.append(h('div',{class:'card'},h('h2',null,'Look'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Style'),h('div',{class:'mute'},'For the older Browser app. The new Browser follows the phone\'s light or dark setting.')),look)))}
 /** Our Browser's own on/off switches: everything can be switched off. */
 function renderBrowserSwitches(m,b){
  const c=b.config;
  const save=async function(msg){try{await saveConfigFor(b,msg||'Saved. The Browser picks it up within a minute.')}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,'Search and safety'));
  const row=function(title,desc,on,set){card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute'},desc)),sw(on,function(v){set(v);save()})))};
- const look=h('select',null,new Option('Classic (dark, tabs on top)','classic'),new Option('Like Chrome (white bar, tab count)','chrome'));look.value=c.browserLook||'classic';
- look.onchange=function(){c.browserLook=look.value;save('Saved. The Browser changes its look within a minute.')};
- card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Look'),h('div',{class:'mute'},'How the Browser looks on the phone.')),look));
  row('Search from the address bar','Typing words (not an address) searches Google. Not on "Approved sites only".',!c.searchOff,function(v){c.searchOff=!v});
  row('SafeSearch on Google','Google shows filtered results only.',!c.safeSearchOff,function(v){c.safeSearchOff=!v});
  row('Built-in adult site block','A short built-in list of adult sites that never open, whatever the level.',!c.adultListOff,function(v){c.adultListOff=!v});
  m.append(card)}
 function renderWebAccess(m,dv){
  const cur=dv.isBrowser&&dv.config.openWeb?'open':(dv.config.browserFilter||'off');
- if(dv.isBrowser){
-  const fs=(dv.info&&dv.info.filter)||null,names={off:'Approved sites only',open:'Open: no filter',moderate:'Moderate filter',strict:'Strict filter'};
-  let line='The Browser has not reported yet (it needs this update and to be opened once).';
-  if(fs){line='On the Browser right now: '+(names[fs.tier]||fs.tier)+(fs.tier==='moderate'||fs.tier==='strict'?(fs.ready?' (lists ready)':fs.error?' (lists not ready: '+fs.error+'; only approved sites open)':' (downloading lists; only approved sites open until done)'):'')+' · checked '+ago(dv.lastSeen)+'.'}
-  m.append(h('div',{class:'card',style:fs&&!fs.ready?'border-color:var(--warn)':''},h('div',{class:'mute'},line)))}
  const card=h('div',{class:'card'},h('h2',null,'Web access'),
   h('div',{class:'mute'},'Choose what this browser may open. Sites on the allowed list below are always allowed, whichever you pick. This applies to the separate Browser app and the Browser add-on built into the Agent app. On phones managed by the Agent, Moderate and Strict also apply to Chrome, Firefox, Samsung Internet and other browsers, through the Agent\'s site filter (no certificate needed): adult, gambling, drugs, scam and piracy sites are blocked for every app, and Strict\'s social media only in browsers, so WhatsApp and similar apps keep working.'));
  const opts=[
@@ -1138,16 +1141,6 @@ function renderWebAccess(m,dv){
    try{await saveConfigFor(dv,'Saved. '+(o[0]==='off'?'Approved sites only.':'The browser downloads the lists the next time it checks in, and stays on approved sites only until it has them.'))}catch(e){snack(e.message,1)}
    render()};
   card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow'},h('div',{style:'font-weight:500'},o[1]),h('div',{class:'mute'},o[2]))))}
- const ytSel=h('select',{style:'margin-top:6px;max-width:100%'});
- ytSel.append(new Option('Follow the filter level (recommended)','auto'),new Option('Only allowed channels and videos','channels'),new Option('Restricted YouTube: search works, no recommendations','restricted'));
- ytSel.value=dv.config.youtubeMode||'auto';
- ytSel.onchange=async function(){
-  if(ytSel.value==='restricted'&&!confirm('This opens YouTube for searching and watching, without its home page, feeds, Shorts, recommendations or comments. YouTube\'s own filtering is not perfect, so unsuitable videos can still turn up in search. Continue?')){ytSel.value=dv.config.youtubeMode||'auto';return}
-  dv.config.youtubeMode=ytSel.value;
-  try{await saveConfigFor(dv,'Saved. The browser picks it up at its next check-in.')}catch(e){snack(e.message,1)}
-  render()};
- card.append(h('div',{class:'setting',style:'display:block;margin-top:12px'},h('div',{style:'font-weight:500'},'YouTube'),
-  h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Inspection (the last tab here).'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists, our own browsers stay on approved sites only, but Chrome and other browsers are not filtered yet (the phone cannot cut off the whole internet to wait for them). In Chrome the filter works on site names, not pages, and while it is on QUIC (a faster web protocol) is switched off so browsers use the kind of connection the filter can see. A browser using its own encrypted DNS can sometimes get around the name lookup, though the connection itself is still checked.'));
  m.append(card)}
 /* ---------- Overview: SOS, pause, protection level ---------- */
@@ -1663,6 +1656,7 @@ function renderTimeLimits(m,dv){
 function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
+ else if(sub==='youtube')renderYoutube(m,dv);
  else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='history')renderSitesVisited(m,dv);
  else if(sub==='sites')renderSites(m,dv,'sites');
@@ -1841,6 +1835,37 @@ function renderSitesPart(m,dv){
  renderCloneCard(m,dv);
  renderSitesEditor(m,dv);
 }
+/** YouTube: one choice for how it works, and the channels and videos that are allowed. */
+const YT_CHOICES=[
+ ['auto','Follow the web level','Moderate: restricted YouTube. Strict or Approved sites only: only the channels and videos below. Open: YouTube as it is.'],
+ ['open','Open','YouTube as it is, with no limits from here.'],
+ ['restricted','Restricted','Search and watch. No home feed, no Shorts, no suggestions or comments. YouTube\'s own filtering is not perfect.'],
+ ['channels','Only what I allow','Only the channels and videos listed below. Everything else on YouTube is blocked.'],
+ ['blocked','Off','YouTube does not open at all.']];
+function renderYoutube(m,dv){
+ const c=dv.config,cur=c.youtubeMode||'auto';
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'YouTube'));
+ const seg=h('div',{class:'seg'});
+ for(const [v,label] of YT_CHOICES){const x=h('button',{class:v===cur?'on':''},label);x.onclick=function(){c.youtubeMode=v;save('YouTube: '+label+'.')};seg.append(x)}
+ card.append(seg,h('div',{class:'mute',style:'margin-top:10px'},(YT_CHOICES.find(function(x){return x[0]===cur})||YT_CHOICES[0])[2]));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},dv.isBrowser?'In this Browser.':'In our Browser, and in Chrome, Samsung Internet and Edge when Inspection is on. The YouTube app itself is not affected: block it under Apps if needed.'));
+ m.append(card);
+ const sites=c.sites||{},keys=Object.keys(sites).filter(function(k){const s=sites[k];return s.type==='youtube'||isYoutubeUrl(s.url||'')});
+ const lc=h('div',{class:'card'},h('h2',null,'Allowed channels and videos ('+keys.length+')'));
+ lc.append(h('div',{class:'mute'},'Paste a channel link (youtube.com/@name), type @name, or paste a video link. Used when YouTube is on "Only what I allow" (or follows the level on Strict or Approved sites only).'));
+ const inp=h('input',{type:'text',placeholder:'youtube.com/@channel, @channel or a video link',class:'grow'});
+ const add=async function(){let v=inp.value.trim();if(!v)return;if(/^@[A-Za-z0-9._-]{3,30}$/.test(v))v='https://www.youtube.com/'+v;
+  const ch=ytChannelOf(v);
+  if(ch){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+ch,id:ch,label:'YouTube channel '+ch});return}
+  if(isYoutubeUrl(v)&&/[?&]v=|youtu\.be\//.test(v)){await addSite(dv,{type:'exact',url:v.includes('://')?v:'https://'+v,label:'YouTube video'});return}
+  snack('That is not a YouTube channel or video link.',1)};
+ lc.append(h('div',{class:'row',style:'margin-top:8px'},inp,btn('Add','tonal',add)));
+ for(const k of keys){const s=sites[k];
+  lc.append(h('div',{class:'row',style:'margin:8px 0'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.type==='youtube'?(s.id||s.label):'Video'),h('div',{class:'mute small',style:'word-break:break-all'},s.url)),
+   btn('Remove','outline',async function(){delete c.sites[k];await save('Removed.')})))}
+ if(!keys.length)lc.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
+ m.append(lc)}
 async function addSite(dv,entry){
  const key=entry.type==='youtube'?'youtube:'+entry.id:(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  dv.config.sites=dv.config.sites||{};
@@ -1862,33 +1887,66 @@ function renderCloneCard(m,dv){
   snack('Cloned. Phones pick up the change within about 5 minutes.');load()})));
  m.append(card);
 }
+const BROWSER_GROUPS=[
+ {key:'overview',label:'Overview',icon:'home'},
+ {key:'web',label:'Web',icon:'globe'},
+ {key:'youtube',label:'YouTube',icon:'apps'},
+ {key:'pictures',label:'Pictures & video',icon:'apps'},
+ {key:'sites',label:'Allowed sites',icon:'shield'},
+ {key:'settings',label:'Settings',icon:'device'}];
+let browserSection=(function(){try{return sessionStorage.getItem('browserSection')||'overview'}catch(e){return 'overview'}})();
+/** "At a glance": every rule in force on this Browser, one plain line each. */
+function renderBrowserGlance(m,b){
+ const c=b.config||{},fs=(b.info&&b.info.filter)||null,rows=[];
+ const level=c.openWeb?'Open: no filter':{off:'Approved sites only',moderate:'Moderate filter',strict:'Strict filter'}[c.browserFilter||'off'];
+ rows.push(['Web',level+(fs&&(fs.tier==='moderate'||fs.tier==='strict')?(fs.ready?' · lists ready':' · lists not ready yet'):'')]);
+ rows.push(['Search',c.searchOff?'Off':'Google'+(c.safeSearchOff?'':', SafeSearch on')]);
+ rows.push(['Adult sites',c.adultListOff?'Built-in list off':'Built-in list blocks them']);
+ const pics=c.blockImages?'No pictures at all':{off:'All shown',nudity:'Possible nudity hidden',skin:'Skin covered ('+({all:'everyone',women:'women only',men:'men only'}[c.skinWho||'all'])+'), possible nudity hidden'}[c.pictureGuard||'off'];
+ rows.push(['Pictures',pics+((c.noPictureSites||[]).length?' · no pictures on '+c.noPictureSites.length+' site'+(c.noPictureSites.length===1?'':'s'):'')]);
+ rows.push(['Videos',(c.pictureGuard==='skin'&&!c.blockImages)?'Skin covered':'Shown']);
+ rows.push(['YouTube',{auto:'Follows the level',channels:'Allowed channels only',restricted:'Restricted (search, no feeds)'}[c.youtubeMode||'auto']]);
+ if((c.blockedWords||[]).length)rows.push(['Blocked words',String(c.blockedWords.length)]);
+ if(c.blockImageSearch)rows.push(['Image search','Off']);
+ rows.push(['Allowed sites',String(Object.keys(c.sites||{}).length)]);
+ const card=h('div',{class:'card'},h('h2',null,'At a glance'));
+ for(const [k,v] of rows)card.append(kv(k,v));
+ const line=fs?'Last check-in '+ago(b.lastSeen)+'.':'The Browser has not reported yet (it needs the newest version, opened once).';
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},line));
+ m.append(card)}
 function renderBrowserDetail(m,b){
- m.append(h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('globe','currentColor')),h('div',{class:'grow'},h('h1',null,b.name),h('div',{class:'mute small'},'Connected directly — no MDM on this phone · last check-in '+ago(b.lastSeen))),btn('Refresh','tonal',load)));
-
- const controls=h('div',{class:'card'},h('h2',null,'This browser'));
- controls.append(h('div',{class:'row',style:'margin-top:8px'},
-  btn('Rename','outline',async function(){const name=prompt('Name for this browser',b.name);if(!name)return;await call('PUT','/api/browsers/'+b.id,{name:name});load()}),
-  btn('Disconnect','danger',async function(){if(!confirm('Disconnect '+b.name+'? It goes back to needing to connect again, and allows nothing until then.'))return;await call('DELETE','/api/browsers/'+b.id);location.hash='devices'})));
- m.append(controls);
-
- if(state.session.role==='admin'){
-  const ownerCard=h('div',{class:'card'},h('h2',null,'Owner'),
-   h('div',{class:'mute'},'Which client account (if any) this browser belongs to -- they see only their own devices and can manage this one from their own login. Admin always sees every device regardless.'));
-  const sel=h('select',{style:'width:100%;margin-top:8px'});
-  sel.append(h('option',{value:''},'Admin only (no client)'));
-  for(const c of clients)sel.append(h('option',{value:c.id},c.name+' ('+c.id+')'));
-  sel.value=b.ownerId||'';
-  sel.onchange=async function(){
-   try{await call('PUT','/api/browsers/'+b.id+'/owner',{ownerId:sel.value||null});b.ownerId=sel.value||null;snack('Saved.');load()}catch(e){snack(e.message,1);sel.value=b.ownerId||''}};
-  ownerCard.append(sel);
-  m.append(ownerCard);
- }
-
- // Every setting first, then requests, the allowed list, and copying from another device.
- renderWebAccess(m,b);renderBrowserSwitches(m,b);renderSearchPictures(m,b);renderNoPictureSites(m,b);renderImageSearch(m,b);renderBlockedWords(m,b);renderBrowserSitesOpened(m,b);
- renderRequestsCard(m,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b);
- renderSitesEditor(m,b);
- renderCloneCard(m,b);
+ m.append(h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('globe','currentColor')),h('div',{class:'grow'},h('h1',null,b.name),h('div',{class:'mute small'},'Browser · last check-in '+ago(b.lastSeen))),btn('Refresh','tonal',load)));
+ const nReq=(b.siteRequests||[]).length;
+ const sec=BROWSER_GROUPS.some(function(g){return g.key===browserSection})?browserSection:'overview';
+ const side=h('nav',{class:'side'});
+ for(const g of BROWSER_GROUPS){
+  const x=h('button',{class:'nav'+(g.key===sec?' on':'')},svgIcon(g.icon,'currentColor'),g.label);
+  const n=(g.key==='overview'||g.key==='sites')?nReq:0;if(n)x.append(h('span',{class:'badge'},String(n)));
+  x.onclick=function(){browserSection=g.key;try{sessionStorage.setItem('browserSection',g.key)}catch(e){}render()};side.append(x)}
+ const content=h('div',{class:'content'});
+ const requests=function(){renderRequestsCard(content,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b)};
+ if(sec==='overview'){renderBrowserGlance(content,b);requests();renderBrowserSitesOpened(content,b)}
+ else if(sec==='web'){renderWebAccess(content,b);renderBrowserSwitches(content,b);renderBlockedWords(content,b);renderImageSearch(content,b)}
+ else if(sec==='youtube')renderYoutube(content,b);
+ else if(sec==='pictures'){renderSearchPictures(content,b);renderNoPictureSites(content,b)}
+ else if(sec==='sites'){requests();renderSitesEditor(content,b)}
+ else{
+  renderBrowserLook(content,b);
+  const controls=h('div',{class:'card'},h('h2',null,'This Browser'));
+  controls.append(h('div',{class:'row',style:'margin-top:8px'},
+   btn('Rename','outline',async function(){const name=prompt('Name for this browser',b.name);if(!name)return;await call('PUT','/api/browsers/'+b.id,{name:name});load()}),
+   btn('Disconnect','danger',async function(){if(!confirm('Disconnect '+b.name+'? It goes back to needing a code, and opens nothing until then.'))return;await call('DELETE','/api/browsers/'+b.id);location.hash='devices'})));
+  content.append(controls);
+  if(state.session.role==='admin'){
+   const ownerCard=h('div',{class:'card'},h('h2',null,'Owner'),h('div',{class:'mute'},'Which client account (if any) this browser belongs to. They see only their own devices; the administrator sees all.'));
+   const sel=h('select',{style:'width:100%;margin-top:8px'});
+   sel.append(h('option',{value:''},'Admin only (no client)'));
+   for(const c of clients)sel.append(h('option',{value:c.id},c.name+' ('+c.id+')'));
+   sel.value=b.ownerId||'';
+   sel.onchange=async function(){try{await call('PUT','/api/browsers/'+b.id+'/owner',{ownerId:sel.value||null});b.ownerId=sel.value||null;snack('Saved.');load()}catch(e){snack(e.message,1);sel.value=b.ownerId||''}};
+   ownerCard.append(sel);content.append(ownerCard)}
+  renderCloneCard(content,b)}
+ m.append(h('div',{class:'shell'},side,content));
 }
 
 let winTab='filter';
