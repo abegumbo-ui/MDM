@@ -35,6 +35,7 @@ jobs:
           java -cp out com.familymdm.agent.sitepolicy.BlockListCheck
           mkdir -p out2
           javac -cp json.jar -d out2 android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/*.java android/sitepolicy/src/main/java/com/familymdm/agent/inspect/*.java android/sitepolicy/src/test/java/com/familymdm/agent/inspect/*.java
+          cp -r android/sitepolicy/src/main/resources/. out2/
           java -cp json.jar:out2 com.familymdm.agent.inspect.CertCheck
           java -cp json.jar:out2 com.familymdm.agent.inspect.ProxyCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/CategoryFilterRules.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/CategoryFilterRulesCheck.java

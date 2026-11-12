@@ -373,6 +373,19 @@ public class ProxyCheck {
         check(java.util.Arrays.equals(pf.rewrite(pr, jpeg), jpeg), "a picture the filter leaves alone arrives unchanged");
         pf.setPictureFilter(pic -> { throw new RuntimeException("broken"); });
         check(java.util.Arrays.equals(pf.rewrite(pr, jpeg), jpeg), "a filter problem never breaks the page");
+        // ---- video skin covering added to pages ----
+        YoutubeInspector vs = new YoutubeInspector(false, Collections.<String>emptySet());
+        InspectProxy.Request page = new InspectProxy.Request("GET", "news.test", 443, true, "/", new InspectProxy.Headers());
+        check(!vs.rewrites(page, "text/html"), "without the setting, pages are not touched");
+        String js = YoutubeInspector.videoSkinScript();
+        check(js != null && js.contains("texImage2D"), "the video covering script is packed with the proxy");
+        vs.setPageScript(js);
+        check(vs.rewrites(page, "text/html; charset=utf-8") && !vs.rewrites(page, "application/json"), "with it, web pages (only) are changed");
+        String out = new String(vs.rewrite(page, "<html><head><title>x</title></head><body>hi</body></html>".getBytes()));
+        check(out.startsWith("<html><head><script>") && out.contains("__mdmVideoSkin") && out.contains("<body>hi</body>"), "the script is put at the top of the page, the page is kept");
+        vs.setPageScript(null);
+        check(!vs.rewrites(page, "text/html"), "switched off again");
+
         proxy2.close();
         System.out.println(failures == 0 ? "ALL OK" : failures + " FAILED");
         System.exit(failures == 0 ? 0 : 1);
