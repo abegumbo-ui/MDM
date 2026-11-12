@@ -35,6 +35,7 @@ public class TapBlockService extends AccessibilityService {
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.getClassName() != null) {
             String cls = event.getClassName().toString();
             PartBlocker.noteScreen(pkg, cls);
+            if (!enforcing()) return;
             if (!PartBlocker.picking && LockdownPrefs.getSet(this, "tapBlockedScreens").contains(pkg + "/" + cls)) {
                 long now = System.currentTimeMillis();
                 if (now - lastBack > 600) {
@@ -44,12 +45,21 @@ public class TapBlockService extends AccessibilityService {
                 return;
             }
         }
+        if (!enforcing()) {
+            PartBlocker.clearCovers(this);
+            return;
+        }
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || type == AccessibilityEvent.TYPE_VIEW_SCROLLED)
             PartBlocker.onScreen(this, pkg);
     }
 
     @Override
     public void onInterrupt() {
+    }
+
+    /** Like the rest of Lockdown: only while the Lockdown switch is on and no emergency unlock is in place. */
+    private boolean enforcing() {
+        return LockdownPrefs.prefs(this).getBoolean("lockdownOn", false) && !EmergencyUnlock.isActive(this);
     }
 
     static boolean on(android.content.Context c) {
