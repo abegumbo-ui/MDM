@@ -65,7 +65,10 @@ public final class NudeDetect {
      */
     public static List<Det> decode(float[][] out, int imageW, int imageH) {
         int anchors = out[0].length, side = Math.max(imageW, imageH);
-        float k = side / (float) SIZE;
+        // Some phone models give box positions as 0..1 of the picture instead of 0..SIZE: handle both.
+        float biggest = 0;
+        for (int r = 0; r < 4; r++) for (int a = 0; a < anchors; a++) biggest = Math.max(biggest, Math.abs(out[r][a]));
+        float k = (biggest <= 2f ? side : side / (float) SIZE);
         List<Det> all = new ArrayList<>();
         for (int a = 0; a < anchors; a++) {
             int best = -1;

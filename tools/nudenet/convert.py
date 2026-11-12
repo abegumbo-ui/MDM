@@ -21,9 +21,15 @@ ONNX = os.path.join(os.path.dirname(nn.__file__), "320n.onnx")
 urllib.request.urlretrieve("https://ultralytics.com/images/bus.jpg", "bus.jpg")
 cv2.imwrite("astronaut.jpg", cv2.cvtColor(data.astronaut(), cv2.COLOR_RGB2BGR))
 
-subprocess.run(["onnx2tf", "-i", ONNX, "-o", "tfout", "-osd"], check=True)
-lite_path = next(os.path.join("tfout", f) for f in os.listdir("tfout") if f.endswith("_float16.tflite"))
+# NudeNet's own weights (same model as 320n.onnx), converted with Ultralytics' exporter (YOLOv8).
+urllib.request.urlretrieve("https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/320n.pt", "320n.pt")
+from ultralytics import YOLO
+print("labels in the weights:", YOLO("320n.pt").names)
+exported = YOLO("320n.pt").export(format="tflite", imgsz=320, half=True)
+print("exported:", exported)
+import glob
 import shutil
+lite_path = sorted(glob.glob("320n_saved_model/*float16.tflite") or glob.glob("**/*float16.tflite", recursive=True))[0]
 shutil.copy(lite_path, "nudenet320.tflite")
 print("nudenet320.tflite:", os.path.getsize("nudenet320.tflite") // 1024, "KB")
 
@@ -46,6 +52,8 @@ for name in ["bus.jpg", "astronaut.jpg"]:
     y = interp.get_tensor(out["index"])[0]
     if y.shape[0] != 22:
         y = y.T
+    # Ultralytics' phone models give box positions as 0..1 of the picture; the phone code handles both.
+    print(name, "largest box value:", float(np.abs(y[:4]).max()))
     y.astype("<f4").tofile(name + ".out.f32")
     json.dump({"w": w, "h": h, "anchors": int(y.shape[1]), "ref": ref}, open(name + ".json", "w"))
     # The phone's own reading of the answer (Java), compared with NudeNet's.
