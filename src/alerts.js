@@ -12,6 +12,7 @@ export const DEFAULT_ALERTS = {
   tamper: true, // the Agent noticed something security related on the phone
   places: true, // a phone arrived at or left a saved place (location history)
   weekly: true, // a summary of every phone, Sunday evenings
+  daily: false, // a short summary of today, every evening at 8 (the phones' own time)
   apps: true, // a new app was installed on a phone
   messages: true, // worrying words in a child's chats (only phones with "Message alerts" on)
 };
@@ -57,7 +58,7 @@ export function mergeAlerts(current, body) {
     if (u && !validWebhook(u)) throw new Error("That is not a valid https:// address.");
     out.url = u;
   }
-  for (const k of ["offline", "battery", "requests", "tamper", "places", "weekly", "messages", "apps"]) if (typeof body[k] === "boolean") out[k] = body[k];
+  for (const k of ["offline", "battery", "requests", "tamper", "places", "weekly", "messages", "apps", "daily"]) if (typeof body[k] === "boolean") out[k] = body[k];
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v))));
   if (body.offlineHours !== undefined && Number.isFinite(Number(body.offlineHours))) out.offlineHours = clamp(body.offlineHours, 1, 72);
   if (body.batteryPct !== undefined && Number.isFinite(Number(body.batteryPct))) out.batteryPct = clamp(body.batteryPct, 5, 50);
@@ -193,6 +194,46 @@ export async function maybeSendWeekly(env, devices, now = Date.now()) {
   if ((await env.STATE.get("weeklySent")) === week) return { sent: false };
   await env.STATE.put("weeklySent", week);
   const r = await sendAlert(env, "Weekly report", weeklyReport(devices, now), a);
+  return { sent: !!r.ok };
+}
+
+/** Today's summary for each phone, short: screen time and top apps, blocked sites, worrying words, requests. Pure, for tests. */
+export function dailyReport(devices, today) {
+  const blocks = [];
+  for (const d of devices) {
+    const lines = [];
+    const u = (d.usage || {})[today];
+    if (u && u.ok !== false && u.total) {
+      const top = (u.apps || []).slice().sort((a, b) => (b.m || 0) - (a.m || 0)).slice(0, 3).map((a) => (a.l || a.p) + " " + fmtMin(a.m || 0));
+      lines.push("Screen time: " + fmtMin(u.total) + (top.length ? " (most: " + top.join(", ") + ")" : ""));
+    }
+    const sites = (d.siteHistory || {})[today] || {};
+    const blocked = Object.entries(sites).filter(([, r]) => r[1]).sort((a, b) => b[1][1] - a[1][1]);
+    if (blocked.length) lines.push("Blocked sites: " + blocked.length + " (" + blocked.slice(0, 3).map(([s]) => s).join(", ") + ")");
+    const start = Date.parse(today + "T00:00:00Z") - 14 * 3600000; // generous: the phone's day in any time zone
+    const words = (d.msgAlerts || []).filter((m) => m.at >= start).length;
+    if (words) lines.push("Worrying words: " + words + " (Safety → Message alerts)");
+    const reqs = (d.siteRequests || []).length + (d.appRequests || []).length;
+    if (reqs) lines.push("Requests waiting for you: " + reqs);
+    if (lines.length) blocks.push(d.name + "\n" + lines.map((l) => "- " + l).join("\n"));
+  }
+  return blocks.join("\n\n");
+}
+
+/** Every evening from 20:00 in the phones' own time (the first phone that reports its time zone), once a day, if switched on. */
+export async function maybeSendDaily(env, devices, now = Date.now()) {
+  if (!devices.length) return { sent: false };
+  const tz = Number((devices.find((d) => d.info && Number.isFinite(Number(d.info.tz))) || { info: { tz: 0 } }).info.tz) || 0;
+  const local = new Date(now + tz * 60000);
+  if (local.getUTCHours() < 20) return { sent: false };
+  const a = await getAlerts(env);
+  if (!alertsOn(a) || !a.daily) return { sent: false };
+  const today = local.toISOString().slice(0, 10);
+  if ((await env.STATE.get("dailySent")) === today) return { sent: false };
+  await env.STATE.put("dailySent", today);
+  const text = dailyReport(devices, today);
+  if (!text) return { sent: false };
+  const r = await sendAlert(env, "Today", text, a);
   return { sent: !!r.ok };
 }
 
