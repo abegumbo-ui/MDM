@@ -56,10 +56,10 @@ import java.util.List;
  *  - ONLINE: no agent, but this exact Browser install was connected directly to a dashboard with
  *    its own one-time code (see BrowserState/Api). Sites come from the dashboard's global allowlist,
  *    cached locally and refreshed opportunistically.
- *  - OFFLINE: no agent, no dashboard connection; set up on its own with a local master code. Sites
- *    live only in this app's storage, added with that master code.
- *  - UNCONFIGURED: none of the above yet. Deny-by-default: nothing opens until one of the other three
- *    modes is set up. This is the fresh-install state.
+ *  - OFFLINE: no longer offered -- the Browser is run only from the dashboard (or the agent). An old
+ *    "set up on its own" install counts as UNCONFIGURED.
+ *  - UNCONFIGURED: not connected yet. Deny-by-default: nothing opens until it is connected to the
+ *    dashboard. This is the fresh-install state.
  */
 public class BrowserActivity extends Activity {
     private static final String AGENT_PACKAGE = "com.familymdm.agent";
@@ -85,6 +85,127 @@ public class BrowserActivity extends Activity {
             + "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
     private LinearLayout tabStrip;
+    private View tabStripScroll, classicBar, chromeBar;
+    private EditText chromeAddress;
+    private TextView tabCount;
+    // "Chrome look": white bar, rounded address box with the site's name, tab count, no tab strip.
+    private static final int C_BAR = 0xFFFFFFFF, C_FIELD = 0xFFF1F3F4, C_INK = 0xFF202124, C_MUTED = 0xFF5F6368;
+
+    private boolean chromeLook() {
+        return getSharedPreferences("look", MODE_PRIVATE).getBoolean("chrome", false);
+    }
+
+    private void applyLook() {
+        boolean c = chromeLook();
+        tabStripScroll.setVisibility(c ? View.GONE : View.VISIBLE);
+        classicBar.setVisibility(c ? View.GONE : View.VISIBLE);
+        chromeBar.setVisibility(c ? View.VISIBLE : View.GONE);
+        getWindow().setStatusBarColor(c ? C_BAR : BAR_DARK);
+        View decor = getWindow().getDecorView();
+        int flags = decor.getSystemUiVisibility();
+        decor.setSystemUiVisibility(c ? flags | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR : flags & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        syncToolbar();
+    }
+
+    private LinearLayout buildChromeToolbar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(C_BAR);
+        bar.setPadding(dp(4), dp(6), dp(4), dp(6));
+        bar.setElevation(dp(2));
+        bar.addView(iconButton("⌂", C_INK, v -> { if (current() != null) load(current(), HOME_URL); }));
+        chromeAddress = new EditText(this);
+        chromeAddress.setSingleLine(true);
+        chromeAddress.setHint("Type web address");
+        chromeAddress.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        chromeAddress.setImeOptions(EditorInfo.IME_ACTION_GO);
+        chromeAddress.setSelectAllOnFocus(true);
+        chromeAddress.setBackground(rounded(C_FIELD, 24));
+        chromeAddress.setTextColor(C_INK);
+        chromeAddress.setHintTextColor(C_MUTED);
+        chromeAddress.setTextSize(15);
+        chromeAddress.setPadding(dp(16), dp(10), dp(16), dp(10));
+        chromeAddress.setOnFocusChangeListener((v, has) -> {
+            Tab ct = current();
+            if (has && ct != null) { chromeAddress.setText(HOME_URL.equals(ct.url) || ct.url == null ? "" : ct.url); chromeAddress.selectAll(); }
+            else syncToolbar();
+        });
+        chromeAddress.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
+                go(chromeAddress.getText().toString());
+                chromeAddress.clearFocus();
+                ((android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(chromeAddress.getWindowToken(), 0);
+                return true;
+            }
+            return false;
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lp.leftMargin = dp(2);
+        lp.rightMargin = dp(6);
+        bar.addView(chromeAddress, lp);
+        // The tab count in a rounded square, like Chrome's tab switcher button.
+        tabCount = new TextView(this);
+        tabCount.setGravity(Gravity.CENTER);
+        tabCount.setTextColor(C_INK);
+        tabCount.setTextSize(12);
+        tabCount.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        android.graphics.drawable.GradientDrawable sq = new android.graphics.drawable.GradientDrawable();
+        sq.setStroke(dp(2), C_INK);
+        sq.setCornerRadius(dp(4));
+        tabCount.setBackground(sq);
+        tabCount.setOnClickListener(v -> showTabSwitcher());
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(dp(22), dp(22));
+        tl.leftMargin = dp(8);
+        tl.rightMargin = dp(8);
+        bar.addView(tabCount, tl);
+        bar.addView(iconButton("⋮", C_INK, this::showMenu));
+        return bar;
+    }
+
+    private void showTabSwitcher() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        AlertDialog dialog = alertDialog().setTitle(tabs.size() == 1 ? "1 tab" : tabs.size() + " tabs").setView(box).create();
+        for (int i = 0; i < tabs.size(); i++) {
+            final int idx = i;
+            Tab t = tabs.get(i);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(20), dp(12), dp(12), dp(12));
+            TextView label = new TextView(this);
+            String title = t.title == null || t.title.isEmpty() ? "New tab" : t.title;
+            label.setText((i == currentIndex ? "● " : "") + title);
+            label.setSingleLine(true);
+            label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            label.setTextSize(16);
+            label.setTextColor(getColor(R.color.m3_on_surface));
+            row.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            TextView close = new TextView(this);
+            close.setText("✕");
+            close.setTextSize(16);
+            close.setPadding(dp(12), 0, dp(4), 0);
+            close.setTextColor(getColor(R.color.m3_on_surface));
+            close.setOnClickListener(v -> { dialog.dismiss(); closeTab(idx); });
+            row.addView(close);
+            row.setOnClickListener(v -> { dialog.dismiss(); showTab(idx); });
+            box.addView(row);
+        }
+        menuRow(box, "  ＋  New tab", v -> { dialog.dismiss(); showTab(newTab(HOME_URL)); });
+        dialog.show();
+    }
+
+    /** What the Chrome-look address box shows when not being typed in: the site's name, like Chrome. */
+    private static String shortAddress(String url) {
+        try {
+            String host = Uri.parse(url).getHost();
+            if (host == null) return url;
+            return host.startsWith("www.") ? host.substring(4) : host;
+        } catch (Exception e) {
+            return url;
+        }
+    }
     private FrameLayout contentHost;
     private EditText addressBar;
     private ImageButton backBtn, fwdBtn, reloadBtn;
@@ -122,8 +243,9 @@ public class BrowserActivity extends Activity {
         getWindow().setStatusBarColor(BAR_DARK);
         if (getActionBar() != null) getActionBar().hide(); // the tab strip and toolbar are the whole top bar
 
-        root.addView(buildTabStrip());
-        root.addView(buildToolbar());
+        root.addView(tabStripScroll = buildTabStrip());
+        root.addView(classicBar = buildToolbar());
+        root.addView(chromeBar = buildChromeToolbar());
 
         contentHost = new FrameLayout(this);
         root.addView(contentHost, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -131,6 +253,7 @@ public class BrowserActivity extends Activity {
         setContentView(root);
         newTab(startUrl(getIntent()));
         showTab(0);
+        applyLook();
     }
 
     @Override
@@ -240,9 +363,9 @@ public class BrowserActivity extends Activity {
         int pad = dp(6);
         bar.setPadding(pad, pad, pad, pad);
 
-        backBtn = iconButton("‹", v -> { if (current() != null && current().webView.canGoBack()) current().webView.goBack(); });
-        fwdBtn = iconButton("›", v -> { if (current() != null && current().webView.canGoForward()) current().webView.goForward(); });
-        reloadBtn = iconButton("⟳", v -> { if (current() != null) current().webView.reload(); });
+        backBtn = iconButton("‹", ON_BAR, v -> { if (current() != null && current().webView.canGoBack()) current().webView.goBack(); });
+        fwdBtn = iconButton("›", ON_BAR, v -> { if (current() != null && current().webView.canGoForward()) current().webView.goForward(); });
+        reloadBtn = iconButton("⟳", ON_BAR, v -> { if (current() != null) current().webView.reload(); });
         bar.addView(backBtn);
         bar.addView(fwdBtn);
         bar.addView(reloadBtn);
@@ -269,14 +392,14 @@ public class BrowserActivity extends Activity {
         barLp.rightMargin = dp(4);
         bar.addView(addressBar, barLp);
 
-        bar.addView(iconButton("+", v -> showTab(newTab(HOME_URL))));
-        bar.addView(iconButton("⋮", this::showMenu));
+        bar.addView(iconButton("+", ON_BAR, v -> showTab(newTab(HOME_URL))));
+        bar.addView(iconButton("⋮", ON_BAR, this::showMenu));
         return bar;
     }
 
-    private ImageButton iconButton(String glyph, View.OnClickListener l) {
+    private ImageButton iconButton(String glyph, int color, View.OnClickListener l) {
         ImageButton b = new ImageButton(this);
-        b.setImageDrawable(textDrawable(glyph));
+        b.setImageDrawable(textDrawable(glyph, color));
         b.setBackgroundColor(Color.TRANSPARENT);
         b.setOnClickListener(l);
         b.setPadding(dp(10), dp(10), dp(10), dp(10));
@@ -284,11 +407,11 @@ public class BrowserActivity extends Activity {
     }
 
     /** No icon assets in this app on purpose: draw the toolbar glyphs as text instead. */
-    private android.graphics.drawable.Drawable textDrawable(String glyph) {
+    private android.graphics.drawable.Drawable textDrawable(String glyph, int color) {
         android.graphics.Paint paint = new android.graphics.Paint();
         paint.setAntiAlias(true);
         paint.setTextSize(dp(20));
-        paint.setColor(ON_BAR);
+        paint.setColor(color);
         paint.setTextAlign(android.graphics.Paint.Align.CENTER);
         android.graphics.Rect b = new android.graphics.Rect();
         paint.getTextBounds(glyph, 0, glyph.length(), b);
@@ -318,10 +441,27 @@ public class BrowserActivity extends Activity {
             box.addView(notice);
         }
 
+        if (chromeLook() && t != null) {
+            // Chrome keeps back, forward and reload at the top of its menu.
+            LinearLayout nav = new LinearLayout(this);
+            nav.setOrientation(LinearLayout.HORIZONTAL);
+            int ink = getColor(R.color.m3_on_surface);
+            for (Object[] it : new Object[][]{{"‹", (View.OnClickListener) v -> { dialog.dismiss(); if (t.webView.canGoBack()) t.webView.goBack(); }},
+                    {"›", (View.OnClickListener) v -> { dialog.dismiss(); if (t.webView.canGoForward()) t.webView.goForward(); }},
+                    {"⟳", (View.OnClickListener) v -> { dialog.dismiss(); t.webView.reload(); }}}) {
+                nav.addView(iconButton((String) it[0], ink, (View.OnClickListener) it[1]), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            }
+            box.addView(nav);
+        }
         menuRow(box, "New tab", v -> { dialog.dismiss(); showTab(newTab(HOME_URL)); });
         if (tabs.size() > 1) menuRow(box, "Close this tab", v -> { dialog.dismiss(); closeTab(currentIndex); });
         if (t != null && canAddToHomeScreen(t)) menuRow(box, "Add to Home Screen", v -> { dialog.dismiss(); addToHomeScreen(); });
         menuCheckRow(box, "Desktop Mode", desktopMode, (btn, on) -> setDesktopMode(on));
+        menuCheckRow(box, "Chrome look", chromeLook(), (btn, on) -> {
+            getSharedPreferences("look", MODE_PRIVATE).edit().putBoolean("chrome", on).apply();
+            dialog.dismiss();
+            applyLook();
+        });
         menuRow(box, "Clear Cache", v -> { dialog.dismiss(); clearBrowserCache(); });
         if (mode != Mode.UNCONFIGURED) menuRow(box, "Allowed sites", v -> { dialog.dismiss(); showAllowedSitesDialog(); });
         if (mode == Mode.ONLINE) menuRow(box, "Sync now", v -> { dialog.dismiss(); maybeSyncOnline(true); toast("Syncing..."); });
@@ -382,7 +522,7 @@ public class BrowserActivity extends Activity {
     private void disconnectSetup() {
         alertDialog()
                 .setTitle("Disconnect this setup?")
-                .setMessage("Browser goes back to allowing nothing until it's connected to a dashboard again or set up on its own.")
+                .setMessage("Browser goes back to allowing nothing until it's connected to the dashboard again.")
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Disconnect", (d, w) -> {
                     BrowserState.prefs(this).edit().clear().apply();
@@ -440,6 +580,7 @@ public class BrowserActivity extends Activity {
     }
 
     private void rebuildTabStrip() {
+        if (tabCount != null) tabCount.setText(String.valueOf(tabs.size()));
         tabStrip.removeAllViews();
         for (int i = 0; i < tabs.size(); i++) {
             final int idx = i;
@@ -473,6 +614,8 @@ public class BrowserActivity extends Activity {
         addressBar.setText(HOME_URL.equals(t.url) ? "" : t.url);
         backBtn.setEnabled(t.webView.canGoBack());
         fwdBtn.setEnabled(t.webView.canGoForward());
+        if (chromeAddress != null && !chromeAddress.hasFocus()) chromeAddress.setText(HOME_URL.equals(t.url) || t.url == null ? "" : shortAddress(t.url));
+        if (tabCount != null) tabCount.setText(String.valueOf(tabs.size()));
     }
 
     // ---------- navigation ----------
@@ -796,8 +939,7 @@ public class BrowserActivity extends Activity {
     private Mode mode() {
         if (isAgentManaged()) return Mode.AGENT;
         if (BrowserState.isOnline(this)) return Mode.ONLINE;
-        if (BrowserState.isStandalone(this)) return Mode.OFFLINE;
-        return Mode.UNCONFIGURED;
+        return Mode.UNCONFIGURED; // "set up on its own" (OFFLINE) is gone: only the dashboard or the agent runs it
     }
 
     /** True once the agent has pushed a site list at least once (even an empty one). */
@@ -1156,7 +1298,7 @@ public class BrowserActivity extends Activity {
         t.overlay.setVisibility(View.VISIBLE);
         t.overlay.removeAllViews();
         t.overlay.addView(title("Browser isn't set up yet"));
-        TextView sub = body("Nothing opens until you connect this Browser to a dashboard, or set it up on its own.");
+        TextView sub = body("Nothing opens until this Browser is connected to the family dashboard.");
         sub.setPadding(0, dp(8), 0, dp(16));
         t.overlay.addView(sub);
         renderUnconfigured(t.overlay, t, pendingUrl);
@@ -1231,10 +1373,7 @@ public class BrowserActivity extends Activity {
     private void showAdvancedSetupDialog(final Tab t, final String pendingUrl) {
         alertDialog()
                 .setTitle("Advanced setup")
-                .setItems(new String[]{"Connect to a specific dashboard (needs a code)", "Set up fully offline (master code)"}, (d, which) -> {
-                    if (which == 0) showSetupDialog(t, pendingUrl);
-                    else showOfflineSetupDialog(t, pendingUrl);
-                })
+                .setItems(new String[]{"Connect to a specific dashboard (needs a code)"}, (d, which) -> showSetupDialog(t, pendingUrl))
                 .setNegativeButton("Cancel", null)
                 .show();
     }
