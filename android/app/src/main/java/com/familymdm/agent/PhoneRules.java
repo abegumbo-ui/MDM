@@ -359,6 +359,23 @@ final class PhoneRules {
                     rebuild.run();
                 }).show());
 
+        JSONObject school = screen.optJSONObject("schoolTime");
+        Switch ss = sw(a, card, "School time", school != null ? school.optString("from") + " to " + school.optString("to") + " on school days: only the phone, texts and never-counted apps open." : "Off.", school != null);
+        ss.setOnCheckedChangeListener((b, on) -> {
+            try {
+                if (on) {
+                    JSONObject ns = new JSONObject();
+                    ns.put("days", new JSONArray(new int[]{1, 2, 3, 4, 5}));
+                    ns.put("from", "08:00");
+                    ns.put("to", "15:00");
+                    screen.put("schoolTime", ns);
+                } else screen.put("schoolTime", JSONObject.NULL);
+                set1(a, "screenTime", screen, on ? "school time 08:00-15:00 Monday to Friday" : "school time off");
+            } catch (Exception ignored) {
+            }
+            rebuild.run();
+        });
+
         LinearLayout extra = Ui.card(a, root);
         extra.addView(Ui.titleText(a, "Extra time today"));
         extra.addView(Ui.body(a, "More time on top of the daily limit, for today only.", true));

@@ -198,13 +198,52 @@ final class ScreenTime {
                 limits.put(pkg, al.optInt(pkg, 0));
             }
         }
-        Set<String> over = ScreenTimeRules.overLimit(used, limits, free);
+        Set<String> timeUp = ScreenTimeRules.overLimit(used, limits, free);
+        Set<String> over = new java.util.HashSet<>(timeUp);
+        // School time: during its hours every app is away except the basics and the "never counted" ones.
+        JSONObject school = cfg == null ? null : cfg.optJSONObject("schoolTime");
+        boolean schoolNow = false;
+        if (school != null && !free) {
+            JSONArray sd = school.optJSONArray("days");
+            int[] sdays = new int[sd == null ? 0 : sd.length()];
+            for (int i = 0; i < sdays.length; i++) sdays[i] = sd.optInt(i, -1);
+            schoolNow = ScreenTimeRules.inWindow(sdays, minutesOf(school.optString("from")), minutesOf(school.optString("to")), dow, mins);
+        }
+        if (schoolNow) over.addAll(schoolBlocked(c, excluded));
+        boolean wasSchool = Agent.prefs(c).getBoolean("schoolNow", false);
+        if (schoolNow != wasSchool) {
+            Agent.prefs(c).edit().putBoolean("schoolNow", schoolNow).apply();
+            Agent.addEvent(c, "restriction", schoolNow ? "School time started: only the basics open" : "School time is over");
+        }
         Set<String> was = Agent.getSet(c, "overLimit");
         if (!over.equals(was)) {
-            for (String pkg : over) if (!was.contains(pkg)) Agent.addEvent(c, "restriction", labelOf(c, pkg) + " has used its time for today");
+            for (String pkg : timeUp) if (!was.contains(pkg)) Agent.addEvent(c, "restriction", labelOf(c, pkg) + " has used its time for today");
             Agent.putSet(c, "overLimit", over);
             PolicyApplier.applyStored(c); // hides the ones over their limit, shows the ones no longer over
         }
+    }
+
+    /** Apps put away during school time: every app with an icon, except the basics and the "never counted" ones. */
+    private static Set<String> schoolBlocked(Context c, Set<String> neverCounted) {
+        Set<String> out = new java.util.HashSet<>();
+        android.content.pm.PackageManager pm = c.getPackageManager();
+        Set<String> keep = new java.util.HashSet<>(neverCounted);
+        keep.add(c.getPackageName());
+        for (String action : new String[]{android.content.Intent.ACTION_DIAL, android.content.Intent.ACTION_SENDTO}) {
+            android.content.Intent i = new android.content.Intent(action, android.net.Uri.parse(action.equals(android.content.Intent.ACTION_DIAL) ? "tel:1" : "smsto:1"));
+            android.content.pm.ResolveInfo r = pm.resolveActivity(i, 0);
+            if (r != null && r.activityInfo != null) keep.add(r.activityInfo.packageName);
+        }
+        android.content.pm.ResolveInfo home = pm.resolveActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME), 0);
+        if (home != null && home.activityInfo != null) keep.add(home.activityInfo.packageName);
+        for (String basic : new String[]{"com.android.settings", "com.google.android.contacts", "com.android.contacts", "com.google.android.deskclock",
+                "com.android.deskclock", "com.google.android.calculator", "com.android.calculator2", "com.android.emergency", "com.android.phone"}) keep.add(basic);
+        android.content.Intent launcher = new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+        for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(launcher, 0)) {
+            String p = r.activityInfo.packageName;
+            if (!keep.contains(p)) out.add(p);
+        }
+        return out;
     }
 
     private static Map<String, Long> usage(Context c, long from, long to) {

@@ -42,6 +42,22 @@ final class Whereabouts {
         fixAsync(app, "sos");
     }
 
+    /** "Check in": tells the parent where the phone is (not an emergency). */
+    static void checkIn(Context c) {
+        final Context app = c.getApplicationContext();
+        new Thread(() -> {
+            try {
+                JSONObject fix = new JSONObject(Actions.locate(app));
+                fix.put("why", "checkin");
+                add(app, fix);
+                Agent.addEvent(app, "checkin", "Checked in: https://maps.google.com/?q=" + fix.optDouble("lat") + "," + fix.optDouble("lon"));
+            } catch (Exception e) {
+                Agent.addEvent(app, "checkin", "Checked in (the phone could not find its location)");
+            }
+            AgentService.requestSync();
+        }, "mdm-checkin").start();
+    }
+
     private static void fixAsync(final Context c, final String why) {
         busy = true;
         new Thread(() -> {

@@ -306,7 +306,8 @@ export function normalizeScreenTime(raw) {
   const exempt = [...new Set((Array.isArray(c.exempt) ? c.exempt : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 100);
   // A different limit on chosen days (0 = Sunday ... 6 = Saturday); 0 = the same as every day.
   const weekendDays = [...new Set((Array.isArray(c.weekendDays) ? c.weekendDays : [0, 6]).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
-  return { dailyLimit: clamp(c.dailyLimit), weekendLimit: clamp(c.weekendLimit), weekendDays, bedtime: normalizeSchedule(c.bedtime), appLimits, exempt };
+  // School time: during these hours only always-allowed apps (exempt) and the phone's basics open.
+  return { dailyLimit: clamp(c.dailyLimit), weekendLimit: clamp(c.weekendLimit), weekendDays, bedtime: normalizeSchedule(c.bedtime), schoolTime: normalizeSchedule(c.schoolTime), appLimits, exempt };
 }
 
 // Whole groups of apps that can be blocked with one switch, like other parental-control apps offer.
@@ -395,6 +396,7 @@ export const USER_MENU = {
   install: "Install an app from a file (with a code)",
   updates: "Check for app updates",
   sos: "I need help (sends the phone's location)",
+  checkin: "Check in (tells you where they are, not an emergency)",
 };
 
 /** {on, level, days: [0..6] (0 = Sunday), from: "HH:MM", to: "HH:MM"}; "to" before "from" runs past midnight. */
