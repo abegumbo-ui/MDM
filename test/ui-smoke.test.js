@@ -148,7 +148,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/summary"], /He can search YouTube and watch/);
   assert.match(seen["browser/summary"], /browser category filter/, "the phone's own filter log line is shown");
   assert.match(seen["browser/access"], /Web access/);
-  assert.match(seen["browser/access"], /Force SafeSearch/);
+  assert.match(seen["browser/access"], /SafeSearch/);
   assert.match(seen["browser/access"], /YouTube Restricted Mode everywhere/);
   assert.match(seen["browser/access"], /Block pictures on web pages/);
   assert.match(seen["browser/summary"], /SafeSearch is forced on Google, Bing and DuckDuckGo/);
@@ -160,7 +160,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["br/settings"], /Look/);
   assert.match(seen["br/youtube"], /Only what I allow/);
   assert.match(seen["br/youtube"], /Allowed channels and videos/);
-  assert.doesNotMatch(seen["br/web"], /Force SafeSearch/, "a standalone Browser has no phone-wide filter to force it with");
+  assert.doesNotMatch(seen["br/web"], /On unless you switch it off here/, "a standalone Browser has no phone-wide filter to force it with");
   assert.match(seen["browser/sites"], /Site requests \(1\)/);
   assert.match(seen["browser/sites"], /YouTube channel/);
   assert.match(seen["browser/apps"], /Make this the only browser/);

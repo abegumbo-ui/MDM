@@ -208,6 +208,8 @@ final class PolicyApplier {
             // On "Approved sites only" it is the ad servers alone ("ads"), so ads are blocked on every level.
             String withAds = !policy.optBoolean("blockAds", false) ? filterTier : "off".equals(filterTier) ? "ads" : filterTier + "+ads";
             WebFilter.setPolicy(c, withAds, filterBase); // starts downloading the category lists if needed
+            // "Approved sites only" applies in Chrome and every other browser too (BrowserCategoryFilter).
+            Agent.prefs(c).edit().putBoolean("approvedOnlyBrowsers", "off".equals(filterTier)).apply();
         } catch (Exception e) {
             Log.w(TAG, "category lists: " + e);
         }
@@ -221,7 +223,7 @@ final class PolicyApplier {
         String youtubeDns = policy.optString("youtubeDns", "off");
         Agent.prefs(c).edit().putBoolean("safeSearch", safeSearch).putString("youtubeDns", youtubeDns).apply();
         applyDnsFilter(c, dpm, admin, policy.optJSONArray("dnsBlocklist"),
-                (!"off".equals(filterTier) && !filterBase.isEmpty()) || safeSearch || !"off".equals(youtubeDns)
+                (!"off".equals(filterTier) && !filterBase.isEmpty()) || "off".equals(filterTier) || safeSearch || !"off".equals(youtubeDns)
                         || (policy.optJSONArray("blockedWords") != null && policy.optJSONArray("blockedWords").length() > 0)
                 || policy.optBoolean("internetOnlyApps", false)
                 || policy.optLong("internetOffUntil", 0) > System.currentTimeMillis()

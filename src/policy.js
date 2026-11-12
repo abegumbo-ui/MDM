@@ -850,7 +850,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.screenTime = cfg.screenTime;
   out.chromePolicy = cfg.chromePolicy;
   out.blockedWords = cfg.blockedWords;
-  out.safeSearch = cfg.safeSearch;
+  out.safeSearch = !cfg.safeSearchOff; // SafeSearch is on unless it was switched off
   out.youtubeDns = cfg.youtubeDns;
   out.blockImages = cfg.blockImages;
   out.blockImageSearch = cfg.blockImageSearch;
@@ -979,6 +979,7 @@ export function summarizeConfigChange(before, after) {
   if (JSON.stringify(stB.bedtime) !== JSON.stringify(stA.bedtime)) lines.push("Bedtime: " + (stA.bedtime ? stA.bedtime.from + " to " + stA.bedtime.to : "off"));
   if (JSON.stringify(stB.appLimits) !== JSON.stringify(stA.appLimits)) lines.push("App time limits changed (" + Object.keys(stA.appLimits).length + " app(s))");
   if (!!before.safeSearch !== !!after.safeSearch) lines.push("Forced SafeSearch: " + (after.safeSearch ? "on" : "off"));
+  if (!!before.safeSearchOff !== !!after.safeSearchOff) lines.push("SafeSearch: " + (after.safeSearchOff ? "off" : "on"));
   if ((before.youtubeDns || "off") !== (after.youtubeDns || "off")) lines.push("YouTube Restricted Mode everywhere: " + (after.youtubeDns || "off"));
   if ((before.pictureGuard || "off") !== (after.pictureGuard || "off")) lines.push("Pictures in our Browser: " + ({ off: "all shown", nudity: "may-be-nude hidden", skin: "skin covered" })[after.pictureGuard || "off"]);
   if (!!before.blockImages !== !!after.blockImages) lines.push("Block pictures on web pages: " + (after.blockImages ? "on" : "off"));

@@ -48,6 +48,7 @@ final class BrowserCategoryFilter {
 
     /** Should this host be refused for this app? `pkg` may be null when the app is not known. */
     static boolean blocks(Context c, String pkg, String host) {
+        if (approvedOnlyBlocks(c, pkg, host)) return true;
         if (host == null || "off".equals(WebFilter.tier(c)) || !WebFilter.active(c)) return false;
         boolean core = WebFilter.blocksCore(c, host);
         boolean social = !core && WebFilter.blocksSocial(c, host);
@@ -57,12 +58,36 @@ final class BrowserCategoryFilter {
 
     /** True when the app's connections need identifying (only Strict's social rule depends on which app it is). */
     static boolean needsUid(Context c) {
+        if (approvedOnly(c)) return true;
         return WebFilter.tier(c).startsWith("strict") && WebFilter.active(c);
     }
 
     /** QUIC (UDP 443) hides the site name from the filter, so it is dropped while category filtering is on. */
     static boolean blockQuic(Context c) {
         return on(c);
+    }
+
+    // ---- "Approved sites only" in every browser ----
+
+    private static boolean approvedOnly(Context c) {
+        return Agent.prefs(c).getBoolean("approvedOnlyBrowsers", false);
+    }
+
+    /** What every web page needs to show (fonts, scripts, pictures from the big content networks), and the browsers' own update and safety checks. */
+    private static final String[] PAGE_PARTS = {"gstatic.com", "googleapis.com", "cdnjs.cloudflare.com", "jsdelivr.net", "unpkg.com",
+            "cloudfront.net", "akamaihd.net", "akamaized.net", "fastly.net", "bootstrapcdn.com", "jquery.com"};
+
+    /**
+     * "Approved sites only": Chrome, Samsung Internet, Edge, Firefox and every other browser open only the
+     * approved sites (whole sites on the allowed list, and the phone's own allow list), the same as our
+     * Browser. Our Browser and this app decide by page themselves; other apps are not affected.
+     */
+    static boolean approvedOnlyBlocks(Context c, String pkg, String host) {
+        if (host == null || pkg == null || !approvedOnly(c)) return false;
+        if (pkg.equals(c.getPackageName()) || pkg.equals("com.familymdm.browser") || !isBrowser(c, pkg)) return false;
+        String h = host.toLowerCase(java.util.Locale.ROOT);
+        for (String p : PAGE_PARTS) if (h.equals(p) || h.endsWith("." + p)) return false;
+        return !approvedSite(c, h) && !DnsAllowlist.allows(c, h);
     }
 
     /** A site on this phone's approved list always wins over a category. */

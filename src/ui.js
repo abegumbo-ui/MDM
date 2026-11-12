@@ -791,8 +791,12 @@ function renderDeviceDetail(m,d){
   ['Blocked apps and screens','apps','blocking'],['Tap to block: block a button, tab or feed inside an app (Shorts, Reels...)','apps','blocking'],['Block YouTube Shorts','apps','blocking'],['Block Instagram Reels','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['Turn the internet off for a while','overview','status'],['Different screen time limit on weekends','time','limits'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Per app: filtered, not filtered, or no internet','internet','appnet'],['Sites visited (browsing history)','browser','history'],['Searches typed on the phone (search history)','browser','history'],['Web pages inside apps (links in Instagram, Gmail...)','browser','apps'],['Filter schedule: a different level at set times','browser','access'],['Weekly report','settings',null],['Who can call the phone, and who it can call','calls','rules'],['Allowed phone numbers','calls','rules'],['Call log','calls','calllog'],['Contacts on the phone','calls','contacts'],['WhatsApp Status and Channels','apps','regular'],['Other parents: more logins','settings',null],['Texts (SMS) log','calls','texts'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['School time: only the basics during school hours','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
-  ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
- const sWrap=h('div',{class:'search',style:'margin:0;width:260px;max-width:100%'});
+  ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device'],
+  ['SafeSearch on or off','browser','access'],['Filter level: Approved sites only, Moderate, Strict (every browser)','browser','access'],['Block ads','browser','access'],['Sites that refuse ad blocking (ads covered in black)','browser','access'],
+  ['Pictures: hide nudity, cover skin (men, women), no pictures on some sites','browser','access'],['Blocked words','browser','access'],['Block image search','browser','access'],['Filter schedule','browser','access'],['YouTube Restricted Mode everywhere','browser','access'],
+  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
+  ['Allowed sites, site requests, allow for a while (1 hour, 2 hours, custom)','browser','sites'],['Browser add-on, make this the only browser, Chrome settings (no incognito)','browser','apps'],['Sites visited, searches list','browser','history'],['Release device, remove management','device','device'],['Check in every 15 seconds while the dashboard is open','device','device']];
+ const sWrap=h('div',{class:'search',style:'margin:0;flex:1 1 320px;min-width:220px;max-width:100%'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
  const sResults=h('div',{class:'search-results'});
  const renderSResults=function(){
@@ -1548,14 +1552,17 @@ function renderChromeLock(m,dv){
  m.append(card)}
 
 /** Safe search, YouTube's own Restricted Mode, and hiding pictures. */
+/** SafeSearch on or off, on its own (on unless switched off). */
+function renderSafeSearch(m,dv){const c=dv.config;if(dv.isBrowser||dv.isWindows)return;
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:600;font-size:17px'},'SafeSearch'),
+  h('div',{class:'mute'},'Google, Bing and DuckDuckGo show filtered results only, in Chrome, every other browser and every app, on every filter level. On unless you switch it off here.')),
+  sw(!c.safeSearchOff,async function(on){c.safeSearchOff=!on;c.safeSearch=on;try{await saveConfigFor(dv,on?'SafeSearch on.':'SafeSearch off.')}catch(e){snack(e.message,1)}render()}))))}
 function renderSearchPictures(m,dv){
  const c=dv.config;
  const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. Applies at the next check-in.')}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,'Safe search and pictures'));
  if(!dv.isBrowser){
-  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Force SafeSearch'),
-   h('div',{class:'mute'},'Google, Bing and DuckDuckGo show filtered results only, in Chrome, every other browser and every app. He cannot switch it off. No certificate needed. Other search engines are not covered: block them, or use Approved sites only.')),
-   sw(c.safeSearch,function(v){c.safeSearch=v;save()})));
+
   const yt=h('select',null,new Option('Off','off'),new Option('Moderate','moderate'),new Option('Strict','strict'));yt.value=c.youtubeDns||'off';
   yt.onchange=function(){c.youtubeDns=yt.value;save()};
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Restricted Mode everywhere'),
@@ -1688,7 +1695,7 @@ function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
  else if(sub==='youtube')renderYoutube(m,dv);
- else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderAdsCovered(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
+ else if(sub==='access'){renderSafeSearch(m,dv);renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderAdsCovered(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='history')renderSitesVisited(m,dv);
  else if(sub==='sites')renderSites(m,dv,'sites');
  else if(sub==='apps'){renderInAppBrowsers(m,dv);renderSites(m,dv,'apps')}
