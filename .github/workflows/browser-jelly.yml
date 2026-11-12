@@ -1,8 +1,8 @@
 name: Build new Browser (Jelly)
 
-# The new Browser, based on LineageOS Jelly (android-jelly/, Apache-2.0) with the family
-# dashboard's rules built in. Published to the "browser-preview" release only, so it does not
-# replace the current Browser until that is decided.
+# The Browser, based on LineageOS Jelly (android-jelly/, Apache-2.0) with the family dashboard's
+# rules built in. On main it is published as mdm-browser.apk in the "latest" release (where the
+# Agent and the dashboard get it from) and in "browser-preview".
 on:
   push:
     paths:
@@ -57,10 +57,12 @@ jobs:
         with:
           name: mdm-browser-new
           path: mdm-browser-new.apk
-      - name: Publish to the "browser-preview" release (main only)
+      - name: Publish (main only)
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view browser-preview >/dev/null 2>&1 || gh release create browser-preview --prerelease --title "New Browser (preview)" --notes "The new Browser based on LineageOS Jelly, with the family dashboard's rules. Installs over the current Browser."
           gh release upload browser-preview mdm-browser-new.apk --clobber
+          cp mdm-browser-new.apk mdm-browser.apk
+          gh release upload latest mdm-browser.apk --clobber
