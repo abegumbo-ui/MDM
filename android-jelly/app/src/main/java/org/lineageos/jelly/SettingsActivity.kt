@@ -5,6 +5,7 @@
 
 package org.lineageos.jelly
 
+import com.familymdm.browser.Updater
 import android.content.DialogInterface
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -78,7 +79,7 @@ class SettingsActivity : AppCompatActivity() {
             findPreference<Preference>("key_web_debugging")?.isVisible = false
             // Updates: on a phone run by the MDM app, the MDM app updates the Browser.
             findPreference<Preference>("key_check_update")?.setOnPreferenceClickListener {
-                activity?.let { a -> com.familymdm.browser.Updater.check(a, true) }
+                activity?.let { a -> Updater.check(a, true) }
                 true
             }
 

@@ -5,6 +5,7 @@
 
 package org.lineageos.jelly
 
+import com.familymdm.browser.Updater
 import com.familymdm.browser.Guard
 import android.app.Activity
 import android.app.ActivityManager.TaskDescription
@@ -438,7 +439,7 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
     override fun onResume() {
         super.onResume()
         Guard.resume(this)
-        com.familymdm.browser.Updater.maybeCheck(this)
+        Updater.maybeCheck(this)
         if (backgroundShortcutId == null) webView.onResume()
         CookieManager.getInstance()
             .setAcceptCookie(!incognito && sharedPreferencesExt.cookiesEnabled)
