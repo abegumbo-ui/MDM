@@ -401,3 +401,11 @@ Dashboard: the **Calls & texts** group.
 4. Bedtime: set it to start in 6 minutes; a warning at 5 minutes, then the sign-in screen.
 5. Computer tab → "Take a screenshot now": the picture arrives within two minutes, and the child sees
    "A picture of this screen was sent to your parent". With the screen locked, a note says it could not be read.
+
+## 7t. Photo alerts (nudity)
+1. Dashboard → the phone → Safety → switch on "Photo alerts". The phone tells the child.
+2. Take a few ordinary photos: no alert. (Do NOT test with real nude pictures of anyone. To see an alert,
+   a photo of a swimsuit/underwear catalogue page usually scores high; or trust the build check.)
+3. The alert says when and which folder; there is no picture on the dashboard, ever.
+4. Safety → Take a screenshot while such a picture is on the screen: "Not sent: the screen may show nudity".
+5. Battery: leave it on for a day and check the phone's battery use for MDM Agent.
