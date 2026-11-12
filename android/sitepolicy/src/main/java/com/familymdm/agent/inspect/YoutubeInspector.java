@@ -36,6 +36,38 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     private final java.util.List<String> blockedWords;
     private volatile boolean blockImageSearch;
 
+    /**
+     * "Pictures in our Browser" carried over to every browser that goes through Inspection: each
+     * picture is handed to this before the browser gets it. Returns the picture to show instead
+     * (grey, or with skin covered), or null to leave it as it is.
+     */
+    public interface PictureFilter {
+        byte[] filter(byte[] picture);
+    }
+
+    private volatile PictureFilter pictureFilter;
+
+    public void setPictureFilter(PictureFilter f) {
+        pictureFilter = f;
+    }
+
+    private boolean filtersPicture(InspectProxy.Request r, String contentType) {
+        if (pictureFilter == null || !r.method.equals("GET")) return false;
+        String ct = contentType.toLowerCase(java.util.Locale.ROOT);
+        return ct.startsWith("image/") && !ct.contains("svg");
+    }
+
+    /** Pictures are told apart from pages by their first bytes (JPEG, PNG, GIF, WebP, BMP, AVIF/HEIF). */
+    static boolean looksLikePicture(byte[] b) {
+        if (b == null || b.length < 12) return false;
+        if ((b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8) return true;
+        if ((b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') return true;
+        if (b[0] == 'G' && b[1] == 'I' && b[2] == 'F') return true;
+        if (b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') return true;
+        if (b[0] == 'B' && b[1] == 'M') return true;
+        return b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p';
+    }
+
     /** The "Images" tab of Google, Bing and DuckDuckGo is refused (see ProtectionRules.isImageSearch). */
     public void setBlockImageSearch(boolean on) {
         blockImageSearch = on;
@@ -123,11 +155,22 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
 
     @Override
     public boolean rewrites(InspectProxy.Request r, String contentType) {
+        if (filtersPicture(r, contentType)) return true;
         return restricted && isYoutube(r.host) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html");
     }
 
     @Override
     public byte[] rewrite(InspectProxy.Request r, byte[] body) {
+        PictureFilter pf = pictureFilter;
+        if (pf != null && looksLikePicture(body)) {
+            try {
+                byte[] changed = pf.filter(body);
+                return changed != null ? changed : body;
+            } catch (RuntimeException e) {
+                return body;
+            }
+        }
+        if (!(restricted && isYoutube(r.host))) return body;
         String html = new String(body, StandardCharsets.UTF_8);
         String tag = "<style>" + YoutubeRestricted.HIDE_CSS + "</style>";
         int head = html.toLowerCase(java.util.Locale.ROOT).indexOf("<head");

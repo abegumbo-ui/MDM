@@ -387,6 +387,12 @@ public final class InspectProxy implements Closeable {
                 rh.remove("Content-Security-Policy");
                 rh.remove("Content-Security-Policy-Report-Only");
                 rh.set("Content-Length", String.valueOf(changed.length));
+                // A picture replaced by the picture filter is a PNG now, whatever it was before.
+                if (changed.length > 8 && (changed[0] & 0xFF) == 0x89 && changed[1] == 'P' && changed[2] == 'N' && changed[3] == 'G'
+                        && ctype.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) {
+                    rh.set("Content-Type", "image/png");
+                    rh.remove("ETag");
+                }
                 out.write(headBytes(statusLine, rh, clientClose ? "close" : "keep-alive"));
                 out.write(changed);
                 out.flush();

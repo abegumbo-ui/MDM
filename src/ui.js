@@ -1497,7 +1497,7 @@ function renderSearchPictures(m,dv){
   const pg=h('select',null);for(const [v,l] of [['off','Show all pictures'],['nudity','Hide pictures that may show nudity'],['skin','Hide those, and cover skin in every picture']])pg.append(new Option(l,v));
   pg.value=c.pictureGuard||'off';pg.onchange=function(){c.pictureGuard=pg.value;save(pg.value==='off'?'All pictures shown.':'Saved. Pictures are checked on the phone from the next check-in.')};
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Pictures in our Browser'),
-   h('div',{class:'mute'},'Every picture on a web page is checked on the phone before it shows. "Hide" greys out a picture that may show nudity. "Cover skin" also paints grey blocks over every skin-coloured patch (faces and hands too; it goes by colour). Only in our own Browser, not in Chrome; videos are not covered; pages with many pictures load a little slower.')),pg))}
+   h('div',{class:'mute'},'Every picture on a web page is checked on the phone before it shows. "Hide" greys out a picture that may show nudity. "Cover skin" also paints grey blocks over every skin-coloured patch (faces and hands too; it goes by colour). Works in our own Browser, and in Chrome, Samsung Internet and Edge when Inspection (the last tab) is on'+(c.tlsInspection?' (it is).':' (it is not right now).')+' Videos are not covered; pages with many pictures load a little slower.')),pg))}
  if(!dv.isBrowser){
   const ta=h('textarea',{rows:3,style:'width:100%;margin-top:8px',placeholder:'one site per line, e.g. maps.google.com'});ta.value=(c.imagesAllow||[]).join('\n');
   card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Show pictures on these sites anyway'),
