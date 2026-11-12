@@ -65,7 +65,9 @@ Check ((TaskExists 'LockGuard Guard')) 'the guard task exists'
 function CurlWorks() { & "$env:SystemRoot\System32\curl.exe" -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
 Check (WaitFor 'curl.exe to lose its internet' 60 { -not (CurlWorks) }) 'a program set to "No internet" (curl.exe) cannot go online'
 function WebWorks() { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; return ((Invoke-WebRequest https://example.com -UseBasicParsing -TimeoutSec 20).StatusCode -eq 200) } catch { Out "  (web request: $($_.Exception.Message))"; return $false } }
-Check (WebWorks) 'other programs still can'
+$curl2 = Join-Path $env:TEMP 'curl-copy\curl.exe'; New-Item -ItemType Directory -Force (Split-Path $curl2) | Out-Null; Copy-Item "$env:SystemRoot\System32\curl.exe" $curl2 -Force
+function OtherWorks() { & $curl2 -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
+Check (OtherWorks) 'other programs still can (a copy of curl.exe elsewhere)'
 
 Step 'The unlock file: in Downloads, every restriction is off; deleted, back on'
 # What the dashboard would send (written as the system, since the folder is locked to it).
