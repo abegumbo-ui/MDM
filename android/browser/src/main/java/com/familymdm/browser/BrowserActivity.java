@@ -288,6 +288,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setBlockedWords(this, b == null ? null : b.getStringArray("blockedWords"));
                 FilterStore.setBlockImageSearch(this, b != null && b.getBoolean("blockImageSearch", false));
                 FilterStore.setPictureGuard(this, b == null ? "off" : b.getString("pictureGuard", "off"));
+                FilterStore.setSwitches(this, b == null || b.getBoolean("safeSearch", true), b == null || b.getBoolean("adultBlock", true), b == null || b.getBoolean("allowSearch", true));
             } else if (m == Mode.ONLINE) {
                 FilterStore.refreshAsync(this, false);
             } else {
@@ -297,6 +298,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setBlockedWords(this, null);
                 FilterStore.setBlockImageSearch(this, false);
                 FilterStore.setPictureGuard(this, "off");
+                FilterStore.setSwitches(this, true, true, true);
             }
             filterModeOk = (m == Mode.AGENT || m == Mode.ONLINE) && !"off".equals(FilterStore.tier(this));
         } catch (Exception e) {
@@ -466,7 +468,7 @@ public class BrowserActivity extends Activity {
         if (mode != Mode.UNCONFIGURED) menuRow(box, "Allowed sites", v -> { dialog.dismiss(); showAllowedSitesDialog(); });
         if (mode == Mode.ONLINE) menuRow(box, "Sync now", v -> { dialog.dismiss(); maybeSyncOnline(true); toast("Syncing..."); });
         if (mode == Mode.OFFLINE) menuRow(box, "Manage sites (master code)", v -> { dialog.dismiss(); promptMasterThenManageSites(); });
-        if (mode == Mode.UNCONFIGURED) menuRow(box, "Set up Browser", v -> { dialog.dismiss(); promptWhitelistMode(current(), null); });
+        if (mode == Mode.UNCONFIGURED) menuRow(box, "Connect with a code", v -> { dialog.dismiss(); promptCode(current(), null); });
         if (mode == Mode.ONLINE || mode == Mode.OFFLINE) menuRow(box, "Disconnect this setup", v -> { dialog.dismiss(); disconnectSetup(); });
         menuRow(box, "Exit", v -> { dialog.dismiss(); finish(); });
 
@@ -631,11 +633,14 @@ public class BrowserActivity extends Activity {
         // Free browsing (a redeemed code) is temporary full access by design, like a timed Play
         // Store window for app installs — so a search works here too, and the sites visited still
         // need the administrator's approval afterward, same as a newly installed app would.
-        if (mode() == Mode.AGENT && browseWindowActive()) {
+        Mode gm = mode();
+        boolean searching = (gm == Mode.AGENT && browseWindowActive())
+                || ((gm == Mode.AGENT || gm == Mode.ONLINE) && FilterStore.allowSearch(this) && !"off".equals(FilterStore.tier(this)));
+        if (searching) {
             load(current(), withSafeSearch("https://www.google.com/search?q=" + Uri.encode(s)));
             return;
         }
-        toast("Type a full web address, like example.com — there's no search here.");
+        toast("Type a full web address, like example.com — searching is turned off here.");
     }
 
     private boolean looksLikeUrl(String s) {
@@ -656,6 +661,7 @@ public class BrowserActivity extends Activity {
             Uri u = Uri.parse(url);
             String host = u.getHost();
             if (host == null || !GOOGLE_HOST.matcher(host.toLowerCase(java.util.Locale.ROOT)).matches()) return url;
+            if (!FilterStore.safeSearch(this) && mode() != Mode.UNCONFIGURED) return url; // switched off on the dashboard
             if ("active".equals(u.getQueryParameter("safe"))) return url;
             Uri.Builder b = u.buildUpon().clearQuery();
             for (String name : u.getQueryParameterNames()) {
@@ -773,7 +779,7 @@ public class BrowserActivity extends Activity {
 
     /** True if `url` may load; otherwise shows the right screen for the current mode and returns false. */
     private boolean allowedOrBlock(Tab t, String url) {
-        if (SitePolicy.isBlockedAdult(url)) {
+        if (FilterStore.adultBlock(this) && SitePolicy.isBlockedAdult(url)) {
             showAdultBlocked(t);
             return false;
         }
@@ -817,6 +823,12 @@ public class BrowserActivity extends Activity {
             }
             if (mode == Mode.AGENT && browseWindowActive()) {
                 reportNewHostOnce(url);
+                t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
+                t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
+                return true;
+            }
+            // "Open: no filter" from the dashboard: everything opens.
+            if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.open(this)) {
                 t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
                 t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
                 return true;
@@ -1015,6 +1027,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setBlockedWords(this, wordList);
                 FilterStore.setBlockImageSearch(this, filter != null && filter.optBoolean("imageSearch", false));
                 FilterStore.setPictureGuard(this, filter == null ? "off" : filter.optString("pictureGuard", "off"));
+                FilterStore.setSwitches(this, filter == null || filter.optBoolean("safeSearch", true), filter == null || filter.optBoolean("adultBlock", true), filter == null || filter.optBoolean("allowSearch", true));
                 filterModeOk = !"off".equals(FilterStore.tier(this));
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list
@@ -1306,14 +1319,53 @@ public class BrowserActivity extends Activity {
     }
 
     private void renderUnconfigured(LinearLayout box, Tab t, String pendingUrl) {
-        add(box, button("Connect (whitelist mode)", v -> promptWhitelistMode(t, pendingUrl)));
+        add(box, button("Connect with a code", v -> promptCode(t, pendingUrl)));
         TextView advanced = body("Advanced setup options");
         advanced.setTextColor(ACCENT);
         advanced.setOnClickListener(v -> showAdvancedSetupDialog(t, pendingUrl));
         add(box, advanced, 16);
     }
 
-    /** The primary path: no code, nothing typed — this device just connects itself. */
+    /** Connecting needs a code made on the dashboard (Add device → Browser), so only the parent can connect it. */
+    private void promptCode(final Tab t, final String pendingUrl) {
+        String builtIn = getString(R.string.default_server);
+        if (builtIn == null || builtIn.isEmpty()) { showSetupDialog(t, pendingUrl); return; }
+        final EditText codeField = field("Code from the dashboard");
+        alertDialog()
+                .setTitle("Connect to the dashboard")
+                .setMessage("On the dashboard: Add device → Browser. Type the code it shows.")
+                .setView(pad(codeField))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Connect", (d, w) -> enrollWithCode(t, builtIn.replaceAll("/+$", ""), codeField.getText().toString().trim(), pendingUrl))
+                .show();
+    }
+
+    private void enrollWithCode(final Tab t, final String server, final String code, final String pendingUrl) {
+        if (code.isEmpty()) return;
+        new Thread(() -> {
+            String error = null;
+            try {
+                JSONObject info = new JSONObject();
+                info.put("manufacturer", Build.MANUFACTURER);
+                info.put("model", Build.MODEL);
+                JSONObject body = new JSONObject();
+                body.put("code", code);
+                body.put("info", info);
+                JSONObject reply = Api.post(server + "/browser/enroll", body, null);
+                BrowserState.setOnline(this, server, reply.getString("token"));
+                maybeSyncOnline(true);
+            } catch (Exception e) {
+                error = e.getMessage();
+            }
+            final String err = error;
+            runOnUiThread(() -> {
+                if (err != null) toast("Could not connect: " + err);
+                else { toast("Connected."); load(t, pendingUrl != null ? pendingUrl : HOME_URL); }
+            });
+        }).start();
+    }
+
+    /** Old no-code path (no longer offered; the dashboard refuses it). */
     private void promptWhitelistMode(final Tab t, final String pendingUrl) {
         alertDialog()
                 .setTitle("Not connected to MDM")

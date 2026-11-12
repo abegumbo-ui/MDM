@@ -538,6 +538,12 @@ export function normalizeConfig(input) {
     blockImageSearch: c.blockImageSearch === true,
     // Pictures in our Browser: "off", "nudity" (hide pictures that may show nudity) or "skin" (that, and cover skin).
     pictureGuard: ["nudity", "skin"].includes(c.pictureGuard) ? c.pictureGuard : "off",
+    // Our Browser's own switches (all on unless switched off): open the whole web with no filter,
+    // SafeSearch, the built-in adult-site list, searching from the address bar.
+    openWeb: c.openWeb === true,
+    safeSearchOff: c.safeSearchOff === true,
+    adultListOff: c.adultListOff === true,
+    searchOff: c.searchOff === true,
     // Ad servers blocked phone-wide (with Moderate or Strict): the "+ads" lists.
     blockAds: c.blockAds === true,
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.

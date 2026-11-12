@@ -4,6 +4,12 @@ import vm from "node:vm";
 import worker from "../src/index.js";
 import { dashboardPage } from "../src/ui.js";
 
+// Connecting a Browser needs a code made on the dashboard.
+async function enrollBrowser(fetcher, cookie, info) {
+  const { code } = await (await fetcher("/api/codes", { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ type: "browser" }) })).json();
+  return fetcher("/browser/enroll", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, info }) });
+}
+
 // Runs the dashboard's real page script against a small stand-in for the browser's page, signed in
 // to a real (in-memory) copy of the server with a phone that has a bit of everything, and opens
 // every group and every tab. A mistake that only shows when a tab is opened (a misspelt name, a
@@ -58,7 +64,7 @@ async function setUp() {
   await call("/api/templates", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ name: "Teen phone", deviceId: dev.id }) });
   const winReg = await (await call("/windows/register", { method: "POST", headers: J, body: JSON.stringify({ info: { hostname: "KIDS-PC" } }) })).json();
   await call("/windows/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${winReg.token}` }, body: JSON.stringify({ info: { hostname: "KIDS-PC", tz: 120, filter: { on: true, running: true, listsReady: true }, accounts: { users: ["Dad", "Kid"], admins: ["Dad"] } }, trafficLog: [{ kind: "dns", host: "www.wikipedia.org", time: Date.now(), blocked: false }] }) });
-  await (await call("/browser/register", { method: "POST", headers: J, body: JSON.stringify({ info: { model: "B" } }) })).json();
+  await (await enrollBrowser(call, cookie, { model: "B" })).json();
   return { call, cookie };
 }
 

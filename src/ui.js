@@ -1075,19 +1075,31 @@ function renderRequestsCard(m,reqs,dv){
   }
  m.append(rc)}
 /** How much of the web this browser may open: only the allowlist (default), or the open web minus blocked categories. */
+/** Our Browser's own on/off switches: everything can be switched off. */
+function renderBrowserSwitches(m,b){
+ const c=b.config;
+ const save=async function(msg){try{await saveConfigFor(b,msg||'Saved. The Browser picks it up within a minute.')}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'Search and safety'));
+ const row=function(title,desc,on,set){card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute'},desc)),sw(on,function(v){set(v);save()})))};
+ row('Search from the address bar','Typing words (not an address) searches Google. Not on "Approved sites only".',!c.searchOff,function(v){c.searchOff=!v});
+ row('SafeSearch on Google','Google shows filtered results only.',!c.safeSearchOff,function(v){c.safeSearchOff=!v});
+ row('Built-in adult site block','A short built-in list of adult sites that never open, whatever the level.',!c.adultListOff,function(v){c.adultListOff=!v});
+ m.append(card)}
 function renderWebAccess(m,dv){
- const cur=dv.config.browserFilter||'off';
+ const cur=dv.isBrowser&&dv.config.openWeb?'open':(dv.config.browserFilter||'off');
  const card=h('div',{class:'card'},h('h2',null,'Web access'),
   h('div',{class:'mute'},'Choose what this browser may open. Sites on the allowed list below are always allowed, whichever you pick. This applies to the separate Browser app and the Browser add-on built into the Agent app. On phones managed by the Agent, Moderate and Strict also apply to Chrome, Firefox, Samsung Internet and other browsers, through the Agent\'s site filter (no certificate needed): adult, gambling, drugs, scam and piracy sites are blocked for every app, and Strict\'s social media only in browsers, so WhatsApp and similar apps keep working.'));
  const opts=[
   ['off','Approved sites only','Nothing opens unless it is on the allowed list below. The strictest setting, and what every browser starts with.'],
   ['moderate','Moderate filter','Opens the rest of the web, but blocks adult sites, gambling, drugs and vaping, scams and phishing, and piracy.'],
   ['strict','Strict filter','Everything in Moderate, plus social media (Facebook, Instagram, TikTok, X).']];
+ if(dv.isBrowser)opts.push(['open','Open: no filter','Every site opens, like a normal browser. The switches below still apply.']);
  for(const o of opts){
   const r=h('input',{type:'radio',name:'webaccess-'+dv.id,value:o[0]});r.checked=cur===o[0];
   r.onchange=async function(){
    if(o[0]!=='off'&&cur==='off'&&!confirm('This opens the whole web on this browser, except the blocked categories. Filters only know about sites that are already on public lists, so they cannot catch everything. Continue?')){render();return}
-   dv.config.browserFilter=o[0];
+   if(dv.isBrowser)dv.config.openWeb=o[0]==='open';
+   if(o[0]!=='open')dv.config.browserFilter=o[0];
    try{await saveConfigFor(dv,'Saved. '+(o[0]==='off'?'Approved sites only.':'The browser downloads the lists the next time it checks in, and stays on approved sites only until it has them.'))}catch(e){snack(e.message,1)}
    render()};
   card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow'},h('div',{style:'font-weight:500'},o[1]),h('div',{class:'mute'},o[2]))))}
@@ -1741,7 +1753,6 @@ function renderInspection(m,dv){
  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Needs the phone to be managed by the Agent (device owner). Check Activity → Phone log for "Browser inspection turned on". If browsing ever fails on the phone, turn this off.'));
  m.append(card)}
 function renderSitesEditor(m,dv){
- if(dv.isBrowser){renderWebAccess(m,dv);renderSearchPictures(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)} // a phone has these on its own "Filter level" tab
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
@@ -1833,9 +1844,11 @@ function renderBrowserDetail(m,b){
   m.append(ownerCard);
  }
 
+ // Every setting first, then requests, the allowed list, and copying from another device.
+ renderWebAccess(m,b);renderBrowserSwitches(m,b);renderSearchPictures(m,b);renderImageSearch(m,b);renderBlockedWords(m,b);
  renderRequestsCard(m,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b);
- renderCloneCard(m,b);
  renderSitesEditor(m,b);
+ renderCloneCard(m,b);
 }
 
 let winTab='filter';

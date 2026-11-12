@@ -49,13 +49,13 @@ final class FilterStore {
 
     /** Remembers what the dashboard (or the agent) says the level is, and starts getting the lists if it needs them. */
     static void setPolicy(Context c, String tier, String base) {
-        String t = "moderate".equals(tier) || "strict".equals(tier) ? tier : "off";
+        String t = "moderate".equals(tier) || "strict".equals(tier) || "open".equals(tier) ? tier : "off";
         String b = base != null && base.startsWith(GITHUB) && base.length() < 300 ? base : "";
         SharedPreferences p = prefs(c);
         boolean changed = !t.equals(p.getString("filterTier", "off")) || !b.equals(p.getString("filterBase", ""));
         if (changed) p.edit().putString("filterTier", t).putString("filterBase", b).apply();
         if (changed) synchronized (LOCK) { loaded = null; loadedFor = ""; }
-        if (!"off".equals(t) && !b.isEmpty()) refreshAsync(c, changed);
+        if (("moderate".equals(t) || "strict".equals(t)) && !b.isEmpty()) refreshAsync(c, changed);
     }
 
     static String tier(Context c) {
@@ -63,7 +63,8 @@ final class FilterStore {
     }
 
     private static boolean wanted(Context c) {
-        return !"off".equals(tier(c)) && !prefs(c).getString("filterBase", "").isEmpty();
+        String t = tier(c);
+        return ("moderate".equals(t) || "strict".equals(t)) && !prefs(c).getString("filterBase", "").isEmpty();
     }
 
     /** True only when the level is on AND all its lists are downloaded and verified. */
@@ -98,6 +99,22 @@ final class FilterStore {
     static boolean blockImages(Context c) {
         return prefs(c).getBoolean("blockAllImages", false);
     }
+
+    /** "Open: no filter" from the dashboard: every site opens (the other switches still apply). */
+    static boolean open(Context c) {
+        return "open".equals(tier(c));
+    }
+
+    /** Switches from the dashboard; all on unless the dashboard turned them off. */
+    static void setSwitches(Context c, boolean safeSearch, boolean adultBlock, boolean allowSearch) {
+        prefs(c).edit().putBoolean("safeSearchOn", safeSearch).putBoolean("adultBlockOn", adultBlock).putBoolean("searchOn", allowSearch).apply();
+    }
+
+    static boolean safeSearch(Context c) { return prefs(c).getBoolean("safeSearchOn", true); }
+
+    static boolean adultBlock(Context c) { return prefs(c).getBoolean("adultBlockOn", true); }
+
+    static boolean allowSearch(Context c) { return prefs(c).getBoolean("searchOn", true); }
 
     /** "Pictures in our Browser": "off", "nudity" (hide pictures that may show nudity) or "skin" (that, and cover skin). */
     static void setPictureGuard(Context c, String mode) {

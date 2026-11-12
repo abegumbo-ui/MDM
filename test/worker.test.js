@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../src/index.js";
 
+// Connecting a Browser needs a code made on the dashboard.
+async function enrollBrowser(fetcher, cookie, info) {
+  const { code } = await (await fetcher("/api/codes", { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ type: "browser" }) })).json();
+  return fetcher("/browser/enroll", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, info }) });
+}
+
 const kv = new Map();
 let getCalls = 0;
 const env = {
@@ -169,17 +175,17 @@ test("standalone Browser: connects directly to the dashboard with its own code, 
   assert.equal((await post("/browser/sync", {}, auth)).status, 401, "once removed, its old token is dead and it needs a fresh code");
 });
 
-test("standalone Browser: self-registers with no code at all, named so it's findable, and can be renamed", async () => {
+test("Browser: connects with a dashboard code, named so it's findable, and can be renamed", async () => {
   const cookie = await login();
 
-  const { token } = await (await post("/browser/register", { info: { model: "X" } })).json();
+  const { token } = await (await enrollBrowser((p, i) => req(p, i), cookie, { model: "X" })).json();
   assert.ok(token);
   const auth = { authorization: `Bearer ${token}` };
-  assert.equal((await post("/browser/sync", {}, auth)).status, 200, "the self-issued token works immediately, no admin step needed");
+  assert.equal((await post("/browser/sync", {}, auth)).status, 200, "the token works immediately");
 
   const browsers = await (await req("/api/browsers", { headers: { cookie } })).json();
   assert.equal(browsers.length, 1);
-  assert.match(browsers[0].name, /^New Browser \(/, "self-registered browsers are named so more than one stays tellable apart");
+  assert.match(browsers[0].name, /^New Browser \(/, "connected browsers are named so more than one stays tellable apart");
 
   await req(`/api/browsers/${browsers[0].id}`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "Kid's phone" }) });
   const renamed = await (await req("/api/browsers", { headers: { cookie } })).json();
@@ -314,7 +320,7 @@ test("clone settings from one device (or browser) into another", async () => {
   assert.equal(sync.policy.approveNew, true);
 
   // A browser can only ever receive sites, never app rules or restrictions.
-  const { token } = await (await post("/browser/register", { info: {} })).json();
+  const { token } = await (await enrollBrowser((p, i) => req(p, i), cookie, {})).json();
   const browserAuth = { authorization: `Bearer ${token}` };
   const browserId = token.split(".")[0];
   assert.equal((await post(`/api/browsers/${browserId}/clone-from`, { sourceId: source }, { cookie })).status, 200);

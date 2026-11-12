@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import worker from "../src/index.js";
 import { buildAgentPolicy, normalizeConfig, summarizeConfigChange } from "../src/policy.js";
 
+// Connecting a Browser needs a code made on the dashboard.
+async function enrollBrowser(fetcher, cookie, info) {
+  const { code } = await (await fetcher("/api/codes", { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ type: "browser" }) })).json();
+  return fetcher("/browser/enroll", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, info }) });
+}
+
 const kv = new Map();
 const env = {
   ADMIN_PASSWORD: "correct horse",
@@ -33,7 +39,7 @@ test("the agent's policy carries the filter level and changes are described", ()
 test("a dashboard-connected Browser is told its filter level and where to download the lists", async () => {
   const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
   const cookie = login.headers.get("set-cookie").split(";")[0];
-  const reg = await (await req("/browser/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ info: { model: "T" } }) })).json();
+  const reg = await (await enrollBrowser(req, cookie, { model: "T" })).json();
   assert.ok(reg.token);
   const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
   const sync = async () => (await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json());
@@ -67,7 +73,7 @@ test("YouTube follows the filter level by default, and an explicit choice always
 
   const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
   const cookie = login.headers.get("set-cookie").split(";")[0];
-  const reg = await (await req("/browser/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ info: { model: "Y" } }) })).json();
+  const reg = await (await enrollBrowser(req, cookie, { model: "Y" })).json();
   const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
   const sync = async () => await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json();
   const id = reg.token.split(".")[0];
@@ -107,10 +113,27 @@ test("safe search, YouTube Restricted Mode everywhere and picture blocking are o
   // A standalone Browser is told to hide pictures too.
   const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
   const cookie = login.headers.get("set-cookie").split(";")[0];
-  const reg = await (await req("/browser/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ info: { model: "P" } }) })).json();
+  const reg = await (await enrollBrowser(req, cookie, { model: "P" })).json();
   const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
   const sync = async () => await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json();
   assert.equal((await sync()).filter.blockImages, false);
   await req(`/api/browsers/${reg.token.split(".")[0]}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ blockImages: true }) });
   assert.equal((await sync()).filter.blockImages, true);
+});
+
+test("a Browser connects only with a dashboard code, and every switch reaches it", async () => {
+  const refused = await req("/browser/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ info: { model: "NoCode" } }) });
+  assert.equal(refused.status, 403, "no code, no connection");
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const reg = await (await enrollBrowser(req, cookie, { model: "Switches" })).json();
+  const auth = { authorization: `Bearer ${reg.token}`, "content-type": "application/json" };
+  const sync = async () => (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json();
+  let f = (await sync()).filter;
+  assert.deepEqual([f.tier, f.safeSearch, f.adultBlock, f.allowSearch, f.pictureGuard], ["off", true, true, true, "off"], "safe by default");
+  const id = reg.token.split(".")[0];
+  await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ openWeb: true, safeSearchOff: true, adultListOff: true, searchOff: true, pictureGuard: "skin" }) });
+  f = (await sync()).filter;
+  assert.deepEqual([f.tier, f.safeSearch, f.adultBlock, f.allowSearch, f.pictureGuard], ["open", false, false, false, "skin"], "every switch can be turned off, and the picture setting is kept");
 });

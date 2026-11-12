@@ -1008,7 +1008,8 @@ async function adminApiInner(request, env, url, session) {
     if (brConfig[2] === "config" && method === "PUT") {
       // An omitted browserFilter becomes "off" (allowlist-only), the stricter setting, so a stale
       // dashboard tab can never accidentally open the web.
-      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages, blockedWords: body.blockedWords, blockImageSearch: body.blockImageSearch });
+      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages, blockedWords: body.blockedWords, blockImageSearch: body.blockImageSearch,
+        pictureGuard: body.pictureGuard, openWeb: body.openWeb, safeSearchOff: body.safeSearchOff, adultListOff: body.adultListOff, searchOff: body.searchOff });
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -1292,7 +1293,7 @@ const categoriesOf = (d) => Object.fromEntries((d.packages || []).filter((p) => 
 
 // ---- agent API (per-device bearer token) ----
 // Where the Browser downloads its category blocklists from (the fixed "blocklists" release the weekly job publishes).
-const filterFor = (env, config) => ({ tier: config.browserFilter || "off", youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, pictureGuard: config.pictureGuard || "off", imageSearch: !!config.blockImageSearch, words: config.blockedWords || [], base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
+const filterFor = (env, config) => ({ tier: config.openWeb ? "open" : config.browserFilter || "off", safeSearch: !config.safeSearchOff, adultBlock: !config.adultListOff, allowSearch: !config.searchOff, youtube: effectiveYoutubeMode(config), blockImages: !!config.blockImages, pictureGuard: config.pictureGuard || "off", imageSearch: !!config.blockImageSearch, words: config.blockedWords || [], base: `https://github.com/${env.GITHUB_REPO || DEFAULT_REPO}/releases/download/blocklists` });
 
 async function agentApi(request, env, url, ctx) {
   const apk = /^\/agent\/apk\/([0-9a-f]{12})$/.exec(url.pathname);
@@ -1829,7 +1830,7 @@ async function browserApi(request, env, url) {
     const codeRec = /^[0-9A-F]{8}$/.test(code) ? await getJSON(env, `code:browser:${code}`, null) : null;
     if (!codeRec) return json({ error: "Invalid or expired code" }, 403);
     await env.STATE.delete(`code:browser:${code}`);
-    const { id, secret } = await createBrowserDevice(env, body.info, null, codeRec.ownerId);
+    const { id, secret } = await createBrowserDevice(env, body.info, "New Browser", codeRec.ownerId);
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
 
@@ -1841,8 +1842,8 @@ async function browserApi(request, env, url) {
     // registration starts with its own, separate sites list (empty, or whatever the admin clones
     // into it), reaches nothing until something is added, and is always visible and removable
     // from the Devices list.
-    const { id, secret } = await createBrowserDevice(env, body.info, "New Browser");
-    return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
+    // No longer allowed: connecting needs a code made on the dashboard, so only the parent can connect a Browser.
+    return json({ error: "Ask for a code on the dashboard (Add device → Browser)" }, 403);
   }
 
   if (url.pathname === "/browser/sync") {
