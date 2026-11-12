@@ -385,6 +385,20 @@ let lockguardCache = { at: 0, value: null };
 async function latestLockguard(env) {
   if (Date.now() - lockguardCache.at < 10 * 60 * 1000) return lockguardCache.value;
   lockguardCache.at = Date.now();
+  // First the fixed pointer file CI publishes (no rate limit); GitHub's API only as a fallback.
+  try {
+    const repo = env.GITHUB_REPO || DEFAULT_REPO;
+    const r = await fetch(`https://github.com/${repo}/releases/download/lockguard-latest/lockguard.json`, { cf: { cacheTtlByStatus: { "200-299": 300, "300-599": 0 } } });
+    if (r.ok) {
+      const v = await r.json();
+      if (Number.isInteger(v.build) && typeof v.url === "string" && v.url.startsWith(`https://github.com/${repo}/releases/download/`)) {
+        lockguardCache.value = { build: v.build, url: v.url, sha256: /^[0-9a-f]{64}$/i.test(v.sha256 || "") ? v.sha256 : "" };
+        return lockguardCache.value;
+      }
+    }
+  } catch {
+    // fall through to the API
+  }
   try {
     const repo = env.GITHUB_REPO || DEFAULT_REPO;
     const r = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, { headers: { "user-agent": "family-mdm-dashboard", accept: "application/vnd.github+json" } });

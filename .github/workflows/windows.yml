@@ -80,3 +80,13 @@ jobs:
             --title "LockGuard build ${{ github.run_number }}" `
             --notes "Windows internet-lockdown app, build ${{ github.run_number }}. Download LockGuard-Setup.exe and run it (it will ask for admin). LockGuard-windows.zip is the same build for anyone who wants to run install.ps1 manually. Commit: ${{ github.sha }}" `
             --target "$env:GITHUB_SHA"
+          # A fixed "lockguard-latest" release with a small lockguard.json saying which build is newest.
+          # The dashboard reads it like the phones read version.json: GitHub's API limits callers that
+          # are not signed in (Cloudflare's shared addresses run out); plain release downloads do not.
+          $sha = (Get-FileHash LockGuard-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/lockguard-v${{ github.run_number }}/LockGuard-Setup.exe"
+          @{ build = ${{ github.run_number }}; url = $url; sha256 = $sha } | ConvertTo-Json -Compress | Set-Content -Encoding ascii lockguard.json
+          gh release view lockguard-latest *> $null
+          if ($LASTEXITCODE -ne 0) { gh release create lockguard-latest --title "LockGuard: newest build pointer" --notes "lockguard.json points at the newest lockguard-vN release. Updated automatically." --latest=false --target "$env:GITHUB_SHA" }
+          gh release upload lockguard-latest lockguard.json --clobber
+          exit 0
