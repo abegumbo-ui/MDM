@@ -2217,7 +2217,7 @@ function renderMsgAlerts(m,dv){
  const list=dv.msgAlerts||[];
  const lc=h('div',{class:'card'},h('h2',null,'Found ('+list.length+')'));
  if(!list.length)lc.append(h('div',{class:'mute'},c.messageAlerts?'Nothing found yet.':'Message alerts are off.'));
- for(const a of list.slice().reverse())lc.append(h('div',{class:'act'},h('div',null,h('b',null,'"'+a.word+'"'),' in '+(CHAT_NAMES[a.app]||a.app)+(a.who?' ('+a.who+')':'')+' · '+ago(a.at)),h('div',{class:'mute small'},a.text)));
+ for(const a of list.slice().reverse())lc.append(h('div',{class:'act'},h('div',null,h('b',null,'"'+a.word+'"'),' in '+(CHAT_NAMES[a.app]||SEARCH_NAMES[a.app]||a.app)+(a.who?' ('+a.who+')':'')+' · '+ago(a.at)),h('div',{class:'mute small'},a.text)));
  if(list.length)lc.append(h('div',{style:'margin-top:8px'},btn('Clear the list','outline',async function(){if(!confirm('Clear the list of found messages?'))return;await call('DELETE','/api/devices/'+dv.id+'/msg-alerts');load()})));
  m.append(lc)}
 const SEARCH_NAMES={'com.android.chrome':'Chrome','org.mozilla.firefox':'Firefox','com.sec.android.app.sbrowser':'Samsung Internet','com.brave.browser':'Brave','com.microsoft.emmx':'Edge','com.google.android.youtube':'YouTube','com.google.android.googlequicksearchbox':'Google','com.familymdm.browser':'our Browser','com.pinterest':'Pinterest'};
