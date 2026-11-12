@@ -1090,6 +1090,11 @@ function renderBrowserSwitches(m,b){
  m.append(card)}
 function renderWebAccess(m,dv){
  const cur=dv.isBrowser&&dv.config.openWeb?'open':(dv.config.browserFilter||'off');
+ if(dv.isBrowser){
+  const fs=(dv.info&&dv.info.filter)||null,names={off:'Approved sites only',open:'Open: no filter',moderate:'Moderate filter',strict:'Strict filter'};
+  let line='The Browser has not reported yet (it needs this update and to be opened once).';
+  if(fs){line='On the Browser right now: '+(names[fs.tier]||fs.tier)+(fs.tier==='moderate'||fs.tier==='strict'?(fs.ready?' (lists ready)':fs.error?' (lists not ready: '+fs.error+'; only approved sites open)':' (downloading lists; only approved sites open until done)'):'')+' · checked '+ago(dv.lastSeen)+'.'}
+  m.append(h('div',{class:'card',style:fs&&!fs.ready?'border-color:var(--warn)':''},h('div',{class:'mute'},line)))}
  const card=h('div',{class:'card'},h('h2',null,'Web access'),
   h('div',{class:'mute'},'Choose what this browser may open. Sites on the allowed list below are always allowed, whichever you pick. This applies to the separate Browser app and the Browser add-on built into the Agent app. On phones managed by the Agent, Moderate and Strict also apply to Chrome, Firefox, Samsung Internet and other browsers, through the Agent\'s site filter (no certificate needed): adult, gambling, drugs, scam and piracy sites are blocked for every app, and Strict\'s social media only in browsers, so WhatsApp and similar apps keep working.'));
  const opts=[

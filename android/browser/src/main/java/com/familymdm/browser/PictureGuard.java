@@ -36,15 +36,28 @@ import java.util.Map;
 final class PictureGuard {
     private PictureGuard() {}
 
-    private static final int MAX_BYTES = 8 * 1024 * 1024, MAX_SIDE = 1024, TINY = 48;
+    private static final int MAX_BYTES = 8 * 1024 * 1024, MAX_SIDE = 800, TINY = 48;
+    private static volatile boolean cacheInstalled;
+
+    /** Pictures fetched here are kept on the phone (like the browser's own cache), so a page opened again is fast. */
+    private static void ensureHttpCache(Context c) {
+        if (cacheInstalled) return;
+        cacheInstalled = true;
+        try {
+            if (android.net.http.HttpResponseCache.getInstalled() == null)
+                android.net.http.HttpResponseCache.install(new java.io.File(c.getCacheDir(), "pictures"), 64L * 1024 * 1024);
+        } catch (Exception ignored) {
+        }
+    }
     private static final LruCache<String, byte[]> cache = new LruCache<String, byte[]>(16 * 1024 * 1024) {
         @Override
         protected int sizeOf(String k, byte[] v) {
             return v.length;
         }
     };
-    private static Interpreter interp;
-    private static boolean noModel;
+    private static volatile ByteBuffer modelBytes;
+    private static volatile boolean noModel;
+    private static final ThreadLocal<Interpreter> interp = new ThreadLocal<>();
 
     static boolean isPicture(WebResourceRequest r) {
         if (!"GET".equalsIgnoreCase(r.getMethod()) || r.isForMainFrame()) return false;
@@ -60,8 +73,9 @@ final class PictureGuard {
     /** The checked picture, or null to let the WebView load it itself (could not be fetched here). */
     static WebResourceResponse handle(Context c, WebResourceRequest r, String mode) {
         String url = r.getUrl().toString();
+        ensureHttpCache(c);
         byte[] done = cache.get(mode + "|" + url);
-        if (done != null) return png(done);
+        if (done != null) return image(done);
         byte[] raw;
         String type;
         try {
@@ -104,7 +118,7 @@ final class PictureGuard {
         if (score >= NudityPrep.THRESHOLD) {
             byte[] grey = encode(Bitmap.createBitmap(new int[]{SkinMask.GREY}, 1, 1, Bitmap.Config.ARGB_8888), w, h);
             cache.put(mode + "|" + url, grey);
-            return png(grey);
+            return image(grey);
         }
         if (score < 0 && noModel && "nudity".equals(mode)) return passThrough(raw, type); // no checker in this build
         if ("skin".equals(mode)) {
@@ -114,23 +128,25 @@ final class PictureGuard {
                 b.setPixels(px, 0, w, 0, 0, w, h);
                 byte[] out = encode(b, w, h);
                 cache.put(mode + "|" + url, out);
-                return png(out);
+                return image(out);
             }
         }
         return passThrough(raw, type);
     }
 
+    /** JPEG is several times faster to make than PNG; pictures with see-through parts stay PNG. */
     private static byte[] encode(Bitmap b, int w, int h) {
         Bitmap s = b.getWidth() == w && b.getHeight() == h ? b : Bitmap.createScaledBitmap(b, w, h, false);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        s.compress(Bitmap.CompressFormat.PNG, 100, out);
+        s.compress(s.hasAlpha() ? Bitmap.CompressFormat.PNG : Bitmap.CompressFormat.JPEG, 85, out);
         return out.toByteArray();
     }
 
-    private static WebResourceResponse png(byte[] bytes) {
+    private static WebResourceResponse image(byte[] bytes) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Cache-Control", "no-store");
-        return new WebResourceResponse("image/png", null, 200, "OK", headers, new ByteArrayInputStream(bytes));
+        boolean png = bytes.length > 4 && (bytes[0] & 0xFF) == 0x89 && bytes[1] == 'P';
+        return new WebResourceResponse(png ? "image/png" : "image/jpeg", null, 200, "OK", headers, new ByteArrayInputStream(bytes));
     }
 
     private static WebResourceResponse passThrough(byte[] raw, String type) {
@@ -140,26 +156,40 @@ final class PictureGuard {
 
     private static WebResourceResponse blank(int w, int h) {
         Bitmap one = Bitmap.createBitmap(new int[]{SkinMask.GREY}, 1, 1, Bitmap.Config.ARGB_8888);
-        return png(encode(one, Math.max(1, Math.min(w, 2000)), Math.max(1, Math.min(h, 2000))));
+        return image(encode(one, Math.max(1, Math.min(w, 2000)), Math.max(1, Math.min(h, 2000))));
     }
 
     /** The same on-phone checker as the Agent's photo alerts; -1 when this build has none. */
-    private static synchronized float score(Context c, Bitmap picture) {
-        if (interp == null && !noModel) {
+    private static synchronized ByteBuffer model(Context c) {
+        if (modelBytes == null && !noModel) {
             try (InputStream in = c.getAssets().open("nsfw.tflite")) {
                 ByteArrayOutputStream all = new ByteArrayOutputStream();
                 byte[] buf = new byte[65536];
                 for (int n; (n = in.read(buf)) > 0; ) all.write(buf, 0, n);
-                ByteBuffer model = ByteBuffer.allocateDirect(all.size()).order(ByteOrder.nativeOrder());
-                model.put(all.toByteArray()).rewind();
-                Interpreter.Options opt = new Interpreter.Options();
-                opt.setNumThreads(2);
-                interp = new Interpreter(model, opt);
+                ByteBuffer m = ByteBuffer.allocateDirect(all.size()).order(ByteOrder.nativeOrder());
+                m.put(all.toByteArray()).rewind();
+                modelBytes = m;
             } catch (Throwable e) {
                 noModel = true;
             }
         }
-        if (interp == null) return -1;
+        return modelBytes;
+    }
+
+    private static float score(Context c, Bitmap picture) {
+        Interpreter it = interp.get();
+        if (it == null) {
+            ByteBuffer m = model(c);
+            if (m == null) return -1;
+            try {
+                Interpreter.Options opt = new Interpreter.Options();
+                opt.setNumThreads(1);
+                it = new Interpreter(m.duplicate().order(ByteOrder.nativeOrder()), opt);
+                interp.set(it);
+            } catch (Throwable e) {
+                return -1;
+            }
+        }
         try {
             Bitmap s = Bitmap.createScaledBitmap(picture, NudityPrep.SCALED, NudityPrep.SCALED, true);
             int[] px = new int[NudityPrep.SCALED * NudityPrep.SCALED];
@@ -168,7 +198,7 @@ final class PictureGuard {
             ByteBuffer input = ByteBuffer.allocateDirect(in.length * 4).order(ByteOrder.nativeOrder());
             input.asFloatBuffer().put(in);
             float[][] out = new float[1][2];
-            interp.run(input, out);
+            it.run(input, out);
             return out[0][1];
         } catch (Throwable e) {
             return -1;
