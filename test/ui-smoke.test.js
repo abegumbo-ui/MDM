@@ -115,7 +115,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
     }
   }
   seen.browserDevice = tryRender("standalone browser page", "tab='devices';openId=null;openBrowserId=browsers[0].id;browserSection='overview';render()");
-  for (const s of ["web", "pictures", "sites", "settings"]) seen["br/" + s] = tryRender("standalone browser: " + s, `tab='devices';openId=null;openBrowserId=browsers[0].id;browserSection='${s}';render()`);
+  for (const s of ["web", "youtube", "pictures", "sites", "settings"]) seen["br/" + s] = tryRender("standalone browser: " + s, `tab='devices';openId=null;openBrowserId=browsers[0].id;browserSection='${s}';render()`);
   await new Promise((r) => setTimeout(r, 150)); // let the cards that fetch their own data finish
   // Pages that fill themselves in after asking the server: open them again and read them once that is done.
   for (const page of ["templates", "settings"]) {
@@ -158,6 +158,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["br/pictures"], /No pictures on these sites/);
   assert.match(seen.browserDevice, /At a glance/);
   assert.match(seen["br/settings"], /Look/);
+  assert.match(seen["br/youtube"], /Only what I allow/);
+  assert.match(seen["br/youtube"], /Allowed channels and videos/);
   assert.doesNotMatch(seen["br/web"], /Force SafeSearch/, "a standalone Browser has no phone-wide filter to force it with");
   assert.match(seen["browser/sites"], /Site requests \(1\)/);
   assert.match(seen["browser/sites"], /YouTube channel/);

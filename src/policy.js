@@ -476,12 +476,13 @@ function normalizeUserMenu(m) {
 // YouTube in the browsers: "channels" = only allowed channels and videos open; "restricted" = YouTube
 // opens with search but no recommendations (home, feeds and Shorts are blocked); "auto" (the default)
 // = follow the browser filter level: Moderate -> restricted, Strict or Off -> channels.
-export const YOUTUBE_MODES = ["auto", "channels", "restricted"];
+export const YOUTUBE_MODES = ["auto", "open", "restricted", "channels", "blocked"];
 
 /** The YouTube mode actually applied: "channels" or "restricted", whatever the setting is. */
 export function effectiveYoutubeMode(cfg) {
   const m = cfg && cfg.youtubeMode;
-  if (m === "channels" || m === "restricted") return m;
+  if (m === "channels" || m === "restricted" || m === "open" || m === "blocked") return m;
+  if (cfg && cfg.openWeb) return "open"; // a Browser on "Open: no filter": YouTube as it is
   return cfg && cfg.browserFilter === "moderate" ? "restricted" : "channels";
 }
 

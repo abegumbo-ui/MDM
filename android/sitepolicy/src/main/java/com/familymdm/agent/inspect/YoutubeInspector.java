@@ -47,6 +47,12 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
 
     private volatile PictureFilter pictureFilter;
     private volatile String pageScript;
+    private volatile boolean youtubeOff;
+
+    /** YouTube "Off": its pages do not open. */
+    public void setYoutubeOff(boolean off) {
+        youtubeOff = off;
+    }
 
     /** A script added to every web page (the video skin covering); null for none. */
     public void setPageScript(String js) {
@@ -162,6 +168,10 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     @Override
     public InspectProxy.Response onRequest(InspectProxy.Request r) {
         if (imageBlocked(r)) return new InspectProxy.Response(200, "image/gif", BLANK_GIF);
+        if (youtubeOff && isDocument(r) && isYoutube(r.host)) {
+            return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+                    + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>YouTube is turned off on this phone.</p></body></html>");
+        }
         if (blockImageSearch && isDocument(r) && com.familymdm.agent.sitepolicy.ProtectionRules.isImageSearch(r.url())) {
             return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
                     + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>Image search is turned off on this phone.</p></body></html>");

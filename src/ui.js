@@ -79,6 +79,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 .sw input:checked+i{background:var(--primary)}
 .sw input:checked+i::after{left:20px}
 .setting{display:flex;gap:16px;align-items:center;padding:12px 0;border-top:1px solid var(--outline-variant)}
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.seg button{border:1px solid var(--outline-variant);background:transparent;color:inherit;border-radius:999px;padding:8px 14px;font:inherit;cursor:pointer}.seg button.on{background:var(--primary);border-color:var(--primary);color:var(--on-primary,#fff)}
 .setting .grow>.mute,.card>.mute:first-of-type{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
 .setting .grow>.mute.open,.card>.mute:first-of-type.open{display:block;-webkit-line-clamp:unset;overflow:visible}
 .setting:first-child{border-top:0}
@@ -207,7 +208,7 @@ const GROUPS=[
  {key:'safety',label:'Safety',icon:'message',subs:[['health','Health check'],['msgalerts','Message alerts'],['screenshots','Screenshots']]},
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
  {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
- {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['history','Sites visited'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
+ {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['youtube','YouTube'],['history','Sites visited'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
  {key:'calls',label:'Calls & texts',icon:'phone',subs:[['rules','Who can call'],['contacts','Contacts'],['calllog','Call log'],['texts','Texts']]},
 {key:'internet',label:'Internet',icon:'wifi',subs:[['network','Wi-Fi'],['dns','Website filter'],['appnet','Internet for apps'],['traffic','Traffic log']]},
  {key:'security',label:'Security',icon:'shield',subs:[['screen','Screen lock'],['applock','App lock'],['admincode','Admin code'],['restrictions','Restrictions']]},
@@ -1140,16 +1141,6 @@ function renderWebAccess(m,dv){
    try{await saveConfigFor(dv,'Saved. '+(o[0]==='off'?'Approved sites only.':'The browser downloads the lists the next time it checks in, and stays on approved sites only until it has them.'))}catch(e){snack(e.message,1)}
    render()};
   card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow'},h('div',{style:'font-weight:500'},o[1]),h('div',{class:'mute'},o[2]))))}
- const ytSel=h('select',{style:'margin-top:6px;max-width:100%'});
- ytSel.append(new Option('Follow the filter level (recommended)','auto'),new Option('Only allowed channels and videos','channels'),new Option('Restricted YouTube: search works, no recommendations','restricted'));
- ytSel.value=dv.config.youtubeMode||'auto';
- ytSel.onchange=async function(){
-  if(ytSel.value==='restricted'&&!confirm('This opens YouTube for searching and watching, without its home page, feeds, Shorts, recommendations or comments. YouTube\'s own filtering is not perfect, so unsuitable videos can still turn up in search. Continue?')){ytSel.value=dv.config.youtubeMode||'auto';return}
-  dv.config.youtubeMode=ytSel.value;
-  try{await saveConfigFor(dv,'Saved. The browser picks it up at its next check-in.')}catch(e){snack(e.message,1)}
-  render()};
- card.append(h('div',{class:'setting',style:'display:block;margin-top:12px'},h('div',{style:'font-weight:500'},'YouTube'),
-  h('div',{class:'mute'},'Allowed channels and videos work either way. "Follow the filter level": on Moderate he gets restricted YouTube (he can search and watch, with no recommendation feed, Shorts or trending page); on Strict or Approved-only he gets only the channels and videos you allowed. In Chrome and other browsers this needs Inspection (the last tab here).'),ytSel));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The lists are public, regularly updated, and about 13 MB the first time. They catch sites already known to them, so they will not cover everything: brand-new sites, and many chat, video and forum sites (for example Reddit, Snapchat, Discord, Telegram and YouTube) are not in them. Until a phone has downloaded the lists, our own browsers stay on approved sites only, but Chrome and other browsers are not filtered yet (the phone cannot cut off the whole internet to wait for them). In Chrome the filter works on site names, not pages, and while it is on QUIC (a faster web protocol) is switched off so browsers use the kind of connection the filter can see. A browser using its own encrypted DNS can sometimes get around the name lookup, though the connection itself is still checked.'));
  m.append(card)}
 /* ---------- Overview: SOS, pause, protection level ---------- */
@@ -1665,6 +1656,7 @@ function renderTimeLimits(m,dv){
 function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
+ else if(sub==='youtube')renderYoutube(m,dv);
  else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='history')renderSitesVisited(m,dv);
  else if(sub==='sites')renderSites(m,dv,'sites');
@@ -1843,6 +1835,37 @@ function renderSitesPart(m,dv){
  renderCloneCard(m,dv);
  renderSitesEditor(m,dv);
 }
+/** YouTube: one choice for how it works, and the channels and videos that are allowed. */
+const YT_CHOICES=[
+ ['auto','Follow the web level','Moderate: restricted YouTube. Strict or Approved sites only: only the channels and videos below. Open: YouTube as it is.'],
+ ['open','Open','YouTube as it is, with no limits from here.'],
+ ['restricted','Restricted','Search and watch. No home feed, no Shorts, no suggestions or comments. YouTube\'s own filtering is not perfect.'],
+ ['channels','Only what I allow','Only the channels and videos listed below. Everything else on YouTube is blocked.'],
+ ['blocked','Off','YouTube does not open at all.']];
+function renderYoutube(m,dv){
+ const c=dv.config,cur=c.youtubeMode||'auto';
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'YouTube'));
+ const seg=h('div',{class:'seg'});
+ for(const [v,label] of YT_CHOICES){const x=h('button',{class:v===cur?'on':''},label);x.onclick=function(){c.youtubeMode=v;save('YouTube: '+label+'.')};seg.append(x)}
+ card.append(seg,h('div',{class:'mute',style:'margin-top:10px'},(YT_CHOICES.find(function(x){return x[0]===cur})||YT_CHOICES[0])[2]));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},dv.isBrowser?'In this Browser.':'In our Browser, and in Chrome, Samsung Internet and Edge when Inspection is on. The YouTube app itself is not affected: block it under Apps if needed.'));
+ m.append(card);
+ const sites=c.sites||{},keys=Object.keys(sites).filter(function(k){const s=sites[k];return s.type==='youtube'||isYoutubeUrl(s.url||'')});
+ const lc=h('div',{class:'card'},h('h2',null,'Allowed channels and videos ('+keys.length+')'));
+ lc.append(h('div',{class:'mute'},'Paste a channel link (youtube.com/@name), type @name, or paste a video link. Used when YouTube is on "Only what I allow" (or follows the level on Strict or Approved sites only).'));
+ const inp=h('input',{type:'text',placeholder:'youtube.com/@channel, @channel or a video link',class:'grow'});
+ const add=async function(){let v=inp.value.trim();if(!v)return;if(/^@[A-Za-z0-9._-]{3,30}$/.test(v))v='https://www.youtube.com/'+v;
+  const ch=ytChannelOf(v);
+  if(ch){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+ch,id:ch,label:'YouTube channel '+ch});return}
+  if(isYoutubeUrl(v)&&/[?&]v=|youtu\.be\//.test(v)){await addSite(dv,{type:'exact',url:v.includes('://')?v:'https://'+v,label:'YouTube video'});return}
+  snack('That is not a YouTube channel or video link.',1)};
+ lc.append(h('div',{class:'row',style:'margin-top:8px'},inp,btn('Add','tonal',add)));
+ for(const k of keys){const s=sites[k];
+  lc.append(h('div',{class:'row',style:'margin:8px 0'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.type==='youtube'?(s.id||s.label):'Video'),h('div',{class:'mute small',style:'word-break:break-all'},s.url)),
+   btn('Remove','outline',async function(){delete c.sites[k];await save('Removed.')})))}
+ if(!keys.length)lc.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
+ m.append(lc)}
 async function addSite(dv,entry){
  const key=entry.type==='youtube'?'youtube:'+entry.id:(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  dv.config.sites=dv.config.sites||{};
@@ -1867,6 +1890,7 @@ function renderCloneCard(m,dv){
 const BROWSER_GROUPS=[
  {key:'overview',label:'Overview',icon:'home'},
  {key:'web',label:'Web',icon:'globe'},
+ {key:'youtube',label:'YouTube',icon:'apps'},
  {key:'pictures',label:'Pictures & video',icon:'apps'},
  {key:'sites',label:'Allowed sites',icon:'shield'},
  {key:'settings',label:'Settings',icon:'device'}];
@@ -1903,6 +1927,7 @@ function renderBrowserDetail(m,b){
  const requests=function(){renderRequestsCard(content,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b)};
  if(sec==='overview'){renderBrowserGlance(content,b);requests();renderBrowserSitesOpened(content,b)}
  else if(sec==='web'){renderWebAccess(content,b);renderBrowserSwitches(content,b);renderBlockedWords(content,b);renderImageSearch(content,b)}
+ else if(sec==='youtube')renderYoutube(content,b);
  else if(sec==='pictures'){renderSearchPictures(content,b);renderNoPictureSites(content,b)}
  else if(sec==='sites'){requests();renderSitesEditor(content,b)}
  else{

@@ -277,6 +277,9 @@ public final class Guard {
             return Decision.no(page("Not available", "This page or search has a blocked word in it.", homeButton()));
         if (FilterStore.blockImageSearch(c) && ProtectionRules.isImageSearch(url))
             return Decision.no(page("Not available", "Image search is turned off.", homeButton()));
+        String ytMode = FilterStore.youtubeMode(c);
+        if ("blocked".equals(ytMode) && SitePolicy.isYoutubeHost(SitePolicy.hostOf(url)))
+            return Decision.no(page("YouTube is turned off", "YouTube does not open in this browser.", homeButton()));
         if (FilterStore.youtubeRestricted(c) && isYoutubeAddress(url)) {
             int kind = SitePolicy.youtubeKind(url);
             if (kind == SitePolicy.YT_HOME) return Decision.yes(noPics); // YouTube's own home page, its feed emptied (afterLoadScript)
@@ -301,6 +304,10 @@ public final class Guard {
                 if (SitePolicy.youtubeChannelAllowed(known, list)) return Decision.yes(noPics);
             }
         }
+        // "Only what I allow": the rest of YouTube is blocked whatever the web level is.
+        if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host))
+            return Decision.no(page("This part of YouTube isn't allowed", "Only the channels and videos your parent allowed open here.",
+                    "<a class=b href='" + SCHEME + "://request?u=" + Uri.encode(url) + "'>Ask for access</a>" + homeButton()));
         if (mode == Mode.AGENT && browseWindow(c)) {
             reportOnce(c, url);
             return Decision.yes(noPics);

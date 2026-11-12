@@ -108,7 +108,8 @@ final class FilterStore {
 
     /** The YouTube setting from the dashboard: "restricted" (search, no recommendations) or "channels" (default). */
     static void setYoutubeMode(Context c, String mode) {
-        prefs(c).edit().putString("youtubeMode", "restricted".equals(mode) ? "restricted" : "channels").apply();
+        String m = "restricted".equals(mode) || "open".equals(mode) || "blocked".equals(mode) ? mode : "channels";
+        prefs(c).edit().putString("youtubeMode", m).apply();
     }
 
     /** "Block pictures on web pages" from the dashboard: every site, not just the ones marked one by one. */
@@ -194,6 +195,11 @@ final class FilterStore {
         java.util.List<String> out = new java.util.ArrayList<>();
         for (String w : s.split("\n")) if (!w.isEmpty()) out.add(w);
         return out;
+    }
+
+    /** "open", "restricted", "channels" (only what is allowed) or "blocked". */
+    static String youtubeMode(Context c) {
+        return prefs(c).getString("youtubeMode", "channels");
     }
 
     static boolean youtubeRestricted(Context c) {

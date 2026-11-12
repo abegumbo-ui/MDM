@@ -189,4 +189,18 @@ public class GuardTest {
         assertNotNull(js);
         assertTrue(js.contains("requestVideoFrameCallback") && js.contains("texImage2D"));
     }
+
+    @Test
+    public void youtube_onlyWhatIAllow_holdsEvenOnTheOpenLevel_andOffBlocksIt() throws Exception {
+        connected("open");
+        FilterStore.setYoutubeMode(c, "open");
+        assertTrue(Guard.check(c, "https://m.youtube.com/", null).allow);
+        FilterStore.setYoutubeMode(c, "channels");
+        Guard.Decision d = Guard.check(c, "https://m.youtube.com/", null);
+        assertFalse("only allowed channels, even though the web is open", d.allow);
+        assertTrue(d.html.contains("Ask for access"));
+        assertTrue("other sites still open", Guard.check(c, "https://example.com/", null).allow);
+        FilterStore.setYoutubeMode(c, "blocked");
+        assertFalse(Guard.check(c, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", null).allow);
+    }
 }
