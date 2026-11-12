@@ -70,7 +70,7 @@ jobs:
         run: |
           gh release download v3.4-weights -R notAI-tech/NudeNet -p 320n.pt
           ls -la 320n.pt
-          python -m pip install --quiet ultralytics nudenet scikit-image opencv-python-headless
+          python -m pip install --quiet "ultralytics==8.3.40" "tensorflow-cpu==2.17.1" "tf-keras==2.17.0" nudenet scikit-image opencv-python-headless
           python tools/nudenet/convert.py
       - name: Publish to the "models" release (main only)
         if: github.ref == 'refs/heads/main'
