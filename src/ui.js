@@ -2108,7 +2108,9 @@ function renderBlockedParts(m,dv){
   {key:'ig-reels',label:'Instagram: Reels',pkg:'com.instagram.android',desc:'Reels',mode:'cover'},
   {key:'ig-explore',label:'Instagram: Search and explore',pkg:'com.instagram.android',desc:'Search and explore',mode:'cover'},
   {key:'fb-reels',label:'Facebook: Reels',pkg:'com.facebook.katana',desc:'Reels',mode:'cover'},
-  {key:'fb-video',label:'Facebook: Video',pkg:'com.facebook.katana',desc:'Video',mode:'cover'}];
+  {key:'fb-video',label:'Facebook: Video',pkg:'com.facebook.katana',desc:'Video',mode:'cover'},
+  {key:'maps-explore',label:'Google Maps: Explore',pkg:'com.google.android.apps.maps',desc:'Explore',mode:'cover'},
+  {key:'snap-spotlight',label:'Snapchat: Spotlight',pkg:'com.snapchat.android',desc:'Spotlight',mode:'cover'}];
  const qrow=h('div',{class:'row',style:'margin-top:10px;flex-wrap:wrap'});
  for(const q of quick){const has=list.some(function(p){return p.pkg===q.pkg&&p.desc===q.desc});
   qrow.append(btn((has?'✓ ':'')+q.label,has?'outline':'tonal',async function(){
