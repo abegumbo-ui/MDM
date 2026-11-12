@@ -85,11 +85,13 @@ public class BlockAccessibilityService extends AccessibilityService {
             checkInApp(pkg, clsCs.toString(), now);
             if (Monitor.on(this)) Monitor.scan(this, pkg, getRootInActiveWindow());
             Monitor.trackSearch(this, pkg, getRootInActiveWindow(), true);
+            Monitor.watchBadSearch(this, pkg, getRootInActiveWindow());
             Monitor.trackVideo(this, pkg, getRootInActiveWindow());
         } else if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             if (now - lastSearchLook > 1000) {
                 lastSearchLook = now;
                 Monitor.trackSearch(this, pkg, getRootInActiveWindow(), false);
+                Monitor.watchBadSearch(this, pkg, getRootInActiveWindow());
                 Monitor.trackVideo(this, pkg, getRootInActiveWindow());
             }
             if (Monitor.on(this)) {

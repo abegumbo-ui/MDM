@@ -124,6 +124,8 @@ final class TlsInspection {
                 policy.optBoolean("blockImages", false), imagesAllow, words);
         rules.setBlockImageSearch(policy.optBoolean("blockImageSearch", false));
         rules.setYoutubeOff("blocked".equals(policy.optString("youtubeMode", "")));
+        rules.setStrictSearch("strict".equals(policy.optString("browserFilter", "off")));
+        rules.setYoutubeAdBlock(policy.optBoolean("blockAds", false) ? com.familymdm.agent.sitepolicy.YoutubeScripts.adBlock() : null);
         Set<String> noPics = new HashSet<>();
         JSONArray np = policy.optJSONArray("noPictureSites");
         for (int i = 0; np != null && i < np.length(); i++) {

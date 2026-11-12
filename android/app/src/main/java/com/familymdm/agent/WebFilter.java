@@ -50,7 +50,7 @@ final class WebFilter {
 
     /** Remembers what the dashboard (or the agent) says the level is, and starts getting the lists if it needs them. */
     static void setPolicy(Context c, String tier, String base) {
-        String t = "moderate".equals(tier) || "strict".equals(tier) || "moderate+ads".equals(tier) || "strict+ads".equals(tier) ? tier : "off";
+        String t = "moderate".equals(tier) || "strict".equals(tier) || "moderate+ads".equals(tier) || "strict+ads".equals(tier) || "ads".equals(tier) ? tier : "off";
         String b = base != null && base.startsWith(GITHUB) && base.length() < 300 ? base : "";
         SharedPreferences p = prefs(c);
         boolean changed = !t.equals(p.getString("filterTier", "off")) || !b.equals(p.getString("filterBase", ""));
@@ -65,6 +65,15 @@ final class WebFilter {
         JSONArray cats = tiers.optJSONArray(tier);
         if ((cats == null || cats.length() == 0) && tier.endsWith("+ads")) cats = tiers.optJSONArray(tier.substring(0, tier.length() - 4));
         return cats;
+    }
+
+    /**
+     * A filter LEVEL (Moderate or Strict) is on and ready: only then do our browsers open sites that
+     * are not on the approved list. "ads" alone (Block ads on Approved sites only) never does that.
+     */
+    static boolean levelActive(Context c) {
+        String t = tier(c);
+        return (t.startsWith("moderate") || t.startsWith("strict")) && active(c);
     }
 
     static String tier(Context c) {

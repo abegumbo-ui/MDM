@@ -438,6 +438,7 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
     override fun onResume() {
         super.onResume()
         Guard.resume(this)
+        com.familymdm.browser.Updater.maybeCheck(this)
         if (backgroundShortcutId == null) webView.onResume()
         CookieManager.getInstance()
             .setAcceptCookie(!incognito && sharedPreferencesExt.cookiesEnabled)

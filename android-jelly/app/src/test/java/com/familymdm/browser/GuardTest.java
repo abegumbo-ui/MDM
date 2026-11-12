@@ -250,4 +250,17 @@ public class GuardTest {
         assertTrue("the parent's own message", d.html.contains("Homework first, then YouTube."));
         assertTrue(d.html.contains("Ask to open YouTube"));
     }
+
+    @Test
+    public void badSearch_onStrict_saysYoureBetterThanThat() throws Exception {
+        connected("strict");
+        Guard.Decision d = Guard.check(c, "https://www.google.com/search?q=hot+girls", null);
+        assertFalse(d.allow);
+        assertTrue(d.html.contains("better than that"));
+        connected("moderate");
+        assertFalse("not Strict: the built-in list does not apply (the filter decides)", Guard.check(c, "https://www.google.com/search?q=hot+girls", null).html != null
+                && Guard.check(c, "https://www.google.com/search?q=hot+girls", null).html.contains("better than that"));
+        FilterStore.setBlockedWords(c, new String[]{"casino"});
+        assertTrue("a blocked word, any level", Guard.check(c, "https://www.google.com/search?q=casino+games", null).html.contains("better than that"));
+    }
 }

@@ -5,6 +5,18 @@
 -->
 <PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <SwitchPreference
+        app:defaultValue="true"
+        app:iconSpaceReserved="false"
+        app:key="key_auto_update"
+        app:summary="Downloads new versions by itself and shows the Update button"
+        app:title="Automatic updates" />
+
+    <Preference
+        app:iconSpaceReserved="false"
+        app:key="key_check_update"
+        app:title="Check for updates now" />
+
     <ListPreference
         app:defaultValue="@string/default_search_engine"
         app:entries="@array/pref_search_engine_entries"

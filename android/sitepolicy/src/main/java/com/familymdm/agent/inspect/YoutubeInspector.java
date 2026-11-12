@@ -48,6 +48,18 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     private volatile PictureFilter pictureFilter;
     private volatile String pageScript;
     private volatile boolean youtubeOff;
+    private volatile String youtubeAdScript;
+    private volatile boolean strictSearch;
+
+    /** The Strict level: explicit searches get "you're better than that" (blocked words always do). */
+    public void setStrictSearch(boolean on) {
+        strictSearch = on;
+    }
+
+    /** "Block ads": YouTube pages get the ad remover, and ad-only requests are answered empty. */
+    public void setYoutubeAdBlock(String js) {
+        youtubeAdScript = js == null || js.isEmpty() ? null : js;
+    }
 
     /** YouTube "Off": its pages do not open. */
     public void setYoutubeOff(boolean off) {
@@ -168,6 +180,12 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     @Override
     public InspectProxy.Response onRequest(InspectProxy.Request r) {
         if (imageBlocked(r)) return new InspectProxy.Response(200, "image/gif", BLANK_GIF);
+        if (youtubeAdScript != null && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(r.url())) return new InspectProxy.Response(200, "text/plain", new byte[0]);
+        if (isDocument(r)) {
+            String searched = com.familymdm.agent.sitepolicy.BadSearch.query(r.url());
+            if (searched != null && com.familymdm.agent.sitepolicy.BadSearch.isBad(searched, strictSearch, blockedWords))
+                return InspectProxy.Response.html(200, com.familymdm.agent.sitepolicy.BadSearch.page(null));
+        }
         if (youtubeOff && isDocument(r) && isYoutube(r.host)) {
             return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), "YouTube is turned off on this phone.", null));
         }
@@ -191,14 +209,14 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
 
     @Override
     public boolean wantsIdentity(InspectProxy.Request r) {
-        return isDocument(r) && ((restricted && isYoutube(r.host)) || pageScript != null);
+        return isDocument(r) && (((restricted || youtubeAdScript != null) && isYoutube(r.host)) || pageScript != null);
     }
 
     @Override
     public boolean rewrites(InspectProxy.Request r, String contentType) {
         if (filtersPicture(r, contentType)) return true;
         if (pageScript != null && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return true;
-        return restricted && isYoutube(r.host) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html");
+        return (restricted || youtubeAdScript != null) && isYoutube(r.host) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html");
     }
 
     @Override
@@ -213,10 +231,12 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
             }
         }
         boolean yt = restricted && isYoutube(r.host);
+        String ads = youtubeAdScript != null && isYoutube(r.host) ? youtubeAdScript : null;
         String js = pageScript;
-        if (!yt && js == null) return body;
+        if (!yt && js == null && ads == null) return body;
         String html = new String(body, StandardCharsets.UTF_8);
-        String tag = (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" : "") + (js != null ? "<script>" + js + "</script>" : "");
+        String tag = (ads != null ? "<script>" + ads + "</script>" : "")
+                + (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" : "") + (js != null ? "<script>" + js + "</script>" : "");
         int head = html.toLowerCase(java.util.Locale.ROOT).indexOf("<head");
         if (head >= 0) {
             int close = html.indexOf('>', head);

@@ -1222,7 +1222,7 @@ function renderLevels(box,d){
 /** Ad servers blocked phone-wide (with Moderate or Strict). */
 function renderBlockAds(m,dv){const c=dv.config;if(dv.isWindows)return;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block ads'),
-  h('div',{class:'mute small'},dv.isBrowser?'No ads on web pages in this Browser, and no ads on YouTube (before or during videos, banners, promoted videos). Best effort on YouTube: it changes its pages from time to time.':'Ad servers are blocked in every app and browser on the phone (works with the Moderate or Strict level), and YouTube ads in our Browser and the YouTube app. A few apps may show empty boxes where ads were; switch it off if one stops working.')),
+  h('div',{class:'mute small'},dv.isBrowser?'No ads on web pages in this Browser, and no ads on YouTube (before or during videos, banners, promoted videos). Best effort on YouTube: it changes its pages from time to time.':'Ad servers are blocked in every app and browser on the phone, on every level (Chrome, Samsung Internet and the rest too). YouTube\'s own ads are removed in our Browser, the YouTube app, and Chrome with Inspection. A few apps may show empty boxes where ads were; switch it off if one stops working.')),
   sw(c.blockAds,async function(on){c.blockAds=on;try{await saveConfigFor(dv,on?'Ads blocked from the next check-in.':'Ads allowed again.')}catch(e){snack(e.message,1)}render()}))))}
 function renderImageSearch(m,dv){const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block image search'),

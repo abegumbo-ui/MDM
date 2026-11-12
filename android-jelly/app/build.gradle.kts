@@ -27,6 +27,8 @@ android {
         versionName = "2.0.$buildNumber"
         // The dashboard's address, built in (DASHBOARD_URL), so connecting needs only the code.
         resValue("string", "default_server", System.getenv("DASHBOARD_URL") ?: "")
+        // Where "Automatic updates" looks for the newest version (published next to mdm-browser.apk).
+        resValue("string", "update_url", System.getenv("GITHUB_REPOSITORY")?.let { "https://github.com/$it/releases/download/latest/browser-version.json" } ?: "")
     }
 
     // The same key as the other family apps (the Agent lets only those talk to it).

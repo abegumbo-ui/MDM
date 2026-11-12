@@ -31,6 +31,8 @@ jobs:
           java -cp json.jar:out com.familymdm.agent.sitepolicy.SitePolicyCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SkinMask.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/NudeDetect.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SkinMaskCheck.java
           java -cp out com.familymdm.agent.sitepolicy.SkinMaskCheck
+          javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BadSearch.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockedPage.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/BadSearchCheck.java
+          java -cp json.jar:out com.familymdm.agent.sitepolicy.BadSearchCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockList.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/BlockListCheck.java
           java -cp out com.familymdm.agent.sitepolicy.BlockListCheck
           mkdir -p out2

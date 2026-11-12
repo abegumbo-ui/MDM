@@ -230,7 +230,7 @@ public class BrowserAddonActivity extends Activity {
         }
         // Moderate / Strict filter: everything opens except blocked categories, but only once the lists
         // are downloaded and verified; until then this stays "approved sites only".
-        if (WebFilter.active(this)) {
+        if (WebFilter.levelActive(this)) {
             String host = SitePolicy.hostOf(url);
             if (host != null && !WebFilter.blocks(this, host)) {
                 hideOverlay();

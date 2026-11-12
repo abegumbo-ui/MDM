@@ -76,6 +76,11 @@ class SettingsActivity : AppCompatActivity() {
             // those two switches are not offered.
             findPreference<Preference>("key_javascript")?.isVisible = false
             findPreference<Preference>("key_web_debugging")?.isVisible = false
+            // Updates: on a phone run by the MDM app, the MDM app updates the Browser.
+            findPreference<Preference>("key_check_update")?.setOnPreferenceClickListener {
+                activity?.let { a -> com.familymdm.browser.Updater.check(a, true) }
+                true
+            }
 
             findPreference<Preference>("key_home_page")?.let {
                 it.onPreferenceChangeListener = this
