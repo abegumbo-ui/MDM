@@ -159,6 +159,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/access"], /Blocked words \(2\)/);
   assert.match(seen["browser/access"], /Block image search/);
   assert.match(seen["overview/status"], /Ready-made setups/);
+  assert.match(seen["overview/status"], /What.s on for this phone/);
+  assert.match(seen["overview/status"], /Websites: Moderate filter/);
   assert.match(seen["overview/status"], /Kosher phone/);
   assert.match(seen["safety/health"], /Health check/);
   assert.match(seen["safety/msgalerts"], /Message alerts/);
