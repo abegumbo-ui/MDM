@@ -39,6 +39,7 @@ function AsSystem($name, $command) {
     WaitFor "$name to finish" 300 { (schtasks.exe /query /tn $name /fo csv /nh) -notmatch 'Running' } | Out-Null
     schtasks.exe /delete /tn $name /f | Out-Null
 }
+function TaskExists($n) { cmd.exe /c "schtasks /query /tn `"$n`" >nul 2>&1"; return ($LASTEXITCODE -eq 0) }
 function Svc() { Get-Service LockGuard -ErrorAction SilentlyContinue }
 function LoopbackDns() { [bool](Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses -contains '127.0.0.1' }) }
 function ShowLogs() {
@@ -60,7 +61,7 @@ Check ((Svc).Status -eq 'Running') 'LockGuard is running'
 Check (WaitFor 'lookups pointed at the filter' 90 { LoopbackDns }) 'lookups go through the filter (127.0.0.1)'
 Check (WaitFor 'lookups through the filter' 90 { Lookup $null }) 'lookups work through the filter'
 Check (-not (Lookup '8.8.8.8')) 'going around the filter (8.8.8.8) is blocked'
-Check ([bool](schtasks.exe /query /tn 'LockGuard Guard' 2>$null)) 'the guard task exists'
+Check ((TaskExists 'LockGuard Guard')) 'the guard task exists'
 
 Step 'Update to build 2, the way the updater does it (a system task)'
 AsSystem 'E2EUpdate' "`"$Dir\LockGuard-Setup-2.exe`" /quiet"
@@ -92,7 +93,7 @@ Check ($rm.HasExited) 'the removal script finished'
 Check (WaitFor 'LockGuard to be removed' 60 { -not (Svc) }) 'LockGuard is removed'
 Check (WaitFor 'normal lookups' 60 { (-not (LoopbackDns)) -and (Lookup $null) }) 'normal lookups work'
 Check (Lookup '8.8.8.8') 'lookups straight to 8.8.8.8 work again'
-Check (-not (schtasks.exe /query /tn 'LockGuard Guard' 2>$null)) 'the guard is gone too'
+Check (-not (TaskExists 'LockGuard Guard')) 'the guard is gone too'
 Check (-not (Test-Path (Join-Path $env:ProgramFiles 'LockGuard\Service'))) 'no program files left'
 
 ShowLogs
