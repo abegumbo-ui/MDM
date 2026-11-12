@@ -44,6 +44,16 @@ class MenuDialog(
 
     private val addToHomeScreenButton by lazy { view.findViewById<LinearLayout>(R.id.addToHomeScreenButton) }
     private val findInPageButton by lazy { view.findViewById<LinearLayout>(R.id.findInPageButton) }
+    private val adsButton by lazy { view.findViewById<LinearLayout>(R.id.adsButton) }
+    private val adsButtonText by lazy { view.findViewById<android.widget.TextView>(R.id.adsButtonText) }
+
+    /** "Show ads on this page (covered)" / "Block ads on this page"; null hides it (ads not blocked). */
+    var adsLabel: String? = null
+        set(value) {
+            field = value
+            adsButton.visibility = if (value == null) View.GONE else View.VISIBLE
+            if (value != null) adsButtonText.text = value
+        }
     private val desktopViewSwitch by lazy { view.findViewById<MaterialSwitch>(R.id.desktopViewSwitch) }
     private val printButton by lazy { view.findViewById<LinearLayout>(R.id.printButton) }
     private val desktopShortcutsButton by lazy {
@@ -83,6 +93,7 @@ class MenuDialog(
         DOWNLOADS,
         ADD_TO_HOME_SCREEN,
         FIND_IN_PAGE,
+        ADS,
         DESKTOP_VIEW,
         PRINT,
         DESKTOP_SHORTCUTS,
@@ -106,6 +117,7 @@ class MenuDialog(
 
         addToHomeScreenButton.setOnClickListener { triggerOption(Option.ADD_TO_HOME_SCREEN) }
         findInPageButton.setOnClickListener { triggerOption(Option.FIND_IN_PAGE) }
+        adsButton.setOnClickListener { triggerOption(Option.ADS) }
         desktopViewSwitch.apply {
             isChecked = desktopMode
             setOnCheckedChangeListener { _, _ -> triggerOption(Option.DESKTOP_VIEW) }
@@ -117,6 +129,10 @@ class MenuDialog(
     }
 
     fun showAsDropdownMenu(anchor: View, isReachMode: Boolean = false) {
+        view.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
         val xOffset = anchor.width - view.measuredWidth
         val yOffset = if (isReachMode) {
             -(anchor.height + view.measuredHeight)

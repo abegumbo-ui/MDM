@@ -60,6 +60,21 @@ class WebViewExt @JvmOverloads constructor(
         }
     }
 
+    /** The site of the page shown (for "ads load but are covered"). */
+    @Volatile
+    var pageHost: String? = null
+
+    /** The watcher (adblock_detect.js) says this page will not open with ads blocked. */
+    inner class AdsBridge {
+        @android.webkit.JavascriptInterface
+        fun blocked(host: String?) {
+            if (Guard.noticedAdBlockWall(context, host, pageHost)) post {
+                android.widget.Toast.makeText(context, "This site will not open with ads blocked: its ads now load, covered in black.", android.widget.Toast.LENGTH_LONG).show()
+                reload()
+            }
+        }
+    }
+
     /** The page is an allowed YouTube channel or video: its pictures and videos show as they are. */
     @Volatile
     var trustedPage = false
@@ -109,6 +124,7 @@ class WebViewExt @JvmOverloads constructor(
         settings.blockNetworkImage = decision.blockImages
         settings.loadsImagesAutomatically = !decision.blockImages
         trustedPage = decision.trusted
+        pageHost = android.net.Uri.parse(url).host
         super.loadUrl(url, this.requestHeaders)
     }
 
@@ -171,6 +187,7 @@ class WebViewExt @JvmOverloads constructor(
             this.requestHeaders[HEADER_DNT] = "1"
         }
 
+        addJavascriptInterface(AdsBridge(), "MdmAds")
         if (settings.javaScriptEnabled) {
             addJavascriptInterface(
                 JsSyncUrl(urlBarLayout, activity),

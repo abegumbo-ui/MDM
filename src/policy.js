@@ -558,6 +558,10 @@ export function normalizeConfig(input) {
     blockAds: c.blockAds === true,
     // The YouTube add-on (its own icon in the MDM app) and what YouTube shows when it is turned off.
     youtubeAddon: c.youtubeAddon === true,
+    // Sites that will not open with ads blocked: their ads load but are covered (our Browser).
+    adsCoveredSites: [...new Set(normalizeDnsAllowlist(c.adsCoveredSites).map((h) => h.replace(/^www\./, "")))],
+    // Our Browser notices such sites by itself (on unless switched off).
+    adsAutoCoverOff: c.adsAutoCoverOff === true,
     youtubeOffMessage: typeof c.youtubeOffMessage === "string" ? c.youtubeOffMessage.trim().slice(0, 200) : "",
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
     pauseUntil: Number.isFinite(Number(c.pauseUntil)) && Number(c.pauseUntil) > 0 ? Math.floor(Number(c.pauseUntil)) : 0,
@@ -808,6 +812,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.browserLook = cfg.browserLook;
   out.blockAds = cfg.blockAds;
   out.youtubeAddon = cfg.youtubeAddon;
+  out.adsCoveredSites = cfg.adsCoveredSites;
+  out.adsAutoCover = !cfg.adsAutoCoverOff;
   out.youtubeOffMessage = cfg.youtubeOffMessage;
   out.pauseUntil = cfg.pauseUntil;
   out.internetOffUntil = cfg.internetOffUntil;

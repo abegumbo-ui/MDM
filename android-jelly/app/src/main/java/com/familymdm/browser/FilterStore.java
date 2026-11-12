@@ -41,6 +41,7 @@ final class FilterStore {
     private static volatile boolean refreshing;
     // Lists opened for the current tier+manifest, or null when not (yet) usable.
     private static List<BlockList> loaded;
+    private static List<String> loadedNames; // the category of each loaded list (to leave "ads" out)
     private static String loadedFor = "";
 
     private static SharedPreferences prefs(Context c) {
@@ -275,8 +276,11 @@ final class FilterStore {
         Map<String, JSONObject> need = needed(c);
         if (need == null) return;
         List<BlockList> out = new ArrayList<>();
+        List<String> names = new ArrayList<>();
         try {
-            for (JSONObject cat : need.values()) {
+            for (Map.Entry<String, JSONObject> e : need.entrySet()) {
+                JSONObject cat = e.getValue();
+                names.add(e.getKey());
                 String file = cat.getString("file");
                 File f = new File(dir(c), file);
                 // Only a file that was fully downloaded and checked against the published checksum
@@ -289,6 +293,63 @@ final class FilterStore {
             return;
         }
         loaded = out;
+        loadedNames = names;
+    }
+
+    /** Same as blocks(), but ignoring the ad list (a site whose ads load, covered). */
+    static boolean blocksExceptAds(Context c, String host) {
+        List<BlockList> l;
+        List<String> n;
+        synchronized (LOCK) {
+            ensureLoaded(c);
+            l = loaded;
+            n = loadedNames;
+        }
+        if (l == null || n == null) return false;
+        for (int i = 0; i < l.size(); i++) {
+            if ("ads".equals(n.get(i))) continue;
+            if (BlockList.anyBlocks(java.util.Collections.singletonList(l.get(i)), host)) return true;
+        }
+        return false;
+    }
+
+    // ---------- sites whose ads load but are covered ----------
+
+    /** Sites where ads load but are covered: from the dashboard, plus the ones set on this phone. */
+    static void setCoveredFromDashboard(Context c, String[] sites) {
+        StringBuilder b = new StringBuilder();
+        if (sites != null) for (String s : sites) if (s != null && !s.trim().isEmpty()) b.append(s.trim().toLowerCase(java.util.Locale.ROOT)).append('\n');
+        prefs(c).edit().putString("adsCoveredDash", b.toString()).apply();
+    }
+
+    static java.util.Set<String> coveredHere(Context c) {
+        java.util.Set<String> s = new java.util.TreeSet<>();
+        for (String x : prefs(c).getString("adsCoveredLocal", "").split("\n")) if (!x.isEmpty()) s.add(x);
+        return s;
+    }
+
+    static void setCoveredHere(Context c, String host, boolean on) {
+        java.util.Set<String> s = coveredHere(c);
+        String h = host.toLowerCase(java.util.Locale.ROOT).replaceFirst("^www\\.", "").replaceFirst("^m\\.", "");
+        if (on) s.add(h); else s.remove(h);
+        prefs(c).edit().putString("adsCoveredLocal", String.join("\n", s)).apply();
+    }
+
+    static boolean adsCovered(Context c, String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(java.util.Locale.ROOT);
+        String all = prefs(c).getString("adsCoveredDash", "") + "\n" + prefs(c).getString("adsCoveredLocal", "");
+        for (String s : all.split("\n")) if (!s.isEmpty() && (h.equals(s) || h.endsWith("." + s))) return true;
+        return false;
+    }
+
+    /** "Notice sites that refuse to open with ads blocked" (on unless switched off on the dashboard). */
+    static void setAdsAutoCover(Context c, boolean on) {
+        prefs(c).edit().putBoolean("adsAutoCover", on).apply();
+    }
+
+    static boolean adsAutoCover(Context c) {
+        return prefs(c).getBoolean("adsAutoCover", true);
     }
 
     // ---------- downloading ----------

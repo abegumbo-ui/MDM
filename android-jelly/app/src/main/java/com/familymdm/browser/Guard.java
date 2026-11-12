@@ -94,6 +94,8 @@ public final class Guard {
             FilterStore.setNoPictureSites(c, b.getStringArray("noPictureSites"));
             FilterStore.setSkinWho(c, b.getString("skinWho", "all"));
             FilterStore.setBlockAds(c, b.getBoolean("blockAds", false));
+            FilterStore.setCoveredFromDashboard(c, b.getStringArray("adsCoveredSites"));
+            FilterStore.setAdsAutoCover(c, b.getBoolean("adsAutoCover", true));
             FilterStore.setYoutubeOffMessage(c, b.getString("youtubeOffMessage", ""));
         } else if (m == Mode.ONLINE) {
             sync(c, false);
@@ -146,6 +148,7 @@ public final class Guard {
                 info.put("filter", FilterStore.status(c));
                 info.put("picture", FilterStore.pictureGuard(c));
                 info.put("app", "jelly");
+                info.put("adsCovered", new JSONArray(FilterStore.coveredHere(c))); // set on this phone (menu, or noticed)
                 body.put("info", info);
                 JSONArray visited = takeVisited();
                 body.put("visited", visited);
@@ -174,6 +177,11 @@ public final class Guard {
                 FilterStore.setNoPictureSites(c, npSites);
                 FilterStore.setSkinWho(c, f == null ? "all" : f.optString("skinWho", "all"));
                 FilterStore.setBlockAds(c, f != null && f.optBoolean("blockAds", false));
+                JSONArray ac = f == null ? null : f.optJSONArray("adsCoveredSites");
+                String[] acSites = new String[ac == null ? 0 : ac.length()];
+                for (int i = 0; i < acSites.length; i++) acSites[i] = ac.optString(i);
+                FilterStore.setCoveredFromDashboard(c, acSites);
+                FilterStore.setAdsAutoCover(c, f == null || f.optBoolean("adsAutoCover", true));
                 FilterStore.setYoutubeOffMessage(c, f == null ? "" : f.optString("youtubeOffMessage", ""));
                 FilterStore.refreshAsync(c, false);
             } catch (Exception ignored) {
@@ -425,18 +433,57 @@ public final class Guard {
 
     /** "Block ads" on YouTube: the script that takes the ads out (run before YouTube's own), or null. */
     public static String adBlockScript(Context ctx) {
-        return FilterStore.blockAds(ctx.getApplicationContext()) ? com.familymdm.agent.sitepolicy.YoutubeScripts.adBlock() : null;
+        Context c = ctx.getApplicationContext();
+        return FilterStore.blockAds(c) && !FilterStore.adsCovered(c, "youtube.com") ? com.familymdm.agent.sitepolicy.YoutubeScripts.adBlock() : null;
+    }
+
+    /** For a page: ads covered (a site that refuses ad blocking), or the watcher that notices such a site; or null. */
+    public static String adsPageScript(Context ctx, String pageHost) {
+        Context c = ctx.getApplicationContext();
+        if (!FilterStore.blockAds(c) || pageHost == null) return null;
+        if (FilterStore.adsCovered(c, pageHost)) return com.familymdm.agent.sitepolicy.YoutubeScripts.load("ads_cover.js");
+        return FilterStore.adsAutoCover(c) ? com.familymdm.agent.sitepolicy.YoutubeScripts.load("adblock_detect.js") : null;
+    }
+
+    /** The page said it will not open with ads blocked: its ads load from now on, covered. True to reload. */
+    public static boolean noticedAdBlockWall(Context ctx, String reportedHost, String pageHost) {
+        Context c = ctx.getApplicationContext();
+        if (pageHost == null || reportedHost == null || !FilterStore.blockAds(c) || !FilterStore.adsAutoCover(c)) return false;
+        if (!pageHost.equalsIgnoreCase(reportedHost) || FilterStore.adsCovered(c, pageHost)) return false;
+        FilterStore.setCoveredHere(c, pageHost, true);
+        sync(c, true);
+        return true;
+    }
+
+    /** The ⋮ menu: "Show ads on this page (covered)" / "Block ads on this page", or null when ads are not blocked. */
+    public static String adsMenuLabel(Context ctx, String pageHost) {
+        Context c = ctx.getApplicationContext();
+        if (!FilterStore.blockAds(c) || pageHost == null) return null;
+        return FilterStore.adsCovered(c, pageHost) ? "Block ads on this page" : "Show ads on this page (covered)";
+    }
+
+    public static void toggleAdsHere(Context ctx, String pageHost) {
+        Context c = ctx.getApplicationContext();
+        if (pageHost == null) return;
+        FilterStore.setCoveredHere(c, pageHost, !FilterStore.adsCovered(c, pageHost));
+        sync(c, true);
     }
 
     public static WebResourceResponse intercept(Context ctx, WebResourceRequest request) {
+        return intercept(ctx, request, null);
+    }
+
+    /** pageHost: the site the page is on (its ads may be allowed, covered). */
+    public static WebResourceResponse intercept(Context ctx, WebResourceRequest request, String pageHost) {
         Context c = ctx.getApplicationContext();
         try {
             String url = request.getUrl().toString();
             String host = SitePolicy.hostOf(url);
-            boolean filterBlocks = FilterStore.active(c) && host != null && FilterStore.blocks(c, host)
+            boolean covered = FilterStore.adsCovered(c, pageHost);
+            boolean filterBlocks = FilterStore.active(c) && host != null && (covered ? FilterStore.blocksExceptAds(c, host) : FilterStore.blocks(c, host))
                     && SitePolicy.matching(url, sites(c)) == null && !(mode(c) == Mode.AGENT && browseWindow(c));
             if (filterBlocks) return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
-            if (FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
+            if (!covered && FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
             String guard = FilterStore.pictureGuard(c);
             if (!"off".equals(guard) && !FilterStore.blockImages(c) && PictureGuard.isPicture(request) && !isAllowedVideoThumb(c, url))
                 return PictureGuard.handle(c, request, guard);

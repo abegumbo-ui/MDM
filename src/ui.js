@@ -1224,6 +1224,22 @@ function renderBlockAds(m,dv){const c=dv.config;if(dv.isWindows)return;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block ads'),
   h('div',{class:'mute small'},dv.isBrowser?'No ads on web pages in this Browser, and no ads on YouTube (before or during videos, banners, promoted videos). Best effort on YouTube: it changes its pages from time to time.':'Ad servers are blocked in every app and browser on the phone, on every level (Chrome, Samsung Internet and the rest too). YouTube\'s own ads are removed in our Browser, the YouTube app, and Chrome with Inspection. A few apps may show empty boxes where ads were; switch it off if one stops working.')),
   sw(c.blockAds,async function(on){c.blockAds=on;try{await saveConfigFor(dv,on?'Ads blocked from the next check-in.':'Ads allowed again.')}catch(e){snack(e.message,1)}render()}))))}
+/** Sites that will not open with ads blocked: their ads load, covered in black (our Browser). */
+function renderAdsCovered(m,dv){const c=dv.config;if(dv.isWindows||!c.blockAds)return;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'Sites that refuse ad blocking'),
+  h('div',{class:'mute'},'Some sites will not open while ads are blocked. On these, the ads load so the site works, but every ad is covered in black and cannot be tapped. In our Browser; the ⋮ menu there also has "Show ads on this page (covered)".'));
+ card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Notice them automatically'),
+  h('div',{class:'mute'},'When a page says "turn off your ad blocker", the Browser switches that site to covered ads and reloads it by itself.')),
+  sw(!c.adsAutoCoverOff,function(on){c.adsAutoCoverOff=!on;save(on?'The Browser notices such sites by itself.':'Only the sites listed here.')})));
+ const inp=h('input',{type:'text',class:'grow',placeholder:'e.g. example-news.com'});
+ card.append(h('div',{class:'row',style:'margin-top:8px'},inp,btn('Add','tonal',function(){const host=hostOfUrl(inp.value.trim()).replace(/^www\./,'');if(!host)return;
+  c.adsCoveredSites=[...new Set([...(c.adsCoveredSites||[]),host])];save('Ads on '+host+' load, covered.')})));
+ for(const s of (c.adsCoveredSites||[]))card.append(h('div',{class:'row',style:'margin:6px 0'},h('span',{class:'grow'},s),btn('Block ads again','outline',function(){c.adsCoveredSites=(c.adsCoveredSites||[]).filter(function(x){return x!==s});save('Ads on '+s+' are blocked again.')})));
+ const local=(dv.info&&dv.info.adsCovered)||[];
+ if(local.length){card.append(h('div',{style:'margin-top:12px;font-weight:500'},'Switched on the phone'),h('div',{class:'mute small'},'Noticed by the Browser, or chosen in its ⋮ menu. They can be switched back from the same menu.'));
+  for(const s of local)card.append(h('div',{class:'row',style:'margin:6px 0'},h('span',{class:'grow'},s),(c.adsCoveredSites||[]).includes(s)?null:btn('Keep on the list','outline',function(){c.adsCoveredSites=[...new Set([...(c.adsCoveredSites||[]),s])];save('Kept.')})))}
+ m.append(card)}
 function renderImageSearch(m,dv){const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block image search'),
   h('div',{class:'mute small'},'The "Images" tab of Google, Bing and DuckDuckGo is refused; normal searches keep working. '+(dv.isBrowser?'Applies to this browser.':'In our own browsers always. In Chrome and other browsers only with Inspection on (the last tab).'))),
@@ -1672,7 +1688,7 @@ function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
  else if(sub==='youtube')renderYoutube(m,dv);
- else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
+ else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderAdsCovered(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='history')renderSitesVisited(m,dv);
  else if(sub==='sites')renderSites(m,dv,'sites');
  else if(sub==='apps'){renderInAppBrowsers(m,dv);renderSites(m,dv,'apps')}
@@ -1982,7 +1998,7 @@ function renderBrowserDetail(m,b){
  const content=h('div',{class:'content'});
  const requests=function(){renderRequestsCard(content,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b)};
  if(sec==='overview'){renderBrowserGlance(content,b);requests();renderBrowserSitesOpened(content,b)}
- else if(sec==='web'){renderWebAccess(content,b);renderBrowserSwitches(content,b);renderBlockAds(content,b);renderBlockedWords(content,b);renderImageSearch(content,b)}
+ else if(sec==='web'){renderWebAccess(content,b);renderBrowserSwitches(content,b);renderBlockAds(content,b);renderAdsCovered(content,b);renderBlockedWords(content,b);renderImageSearch(content,b)}
  else if(sec==='youtube')renderYoutube(content,b);
  else if(sec==='pictures'){renderSearchPictures(content,b);renderNoPictureSites(content,b)}
  else if(sec==='sites'){requests();renderSitesEditor(content,b)}
