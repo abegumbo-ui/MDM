@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tapblock_description">Lockdown uses this only for Tap to block: it closes the screens and covers the parts of apps you picked. It does not read or keep what is on the screen otherwise.</string>
+</resources>
