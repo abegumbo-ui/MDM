@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
+import { endSitesEarly, buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -283,4 +283,20 @@ test("sites allowed for a while: sent with their end time, dropped once it is up
   assert.deepEqual(sites.map((s) => s.host).sort(), ["always.example", "games.example"]);
   assert.equal(sites.find((s) => s.host === "games.example").until, soon);
   assert.equal(sites.find((s) => s.host === "always.example").until, undefined, "no end time: always");
+});
+
+test("ended early in the Browser's Allow list: ends on the dashboard too, only the exact entry", () => {
+  const now = Date.now(), until = now + 3600e3;
+  const cfg = { sites: {
+    a: { type: "domain", url: "https://games.example", until },
+    b: { type: "domain", url: "https://other.example", until },
+    c: { type: "youtube", id: "@chan", url: "https://www.youtube.com/@chan", until },
+  } };
+  assert.equal(endSitesEarly(cfg, [{ type: "domain", url: "https://games.example", until }, { type: "youtube", id: "@Chan", until }], now), true);
+  assert.equal(cfg.sites.a.until, now);
+  assert.equal(cfg.sites.c.until, now);
+  assert.equal(cfg.sites.b.until, until, "the others are untouched");
+  assert.equal(endSitesEarly(cfg, [{ type: "domain", url: "https://other.example", until: until + 5 }], now), false, "a different end time (allowed again) is not ended");
+  const sent = normalizeSites(cfg.sites).map((s) => s.host);
+  assert.deepEqual(sent, ["other.example"]);
 });

@@ -291,4 +291,55 @@ public class GuardTest {
         String c2 = Guard.coverScript(c, "restricted");
         assertTrue(c2 != null && c2.contains("\"cover\":\"restricted\""));
     }
+
+    private JSONObject site(String host, long until) throws Exception {
+        JSONObject s = new JSONObject().put("type", "domain").put("url", "https://" + host).put("host", host).put("label", host);
+        if (until > 0) s.put("until", until);
+        return s;
+    }
+
+    @Test
+    public void allowList_endEarly_blocksRightAway_isListed_andTheDashboardIsTold() throws Exception {
+        connected("off");
+        long until = System.currentTimeMillis() + 3_600_000L;
+        JSONArray sites = new JSONArray().put(site("games.example", until)).put(site("always.example", 0));
+        BrowserState.setCachedSites(c, sites);
+        Guard.forgetCache();
+        assertTrue("allowed for an hour", Guard.check(c, "https://games.example/play", null).allow);
+        AllowList.Rows r = AllowList.rows(c, Guard.allSites(c));
+        assertEquals(1, r.live.size());
+        assertEquals(1, r.always.size());
+        assertTrue(AllowList.status(c, r.live.get(0)).contains("left"));
+        AllowList.endEarly(c, sites.getJSONObject(0));
+        Guard.forgetCache();
+        assertFalse("ended early: blocked right away", Guard.check(c, "https://games.example/play", null).allow);
+        assertTrue("the rest is untouched", Guard.check(c, "https://always.example/", null).allow);
+        r = AllowList.rows(c, Guard.allSites(c));
+        assertEquals("listed under ended, to ask again", 1, r.done.size());
+        assertEquals("ended", r.done.get(0).state);
+        assertEquals("the dashboard is told", 1, AllowList.endedForServer(c).length());
+        // Allowed again on the dashboard (a new end time): it opens again.
+        sites.getJSONObject(0).put("until", until + 60_000);
+        BrowserState.setCachedSites(c, sites);
+        Guard.forgetCache();
+        assertTrue(Guard.check(c, "https://games.example/play", null).allow);
+    }
+
+    @Test
+    public void allowList_timeIsUp_blocked_andListedForADay() throws Exception {
+        connected("off");
+        long soon = System.currentTimeMillis() + 3_600_000L;
+        BrowserState.setCachedSites(c, new JSONArray().put(site("games.example", soon)));
+        Guard.forgetCache();
+        AllowList.rows(c, Guard.allSites(c)); // seen while it was running
+        long past = System.currentTimeMillis() - 60_000L;
+        BrowserState.setCachedSites(c, new JSONArray().put(site("games.example", past)));
+        Guard.forgetCache();
+        assertFalse("time is up: blocked", Guard.check(c, "https://games.example/", null).allow);
+        AllowList.Rows r = AllowList.rows(c, Guard.allSites(c));
+        assertEquals(1, r.done.size());
+        assertEquals("over", r.done.get(0).state);
+        assertEquals("2 h 5 min left", AllowList.left((2 * 60 + 5) * 60_000L));
+        assertEquals("1 day 3 h left", AllowList.left((27 * 60) * 60_000L));
+    }
 }

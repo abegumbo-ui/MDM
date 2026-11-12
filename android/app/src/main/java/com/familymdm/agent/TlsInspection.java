@@ -96,6 +96,44 @@ final class TlsInspection {
         }
     }
 
+    /** "Only what I allow" on YouTube, for Chrome and the other browsers: the allowed channels and videos, and the scripts for its pages. */
+    private static void youtubeChannels(JSONObject policy) {
+        if (!"channels".equals(policy.optString("youtubeMode", "channels"))) {
+            rules.setYoutubeChannels(null, null, null);
+            return;
+        }
+        try {
+            Set<String> handles = new HashSet<>(), videos = new HashSet<>();
+            JSONArray ch = new JSONArray(), vids = new JSONArray();
+            JSONArray raw = policy.optJSONArray("sites");
+            for (int i = 0; raw != null && i < raw.length(); i++) {
+                JSONObject s = raw.optJSONObject(i);
+                if (s == null || com.familymdm.agent.sitepolicy.SitePolicy.isExpired(s)) continue;
+                String thumb = s.optString("thumb", "");
+                if (!thumb.startsWith("https://")) thumb = "";
+                if ("youtube".equals(s.optString("type"))) {
+                    String h = s.optString("id", "").toLowerCase(Locale.ROOT);
+                    if (!h.matches("@[a-z0-9._-]{3,30}")) continue;
+                    handles.add(h);
+                    ch.put(new JSONObject().put("h", h).put("t", s.optString("label", h).replaceFirst("^YouTube channel ", "")).put("i", thumb));
+                } else {
+                    String u = s.optString("url", ""), host = com.familymdm.agent.sitepolicy.SitePolicy.hostOf(u);
+                    boolean yt = host != null && (com.familymdm.agent.sitepolicy.SitePolicy.isYoutubeHost(host) || "youtu.be".equals(host));
+                    String id = yt ? com.familymdm.agent.sitepolicy.SitePolicy.youtubeVideoId(u) : null;
+                    if (id == null) continue;
+                    videos.add(id);
+                    String t = s.optString("label", "");
+                    vids.put(new JSONObject().put("v", id).put("t", "YouTube video".equals(t) ? "" : t).put("i", thumb));
+                }
+            }
+            String shelf = com.familymdm.agent.sitepolicy.YoutubeScripts.shelf(new JSONObject().put("channels", ch).put("videos", vids).put("ask", false).toString());
+            String cover = com.familymdm.agent.sitepolicy.YoutubeScripts.cover(new JSONObject().put("channels", ch).put("videos", vids).put("cover", "channels").put("guard", true).toString());
+            rules.setYoutubeChannels(handles, videos, (shelf != null ? "<script>" + shelf + "</script>" : "") + (cover != null ? "<script>" + cover + "</script>" : ""));
+        } catch (Exception e) {
+            rules.setYoutubeChannels(java.util.Collections.<String>emptySet(), java.util.Collections.<String>emptySet(), "");
+        }
+    }
+
     private static void updateRules(Context c, JSONObject policy) {
         Set<String> bypass = new HashSet<>();
         for (String d : DEFAULT_BYPASS) bypass.add(d);
@@ -124,6 +162,7 @@ final class TlsInspection {
                 policy.optBoolean("blockImages", false), imagesAllow, words);
         rules.setBlockImageSearch(policy.optBoolean("blockImageSearch", false));
         rules.setYoutubeOff("blocked".equals(policy.optString("youtubeMode", "")));
+        youtubeChannels(policy);
         rules.setStrictSearch("strict".equals(policy.optString("browserFilter", "off")));
         rules.setYoutubeAdBlock(policy.optBoolean("blockAds", false) ? com.familymdm.agent.sitepolicy.YoutubeScripts.adBlock() : null);
         Set<String> noPics = new HashSet<>();

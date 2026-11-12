@@ -154,6 +154,7 @@ public final class Guard {
                 body.put("visited", visited);
                 JSONArray requests = BrowserState.peekSiteRequests(c);
                 body.put("siteRequests", requests);
+                body.put("endedEarly", AllowList.endedForServer(c)); // the dashboard ends them too
                 JSONObject reply = Api.post(server + "/browser/sync", body, token);
                 BrowserState.dropSiteRequests(c, requests.length());
                 visitedSent = true;
@@ -223,7 +224,7 @@ public final class Guard {
     }
 
     /** For the tests: read the site list again right away. */
-    static void forgetCache() {
+    public static void forgetCache() {
         sitesAt = 0;
     }
 
@@ -233,12 +234,7 @@ public final class Guard {
         List<SitePolicy.Site> s = new ArrayList<>();
         try {
             Mode m = mode(c);
-            if (m == Mode.AGENT) {
-                String json = agentBundle(c).getString("sites");
-                if (json != null) s = SitePolicy.parse(new JSONArray(json));
-            } else if (m == Mode.ONLINE) {
-                s = SitePolicy.parse(BrowserState.cachedSites(c));
-            }
+            if (m == Mode.AGENT || m == Mode.ONLINE) s = SitePolicy.parse(rawSites(c));
         } catch (Exception ignored) {
         }
         sitesCache = s;
@@ -518,17 +514,35 @@ public final class Guard {
         }
     }
 
-    /** The allowed list exactly as the dashboard sent it (with pictures and titles). */
-    private static JSONArray rawSites(Context c) {
+    /** The allowed list exactly as the dashboard sent it (with pictures, titles and end times). */
+    public static JSONArray allSites(Context ctx) {
+        Context c = ctx.getApplicationContext();
+        JSONArray a;
         try {
             if (mode(c) == Mode.AGENT) {
                 String json = agentBundle(c).getString("sites");
-                return json == null ? new JSONArray() : new JSONArray(json);
+                a = json == null ? new JSONArray() : new JSONArray(json);
+            } else {
+                a = BrowserState.cachedSites(c);
             }
-            return BrowserState.cachedSites(c);
         } catch (Exception e) {
-            return new JSONArray();
+            a = new JSONArray();
         }
+        if (a == null) a = new JSONArray();
+        AllowList.remember(c, a);
+        return a;
+    }
+
+    /** What is allowed right now: without what was allowed for a while and is over, or was ended early. */
+    private static JSONArray rawSites(Context c) {
+        JSONArray all = allSites(c), out = new JSONArray();
+        JSONObject ended = AllowList.endedMap(c);
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject s = all.optJSONObject(i);
+            if (s == null || SitePolicy.isExpired(s) || AllowList.endedEarly(ended, s)) continue;
+            out.put(s);
+        }
+        return out;
     }
 
     /** A YouTube thumbnail (i.ytimg.com/vi/ID/...) of an allowed video: shown as it is. */
@@ -613,6 +627,20 @@ public final class Guard {
 
     // ---------- our own pages and their buttons ----------
 
+    /** Asks the parent for an address (with an optional note): through the MDM app, or straight to the dashboard. */
+    public static void sendRequest(Context ctx, String target, String note) {
+        Context c = ctx.getApplicationContext();
+        if (mode(c) == Mode.AGENT) {
+            try {
+                c.sendBroadcast(new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", target).putExtra("note", note == null ? "" : note), "com.familymdm.agent.permission.BROWSER");
+            } catch (Exception ignored) {
+            }
+        } else {
+            BrowserState.addSiteRequest(c, target, note);
+            sync(c, true);
+        }
+    }
+
     public static void showPage(WebView v, String url, String html) {
         // The address bar shows the address that was tried, not "about:blank".
         if (v instanceof PageHost) ((PageHost) v).showingPageFor(url != null && url.startsWith("http") ? url : null);
@@ -633,17 +661,7 @@ public final class Guard {
             case "request": {
                 String target = u.getQueryParameter("u");
                 String note = u.getQueryParameter("note");
-                if (!TextUtils.isEmpty(target)) {
-                    if (mode(c) == Mode.AGENT) {
-                        try {
-                            c.sendBroadcast(new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", target).putExtra("note", note == null ? "" : note), "com.familymdm.agent.permission.BROWSER");
-                        } catch (Exception ignored) {
-                        }
-                    } else {
-                        BrowserState.addSiteRequest(c, target, note);
-                        sync(c, true);
-                    }
-                }
+                if (!TextUtils.isEmpty(target)) sendRequest(c, target, note);
                 showPage(v, null, page("Sent", "Your parent sees the request on the dashboard. Once it is allowed, the page opens.", homeButton()));
                 return true;
             }
