@@ -517,6 +517,7 @@ final class PhoneRules {
         }
         toggle(a, card, c, "blockWaStatus", "WhatsApp: close Status", "Watching other people's statuses. Chats and calls keep working.", rebuild);
         toggle(a, card, c, "blockWaChannels", "WhatsApp: close Channels", "Following and reading channels.", rebuild);
+        if (!off) toggle(a, card, c, "waTextOnly", "WhatsApp: text and calls only", "No photos, videos or voice messages (their servers are blocked).", rebuild);
         card.addView(Ui.body(a, "Single apps: Apps tab above (Allow, Block, Schedule).", true));
     }
 
