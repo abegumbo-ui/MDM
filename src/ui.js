@@ -1269,7 +1269,7 @@ function renderWhatsApp(m,dv){
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
  const row=function(key,title,desc){return h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc)),sw(c[key],function(v){c[key]=v;save(v?'Saved. Applies at the next check-in.':'Allowed again.')}))};
  const card=h('div',{class:'card'},h('h2',null,'WhatsApp'),h('div',{class:'mute'},'Chats, groups and calls keep working. These close parts of WhatsApp the moment they open. They work by the name of WhatsApp\'s screens, so a WhatsApp update can stop them working until we adjust; the phone log says "Closed WhatsApp Status" each time it works.'),
-  row('blockWaStatus','Close Status','Watching other people\'s statuses.'),row('blockWaChannels','Close Channels','Following and reading channels.'));
+  row('blockWaStatus','Close Status','Watching other people\'s statuses.'),row('blockWaChannels','Close Channels','Following and reading channels.'),row('waTextOnly','Text and calls only','No photos, videos or voice messages: WhatsApp\'s media servers are blocked. Test it on the phone first: send yourself a text and a photo.'));
  if((c.blockWaStatus||c.blockWaChannels)&&on===false)card.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--warn)'},'One step left on the phone: tap the notification "Finish setting up: turn on MDM Agent" and switch it on.'));
  m.append(card)}
 

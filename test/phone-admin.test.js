@@ -80,3 +80,12 @@ test("school time is kept, and the Check in button is a phone menu choice", asyn
   const { USER_MENU } = await import("../src/policy.js");
   assert.ok(USER_MENU.checkin);
 });
+
+test("WhatsApp text and calls only blocks exactly the media servers, not the chat ones", async () => {
+  const { WA_MEDIA_HOSTS } = await import("../src/policy.js");
+  const pol = buildAgentPolicy(normalizeConfig({ waTextOnly: true, dnsBlocklist: ["bad.com"] }), []);
+  for (const h of WA_MEDIA_HOSTS) assert.ok(pol.dnsBlocklist.includes(h), h);
+  assert.ok(pol.dnsBlocklist.includes("bad.com"), "the parent's own list is kept");
+  assert.ok(!pol.dnsBlocklist.some((h) => h === "cdn.whatsapp.net" || h === "whatsapp.net"), "never the chat servers");
+  assert.ok(!buildAgentPolicy(normalizeConfig({}), []).dnsBlocklist.includes("mmg.whatsapp.net"));
+});

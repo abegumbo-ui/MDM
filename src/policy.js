@@ -565,6 +565,8 @@ export function normalizeConfig(input) {
     // WhatsApp: close Status (watching statuses) and/or Channels; chats and calls keep working.
     blockWaStatus: c.blockWaStatus === true,
     blockWaChannels: c.blockWaChannels === true,
+    // WhatsApp for text and calls only: its photo / video / voice-message servers are blocked (see WA_MEDIA_HOSTS).
+    waTextOnly: c.waTextOnly === true,
     // Message alerts: worrying words in chats on the screen (and in texts) are sent to the parent. The child is told.
     messageAlerts: c.messageAlerts === true,
     messageGroups: [...new Set((Array.isArray(c.messageGroups) ? c.messageGroups : Object.keys(MESSAGE_WORD_GROUPS)).filter((g) => Object.prototype.hasOwnProperty.call(MESSAGE_WORD_GROUPS, g)))],
@@ -787,6 +789,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.inAppBrowsers = cfg.inAppBrowsers;
   out.blockWaStatus = cfg.blockWaStatus;
   out.blockWaChannels = cfg.blockWaChannels;
+  if (cfg.waTextOnly) out.dnsBlocklist = [...new Set([...(out.dnsBlocklist || []), ...WA_MEDIA_HOSTS])];
   out.messageAlerts = cfg.messageAlerts;
   out.blockedParts = cfg.blockedParts;
   out.messageWords = cfg.messageAlerts ? messageWordList(cfg) : [];
@@ -859,6 +862,7 @@ export function summarizeConfigChange(before, after) {
   if (JSON.stringify(before.blockedParts || []) !== JSON.stringify(after.blockedParts || [])) lines.push("Blocked parts of apps: " + (after.blockedParts || []).length);
   if (!!before.messageAlerts !== !!after.messageAlerts) lines.push("Message alerts: " + (after.messageAlerts ? "on" : "off"));
   if (JSON.stringify(before.messageWords || []) !== JSON.stringify(after.messageWords || []) || JSON.stringify(before.messageGroups || null) !== JSON.stringify(after.messageGroups || null)) lines.push("Message alert words changed");
+  if (!!before.waTextOnly !== !!after.waTextOnly) lines.push("WhatsApp photos, videos and voice messages: " + (after.waTextOnly ? "blocked" : "allowed"));
   if (!!before.blockWaChannels !== !!after.blockWaChannels) lines.push("WhatsApp Channels: " + (after.blockWaChannels ? "closed" : "allowed"));
   if (!!before.reportContacts !== !!after.reportContacts) lines.push("Contacts shown on the dashboard: " + (after.reportContacts ? "on" : "off"));
   if (!!before.syncContacts !== !!after.syncContacts) lines.push("Allowed numbers in the phone's contacts: " + (after.syncContacts ? "on" : "off"));
@@ -973,3 +977,10 @@ export function normalizeBlockedParts(v) {
   }
   return out;
 }
+
+/**
+ * WhatsApp's media servers (photos, videos, voice messages), from network admins' reports (Symantec,
+ * Broadcom, Fortinet, Meraki threads). Only these exact names (and what is under them): the wider
+ * cdn.whatsapp.net also holds chat.cdn.whatsapp.net, which carries the text itself in some places.
+ */
+export const WA_MEDIA_HOSTS = ["mmg.whatsapp.net", "mmg-fna.whatsapp.net", "mmx-ds.cdn.whatsapp.net"];

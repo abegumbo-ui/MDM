@@ -369,3 +369,9 @@ Dashboard: the **Calls & texts** group.
 
 1. Put a number under Calls & texts → Who can call, then Lock for 5 minutes. The lock screen shows **Call <name>**; tapping it opens the phone app with the number ready.
 
+
+## 7q. WhatsApp text and calls only (TEST BEFORE RELYING ON IT)
+
+1. Apps → Apps → WhatsApp → **Text and calls only** on. After a check-in, from your own phone send the child a text, a photo and a voice message.
+   You should see: the text arrives; the photo and voice message do not download. If texts stop too, switch it off at once and tell me.
+
