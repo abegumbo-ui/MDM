@@ -767,7 +767,7 @@ function renderDeviceDetail(m,d){
  const tmg=h('section');buildTimeGroup(tmg,d);
  const devg=h('section');buildDeviceGroup(devg,d);
  const safety={health:h('section'),msgalerts:h('section'),screenshots:h('section')};
- renderHealth(safety.health,d);renderMsgAlerts(safety.msgalerts,d);renderScreenshots(safety.screenshots,d);
+ renderHealth(safety.health,d);renderMsgAlerts(safety.msgalerts,d);renderNudityAlerts(safety.msgalerts,d);renderScreenshots(safety.screenshots,d);
  const body={overview:{status:ov,messages:msgs,log:lg},safety:safety,apps:ap,time:tmg,browser:brg,calls:callsg,internet:internet,security:lk,device:devg};
 
  // ----- search: every group and tab -----
@@ -2274,6 +2274,19 @@ function renderHealth(m,d){
  okRow(i.accessibility,'Accessibility switch on');okRow(i.batteryUnrestricted,'Battery saver leaves it alone');okRow(i.screenLock,'Screen lock set');okRow(i.usageAccess,'Usage access on (screen time can count)');
  m.append(card)}
 
+/** Photo alerts: new photos are checked on the phone; only a line of text comes here, never the photo. */
+function renderNudityAlerts(m,dv){
+ const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Photo alerts (nudity)'),
+  h('div',{class:'mute small'},'Every new photo saved on the phone (camera, WhatsApp and other chats, downloads, screenshots) is checked on the phone itself. If one may show nudity you get an alert saying when and in which folder. The photo is never sent to you or anyone: sending it would mean sending a nude picture of a child.')),
+  sw(c.nudityAlerts,function(on){c.nudityAlerts=on;save(on?'Photo alerts on. The phone tells the child that this is on.':'Photo alerts off.')})));
+ card.append(h('div',{class:'mute small',style:'margin-top:6px'},'Good to know: the child is told this is on. Only photos saved from now on are checked, not videos, and not photos that are only looked at without being saved. Like every such checker it is sometimes wrong both ways. A dashboard screenshot that may show nudity is never sent, whether this is on or not.'));
+ const list=(dv.nudityAlerts||[]).slice().reverse();
+ if(list.length){card.append(h('div',{style:'margin-top:10px;font-weight:500'},'Alerts ('+list.length+')'));
+  for(const x of list.slice(0,50))card.append(h('div',{class:'act'},'A photo that may show nudity'+(x.folder?' in '+x.folder:'')+' · '+ago(x.at)))}
+ else if(c.nudityAlerts)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No alerts.'));
+ m.append(card)}
 function renderMsgAlerts(m,dv){
  const c=dv.config,groups=state.messageWordGroups||{};
  if(!Array.isArray(c.messageGroups))c.messageGroups=Object.keys(groups);

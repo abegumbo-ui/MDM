@@ -37,7 +37,8 @@ yy, xx = np.mgrid[0:480, 0:640]
 pics.append(np.stack([xx * 255 // 640, yy * 255 // 480, (xx + yy) * 255 // 1120], -1))
 pics.append(rng.integers(0, 256, (400, 300, 3)))
 skin = np.zeros((500, 400, 3)); skin[:] = (60, 90, 140)
-skin[((yy[:500, :400] - 250) ** 2 / 180 ** 2 + (xx[:500, :400] - 200) ** 2 / 120 ** 2) < 1] = (224, 172, 140)
+sy, sx = np.mgrid[0:500, 0:400]
+skin[((sy - 250) ** 2 / 180 ** 2 + (sx - 200) ** 2 / 120 ** 2) < 1] = (224, 172, 140)
 pics.append(skin)
 worst_score, worst_prep = 0.0, 0.0
 for i, p in enumerate(pics):

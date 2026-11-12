@@ -216,6 +216,7 @@ final class PhoneRules {
         if (c.optBoolean("messageAlerts")) rows.add("Message alerts on");
         if (c.optBoolean("recordSearches")) rows.add("Searches kept");
         if (c.optBoolean("recordVideos")) rows.add("YouTube videos listed");
+        if (c.optBoolean("nudityAlerts")) rows.add("Photo alerts on");
         if (c.optInt("locationEvery", 0) > 0) rows.add("Location every " + c.optInt("locationEvery") + " minutes");
         LinearLayout card = Ui.card(a, root);
         card.addView(Ui.titleText(a, "What's on for this phone"));

@@ -77,6 +77,7 @@ public class UserActivity extends Activity {
         if (Monitor.on(this)) lines.add("Worrying words in chats (bullying, sexual, self-harm, drugs) are sent to your parent, with the sentence.");
         if (p.getBoolean("recordSearches", false)) lines.add("What you search for in Google, YouTube and browsers.");
         if (p.getBoolean("recordVideos", false)) lines.add("The names of the YouTube videos you watch.");
+        if (p.getBoolean("nudityAlerts", false)) lines.add("That a new photo may show nudity, and when it was saved. Never the photo itself.");
         if (pol.optBoolean("recordSites", false)) lines.add("Which websites this phone opens.");
         if (pol.optInt("locationEvery", 0) > 0) lines.add("Where the phone is, every " + pol.optInt("locationEvery", 0) + " minutes.");
         if (p.getBoolean("callLog", false)) lines.add("Who you call and who calls you.");

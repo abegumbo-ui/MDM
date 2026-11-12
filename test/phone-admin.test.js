@@ -126,3 +126,21 @@ test("YouTube videos watched are kept only while the switch is on", async () => 
   await sync({ videos: [{ title: "How volcanoes work", at: Date.now() }] });
   assert.deepEqual(((await dev()).videos || []).map((v) => v.title), ["How volcanoes work"]);
 });
+
+test("photo alerts: only a line of text is kept, never a picture, and only while switched on", async () => {
+  const r = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = r.headers.get("set-cookie").split(";")[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Photos" } }) })).json();
+  const sync = async (body) => (await req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) })).json();
+  const dev = async () => (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.info && d.info.model === "Photos");
+  await sync({ nudity: [{ folder: "Camera", score: 95, at: Date.now() }] });
+  assert.equal(((await dev()).nudityAlerts || []).length, 0, "off by default");
+  const s = await sync({ configPatch: { rev: 1, values: { nudityAlerts: true } } });
+  assert.equal(s.policy.nudityAlerts, true);
+  await sync({ nudity: [{ folder: "WhatsApp Images", score: 91, at: Date.now(), jpeg: "A".repeat(500), image: "x" }] });
+  const list = (await dev()).nudityAlerts;
+  assert.equal(list.length, 1);
+  assert.deepEqual(Object.keys(list[0]).sort(), ["at", "folder", "score"], "nothing but when, where and how sure");
+  assert.equal(list[0].folder, "WhatsApp Images");
+});

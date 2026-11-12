@@ -88,6 +88,8 @@ android {
 
 dependencies {
     implementation project(':sitepolicy')
+    // The on-phone photo checker (NudityCheck); the model file comes from the "models" release at build time.
+    implementation 'org.tensorflow:tensorflow-lite:2.16.1'
     // The real Play Store protocol, for PlayUpdates.kt -- see SETUP.md's "Keeping a few apps
     // updated" section. Same open-source library Aurora Store itself is built on.
     implementation 'com.auroraoss:gplayapi:3.4.8'

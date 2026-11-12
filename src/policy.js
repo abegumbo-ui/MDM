@@ -561,6 +561,8 @@ export function normalizeConfig(input) {
     // Keeps what is typed into search boxes (Google, YouTube, browsers...) for the dashboard. The child is told.
     recordSearches: c.recordSearches === true,
     recordVideos: c.recordVideos === true,
+    // Photo alerts: new photos are checked on the phone; only "may show nudity, when, which folder" comes here.
+    nudityAlerts: c.nudityAlerts === true,
     // Web pages inside apps: "off", "tabs" (the browser page an app opens over itself), "all" (also pages built into apps).
     inAppBrowsers: ["tabs", "all"].includes(c.inAppBrowsers) ? c.inAppBrowsers : "off",
     // WhatsApp: close Status (watching statuses) and/or Channels; chats and calls keep working.
@@ -788,6 +790,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.recordSites = cfg.recordSites;
   out.recordSearches = cfg.recordSearches;
   out.recordVideos = cfg.recordVideos;
+  out.nudityAlerts = cfg.nudityAlerts;
   out.inAppBrowsers = cfg.inAppBrowsers;
   out.blockWaStatus = cfg.blockWaStatus;
   out.blockWaChannels = cfg.blockWaChannels;
@@ -871,6 +874,7 @@ export function summarizeConfigChange(before, after) {
   if ((before.inAppBrowsers || "off") !== (after.inAppBrowsers || "off")) lines.push("Web pages inside apps: " + ({ off: "allowed", tabs: "browser pages opened by apps closed", all: "all closed" })[after.inAppBrowsers || "off"]);
   if (JSON.stringify(before.inAppExceptions || []) !== JSON.stringify(after.inAppExceptions || [])) lines.push("Apps allowed web pages: " + (after.inAppExceptions || []).length);
   if (!!before.recordSearches !== !!after.recordSearches) lines.push("Searches list: " + (after.recordSearches ? "on" : "off"));
+  if (!!before.nudityAlerts !== !!after.nudityAlerts) lines.push("Photo alerts: " + (after.nudityAlerts ? "on" : "off"));
   if (!!before.recordVideos !== !!after.recordVideos) lines.push("YouTube videos list: " + (after.recordVideos ? "on" : "off"));
   if (!!before.recordSites !== !!after.recordSites) lines.push("Sites visited list: " + (after.recordSites ? "on" : "off"));
   if (JSON.stringify(normalizeFilterSchedule(before.filterSchedule)) !== JSON.stringify(normalizeFilterSchedule(after.filterSchedule))) {

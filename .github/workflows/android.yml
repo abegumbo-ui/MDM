@@ -62,6 +62,12 @@ jobs:
             exit 1
           fi
           echo "$RELEASE_KEYSTORE_B64" | base64 -d > android/app/release.keystore
+      - name: Get the photo checker model (from the "models" release; without it the app has no photo checker)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p android/app/src/main/assets
+          gh release download models -p nsfw.tflite -D android/app/src/main/assets --clobber || echo "::warning::No photo checker model yet (run the Photo checker model workflow on main)."
       - name: Build release APKs (agent full + agent enroll + browser + lockdown)
         # "Release" build type here just means Gradle's normal release settings (debuggable=false,
         # our own dedicated signing key) -- these still aren't Play Store builds, just sideloaded
