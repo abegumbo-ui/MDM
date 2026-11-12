@@ -124,4 +124,17 @@ public class FilterTests
         var copy = DnsMessage.WithId(safe, DnsMessage.BuildQuery(0x0102, "www.example.com"));
         Assert.Equal(new byte[] { 1, 2 }, copy.Take(2).ToArray());
     }
+
+    [Fact]
+    public void BlockAdsAddsTheAdListToTheLevel()
+    {
+        const string manifest = "{\"categories\":{\"adult\":{},\"social\":{},\"ads\":{}},\"tiers\":{\"moderate\":[\"adult\"],\"strict\":[\"adult\",\"social\"]}}";
+        Assert.Equal(new[] { "adult" }, ListChoice.Names(manifest, "moderate", false));
+        Assert.Equal(new[] { "adult", "ads" }, ListChoice.Names(manifest, "moderate", true));
+        Assert.Equal(new[] { "adult", "social", "ads" }, ListChoice.Names(manifest, "strict", true));
+        const string noAds = "{\"categories\":{\"adult\":{}},\"tiers\":{\"moderate\":[\"adult\"]}}";
+        Assert.Equal(new[] { "adult" }, ListChoice.Names(noAds, "moderate", true)); // an older list release without the ad list
+        var p = System.Text.Json.JsonSerializer.Deserialize<FilterPolicy>("{\"on\":true,\"level\":\"moderate\",\"ads\":true}")!;
+        Assert.True(p.Ads);
+    }
 }

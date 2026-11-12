@@ -17,6 +17,7 @@ public sealed class CategoryLists
     private readonly object _lock = new();
     private List<BlockList> _loaded = new();
     private string _loadedKey = "";
+    private bool _loadedAds;
     private DateTime _checkedAt = DateTime.MinValue;
     public string? LastError { get; private set; }
 
@@ -34,10 +35,11 @@ public sealed class CategoryLists
     }
 
     /// <summary>Loads (and when due, refreshes) the lists for this level. Safe to call often.</summary>
-    public async Task EnsureAsync(string baseUrl, string level)
+    /// ads: also the ad list ("Block ads"). Switching it keeps the current lists working until the new set is in.
+    public async Task EnsureAsync(string baseUrl, string level, bool ads = false)
     {
         if (string.IsNullOrEmpty(baseUrl) || (level != "moderate" && level != "strict")) return;
-        bool due = !Ready(level) || DateTime.UtcNow - _checkedAt > TimeSpan.FromHours(6);
+        bool due = !Ready(level) || _loadedAds != ads || DateTime.UtcNow - _checkedAt > TimeSpan.FromHours(6);
         if (!due) return;
         _checkedAt = DateTime.UtcNow;
         Directory.CreateDirectory(Dir);
@@ -57,7 +59,7 @@ public sealed class CategoryLists
         {
             using var doc = JsonDocument.Parse(manifestText);
             var cats = doc.RootElement.GetProperty("categories");
-            var names = doc.RootElement.GetProperty("tiers").GetProperty(level).EnumerateArray().Select(x => x.GetString()!).ToList();
+            var names = ListChoice.Names(manifestText, level, ads);
             var lists = new List<BlockList>();
             foreach (var name in names)
             {
@@ -78,6 +80,7 @@ public sealed class CategoryLists
             {
                 _loaded = lists;
                 _loadedKey = level + "|" + baseUrl;
+                _loadedAds = ads;
             }
             LastError = null;
         }

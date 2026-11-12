@@ -475,8 +475,9 @@ function winFilter(env, d, now, dashboardHost) {
     on: true,
     level: level === "off" ? "approved" : level, // on a PC, "off" (as on the phones' browser) means approved sites only
     base: filterFor(env, c).base,
-    allow: c.dnsAllowlist,
+    allow: [...new Set([...c.dnsAllowlist, ...c.dnsAllowTimed.map((t) => t.host)])], // with the ones allowed for a while
     block: c.dnsBlocklist,
+    ads: !!c.blockAds, // "Block ads": the ad list on top of the level's lists (LockGuard 2026-11-13 and later)
     essential: [dashboardHost, "github.com", "githubusercontent.com", "msftconnecttest.com", "msftncsi.com"].filter(Boolean),
     words: c.blockedWords,
     safeSearch: c.safeSearch,
@@ -487,7 +488,7 @@ function winFilter(env, d, now, dashboardHost) {
     blockImages: c.blockImages,
     imagesAllow: c.imagesAllow,
     noIncognito: !!c.chromePolicy.noIncognito,
-    startPage: level === "off" && dashboardHost ? `https://${dashboardHost}/start?sites=${encodeURIComponent(startSites(c.dnsAllowlist).join(","))}` : "",
+    startPage: level === "off" && dashboardHost ? `https://${dashboardHost}/start?sites=${encodeURIComponent(startSites([...c.dnsAllowlist, ...c.dnsAllowTimed.map((t) => t.host)]).join(","))}` : "",
     ...w,
     ...winProgramLists(w),
   };

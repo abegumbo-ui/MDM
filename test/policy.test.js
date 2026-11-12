@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { endSitesEarly, buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
+import { endSitesEarly, normalizeTimedHosts, buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -299,4 +299,18 @@ test("ended early in the Browser's Allow list: ends on the dashboard too, only t
   assert.equal(endSitesEarly(cfg, [{ type: "domain", url: "https://other.example", until: until + 5 }], now), false, "a different end time (allowed again) is not ended");
   const sent = normalizeSites(cfg.sites).map((s) => s.host);
   assert.deepEqual(sent, ["other.example"]);
+});
+
+test("computers: sites allowed for a while keep their end time, the latest per site, and drop once over", () => {
+  const now = Date.now();
+  const out = normalizeTimedHosts([
+    { host: "https://Games.example/x", until: now + 3600e3 },
+    { host: "games.example", until: now + 7200e3 },
+    { host: "over.example", until: now - 1 },
+    { host: "", until: now + 5 },
+    "junk",
+  ], now);
+  assert.deepEqual(out, [{ host: "games.example", until: now + 7200e3 }]);
+  const cfg = normalizeConfig({ dnsAllowTimed: [{ host: "khanacademy.org", until: now + 60e3 }] });
+  assert.equal(cfg.dnsAllowTimed[0].host, "khanacademy.org");
 });

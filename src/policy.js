@@ -687,6 +687,8 @@ export function normalizeConfig(input) {
     dnsBlocklist: normalizeDnsBlocklist(c.dnsBlocklist),
     // Overrides dnsBlocklist for a hostname that matches both -- see normalizeDnsAllowlist's doc.
     dnsAllowlist: normalizeDnsAllowlist(c.dnsAllowlist),
+    // Computers: sites allowed for a while ({host, until}); dropped once their time is up.
+    dnsAllowTimed: normalizeTimedHosts(c.dnsAllowTimed),
     // Cuts an app's network off entirely (it still runs, just can't reach anything) -- a
     // different thing from wholeAppBlocklist above, which stops the app running at all. No
     // dashboard editor for this one yet, phone-only (Blocking > Block Whole Network), but the
@@ -751,6 +753,19 @@ export function normalizeDnsBlocklist(list) {
  * (DnsBlocklist.blocks() && !DnsAllowlist.allows()) and this just mirrors that server-side. */
 export function normalizeDnsAllowlist(list) {
   return sanitizeHostnameList(list);
+}
+
+/** [{host, until}] -> valid hosts still in their time (latest end time per host), at most 200. */
+export function normalizeTimedHosts(list, now = Date.now()) {
+  const best = new Map();
+  for (const x of Array.isArray(list) ? list : []) {
+    if (!x || typeof x !== "object") continue;
+    const host = sanitizeHostnameList([x.host])[0];
+    const until = Math.floor(Number(x.until));
+    if (!host || !(until > now)) continue;
+    if (!best.has(host) || best.get(host) < until) best.set(host, until);
+  }
+  return [...best].slice(0, 200).map(([host, until]) => ({ host, until }));
 }
 
 /** {pkg: [host, ...]} -- the only exception to networkBlocklist, per package. Each package's own

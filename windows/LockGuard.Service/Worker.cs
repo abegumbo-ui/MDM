@@ -195,7 +195,7 @@ public sealed class Worker : BackgroundService
                 ApplyAppBlocks(Effective().NoInternetPrograms);
                 BrowserPolicies.Apply(p);
                 _filterApplied = true;
-                await _lists.EnsureAsync(p.Base, p.Level);
+                await _lists.EnsureAsync(p.Base, p.Level, p.Ads);
             }
             else if (_filterApplied || File.Exists(Path.Combine(Paths.RootDir, "dns-original.json")))
             {
