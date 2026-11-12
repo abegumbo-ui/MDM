@@ -42,6 +42,7 @@ final class Protection {
                 .putString("inAppExceptions", join(policy.optJSONArray("inAppExceptions")))
                 .putBoolean("waStatus", policy.optBoolean("blockWaStatus", false))
                 .putBoolean("waChannels", policy.optBoolean("blockWaChannels", false))
+                .putLong("internetOffUntil", policy.optLong("internetOffUntil", 0))
                 .apply();
         if ((!"off".equals(inAppMode(c)) || waStatus(c) || waChannels(c)) && !Agent.accessibilityServiceOn(c)) remindAccessibility(c);
     }
@@ -127,11 +128,17 @@ final class Protection {
     }
 
     /** True while "internet only for these apps" is on, so the filter has to work out which app is asking. */
+    /** "Turn the internet off for a while": every app but Android's essentials and the "internet only" apps. */
+    static boolean internetOff(Context c) {
+        return Agent.prefs(c).getLong("internetOffUntil", 0) > System.currentTimeMillis();
+    }
+
     static boolean needsUid(Context c) {
-        return Agent.prefs(c).getBoolean("internetOnlyApps", false) || !Agent.prefs(c).getString("filterSkipApps", "").isEmpty();
+        return internetOff(c) || Agent.prefs(c).getBoolean("internetOnlyApps", false) || !Agent.prefs(c).getString("filterSkipApps", "").isEmpty();
     }
 
     static boolean internetAllowed(Context c, String pkg) {
+        if (internetOff(c)) return ProtectionRules.internetAllowed(pkg, true, Agent.prefs(c).getBoolean("internetOnlyApps", false) ? apps(c) : new HashSet<>());
         boolean on = Agent.prefs(c).getBoolean("internetOnlyApps", false);
         if (!on) return true;
         return ProtectionRules.internetAllowed(pkg, true, apps(c));

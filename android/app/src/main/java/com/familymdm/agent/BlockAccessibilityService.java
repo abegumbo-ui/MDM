@@ -56,6 +56,7 @@ public class BlockAccessibilityService extends AccessibilityService {
             if (clsCs == null) return;
             String component = pkg + "/" + clsCs;
             AppBlocklist.recordSeen(this, component);
+            PartBlocker.noteScreen(pkg, clsCs.toString());
             if (AppBlocklist.list(this).contains(component) && !AppBlocklist.isPaused(this, component)) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
                 Agent.addEvent(this, "restriction", "Blocked app/screen opened (" + component + ") -- backed out instantly");
@@ -76,7 +77,10 @@ public class BlockAccessibilityService extends AccessibilityService {
             checkInApp(pkg, clsCs.toString(), now);
             if (Monitor.on(this)) Monitor.scan(this, pkg, getRootInActiveWindow());
         } else if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            if (Monitor.on(this)) Monitor.scan(this, pkg, getRootInActiveWindow());
+            if (Monitor.on(this)) {
+                Monitor.scan(this, pkg, getRootInActiveWindow());
+                Monitor.scanSearch(this, pkg, getRootInActiveWindow());
+            }
             // A web page often appears a moment after the screen opens: look again for a few
             // seconds after each new screen, at most every half second.
             if (pkg.equals(lastPkg) && now - lastWindowAt < 4000 && now - lastCheckAt > 500) checkInApp(pkg, null, now);

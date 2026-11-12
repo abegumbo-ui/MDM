@@ -55,6 +55,7 @@ export const RESTRICTIONS = {
   locationConfigDisabled: { key: "no_config_location", label: "Block changing Location settings", on: false },
   airplaneModeDisabled: { key: "no_airplane_mode", label: "Block turning on Airplane mode", on: false },
   mobileNetworksDisabled: { key: "no_config_mobile_networks", label: "Block changing mobile network settings", on: false },
+  cameraDisabled: { key: "no_camera", label: "Block the camera", on: false },
   tetheringDisabled: { key: "no_config_tethering", label: "Block Wi-Fi hotspot and tethering", on: false },
   vpnConfigDisabled: { key: "no_config_vpn", label: "Block adding or changing a VPN", on: false },
   // Unlike the rest of this list, Android's own constant for this one is spelled out in full --
@@ -303,7 +304,9 @@ export function normalizeScreenTime(raw) {
     if (/^[A-Za-z0-9_.]{1,200}$/.test(pkg) && clamp(m) > 0) appLimits[pkg] = clamp(m);
   }
   const exempt = [...new Set((Array.isArray(c.exempt) ? c.exempt : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 100);
-  return { dailyLimit: clamp(c.dailyLimit), bedtime: normalizeSchedule(c.bedtime), appLimits, exempt };
+  // A different limit on chosen days (0 = Sunday ... 6 = Saturday); 0 = the same as every day.
+  const weekendDays = [...new Set((Array.isArray(c.weekendDays) ? c.weekendDays : [0, 6]).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
+  return { dailyLimit: clamp(c.dailyLimit), weekendLimit: clamp(c.weekendLimit), weekendDays, bedtime: normalizeSchedule(c.bedtime), appLimits, exempt };
 }
 
 // Whole groups of apps that can be blocked with one switch, like other parental-control apps offer.
@@ -530,6 +533,8 @@ export function normalizeConfig(input) {
     blockImageSearch: c.blockImageSearch === true,
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
     pauseUntil: Number.isFinite(Number(c.pauseUntil)) && Number(c.pauseUntil) > 0 ? Math.floor(Number(c.pauseUntil)) : 0,
+    // The internet is off for every app (except Android's essentials and "internet only" apps) until this time (ms).
+    internetOffUntil: Number.isFinite(Number(c.internetOffUntil)) && Number(c.internetOffUntil) > 0 ? Math.floor(Number(c.internetOffUntil)) : 0,
     // Only the apps listed in internetApps (plus Android's essentials) can use the internet.
     internetOnlyApps: c.internetOnlyApps === true,
     internetApps: [...new Set((Array.isArray(c.internetApps) ? c.internetApps : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 300),
@@ -762,6 +767,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.blockImages = cfg.blockImages;
   out.blockImageSearch = cfg.blockImageSearch;
   out.pauseUntil = cfg.pauseUntil;
+  out.internetOffUntil = cfg.internetOffUntil;
   out.internetOnlyApps = cfg.internetOnlyApps;
   out.internetApps = cfg.internetApps;
   out.locationEvery = cfg.locationEvery;
@@ -832,6 +838,7 @@ export function summarizeConfigChange(before, after) {
     if (a !== b) lines.push('Phone menu "' + label + '": ' + (a ? "shown" : "hidden"));
   }
   if (!!before.blockImageSearch !== !!after.blockImageSearch) lines.push("Image search: " + (after.blockImageSearch ? "blocked" : "allowed"));
+  if ((before.internetOffUntil || 0) !== (after.internetOffUntil || 0)) lines.push(after.internetOffUntil ? "Internet off for a while" : "Internet back on");
   if ((before.pauseUntil || 0) !== (after.pauseUntil || 0)) lines.push(after.pauseUntil ? "Web filtering paused for a while" : "Web filtering back on");
   if (!!before.internetOnlyApps !== !!after.internetOnlyApps || JSON.stringify(before.internetApps || []) !== JSON.stringify(after.internetApps || [])) lines.push("Internet only for chosen apps: " + (after.internetOnlyApps ? "on (" + (after.internetApps || []).length + " apps)" : "off"));
   if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
