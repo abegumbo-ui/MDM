@@ -175,7 +175,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         if (!isDocument(r)) return null;
         String url = r.url();
         int kind = SitePolicy.youtubeKind(url);
-        if (kind == SitePolicy.YT_HOME) return InspectProxy.Response.html(200, YoutubeRestricted.searchPageHtml());
+        if (kind == SitePolicy.YT_HOME) return null; // YouTube's own home page; its feed is emptied by the script added to the page
         if (!SitePolicy.youtubeRestrictedAllows(url) && r.host.toLowerCase(java.util.Locale.ROOT).matches(".*youtube(-nocookie)?\\.com|youtu\\.be")) {
             return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
                     + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>This part of YouTube isn't available.</p></body></html>");
@@ -210,7 +210,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         String js = pageScript;
         if (!yt && js == null) return body;
         String html = new String(body, StandardCharsets.UTF_8);
-        String tag = (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style>" : "") + (js != null ? "<script>" + js + "</script>" : "");
+        String tag = (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" : "") + (js != null ? "<script>" + js + "</script>" : "");
         int head = html.toLowerCase(java.util.Locale.ROOT).indexOf("<head");
         if (head >= 0) {
             int close = html.indexOf('>', head);

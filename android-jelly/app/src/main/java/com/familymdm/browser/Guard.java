@@ -279,7 +279,7 @@ public final class Guard {
             return Decision.no(page("Not available", "Image search is turned off.", homeButton()));
         if (FilterStore.youtubeRestricted(c) && isYoutubeAddress(url)) {
             int kind = SitePolicy.youtubeKind(url);
-            if (kind == SitePolicy.YT_HOME) return new Decision(false, YoutubeRestricted.searchPageHtml(), noPics);
+            if (kind == SitePolicy.YT_HOME) return Decision.yes(noPics); // YouTube's own home page, its feed emptied (afterLoadScript)
             if (SitePolicy.youtubeRestrictedAllows(url)) return Decision.yes(noPics);
             return Decision.no(page("Not available", "This part of YouTube isn't available.", homeButton()));
         }

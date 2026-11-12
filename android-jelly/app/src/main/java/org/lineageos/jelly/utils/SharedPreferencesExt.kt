@@ -65,8 +65,9 @@ class SharedPreferencesExt(context: Context) {
             DYNAMIC_POPUP_ENABLED_KEY, DYNAMIC_POPUP_ENABLED_DEFAULT
         )
 
+    // Always on: the family rules' video covering runs as page script (the switch is hidden).
     val javascriptEnabled: Boolean
-        get() = sharedPreferences.getBoolean(JAVASCRIPT_ENABLED_KEY, JAVASCRIPT_ENABLED_DEFAULT)
+        get() = true
 
     val locationEnabled: Boolean
         get() = sharedPreferences.getBoolean(LOCATION_ENABLED_KEY, LOCATION_ENABLED_DEFAULT)

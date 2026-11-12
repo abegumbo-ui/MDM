@@ -80,6 +80,12 @@ internal class WebClient(
         }
     }
 
+    override fun onPageCommitVisible(view: WebView, url: String) {
+        super.onPageCommitVisible(view, url)
+        // As early as possible, so YouTube's feed never shows before it is emptied.
+        Guard.afterLoadScript(context, url)?.let { view.evaluateJavascript(it, null) }
+    }
+
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
         Guard.afterLoadScript(context, url)?.let { view.evaluateJavascript(it, null) }

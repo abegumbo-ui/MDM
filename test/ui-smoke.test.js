@@ -114,7 +114,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
       seen[g + "/" + sub] = tryRender(g + "/" + sub, `tab='devices';openId=devices[0].id;deviceSection='${g}';subs['${g}']='${sub}';render()`);
     }
   }
-  seen.browserDevice = tryRender("standalone browser page", "tab='devices';openId=null;openBrowserId=browsers[0].id;render()");
+  seen.browserDevice = tryRender("standalone browser page", "tab='devices';openId=null;openBrowserId=browsers[0].id;browserSection='overview';render()");
+  for (const s of ["web", "pictures", "sites", "settings"]) seen["br/" + s] = tryRender("standalone browser: " + s, `tab='devices';openId=null;openBrowserId=browsers[0].id;browserSection='${s}';render()`);
   await new Promise((r) => setTimeout(r, 150)); // let the cards that fetch their own data finish
   // Pages that fill themselves in after asking the server: open them again and read them once that is done.
   for (const page of ["templates", "settings"]) {
@@ -153,14 +154,17 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/summary"], /SafeSearch is forced on Google, Bing and DuckDuckGo/);
   assert.match(seen["browser/summary"], /YouTube Restricted Mode \(strict\) is forced everywhere/);
   assert.match(seen["browser/summary"], /Hidden on web pages in our browsers, in Chrome, and in other browsers/);
-  assert.match(seen.browserDevice, /Block pictures on web pages/);
-  assert.doesNotMatch(seen.browserDevice, /Force SafeSearch/, "a standalone Browser has no phone-wide filter to force it with");
+  assert.match(seen["br/pictures"], /Block pictures on web pages/);
+  assert.match(seen["br/pictures"], /No pictures on these sites/);
+  assert.match(seen.browserDevice, /At a glance/);
+  assert.match(seen["br/settings"], /Look/);
+  assert.doesNotMatch(seen["br/web"], /Force SafeSearch/, "a standalone Browser has no phone-wide filter to force it with");
   assert.match(seen["browser/sites"], /Site requests \(1\)/);
   assert.match(seen["browser/sites"], /YouTube channel/);
   assert.match(seen["browser/apps"], /Make this the only browser/);
   assert.match(seen["browser/inspect"], /Never look inside these sites/);
   assert.match(seen["device/usermenu"], /Open Google Play Store/);
-  assert.match(seen.browserDevice, /Web access/, "a standalone Browser still has its filter card");
+  assert.match(seen["br/web"], /Web access/, "a standalone Browser still has its filter card");
   assert.match(seen.list, /Pixel/);
   assert.match(seen["browser/access"], /Blocked words \(2\)/);
   assert.match(seen["browser/access"], /Block image search/);
