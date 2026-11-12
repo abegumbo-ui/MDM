@@ -319,6 +319,7 @@ function setCrumbs(parts){
   if(p[1]){const a=h('a',null,p[0]);a.onclick=function(){location.hash=p[1]};c.append(a)}else c.append(h('b',null,p[0]))})}
 function pageHead(m,title,sub){m.append(h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,title),sub?h('div',{class:'sub'},sub):null)))}
 function render(){
+ if(!state)return; // still loading: load() draws the page once the data is in
  const m=document.getElementById('main');m.textContent='';
  const who=document.getElementById('who');if(who&&state&&state.session)who.textContent=state.session.helper?state.session.helper+(state.session.viewOnly?' (view only)':''):state.session.role==='admin'?'Administrator':'Client account';
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){setCrumbs([['Devices','devices'],[d.name]]);renderDeviceDetail(m,d);return}openId=null}
@@ -555,8 +556,8 @@ function buildAppsHub(m,dv){
   m.append(h('div',{class:'card'},h('h2',null,'Allowed Apps'),h('div',{class:'mute'},'Same Default / Allow / Block / Schedule controls as the Apps tab -- set to Allow whatever should appear while Home screen mode is on, before turning it on above.')));
   renderAppEditor(m,dv);
  } else if(appsSub==='blocking'){
-  const bCard=h('div',{class:'card'},h('h2',null,'Block Apps/Screens'),
-   h('div',{class:'mute'},'Specific screens (exact app components) to bounce away from the instant they open -- set directly on the phone\'s own Administrator screen (Apps → Blocking → Block Apps/Screens). Picking the exact screen needs the phone itself (it offers an autocomplete built from what\'s actually been seen in the foreground there), so this one box stays phone-only.'));
+  const bCard=h('div',{class:'card'},h('h2',null,'Whole screens of apps'),
+   h('div',{class:'mute'},'A single screen of an app, closed the moment it opens. Pick it on the phone: Administrator → Apps → Blocked → Tap to block → Start, open the app and the screen, press ✓. They are listed and removed on the phone.'));
   m.append(bCard);
   renderBlockedParts(m,dv);
   renderWholeAppBlocklist(m,dv);
