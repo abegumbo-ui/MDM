@@ -1252,19 +1252,58 @@ public class AdminActivity extends Activity {
             card.addView(Ui.body(this, "Set from Overview -> Phone settings -> Restrictions on this phone.", true));
             return;
         }
-        card.addView(Ui.body(this, "Same restrictions as the dashboard's own Restrictions card. A change here "
-                + "takes effect immediately and reaches the dashboard on the next sync, same as the Apps list.", true));
+        card.addView(Ui.body(this, "Locks on the phone's own settings, with the same names as on the dashboard. "
+                + "A change here works at once and reaches the dashboard within a minute.", true));
         java.util.Set<String> active = Agent.getSet(this, "restrictions");
-        java.util.List<String> keys = PolicyApplier.allRestrictionKeys();
-        java.util.Collections.sort(keys, (a, b) -> humanizeRestriction(a).compareTo(humanizeRestriction(b)));
-        for (String key : keys) {
-            toggle(card, humanizeRestriction(key), active.contains(key), on -> {
-                String err = PolicyApplier.applyRestrictionOverride(this, key, on);
-                if (err != null) toast(err);
-                else AgentService.requestSync();
-                build();
-            });
+        java.util.Set<String> known = new java.util.HashSet<>(PolicyApplier.allRestrictionKeys());
+        String[] titles = {"Recommended", "More", "Advanced (rarely needed)"};
+        for (int g = 1; g <= (showAllRestrictions ? 3 : 2); g++) {
+            LinearLayout groupCard = Ui.card(this, root);
+            groupCard.addView(Ui.titleText(this, titles[g - 1]));
+            for (String[] r : com.familymdm.agent.sitepolicy.RestrictionInfo.ALL) {
+                if (Integer.parseInt(r[3]) != g || !known.contains(r[0])) continue;
+                final String key = r[0];
+                restrictionRow(groupCard, r[1], r[2], active.contains(key), on -> {
+                    String err = PolicyApplier.applyRestrictionOverride(this, key, on);
+                    if (err != null) toast(err);
+                    else AgentService.requestSync();
+                    build();
+                });
+            }
         }
+        LinearLayout more = Ui.card(this, root);
+        Ui.add(more, Ui.button(this, showAllRestrictions ? "Show fewer" : "Show all (advanced)", Ui.OUTLINED, v -> {
+            showAllRestrictions = !showAllRestrictions;
+            build();
+        }), 0);
+    }
+
+    private boolean showAllRestrictions;
+
+    /** A restriction: its name, one line on why it matters, and its switch. */
+    private void restrictionRow(LinearLayout parent, String label, String why, boolean on, final java.util.function.Consumer<Boolean> change) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        TextView t = Ui.titleText(this, label);
+        t.setTextSize(15);
+        text.addView(t);
+        if (why != null && !why.isEmpty()) {
+            TextView w = Ui.body(this, why, true);
+            w.setTextSize(13);
+            text.addView(w);
+        }
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        Switch sw = new Switch(this);
+        sw.setChecked(on);
+        sw.setOnCheckedChangeListener((b, checked) -> {
+            if (checked != on && unlocked()) change.accept(checked);
+        });
+        row.addView(sw);
+        Ui.add(parent, row, 0);
     }
 
     /** A labeled on/off row, same shape as LocalSettingsActivity's own toggle() helper. */
