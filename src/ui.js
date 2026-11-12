@@ -619,6 +619,7 @@ function renderDeviceDetail(m,d){
  if(d.syncPaused)ov.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Not connected'),h('div',{class:'mute'},'This device is not connected to the dashboard because it was turned off (from this phone\'s own Admin screen, to save battery). It keeps enforcing whatever it had last. It reconnects only when someone turns it back on there — nothing here can reach it in the meantime.')));
  renderSos(ov,d);
  renderHealthSummary(ov,d);
+ renderWhatsOn(ov,d);
  renderAppRequests(ov,d);
  renderPause(ov,d);
  renderInternetOff(ov,d);
@@ -2133,6 +2134,34 @@ function healthProblems(d){
  if(i.screenLock===false)add('warn','The phone has no screen lock, so anyone who picks it up can use it.','Security → Screen lock → Set PIN.');
  if(i.filterRunning===undefined&&i.deviceOwner)add('warn','This phone has an older MDM Agent that does not report everything the health check looks at.','Device → Updates → Update agent.');
  return out}
+/** "What's on for this phone": every rule in force, one plain line each, each opening its own tab. */
+function renderWhatsOn(box,d){
+ const c=d.config||{},st=c.screenTime||{},now=Date.now(),rows=[];
+ const add=function(icon,text,g,s){rows.push([icon,text,g,s])};
+ const lvl={off:'Approved sites only',moderate:'Moderate filter (adult, gambling, drugs, scams, piracy blocked)',strict:'Strict filter (Moderate plus social media)'}[c.browserFilter||'off'];
+ add('🌐','Websites: '+lvl+(c.safeSearch?', SafeSearch forced':'')+(c.youtubeDns&&c.youtubeDns!=='off'?', YouTube restricted':''),'browser','access');
+ if((c.pauseUntil||0)>now)add('⏸','Web filtering paused until '+hhmm(c.pauseUntil),'overview','status');
+ if((c.internetOffUntil||0)>now)add('📵','Internet off until '+hhmm(c.internetOffUntil),'overview','status');
+ if(c.internetOnlyApps)add('🔌','Internet only for '+(c.internetApps||[]).length+' chosen apps','internet','appnet');
+ if(st.dailyLimit)add('⏱','Daily screen time: '+fmtMin(st.dailyLimit)+(st.weekendLimit?' ('+fmtMin(st.weekendLimit)+' on chosen days)':''),'time','limits');
+ if(st.bedtime)add('🌙','Bedtime '+st.bedtime.from+' to '+st.bedtime.to,'time','limits');
+ if(st.schoolTime)add('🏫','School time '+st.schoolTime.from+' to '+st.schoolTime.to,'time','limits');
+ const al=Object.keys(st.appLimits||{}).length;if(al)add('⏳',al+' app'+(al===1?' has':'s have')+' its own time limit','time','limits');
+ const groups=(c.blockAppGroups||[]).map(function(g){return ((state.appGroups||{})[g]||{}).label||g});if(groups.length)add('🚫','Blocked groups: '+groups.join(', '),'apps','regular');
+ const blockedApps=Object.values(c.apps||{}).filter(function(a){return a.mode==='block'}).length;if(blockedApps)add('🚫',blockedApps+' app'+(blockedApps===1?'':'s')+' blocked one by one','apps','regular');
+ if(c.approveNew)add('✋','New apps wait for you to allow them','apps','regular');
+ const parts=(c.blockedParts||[]).length;if(parts)add('🧩',parts+' part'+(parts===1?'':'s')+' of apps blocked (Tap to block)','apps','blocking');
+ if(c.blockWaStatus||c.blockWaChannels)add('💬','WhatsApp: '+[c.blockWaStatus?'Status closed':'',c.blockWaChannels?'Channels closed':''].filter(Boolean).join(', '),'apps','regular');
+ if(c.inAppBrowsers&&c.inAppBrowsers!=='off')add('🔗','Web pages inside apps: '+(c.inAppBrowsers==='all'?'all closed':'browser pages closed'),'browser','apps');
+ if(c.callsIn&&c.callsIn!=='all'||c.callsOut&&c.callsOut!=='all')add('📞','Calls limited to '+(c.callsIn==='list'||c.callsOut==='list'?'allowed numbers':'contacts and allowed numbers'),'calls','rules');
+ if(c.messageAlerts)add('🔔','Message alerts on (the child is told)','safety','msgalerts');
+ if(c.recordSearches)add('🔎','Searches are kept (the child is told)','browser','history');
+ if(c.recordSites)add('📄','Sites visited are kept','browser','history');
+ if(c.locationEvery)add('📍','Location noted every '+c.locationEvery+' minutes','device','location');
+ const card=h('div',{class:'card'},h('h2',null,"What's on for this phone"));
+ for(const r of rows){const line=h('div',{class:'act',style:'cursor:pointer'},r[0]+'  '+r[1]);line.onclick=function(){goTo(r[2],r[3])};card.append(line)}
+ card.append(h('div',{class:'mute small',style:'margin-top:6px'},'Tap a line to change it.'));
+ box.append(card)}
 function renderHealthSummary(box,d){
  const p=healthProblems(d);if(!p.length)return;
  const bad=p.filter(function(x){return x.level==='bad'}).length;
