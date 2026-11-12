@@ -127,9 +127,16 @@ final class PhoneRules {
         JSONObject cfg = reply.optJSONObject("config");
         if (cfg != null) e.putString("dashConfig", cfg.toString());
         long ack = reply.optLong("configPatchRev", 0);
+        long mine = p.getLong("configPatchRev", 0);
         if (ack > 0) {
             e.putLong("configPatchAck", ack);
-            if (ack >= p.getLong("configPatchRev", 0)) e.remove("configPatchValues");
+            if (ack == mine) e.remove("configPatchValues"); // the dashboard took exactly this change
+            else if (ack > mine && p.contains("configPatchValues")) {
+                // The dashboard's count is ahead of ours (this app was reset or reinstalled), so it
+                // ignored our change: number it after the dashboard's and send it again.
+                e.putLong("configPatchRev", ack + 1);
+                AgentService.requestSync();
+            }
         }
         e.apply();
     }
