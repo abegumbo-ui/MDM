@@ -63,6 +63,8 @@
     }
     var draw = function () {
       if (!video.isConnected) { canvas.remove(); return; }
+      // An allowed YouTube channel or video (set by the Browser): shown as it is.
+      if (window.__mdmTrusted) { canvas.style.width = '0'; canvas.style.height = '0'; return; }
       var host = document.fullscreenElement || document.webkitFullscreenElement || document.documentElement;
       if (canvas.parentNode !== host) host.appendChild(canvas);
       // Where the picture really is inside the video's box (videos keep their shape: "contain").

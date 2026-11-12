@@ -68,15 +68,24 @@ internal class WebClient(
     }
 
     override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+        // An allowed YouTube channel or video shows as it is (no picture covering).
+        if ((view as? WebViewExt)?.trustedPage == true) return Guard.interceptFilterOnly(context, request) ?: super.shouldInterceptRequest(view, request)
         return Guard.intercept(context, request) ?: super.shouldInterceptRequest(view, request)
     }
 
     override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
         super.doUpdateVisitedHistory(view, url, isReload)
         // Pages that change their address without loading (YouTube) are checked here.
-        if (url.startsWith("http") && !Guard.check(context, url, null).allow) {
-            view.stopLoading()
-            (view as WebViewExt).openChecked(url)
+        if (url.startsWith("http")) {
+            val d = Guard.check(context, url, null)
+            if (!d.allow) {
+                view.stopLoading()
+                (view as WebViewExt).openChecked(url)
+            } else {
+                // YouTube moves between videos without loading a page: tell the covering which kind this one is.
+                (view as WebViewExt).trustedPage = d.trusted
+                view.evaluateJavascript("window.__mdmTrusted=" + d.trusted + ";", null)
+            }
         }
     }
 
@@ -89,6 +98,8 @@ internal class WebClient(
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
         Guard.afterLoadScript(context, url)?.let { view.evaluateJavascript(it, null) }
+        val trusted = (view as? WebViewExt)?.trustedPage == true
+        view.evaluateJavascript("window.__mdmTrusted=$trusted;", null)
         Guard.videoScript(context)?.let { view.evaluateJavascript(it, null) }
         urlBarLayout.onPageLoadFinished(view.certificate)
         if (view.settings.javaScriptEnabled) {
@@ -121,6 +132,7 @@ internal class WebClient(
                 }
                 view.settings.blockNetworkImage = decision.blockImages
                 view.settings.loadsImagesAutomatically = !decision.blockImages
+                webViewExt.trustedPage = decision.trusted
             }
             val needsLookup = (request.hasGesture()
                     || !TextUtils.equals(url, webViewExt.lastLoadedUrl))

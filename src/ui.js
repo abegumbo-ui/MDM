@@ -79,6 +79,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 .sw input:checked+i{background:var(--primary)}
 .sw input:checked+i::after{left:20px}
 .setting{display:flex;gap:16px;align-items:center;padding:12px 0;border-top:1px solid var(--outline-variant)}
+@media (max-width:640px){
+.setting{flex-wrap:wrap;gap:10px}
+.setting>.grow{flex:1 1 100%;min-width:0}
+.setting>select,.setting>input[type=text],.setting>input[type=time],.setting>textarea{flex:1 1 100%;width:100%;max-width:100%}
+.card{padding:14px}
+select{max-width:100%}
+}
 .seg{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.seg button{border:1px solid var(--outline-variant);background:transparent;color:inherit;border-radius:999px;padding:8px 14px;font:inherit;cursor:pointer}.seg button.on{background:var(--primary);border-color:var(--primary);color:var(--on-primary,#fff)}
 .setting .grow>.mute,.card>.mute:first-of-type{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
 .setting .grow>.mute.open,.card>.mute:first-of-type.open{display:block;-webkit-line-clamp:unset;overflow:visible}
@@ -1851,6 +1858,7 @@ function renderYoutube(m,dv){
  card.append(seg,h('div',{class:'mute',style:'margin-top:10px'},(YT_CHOICES.find(function(x){return x[0]===cur})||YT_CHOICES[0])[2]));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},dv.isBrowser?'In this Browser.':'In our Browser, and in Chrome, Samsung Internet and Edge when Inspection is on. The YouTube app itself is not affected: block it under Apps if needed.'));
  m.append(card);
+ renderYoutubeSearch(m,dv);
  const sites=c.sites||{},keys=Object.keys(sites).filter(function(k){const s=sites[k];return s.type==='youtube'||isYoutubeUrl(s.url||'')});
  const lc=h('div',{class:'card'},h('h2',null,'Allowed channels and videos ('+keys.length+')'));
  lc.append(h('div',{class:'mute'},'Paste a channel link (youtube.com/@name), type @name, or paste a video link. Used when YouTube is on "Only what I allow" (or follows the level on Strict or Approved sites only).'));
@@ -1862,14 +1870,43 @@ function renderYoutube(m,dv){
   snack('That is not a YouTube channel or video link.',1)};
  lc.append(h('div',{class:'row',style:'margin-top:8px'},inp,btn('Add','tonal',add)));
  for(const k of keys){const s=sites[k];
-  lc.append(h('div',{class:'row',style:'margin:8px 0'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.type==='youtube'?(s.id||s.label):'Video'),h('div',{class:'mute small',style:'word-break:break-all'},s.url)),
+  lc.append(h('div',{class:'row',style:'margin:8px 0'},s.thumb?h('img',{src:s.thumb,alt:'',loading:'lazy',style:s.type==='youtube'?'width:40px;height:40px;border-radius:50%;object-fit:cover':'width:72px;height:40px;border-radius:6px;object-fit:cover'}):null,
+   h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.type==='youtube'?((s.label||'').replace(/^YouTube channel /,'')||s.id):(s.label&&s.label!=='YouTube video'?s.label:'Video')),h('div',{class:'mute small',style:'word-break:break-all'},s.type==='youtube'?s.id:s.url)),
    btn('Remove','outline',async function(){delete c.sites[k];await save('Removed.')})))}
  if(!keys.length)lc.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
  m.append(lc)}
+/** Find a YouTube channel or video by name and allow it with one tap. */
+let ytResults=null,ytQuery='',ytKind='channel';
+function renderYoutubeSearch(m,dv){
+ const card=h('div',{class:'card'},h('h2',null,'Find on YouTube'));
+ const inp=h('input',{type:'text',placeholder:'Search YouTube, e.g. a channel or a topic',class:'grow',value:ytQuery});
+ const go=async function(kind){const q=inp.value.trim();if(!q)return;ytQuery=q;ytKind=kind;ytResults='loading';render();
+  try{ytResults=(await call('GET','/api/youtube/search?type='+kind+'&q='+encodeURIComponent(q))).results}catch(e){ytResults=[]}render()};
+ inp.onkeydown=function(e){if(e.key==='Enter')go(ytKind)};
+ card.append(h('div',{class:'row',style:'margin-top:8px;flex-wrap:wrap'},inp,btn('Channels',ytKind==='channel'?'':'tonal',function(){go('channel')}),btn('Videos',ytKind==='video'?'':'tonal',function(){go('video')})));
+ const have=new Set(Object.values(dv.config.sites||{}).map(function(s){return s.type==='youtube'?s.id:((/[?&]v=([A-Za-z0-9_-]{11})/.exec(s.url||'')||[])[1]||'')}));
+ const allowCh=async function(r){if(!confirm('Allow the channel "'+r.title+'" ('+r.handle+')? Its videos will open.'))return;
+  await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+r.handle,id:r.handle,label:r.title,thumb:r.thumb})};
+ if(ytResults==='loading')card.append(h('div',{class:'mute',style:'margin-top:10px'},'Searching…'));
+ else if(Array.isArray(ytResults)){
+  if(!ytResults.length)card.append(h('div',{class:'mute',style:'margin-top:10px'},'Nothing found. You can also paste a link below.'));
+  for(const r of ytResults){
+   if(r.type==='channel'){const on=have.has(r.handle);
+    card.append(h('div',{class:'row',style:'margin:10px 0'},h('img',{src:r.thumb,alt:'',loading:'lazy',style:'width:48px;height:48px;border-radius:50%;object-fit:cover'}),
+     h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.title),h('div',{class:'mute small'},r.handle+(r.subs?' · '+r.subs:''))),
+     on?h('span',{class:'chip'},'Allowed'):btn('Allow','',function(){allowCh(r)})))}
+   else{const on=have.has(r.id),chOn=r.handle&&have.has(r.handle);
+    card.append(h('div',{class:'row',style:'margin:10px 0;align-items:flex-start'},h('img',{src:r.thumb,alt:'',loading:'lazy',style:'width:120px;height:68px;border-radius:8px;object-fit:cover'}),
+     h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.title),h('div',{class:'mute small'},[r.channel,r.length,r.views].filter(Boolean).join(' · ')),
+      h('div',{class:'row',style:'margin-top:6px;flex-wrap:wrap'},
+       on?h('span',{class:'chip'},'Video allowed'):btn('Allow this video','',async function(){if(!confirm('Allow the video "'+r.title+'"?'))return;
+        await addSite(dv,{type:'exact',url:'https://www.youtube.com/watch?v='+r.id,label:r.title,thumb:r.thumb})}),
+       r.handle?(chOn?h('span',{class:'chip'},'Channel allowed'):btn('Allow the whole channel','outline',function(){allowCh({handle:r.handle,title:r.channel,thumb:''})})):null))))}}}
+ m.append(card)}
 async function addSite(dv,entry){
  const key=entry.type==='youtube'?'youtube:'+entry.id:(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  dv.config.sites=dv.config.sites||{};
- dv.config.sites[key]=entry.type==='youtube'?{type:'youtube',kind:'channel',id:entry.id,url:entry.url,label:entry.label,blockImages:false,installable:false}:{type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true};
+ dv.config.sites[key]=entry.type==='youtube'?{type:'youtube',kind:'channel',id:entry.id,url:entry.url,label:entry.label,blockImages:false,installable:false,thumb:entry.thumb}:{type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true,thumb:entry.thumb};
  await saveConfigFor(dv,'Added '+(entry.label||entry.url)+'. Phones pick it up within about 5 minutes.');
 }
 /** Copies another device's (or browser's) whole config -- or just its sites, into a browser -- over this one's. */

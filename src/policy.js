@@ -217,6 +217,9 @@ export function isBlockedAdultHost(host) {
 }
 
 /** One allowlist entry: a whole domain (with subpages/subdomains) or one exact page. */
+/** A YouTube picture (channel avatar or video thumbnail), only from YouTube's own picture servers. */
+const ytThumb = (u) => (typeof u === "string" && /^https:\/\/(i\.ytimg\.com|yt3\.ggpht\.com|yt3\.googleusercontent\.com)\/[^\s"'<>]{1,400}$/.test(u) ? u : undefined);
+
 export function normalizeSite(raw) {
   if (!raw || typeof raw !== "object") return null;
   if (raw.type === "youtube") {
@@ -233,6 +236,7 @@ export function normalizeSite(raw) {
       label: String(raw.label || "YouTube " + handle).slice(0, 80),
       blockImages: false,
       installable: false,
+      ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
     };
   }
   const type = raw.type === "exact" ? "exact" : raw.type === "domain" ? "domain" : null;
@@ -247,6 +251,7 @@ export function normalizeSite(raw) {
     label: String(raw.label || host).slice(0, 80),
     blockImages: raw.blockImages === true,
     installable: raw.installable !== false,
+    ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
   };
 }
 
