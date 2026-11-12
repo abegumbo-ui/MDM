@@ -1546,6 +1546,7 @@ async function agentApi(request, env, url, ctx) {
       for (const e of body.events.slice(0, 40)) {
         if (e && (e.k === "security" || e.k === "watchdog")) toAlert.push({ kind: "tamper", text: String(e.m || "").slice(0, 200) });
         if (e && e.k === "sos") toAlert.push({ kind: "sos", text: "SOS: " + String(e.m || "").slice(0, 200) });
+      if (e && e.k === "checkin") toAlert.push({ kind: "places", text: String(e.m || "").slice(0, 200) });
       }
       d.events = [...(d.events || []), ...body.events.slice(0, 40).map((e) => ({ k: String(e.k || "info").slice(0, 20), m: String(e.m || "").slice(0, 200), at: Number(e.at) || now }))].slice(-MAX_EVENTS);
       dirty = true;

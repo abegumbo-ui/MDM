@@ -75,6 +75,12 @@ public class UserActivity extends Activity {
                     })
                     .show()), n++ == 0 ? 16 : 8);
         }
+        if (online && menuOn("checkin")) {
+            Ui.add(root, Ui.rowTile(this, "Check in (tell them where I am)", R.drawable.ic_message_tile, v -> {
+                Whereabouts.checkIn(this);
+                toast("Checking in. Your location is on its way.");
+            }), n++ == 0 ? 16 : 8);
+        }
         if (online && menuOn("site")) {
             Ui.add(root, Ui.rowTile(this, "Request a site or video", R.drawable.ic_browser_tile, v -> promptSiteRequest()), n++ == 0 ? 16 : 8);
         }

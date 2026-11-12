@@ -346,3 +346,9 @@ Dashboard: the **Calls & texts** group.
 5. With message alerts on, type a worrying word into Google or YouTube search: it shows under Safety → Message alerts as "Searched: ...".
 6. Tap to block → **✓ Block this screen** inside an app's screen: that screen closes whenever it opens (Apps → Blocked to undo).
 
+
+## 7m. School time and Check in
+
+1. Screen time → Limits → **School time** on, with the next few minutes as its hours: every app with an icon disappears except the phone, texts, settings, clock, calculator and apps marked "does not count"; they come back when it ends.
+2. Phone menu → **Check in**: you get an alert "Checked in" with a map link.
+

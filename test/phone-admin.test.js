@@ -72,3 +72,11 @@ test("weekend limit, internet off for a while, camera block and new-app alerts a
   assert.equal(pol.screenTime.weekendLimit, 180);
   assert.ok(JSON.stringify(pol.restrictions).includes("no_camera"), "camera block goes to the phone");
 });
+
+test("school time is kept, and the Check in button is a phone menu choice", async () => {
+  const cfg = normalizeConfig({ screenTime: { schoolTime: { days: [1, 2, 3, 4, 5], from: "08:00", to: "15:00" } } });
+  assert.deepEqual(cfg.screenTime.schoolTime, { days: [1, 2, 3, 4, 5], from: "08:00", to: "15:00" });
+  assert.equal(normalizeConfig({ screenTime: { schoolTime: { days: [], from: "08:00", to: "15:00" } } }).screenTime.schoolTime, null);
+  const { USER_MENU } = await import("../src/policy.js");
+  assert.ok(USER_MENU.checkin);
+});
