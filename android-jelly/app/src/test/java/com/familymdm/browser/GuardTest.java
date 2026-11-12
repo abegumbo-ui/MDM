@@ -196,11 +196,37 @@ public class GuardTest {
         FilterStore.setYoutubeMode(c, "open");
         assertTrue(Guard.check(c, "https://m.youtube.com/", null).allow);
         FilterStore.setYoutubeMode(c, "channels");
-        Guard.Decision d = Guard.check(c, "https://m.youtube.com/", null);
+        assertTrue("its home page opens (it lists what is allowed)", Guard.check(c, "https://m.youtube.com/", null).allow);
+        Guard.Decision d = Guard.check(c, "https://m.youtube.com/results?search_query=games", null);
         assertFalse("only allowed channels, even though the web is open", d.allow);
         assertTrue(d.html.contains("Ask for access"));
         assertTrue("other sites still open", Guard.check(c, "https://example.com/", null).allow);
         FilterStore.setYoutubeMode(c, "blocked");
         assertFalse(Guard.check(c, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", null).allow);
+    }
+
+    @Test
+    public void youtube_allowedChannelsAndVideos_showOnTheHomePage_andAVideoOpensWithAnyExtras() throws Exception {
+        connected("off");
+        JSONArray sites = new JSONArray();
+        sites.put(new JSONObject().put("type", "youtube").put("kind", "channel").put("id", "@nasa").put("url", "https://www.youtube.com/@nasa")
+                .put("label", "NASA").put("thumb", "https://yt3.ggpht.com/abc=s176"));
+        sites.put(new JSONObject().put("type", "exact").put("url", "https://www.youtube.com/watch?v=dQw4w9WgXcQ").put("label", "A song").put("thumb", "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"));
+        BrowserState.setCachedSites(c, sites);
+        Guard.forgetCache();
+        FilterStore.setYoutubeMode(c, "channels");
+        assertTrue("the home page opens", Guard.check(c, "https://m.youtube.com/", null).allow);
+        Guard.Decision vid = Guard.check(c, "https://m.youtube.com/watch?v=dQw4w9WgXcQ&t=42s&si=abc", null);
+        assertTrue("an allowed video, with a start time and a share code", vid.allow);
+        assertTrue("an allowed video shows as it is (no covering)", vid.trusted && !vid.blockImages);
+        assertTrue("an allowed channel's page too", Guard.check(c, "https://m.youtube.com/@nasa", null).trusted);
+        assertFalse("other pages are not", Guard.check(c, "https://m.youtube.com/", null).trusted);
+        assertTrue("short links too", Guard.check(c, "https://youtu.be/dQw4w9WgXcQ?si=x", null).allow);
+        assertFalse("another video is not", Guard.check(c, "https://m.youtube.com/watch?v=aaaaaaaaaaa", null).allow);
+        String js = Guard.afterLoadScript(c, "https://m.youtube.com/");
+        assertNotNull(js);
+        assertTrue("the home page lists them", js.contains("\"@nasa\"") && js.contains("NASA") && js.contains("dQw4w9WgXcQ") && js.contains("A song"));
+        assertTrue(js.contains("mdm-yt-home"));
+        assertFalse("no data placeholder left", js.contains("__MDM_DATA__"));
     }
 }

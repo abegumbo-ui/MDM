@@ -43,6 +43,10 @@ class WebViewExt @JvmOverloads constructor(
     private var desktopMode = false
     var lastLoadedUrl: String? = null
         private set
+
+    /** The page is an allowed YouTube channel or video: its pictures and videos show as they are. */
+    @Volatile
+    var trustedPage = false
     var backgroundShortcut = backgroundShortcut
         private set
     var backgroundShortcutService = backgroundShortcutService
@@ -88,6 +92,7 @@ class WebViewExt @JvmOverloads constructor(
         }
         settings.blockNetworkImage = decision.blockImages
         settings.loadsImagesAutomatically = !decision.blockImages
+        trustedPage = decision.trusted
         super.loadUrl(url, this.requestHeaders)
     }
 

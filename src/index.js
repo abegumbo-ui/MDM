@@ -3,6 +3,7 @@ import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { maybeSendDaily, maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY, alertsOn, validPushEndpoint, vapidKeys, latestForPush, SERVICE_WORKER } from "./alerts.js";
 import { ICON_192, ICON_512 } from "./icons.js";
+import { youtubeSearch } from "./youtube.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
 // How often an online phone checks in on its own. A command queued from the dashboard only
@@ -1224,6 +1225,11 @@ async function adminApiInner(request, env, url, session) {
     if (!isAdmin(session)) return json([]);
     const wins = await listWinDevices(env);
     return json(wins.map(publicWinDevice));
+  }
+  if (path === "/api/youtube/search" && method === "GET") {
+    // Find a YouTube channel or video to allow (any signed-in parent).
+    const results = await youtubeSearch(url.searchParams.get("q"), url.searchParams.get("type")).catch(() => []);
+    return json({ results });
   }
   const wshot = /^\/api\/windevices\/([0-9a-f]+)\/shots\/([0-9a-f]{12})$/.exec(path);
   if (wshot && method === "GET") {

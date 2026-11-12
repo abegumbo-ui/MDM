@@ -245,12 +245,21 @@ public final class Guard {
         public final boolean allow;
         public final String html;
         public final boolean blockImages;
+        /** An allowed YouTube channel or video: shown as it is, no picture or video covering. */
+        public final boolean trusted;
 
         Decision(boolean allow, String html, boolean blockImages) {
+            this(allow, html, blockImages, false);
+        }
+
+        Decision(boolean allow, String html, boolean blockImages, boolean trusted) {
             this.allow = allow;
             this.html = html;
             this.blockImages = blockImages;
+            this.trusted = trusted;
         }
+
+        static Decision trustedYes() { return new Decision(true, null, false, true); }
 
         static Decision yes(boolean blockImages) { return new Decision(true, null, blockImages); }
 
@@ -280,6 +289,14 @@ public final class Guard {
         String ytMode = FilterStore.youtubeMode(c);
         if ("blocked".equals(ytMode) && SitePolicy.isYoutubeHost(SitePolicy.hostOf(url)))
             return Decision.no(page("YouTube is turned off", "YouTube does not open in this browser.", homeButton()));
+        // A single allowed video opens in every mode, whatever extras its link carries (start time, share code).
+        String videoId = SitePolicy.isYoutubeHost(SitePolicy.hostOf(url)) || "youtu.be".equals(SitePolicy.hostOf(url)) ? SitePolicy.youtubeVideoId(url) : null;
+        if (videoId != null && allowedVideoIds(c).contains(videoId)) return Decision.trustedYes();
+        // A video from an allowed channel (already known): shown as it is too.
+        if (videoId != null) {
+            String known = YoutubeLookup.cached(c, videoId);
+            if (known != null && !known.isEmpty() && SitePolicy.youtubeChannelAllowed(known, sites(c))) return Decision.trustedYes();
+        }
         if (FilterStore.youtubeRestricted(c) && isYoutubeAddress(url)) {
             int kind = SitePolicy.youtubeKind(url);
             if (kind == SitePolicy.YT_HOME) return Decision.yes(noPics); // YouTube's own home page, its feed emptied (afterLoadScript)
@@ -293,7 +310,7 @@ public final class Guard {
         String host = SitePolicy.hostOf(url);
         if (SitePolicy.isYoutubeHost(host) && SitePolicy.hasYoutubeChannels(list)) {
             String handle = SitePolicy.youtubeChannelHandle(url);
-            if (handle != null && SitePolicy.youtubeChannelAllowed(handle, list)) return Decision.yes(noPics);
+            if (handle != null && SitePolicy.youtubeChannelAllowed(handle, list)) return Decision.trustedYes();
             String video = SitePolicy.youtubeVideoId(url);
             if (video != null) {
                 String known = YoutubeLookup.cached(c, video);
@@ -301,10 +318,13 @@ public final class Guard {
                     YoutubeLookup.start(c, video, recheck != null ? recheck : () -> { });
                     return Decision.no(page("Checking this video…", "Making sure it is from an allowed channel.", ""));
                 }
-                if (SitePolicy.youtubeChannelAllowed(known, list)) return Decision.yes(noPics);
+                if (SitePolicy.youtubeChannelAllowed(known, list)) return Decision.trustedYes();
             }
         }
-        // "Only what I allow": the rest of YouTube is blocked whatever the web level is.
+        // "Only what I allow": YouTube's home page opens and shows the allowed channels and videos
+        // (afterLoadScript); the rest of YouTube is blocked whatever the web level is.
+        if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host) && SitePolicy.youtubeKind(url) == SitePolicy.YT_HOME)
+            return Decision.yes(noPics);
         if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host))
             return Decision.no(page("This part of YouTube isn't allowed", "Only the channels and videos your parent allowed open here.",
                     "<a class=b href='" + SCHEME + "://request?u=" + Uri.encode(url) + "'>Ask for access</a>" + homeButton()));
@@ -378,6 +398,19 @@ public final class Guard {
 
     // ---------- everything a page loads ----------
 
+    /** For an allowed YouTube channel or video: only the blocked-category check, no picture covering. */
+    public static WebResourceResponse interceptFilterOnly(Context ctx, WebResourceRequest request) {
+        Context c = ctx.getApplicationContext();
+        try {
+            String url = request.getUrl().toString();
+            String host = SitePolicy.hostOf(url);
+            if (FilterStore.active(c) && host != null && FilterStore.blocks(c, host) && SitePolicy.matching(url, sites(c)) == null)
+                return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
     public static WebResourceResponse intercept(Context ctx, WebResourceRequest request) {
         Context c = ctx.getApplicationContext();
         try {
@@ -387,7 +420,7 @@ public final class Guard {
                     && SitePolicy.matching(url, sites(c)) == null && !(mode(c) == Mode.AGENT && browseWindow(c));
             if (filterBlocks) return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
             String guard = FilterStore.pictureGuard(c);
-            if (!"off".equals(guard) && !FilterStore.blockImages(c) && PictureGuard.isPicture(request))
+            if (!"off".equals(guard) && !FilterStore.blockImages(c) && PictureGuard.isPicture(request) && !isAllowedVideoThumb(c, url))
                 return PictureGuard.handle(c, request, guard);
         } catch (Exception ignored) {
             // never break a page because of a problem here
@@ -395,10 +428,92 @@ public final class Guard {
         return null;
     }
 
-    /** Script to run when a page has loaded (restricted YouTube hides its feeds), or null. */
+    /**
+     * Script for a YouTube page (restricted or "only what I allow"): its feeds hidden, and on its home
+     * page the allowed channels and videos shown in their place. Null for other pages.
+     */
     public static String afterLoadScript(Context ctx, String url) {
         Context c = ctx.getApplicationContext();
-        return url != null && FilterStore.youtubeRestricted(c) && isYoutubeAddress(url) ? YoutubeRestricted.HIDE_SCRIPT : null;
+        String m = FilterStore.youtubeMode(c);
+        if (url == null || !isYoutubeAddress(url) || !("restricted".equals(m) || "channels".equals(m))) return null;
+        String shelf = shelfScript(c);
+        return YoutubeRestricted.HIDE_SCRIPT + (shelf != null ? shelf : "");
+    }
+
+    /** The allowed list exactly as the dashboard sent it (with pictures and titles). */
+    private static JSONArray rawSites(Context c) {
+        try {
+            if (mode(c) == Mode.AGENT) {
+                String json = agentBundle(c).getString("sites");
+                return json == null ? new JSONArray() : new JSONArray(json);
+            }
+            return BrowserState.cachedSites(c);
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    /** A YouTube thumbnail (i.ytimg.com/vi/ID/...) of an allowed video: shown as it is. */
+    private static boolean isAllowedVideoThumb(Context c, String url) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^https://i[0-9]?\\.ytimg\\.com/vi(?:_webp)?/([A-Za-z0-9_-]{11})/").matcher(url);
+        return m.find() && allowedVideoIds(c).contains(m.group(1));
+    }
+
+    /** Ids of the single YouTube videos on the allowed list. */
+    static Set<String> allowedVideoIds(Context c) {
+        Set<String> out = new HashSet<>();
+        JSONArray a = rawSites(c);
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject s = a.optJSONObject(i);
+            if (s == null || "youtube".equals(s.optString("type"))) continue;
+            String u = s.optString("url", "");
+            String h = SitePolicy.hostOf(u);
+            if (h == null || !(SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h))) continue;
+            String id = SitePolicy.youtubeVideoId(u);
+            if (id != null) out.add(id);
+        }
+        return out;
+    }
+
+    private static volatile String shelfJs;
+
+    /** "Your channels" and "Your videos" on YouTube's home page (assets/youtube_shelf.js), or null if none. */
+    static String shelfScript(Context c) {
+        try {
+            JSONArray channels = new JSONArray(), videos = new JSONArray();
+            JSONArray a = rawSites(c);
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject s = a.optJSONObject(i);
+                if (s == null) continue;
+                String thumb = s.optString("thumb", "");
+                if (!thumb.startsWith("https://")) thumb = "";
+                if ("youtube".equals(s.optString("type"))) {
+                    String handle = s.optString("id", "");
+                    if (!handle.matches("@[a-z0-9._-]{3,30}")) continue;
+                    channels.put(new JSONObject().put("h", handle).put("t", s.optString("label", handle).replaceFirst("^YouTube channel ", "")).put("i", thumb));
+                } else {
+                    String h = SitePolicy.hostOf(s.optString("url", ""));
+                    if (h == null || !(SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h))) continue;
+                    String id = SitePolicy.youtubeVideoId(s.optString("url", ""));
+                    if (id == null) continue;
+                    String t = s.optString("label", "");
+                    videos.put(new JSONObject().put("v", id).put("t", "YouTube video".equals(t) || t.equals(h) ? "" : t).put("i", thumb));
+                }
+            }
+            if (channels.length() == 0 && videos.length() == 0) return null;
+            if (shelfJs == null) {
+                try (java.io.InputStream in = c.getAssets().open("youtube_shelf.js")) {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    byte[] b = new byte[8192];
+                    for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+                    shelfJs = out.toString("UTF-8");
+                }
+            }
+            String data = new JSONObject().put("channels", channels).put("videos", videos).toString().replace("</", "<\\/");
+            return shelfJs.replace("__MDM_DATA__", data);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static volatile String videoSkinJs;
