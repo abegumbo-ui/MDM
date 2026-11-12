@@ -1554,7 +1554,11 @@ function renderTimeLimits(m,dv){
  if(son){const sf=h('input',{type:'time',value:sch.from}),stt=h('input',{type:'time',value:sch.to});const chosenS=new Set(sch.days);const sdays=h('div',{class:'days'});
   ['S','M','T','W','T','F','S'].forEach(function(n,i){const b=h('button',{class:chosenS.has(i)?'on':''},n);b.onclick=function(){chosenS.has(i)?chosenS.delete(i):chosenS.add(i);b.className=chosenS.has(i)?'on':''};sdays.append(b)});
   sc.append(h('div',{class:'row',style:'margin-top:8px'},h('span',{class:'mute'},'From'),sf,h('span',{class:'mute'},'until'),stt),sdays,
-   btn('Save school time','',function(){if(!sf.value||!stt.value||sf.value===stt.value||!chosenS.size){snack('Choose a start, an end and at least one day.',1);return}st.schoolTime={days:[...chosenS].sort(),from:sf.value,to:stt.value};save().then(render)}))}
+   btn('Save school time','',function(){if(!sf.value||!stt.value||sf.value===stt.value||!chosenS.size){snack('Choose a start, an end and at least one day.',1);return}st.schoolTime={days:[...chosenS].sort(),from:sf.value,to:stt.value};save().then(render)}));
+  const br=st.schoolBreak,bf=h('input',{type:'time',value:br?br.from:'12:00'}),bt=h('input',{type:'time',value:br?br.to:'12:45'});
+  sc.append(h('div',{class:'setting',style:'margin-top:8px'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Break (lunch)'),h('div',{class:'mute small'},br?'The phone works normally from '+br.from+' to '+br.to+'.':'None.')),
+   sw(!!br,function(v){st.schoolBreak=v?{from:'12:00',to:'12:45'}:null;save().then(render)})));
+  if(br)sc.append(h('div',{class:'row'},h('span',{class:'mute'},'From'),bf,h('span',{class:'mute'},'until'),bt,btn('Save break','tonal',function(){if(!bf.value||!bt.value||bf.value>=bt.value){snack('The break has to end after it starts.',1);return}st.schoolBreak={from:bf.value,to:bt.value};save().then(render)})))}
  m.append(sc);
  // bedtime
  const bt=st.bedtime,on=!!bt;
