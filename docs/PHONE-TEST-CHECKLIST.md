@@ -375,3 +375,14 @@ Dashboard: the **Calls & texts** group.
 1. Apps → Apps → WhatsApp → **Text and calls only** on. After a check-in, from your own phone send the child a text, a photo and a voice message.
    You should see: the text arrives; the photo and voice message do not download. If texts stop too, switch it off at once and tell me.
 
+
+## 7r. More rules editable on the phone (Administrator → Rules)
+
+1. Overview: **What's on for this phone** lists the same rules as the dashboard.
+2. Websites → **Approved sites**: add a site; it shows on the dashboard after a check-in and opens on the phone.
+3. Websites → **A different level at set times**: switch on, set times a few minutes ahead; the level changes then.
+4. Screen time → **Limits for single apps**: give one app 15 minutes; after 15 minutes of use it is put away until tomorrow.
+5. Calls → **Allowed numbers**: add 'Mom 052-123-4567'; it shows on the dashboard; the lock screen offers **Call Mom**.
+6. Safety → **Save where the phone is now as a place** at home; leaving and coming back sends alerts (with location history on).
+7. The phone menu shows **What your parent can see**; check it matches what is switched on.
+
