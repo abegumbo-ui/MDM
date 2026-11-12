@@ -28,7 +28,7 @@ Tick items off here as they merge, so a resumed session knows where to continue.
    The user is "laser focused on the Android app" — make it the best. Keep going until 6am+.
 
 7. [x] Next gaps from docs/FEATURE-GAPS.md: weekend limit, internet off, new-app alert, camera, search alerts (PR night-controls), then more research.
-8. [ ] LAST, after everything else: bring all of this to the "regular tablet app" (the Browser app on tablets?) and the Lockdown app (user asked 2026-11-12 ~1am).
+8. [x] LAST: the "regular tablet app" is the MDM Agent (already has everything); Lockdown set aside (user: "forget Lockdown, focus on the dashboard").
 
 ## B. PC (LockGuard) — user asked at ~12:30am 2026-11-12
 1. [x] Dashboard PC page: list the computer's installed programs (reported by the service) with a
@@ -39,7 +39,7 @@ Tick items off here as they merge, so a resumed session knows where to continue.
        the dashboard (one-time, per PC). Local code keeps working offline.
 4. [x] Unlock file: dashboard sets a file name + secret text; while that file (with that text) is in
        a user's Downloads, every restriction is off; removed → back on. Like the tablet's emergency unlock.
-5. [ ] Anything else phones have that the PC page lacks, where Windows allows it.
+5. [x] Anything else phones have that the PC page lacks, where Windows allows it: Block ads and sites allowed for a while (#274). YouTube "Only what I allow", covered ads and "better than that" need HTTPS inspection, which LockGuard does not do.
 All Windows changes must pass windows/ci-e2e.ps1 (extend it for new behaviour).
 
 ## C. Wrap-up for the morning
@@ -91,3 +91,12 @@ Merged: YouTube videos watched (#251), PC screen time (#252), PC screenshots (#2
 Photo checker: built from opennsfw2 by the "Photo checker model" workflow into the `models` release; the
 Android build downloads it (re-run the Android build if the model was published after it started).
 Nothing of this is tested on a real phone/PC yet: checklist 7s, 7t and 8.
+
+## 2026-11-12 evening (merged, live; nothing tested on a real phone yet)
+- #262-#270 Jelly Browser official; YouTube section, search and allow, My channels/My videos on YouTube's home, YouTube add-on in the MDM app, Ask for a channel/video, ad block, branded blocked page.
+- #271 ads blocked in every browser on MDM phones; "Oh come on, you're better than that"; Browser automatic updates.
+- #272 YouTube videos that are not allowed are covered with the family logo (every page; Restricted: suggestions); allow for a while; blocked page Go back + real address; ads covered on sites that refuse ad blocking.
+- #273 Browser "Allow list" (shield, top right: time left, Block it now, ask again); Custom allow length (days/hours/minutes); "Only what I allow" YouTube in Chrome and other browsers through Inspection.
+- #274 PC: Block ads, sites allowed for a while.
+- Test phone: Samsung Galaxy A16 (SM-S166V, Android 16, serial R5GL40JLNTY). MDM app 0.3.617 installed and made device owner by adb (user asked), Browser 1000044 installed. NOT connected to the dashboard yet (needs a code from the user). New phones get "Block factory reset" and "Block USB debugging" by default: switch both off while testing (see the PDF).
+- Guide for the user: Downloads\MDM phone test - what to check.pdf (made from docs/PHONE-TEST-CHECKLIST.md + today's features).
