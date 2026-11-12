@@ -856,13 +856,14 @@ final class PolicyApplier {
             boolean blockImageSearch = policy.optBoolean("blockImageSearch", false);
             String pictureGuard = policy.optString("pictureGuard", "off");
             String browserLook = policy.optString("browserLook", "classic");
+            String skinWho = policy.optString("skinWho", "all");
             JSONArray npArr = policy.optJSONArray("noPictureSites");
             String[] noPictureSites = new String[npArr == null ? 0 : npArr.length()];
             for (int i = 0; i < noPictureSites.length; i++) noPictureSites[i] = npArr.optString(i);
             JSONArray wordsArr = policy.optJSONArray("blockedWords");
             String[] words = new String[wordsArr == null ? 0 : wordsArr.length()];
             for (int i = 0; i < words.length; i++) words[i] = wordsArr.optString(i);
-            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites);
+            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho;
             if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
@@ -876,6 +877,7 @@ final class PolicyApplier {
             b.putString("pictureGuard", pictureGuard);
             b.putString("browserLook", browserLook);
             b.putStringArray("noPictureSites", noPictureSites);
+            b.putString("skinWho", skinWho);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
             errorCleared(c, "browserConfig");

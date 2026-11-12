@@ -30,13 +30,22 @@ public final class SkinMask {
 
     /** Covers skin blocks in place; returns how much of the picture was covered (0..1). */
     public static float cover(int[] px, int w, int h) {
+        return cover(px, w, h, null, "all");
+    }
+
+    /**
+     * Same, but only skin of the chosen people ("women" or "men"; "all" = everyone), as told by
+     * the man/woman detector (NudeDetect.People, in this picture's pixels). When in doubt: covered.
+     */
+    public static float cover(int[] px, int w, int h, NudeDetect.People people, String who) {
+        boolean everyone = people == null || !("women".equals(who) || "men".equals(who));
         int covered = 0, cells = 0;
         for (int cy = 0; cy < h; cy += CELL) {
             for (int cx = 0; cx < w; cx += CELL) {
                 int ex = Math.min(w, cx + CELL), ey = Math.min(h, cy + CELL), skin = 0, n = 0;
                 for (int y = cy; y < ey; y++) for (int x = cx; x < ex; x++) { n++; if (isSkin(px[y * w + x])) skin++; }
                 cells++;
-                if (n > 0 && skin >= n * SHARE) {
+                if (n > 0 && skin >= n * SHARE && (everyone || people.cover(cx + (ex - cx) / 2f, cy + (ey - cy) / 2f, who))) {
                     covered++;
                     for (int y = cy; y < ey; y++) for (int x = cx; x < ex; x++) px[y * w + x] = GREY;
                 }

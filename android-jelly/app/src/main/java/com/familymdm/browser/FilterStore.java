@@ -136,6 +136,15 @@ final class FilterStore {
 
     static boolean allowSearch(Context c) { return prefs(c).getBoolean("searchOn", true); }
 
+    /** "Cover skin of": "all", "women" or "men" (the man/woman detector decides; in doubt, covered). */
+    static void setSkinWho(Context c, String who) {
+        prefs(c).edit().putString("skinWho", "women".equals(who) || "men".equals(who) ? who : "all").apply();
+    }
+
+    static String skinWho(Context c) {
+        return prefs(c).getString("skinWho", "all");
+    }
+
     /** "No pictures on these sites" from the dashboard. */
     static void setNoPictureSites(Context c, String[] sites) {
         StringBuilder b = new StringBuilder();

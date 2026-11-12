@@ -131,7 +131,7 @@ final class TlsInspection {
         }
         rules.setNoPictureSites(noPics);
         String guard = policy.optString("pictureGuard", "off");
-        rules.setPictureFilter("nudity".equals(guard) || "skin".equals(guard) ? new ProxyPictureFilter(c.getApplicationContext(), guard) : null);
+        rules.setPictureFilter("nudity".equals(guard) || "skin".equals(guard) ? new ProxyPictureFilter(c.getApplicationContext(), guard, policy.optString("skinWho", "all")) : null);
         // "Cover skin" also covers skin in videos, in Chrome and the other browsers that go through Inspection.
         rules.setPageScript("skin".equals(guard) ? com.familymdm.agent.inspect.YoutubeInspector.videoSkinScript() : null);
     }

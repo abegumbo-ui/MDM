@@ -92,6 +92,7 @@ public final class Guard {
             FilterStore.setPictureGuard(c, b.getString("pictureGuard", "off"));
             FilterStore.setSwitches(c, b.getBoolean("safeSearch", true), b.getBoolean("adultBlock", true), b.getBoolean("allowSearch", true));
             FilterStore.setNoPictureSites(c, b.getStringArray("noPictureSites"));
+            FilterStore.setSkinWho(c, b.getString("skinWho", "all"));
         } else if (m == Mode.ONLINE) {
             sync(c, false);
         } else {
@@ -169,6 +170,7 @@ public final class Guard {
                 String[] npSites = new String[np == null ? 0 : np.length()];
                 for (int i = 0; i < npSites.length; i++) npSites[i] = np.optString(i);
                 FilterStore.setNoPictureSites(c, npSites);
+                FilterStore.setSkinWho(c, f == null ? "all" : f.optString("skinWho", "all"));
                 FilterStore.refreshAsync(c, false);
             } catch (Exception ignored) {
                 // offline or the dashboard unreachable: keep the last settings

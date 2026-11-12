@@ -35,6 +35,7 @@ jobs:
         run: |
           mkdir -p android-jelly/app/src/main/assets
           gh release download models -p nsfw.tflite -D android-jelly/app/src/main/assets --clobber || echo "::warning::No photo checker model yet."
+          gh release download models -p nudenet320.tflite -D android-jelly/app/src/main/assets --clobber || echo "::warning::No man/woman detector yet."
       - name: Build
         working-directory: android-jelly
         env:
