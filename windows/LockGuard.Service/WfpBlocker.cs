@@ -73,6 +73,13 @@ public static class WfpBlocker
     [DllImport("fwpuclnt.dll")] private static extern uint FwpmSubLayerDeleteByKey0(IntPtr engine, ref Guid key);
     [DllImport("fwpuclnt.dll")] private static extern uint FwpmFilterAdd0(IntPtr engine, ref Filter0 filter, IntPtr sd, out ulong id);
     [DllImport("fwpuclnt.dll")] private static extern uint FwpmFilterDeleteByKey0(IntPtr engine, ref Guid key);
+    [DllImport("fwpuclnt.dll")] private static extern uint FwpmFilterDeleteById0(IntPtr engine, ulong id);
+    [DllImport("fwpuclnt.dll", CharSet = CharSet.Unicode)] private static extern uint FwpmGetAppIdFromFileName0(string fileName, out IntPtr appId);
+    [DllImport("fwpuclnt.dll")] private static extern void FwpmFreeMemory0(ref IntPtr p);
+    private static readonly Guid CondAppId = new("d78e1e87-8644-4ea5-9437-d809ecefc971"); // FWPM_CONDITION_ALE_APP_ID
+    private const uint FWP_BYTE_BLOB_TYPE = 12;
+    private static readonly List<ulong> AppBlockIds = new();
+    private static string AppBlockFile => Path.Combine(LockGuard.Common.Paths.RootDir, "app-blocks.txt");
 
     public static string? LastError { get; private set; }
 
@@ -144,6 +151,78 @@ public static class WfpBlocker
         finally
         {
             if (conds != IntPtr.Zero) Marshal.FreeHGlobal(conds);
+            Marshal.FreeHGlobal(name);
+            Marshal.FreeHGlobal(desc);
+            if (engine != IntPtr.Zero) FwpmEngineClose0(engine);
+        }
+    }
+
+    /// <summary>
+    /// "No internet" for single programs: a block for each program's outgoing connections (IPv4 and
+    /// IPv6), in the same layer as the lookup block, so another firewall (Avast) cannot override it.
+    /// Not persistent: gone after a restart until the service puts them back, so they can never be
+    /// left behind. The filter ids are remembered (also in a file) to take them away again.
+    /// </summary>
+    public static bool SetAppBlocks(List<string> paths)
+    {
+        IntPtr engine = IntPtr.Zero;
+        var name = Marshal.StringToHGlobalUni("LockGuard: no internet for a program");
+        var desc = Marshal.StringToHGlobalUni("Set on the dashboard (Programs).");
+        IntPtr cond = IntPtr.Zero;
+        try
+        {
+            uint r = FwpmEngineOpen0(null, RPC_C_AUTHN_WINNT, IntPtr.Zero, IntPtr.Zero, out engine);
+            if (r != 0) throw new InvalidOperationException($"FwpmEngineOpen0 0x{r:x8}");
+            lock (AppBlockIds)
+            {
+                try { if (File.Exists(AppBlockFile)) foreach (var l in File.ReadAllLines(AppBlockFile)) if (ulong.TryParse(l, out var id) && !AppBlockIds.Contains(id)) AppBlockIds.Add(id); } catch { }
+                foreach (var id in AppBlockIds) FwpmFilterDeleteById0(engine, id);
+                AppBlockIds.Clear();
+                if (paths.Count > 0)
+                {
+                    var sub = new SubLayer0 { subLayerKey = SubLayer, displayData = new DisplayData { name = name, description = desc }, flags = FWPM_SUBLAYER_FLAG_PERSISTENT, weight = 0x7fff };
+                    r = FwpmSubLayerAdd0(engine, ref sub, IntPtr.Zero);
+                    if (r != 0 && r != FWP_E_ALREADY_EXISTS) throw new InvalidOperationException($"FwpmSubLayerAdd0 0x{r:x8}");
+                }
+                cond = Marshal.AllocHGlobal(Marshal.SizeOf<Condition>());
+                foreach (var path in paths)
+                {
+                    if (!File.Exists(path)) continue;
+                    if (FwpmGetAppIdFromFileName0(path, out var appId) != 0) continue;
+                    try
+                    {
+                        Marshal.StructureToPtr(new Condition { fieldKey = CondAppId, matchType = FWP_MATCH_EQUAL, conditionValue = new Value { type = FWP_BYTE_BLOB_TYPE, value = (ulong)appId.ToInt64() } }, cond, false);
+                        foreach (var layer in new[] { LayerConnectV4, LayerConnectV6 })
+                        {
+                            var filter = new Filter0
+                            {
+                                filterKey = Guid.NewGuid(),
+                                displayData = new DisplayData { name = name, description = desc },
+                                flags = 0,
+                                layerKey = layer,
+                                subLayerKey = SubLayer,
+                                weight = new Value { type = FWP_EMPTY },
+                                numFilterConditions = 1,
+                                filterCondition = cond,
+                                action = new Action { type = FWP_ACTION_BLOCK },
+                            };
+                            if (FwpmFilterAdd0(engine, ref filter, IntPtr.Zero, out var id) == 0) AppBlockIds.Add(id);
+                        }
+                    }
+                    finally { FwpmFreeMemory0(ref appId); }
+                }
+                try { Directory.CreateDirectory(LockGuard.Common.Paths.RootDir); File.WriteAllLines(AppBlockFile, AppBlockIds.Select(x => x.ToString())); } catch { }
+            }
+            return true;
+        }
+        catch (Exception e)
+        {
+            LastError = "Could not set the program internet blocks: " + e.Message;
+            return false;
+        }
+        finally
+        {
+            if (cond != IntPtr.Zero) Marshal.FreeHGlobal(cond);
             Marshal.FreeHGlobal(name);
             Marshal.FreeHGlobal(desc);
             if (engine != IntPtr.Zero) FwpmEngineClose0(engine);

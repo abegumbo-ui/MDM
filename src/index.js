@@ -366,6 +366,23 @@ const normalizeWin = (w) => {
     // LockGuard refuses to be stopped or removed by an administrator (code or dashboard only).
     protectFromAdmins: o.protectFromAdmins !== false,
     blockedPrograms: [...new Set((Array.isArray(o.blockedPrograms) ? o.blockedPrograms : []).map((p) => String(p).trim().toLowerCase()).filter((p) => /^[a-z0-9 ._()+-]{1,80}$/.test(p)))].slice(0, 200),
+    // Per installed program (its full path, lower case), picked from the list the computer reports:
+    // "noInternet" (opens, but cannot go online) or "blocked" (closed the moment it starts).
+    programRules: Object.fromEntries(Object.entries(o.programRules && typeof o.programRules === "object" ? o.programRules : {})
+      .filter(([p, m]) => /^[a-z]:\\[^<>"|?*\n]{1,300}\.exe$/i.test(p) && (m === "noInternet" || m === "blocked"))
+      .map(([p, m]) => [p.toLowerCase(), m]).slice(0, 300)),
+    // The unlock file: while a file with this name, holding this text, is in a user's Downloads
+    // folder, every restriction on the computer is off. Both empty = no unlock file.
+    unlockName: typeof o.unlockName === "string" && /^[A-Za-z0-9 ._-]{3,60}$/.test(o.unlockName.trim()) ? o.unlockName.trim() : "",
+    unlockText: typeof o.unlockText === "string" ? o.unlockText.trim().slice(0, 100) : "",
+  };
+};
+/** The filter's program lists, from the per-program choices: file names to close, full paths with no internet. */
+const winProgramLists = (w) => {
+  const rules = Object.entries(w.programRules || {});
+  return {
+    blockedPrograms: [...new Set([...w.blockedPrograms, ...rules.filter(([, m]) => m === "blocked").map(([p]) => p.split("\\").pop())])],
+    noInternetPrograms: rules.filter(([, m]) => m === "noInternet").map(([p]) => p),
   };
 };
 // "Email only" (approved sites only, with these): what each email service needs to load and sign in.
@@ -456,6 +473,7 @@ function winFilter(env, d, now, dashboardHost) {
     noIncognito: !!c.chromePolicy.noIncognito,
     startPage: level === "off" && dashboardHost ? `https://${dashboardHost}/start?sites=${encodeURIComponent(startSites(c.dnsAllowlist).join(","))}` : "",
     ...w,
+    ...winProgramLists(w),
   };
 }
 
@@ -473,6 +491,8 @@ const publicWinDevice = (d) => ({
   allowedPrograms: d.allowedPrograms || [],
   reportedEnabled: !!d.reportedEnabled,
   reportedAllowedPrograms: d.reportedAllowedPrograms || [],
+  programs: d.programs || [],
+  programsAt: d.programsAt || 0,
   pending: (d.queue || []).length,
 });
 
@@ -1186,7 +1206,7 @@ async function adminApiInner(request, env, url, session) {
     const wins = await listWinDevices(env);
     return json(wins.map(publicWinDevice));
   }
-  const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command))?$/.exec(path);
+  const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command|removal-code))?$/.exec(path);
   if (wdev) {
     if (!isAdmin(session)) return json({ error: "Unknown device" }, 404);
     const key = `winDevice:${wdev[1]}`;
@@ -1217,6 +1237,15 @@ async function adminApiInner(request, env, url, session) {
       await putJSON(env, key, d);
       await markAdminActive(env);
       return json({ ok: true });
+    }
+    if (method === "POST" && wdev[2] === "removal-code") {
+      // A code for removing LockGuard on the computer itself (Settings → Apps → LockGuard → Uninstall,
+      // which opens LockGuard and asks for it). Works for 48 hours; only its fingerprint is kept.
+      const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 100000000).padStart(8, "0");
+      d.removal = { hash: await sha256(code), until: Date.now() + 48 * 3600 * 1000 };
+      await putJSON(env, key, d);
+      await auditAdd(env, { who: "Administrator", text: `Made a removal code for the computer "${d.name}"` });
+      return json({ code, until: d.removal.until });
     }
     if (method === "POST" && wdev[2] === "command") {
       if (body.type !== "uninstall") return json({ error: "Unknown command" }, 400);
@@ -1832,6 +1861,13 @@ async function windowsApi(request, env, url, ctx) {
       d.siteHistory = addSiteHistory(d.siteHistory, body.trafficLog.slice(0, 300), now);
       dirty = true;
     }
+    if (Array.isArray(body.programs)) {
+      // The computer's installed programs (from its Start menu), for the dashboard's program list.
+      d.programs = body.programs.slice(0, 500).filter((p) => p && typeof p.path === "string" && /\.exe$/i.test(p.path))
+        .map((p) => ({ name: String(p.name || "").slice(0, 100), path: String(p.path).slice(0, 300) }));
+      d.programsAt = now;
+      dirty = true;
+    }
     if (Array.isArray(body.events) && body.events.length) {
       const evs = body.events.slice(0, 40).map((e) => ({ k: String((e && e.k) || "info").slice(0, 20), m: String((e && e.m) || "").slice(0, 200), at: Number(e && e.at) || now }));
       d.events = [...(d.events || []), ...evs].slice(-MAX_EVENTS);
@@ -1857,6 +1893,8 @@ async function windowsApi(request, env, url, ctx) {
       commands,
       filter: winFilter(env, d, now, url.hostname),
       protect: normalizeWin(d.win).protectFromAdmins,
+      removalCode: d.removal && d.removal.until > now ? d.removal : null,
+      unlock: (() => { const w = normalizeWin(d.win); return w.unlockName && w.unlockText ? { name: w.unlockName, text: w.unlockText } : null; })(),
       // Only computers that can update themselves report a build number.
       ...(Number(body.info && body.info.build) > 0 ? await (async () => { const u = await latestLockguard(env); return u && u.build > Number(body.info.build) ? { update: u } : {}; })() : {}),
       pollSeconds: POLL_SECONDS,

@@ -61,6 +61,10 @@ public sealed class DashboardClient
         [JsonPropertyName("update")] public UpdateInfo? Update { get; set; }
         /// <summary>Protect LockGuard from administrators (see Hardening). Missing = keep the current setting.</summary>
         [JsonPropertyName("protect")] public bool? Protect { get; set; }
+        /// <summary>A removal code made on the dashboard (fingerprint and expiry), or null.</summary>
+        [JsonPropertyName("removalCode")] public DashboardExtras.RemovalCode? RemovalCode { get; set; }
+        /// <summary>The unlock file set on the dashboard, or null.</summary>
+        [JsonPropertyName("unlock")] public DashboardExtras.UnlockFile? Unlock { get; set; }
     }
 
     public sealed class UpdateInfo
@@ -80,7 +84,7 @@ public sealed class DashboardClient
     /// given, the sites looked up and log lines since last time) and returns what the dashboard
     /// wants applied -- or null if the dashboard can't be reached right now.
     /// </summary>
-    public async Task<SyncResult?> SyncAsync(bool enabled, List<string> allowedPrograms, object info, List<object>? trafficLog = null, List<object>? events = null)
+    public async Task<SyncResult?> SyncAsync(bool enabled, List<string> allowedPrograms, object info, List<object>? trafficLog = null, List<object>? events = null, List<object>? programs = null)
     {
         var state = LoadState();
         if (string.IsNullOrEmpty(state.Token))
@@ -95,7 +99,7 @@ public sealed class DashboardClient
 
         var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/windows/sync")
         {
-            Content = JsonContent.Create(new { info, enabled, allowedPrograms, trafficLog = trafficLog ?? new List<object>(), events = events ?? new List<object>() }),
+            Content = JsonContent.Create(new { info, enabled, allowedPrograms, trafficLog = trafficLog ?? new List<object>(), events = events ?? new List<object>(), programs }),
         };
         req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", state.Token);
         var resp = await _http.SendAsync(req);

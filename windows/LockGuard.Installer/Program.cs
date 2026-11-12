@@ -291,10 +291,10 @@ internal static class Program
         k.SetValue("DisplayName", "LockGuard");
         k.SetValue("Publisher", "Family MDM");
         k.SetValue("DisplayIcon", setup);
-        k.SetValue("UninstallString", "\"" + setup + "\"");
+        k.SetValue("UninstallString", "\"" + setup + "\" /uninstall");
         k.SetValue("NoModify", 1, Microsoft.Win32.RegistryValueKind.DWord);
         k.SetValue("NoRepair", 1, Microsoft.Win32.RegistryValueKind.DWord);
-        k.SetValue("Comments", "Removing LockGuard needs its code: Setup asks for it.");
+        k.SetValue("Comments", "Removing LockGuard needs a removal code from the dashboard (or the LockGuard code).");
     }
 
     private static void ExtractEmbeddedZip(string resourceName, string targetDir)

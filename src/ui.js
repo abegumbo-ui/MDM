@@ -1869,8 +1869,22 @@ function renderWinDetail(m,w){
    row(function(){return w.win.blockOtherBrowsers!==false},function(on){w.win.blockOtherBrowsers=on},'Close other browsers','Tor, Opera, Vivaldi and other browsers the filter cannot lock are closed the moment they start. Chrome, Edge, Brave and Firefox stay.'),
    row(function(){return w.win.blockVpnApps!==false},function(on){w.win.blockVpnApps=on},'Close VPN and proxy programs','About 50 known VPN programs (NordVPN, ProtonVPN, Psiphon, Cloudflare WARP...) are closed the moment they start.'),
    h('div',{class:'mute small',style:'margin-top:8px'},'Check what Chrome received by typing chrome://policy in its address bar (edge://policy in Edge).')));
+  // Every program installed on the computer, each with its own choice (like the phones' app list).
+  const rules=w.win.programRules=w.win.programRules||{};
+  const progs=(w.programs||[]).slice().sort(function(a,b){return a.name.localeCompare(b.name)});
+  const pc=h('div',{class:'card'},h('h2',null,'Programs on this computer ('+progs.length+')'),
+   h('div',{class:'mute'},'Choose for each program: Allowed, No internet (it opens but cannot go online), or Blocked (it is closed the moment it starts). Applies within a minute.'+(w.programsAt?' List from '+ago(w.programsAt)+'.':' The list appears after the computer checks in with the latest LockGuard.')));
+  const pq=h('input',{type:'text',placeholder:'Search programs…',style:'width:100%;margin:8px 0'});pc.append(pq);
+  const plist=h('div');pc.append(plist);
+  const drawProgs=function(){plist.textContent='';const q=pq.value.toLowerCase();
+   for(const p of progs){if(q&&!p.name.toLowerCase().includes(q)&&!p.path.toLowerCase().includes(q))continue;
+    const key=p.path.toLowerCase();const sel=h('select',null,new Option('Allowed',''),new Option('No internet','noInternet'),new Option('Blocked','blocked'));sel.value=rules[key]||'';
+    sel.onchange=function(){if(sel.value)rules[key]=sel.value;else delete rules[key];save(sel.value==='blocked'?p.name+' is closed whenever it starts.':sel.value==='noInternet'?p.name+' has no internet.':p.name+' is allowed.')};
+    plist.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},p.name),h('div',{class:'mute small'},p.path)),sel))}};
+  pq.oninput=drawProgs;drawProgs();
+  m.append(pc);
   const bp=h('textarea',{rows:4,style:'width:100%',placeholder:'one program per line, e.g. steam.exe'});bp.value=(w.win.blockedPrograms||[]).join('\n');
-  m.append(h('div',{class:'card'},h('h2',null,'Blocked programs'),h('div',{class:'mute'},'Closed the moment they start. Use the program\'s file name: find it in Task Manager → Details.'),bp,
+  m.append(h('div',{class:'card'},h('h2',null,'Other programs to close (by file name)'),h('div',{class:'mute'},'For programs that are not in the list above (portable programs, games without a Start menu entry). Use the program\'s file name: find it in Task Manager → Details.'),bp,
    h('div',{style:'margin-top:8px'},btn('Save programs','',function(){w.win.blockedPrograms=bp.value.split(/\n+/).map(function(x){return x.trim().toLowerCase()}).filter(Boolean);save('Saved.')}))));
   const controls=h('div',{class:'card'},h('h2',null,'Internet only for chosen programs'),h('div',{class:'mute'},'Stricter than the web filter: every program except the ones listed below is cut off from the internet altogether (they still open). Leave off unless you need it.'));
   controls.append(h('div',{class:'setting'},h('div',{class:'grow'},'Only the programs below may use the internet'),sw(w.enabled,async function(on){
@@ -1895,6 +1909,25 @@ function renderWinDetail(m,w){
   m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect LockGuard from administrators'),
    h('div',{class:'mute small'},'Even an administrator account on the computer cannot stop, change or uninstall LockGuard: only the code (in LockGuard Setup) or "Uninstall from this computer" below removes it. An expert could still get around it, as with any filter. '+(w.info.protectedFromAdmins?'Active on the computer.':w.info.protectError?'Problem on the computer: '+w.info.protectError:pr?'Waiting for the computer (it needs the latest LockGuard).':''))),
    sw(pr,function(on){w.win.protectFromAdmins=on;save(on?'Protection on within a minute.':'Protection off within a minute: administrators can manage LockGuard again.')}))));
+  // A removal code for uninstalling on the computer itself, made here.
+  const rc=h('div',{class:'card'},h('h2',null,'Removal code'),
+   h('div',{class:'mute'},'To uninstall LockGuard on the computer itself (Windows Settings → Apps → LockGuard → Uninstall): it opens LockGuard, which asks for a code. Make one here; it works on this computer for 48 hours. The computer needs to have checked in once after you make it.'));
+  const rcOut=h('div');
+  rc.append(h('div',{style:'margin-top:8px'},btn('Make a removal code','tonal',async function(){
+   if(!confirm('Make a code that removes LockGuard from '+w.name+'? Give it only to whoever should remove it.'))return;
+   const r=await call('POST','/api/windevices/'+w.id+'/removal-code',{});rcOut.textContent='';
+   rcOut.append(h('div',{class:'code',style:'margin-top:8px;font-size:22px;letter-spacing:2px'},r.code),h('div',{class:'mute small'},'Works until '+new Date(r.until).toLocaleString()+'. Shown only now.'))})),rcOut);
+  m.append(rc);
+  // The unlock file: everything off while a secret file is in Downloads.
+  const un=h('div',{class:'card'},h('h2',null,'Unlock file'),
+   h('div',{class:'mute'},'While a file with this name, holding this exact text, is in the Downloads folder on the computer, every restriction is off (the filter, blocked programs, everything). Delete the file and everything is back on within a few seconds. Keep the text secret: anyone with the file has a free computer.'));
+  const unName=h('input',{type:'text',placeholder:'File name, e.g. lockguard-off.txt',value:w.win.unlockName||'',style:'width:100%;margin-top:8px'});
+  const unText=h('input',{type:'text',placeholder:'Secret text inside the file',value:w.win.unlockText||'',style:'width:100%;margin-top:8px'});
+  un.append(unName,unText,h('div',{class:'row',style:'margin-top:8px'},
+   btn('Save','',function(){w.win.unlockName=unName.value.trim();w.win.unlockText=unText.value.trim();if(w.win.unlockName&&!/^[A-Za-z0-9 ._-]{3,60}$/.test(w.win.unlockName)){snack('Use 3 to 60 letters, numbers, spaces, dots, dashes or underscores for the file name.',1);return}save(w.win.unlockName&&w.win.unlockText?'Saved. The computer knows the file within a minute.':'Unlock file turned off.')}),
+   btn('Turn off','outline',function(){w.win.unlockName='';w.win.unlockText='';unName.value='';unText.value='';save('Unlock file turned off.')})),
+   w.info.unlocked?h('div',{style:'margin-top:8px;color:var(--warn);font-weight:500'},'The unlock file is on the computer right now: everything is off.'):null);
+  m.append(un);
   const controls=h('div',{class:'card'},h('h2',null,'This computer'),kv('Name on the computer',w.info.hostname||'unknown'),kv('Last check-in',ago(w.lastSeen)),kv('LockGuard build',w.info.build?String(w.info.build):'not numbered (built on a computer)'));
   controls.append(h('div',{class:'row',style:'margin-top:12px;flex-wrap:wrap'},
    btn('Rename','outline',async function(){const name=prompt('Name for this computer',w.name);if(!name)return;await call('PUT','/api/windevices/'+w.id,{name:name});load()}),

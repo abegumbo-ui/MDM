@@ -72,6 +72,12 @@ public static class LockGuardRemoveWfp {
     [DllImport("fwpuclnt.dll")] static extern uint FwpmEngineClose0(IntPtr e);
     [DllImport("fwpuclnt.dll")] static extern uint FwpmFilterDeleteByKey0(IntPtr e, ref Guid k);
     [DllImport("fwpuclnt.dll")] static extern uint FwpmSubLayerDeleteByKey0(IntPtr e, ref Guid k);
+    [DllImport("fwpuclnt.dll")] static extern uint FwpmFilterDeleteById0(IntPtr e, ulong id);
+    public static int RemoveIds(ulong[] ids) {
+        IntPtr e; if (FwpmEngineOpen0(null, 10, IntPtr.Zero, IntPtr.Zero, out e) != 0) return -1;
+        int n = 0; foreach (var id in ids) if (FwpmFilterDeleteById0(e, id) == 0) n++;
+        FwpmEngineClose0(e); return n;
+    }
     public static int Remove() {
         IntPtr e; if (FwpmEngineOpen0(null, 10, IntPtr.Zero, IntPtr.Zero, out e) != 0) return -1;
         int removed = 0;
@@ -87,6 +93,10 @@ public static class LockGuardRemoveWfp {
 }
 '@
 Write-Host "  lookup block removed ($([LockGuardRemoveWfp]::Remove()) part(s))"
+# The "no internet" blocks for single programs (their ids are kept in app-blocks.txt).
+$ab = Join-Path $env:ProgramData 'LockGuard\app-blocks.txt'
+if (Test-Path $ab) { $ids = @(Get-Content $ab | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [uint64]$_ }); if ($ids.Count) { [void][LockGuardRemoveWfp]::RemoveIds($ids) }; Remove-Item $ab -Force -ErrorAction SilentlyContinue }
+
 Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'LockGuard-*' -or $_.Name -like 'LockGuard-*' } | Remove-NetFirewallRule -ErrorAction SilentlyContinue
 Set-NetFirewallProfile -Profile Domain,Private,Public -DefaultOutboundAction Allow
 Write-Host '  firewall rules removed'

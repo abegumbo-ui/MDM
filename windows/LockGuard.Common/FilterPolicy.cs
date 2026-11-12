@@ -32,6 +32,8 @@ public sealed class FilterPolicy
     [JsonPropertyName("blockVpnApps")] public bool BlockVpnApps { get; set; }
     /// <summary>Program file names (e.g. "steam.exe") closed whenever they start.</summary>
     [JsonPropertyName("blockedPrograms")] public List<string> BlockedPrograms { get; set; } = new();
+    /// <summary>Full paths of programs that open but may not use the internet (see WfpBlocker.SetAppBlocks).</summary>
+    [JsonPropertyName("noInternetPrograms")] public List<string> NoInternetPrograms { get; set; } = new();
     /// <summary>The browsers' start and new-tab page (with "approved sites only": buttons to the allowed sites).</summary>
     [JsonPropertyName("startPage")] public string StartPage { get; set; } = "";
 
