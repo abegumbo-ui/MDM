@@ -659,6 +659,39 @@ final class PhoneRules {
         loc.addView(Ui.titleText(a, "Location history"));
         choice(a, loc, c, "locationEvery", "Note where the phone is", "Shown on the dashboard, with alerts for places you saved there.",
                 new String[]{"0", "15", "30", "60"}, new String[]{"Off", "Every 15 minutes", "Every 30 minutes", "Every hour"}, "0", rebuild);
+        JSONArray places = c.optJSONArray("places");
+        for (int i = 0; places != null && i < places.length(); i++) {
+            JSONObject pl = places.optJSONObject(i);
+            if (pl != null) Ui.add(loc, Ui.body(a, "Place: " + pl.optString("name") + " (" + pl.optInt("r", 200) + " m around it)", false), 4);
+        }
+        Ui.add(loc, Ui.button(a, "Save where the phone is now as a place", Ui.TONAL, v -> {
+            EditText name = new EditText(a);
+            name.setHint("Name, for example Home or School");
+            new AlertDialog.Builder(a).setTitle("Save this place").setView(name).setPositiveButton("Save", (d, w) -> {
+                String n = name.getText().toString().trim();
+                if (n.isEmpty()) return;
+                Toast(a, "Finding where the phone is...");
+                final Context app = a.getApplicationContext();
+                new Thread(() -> {
+                    try {
+                        JSONObject fix = new JSONObject(Actions.locate(app));
+                        JSONArray cur = current(app).optJSONArray("places");
+                        JSONArray next = new JSONArray();
+                        for (int k = 0; cur != null && k < cur.length(); k++) next.put(cur.get(k));
+                        JSONObject p = new JSONObject();
+                        p.put("name", n);
+                        p.put("lat", fix.optDouble("lat"));
+                        p.put("lon", fix.optDouble("lon"));
+                        p.put("r", 200);
+                        next.put(p);
+                        set1(app, "places", next, "saved the place " + n);
+                        a.runOnUiThread(() -> { Toast(a, n + " saved. Alerts come when the phone arrives or leaves."); rebuild.run(); });
+                    } catch (Exception e) {
+                        a.runOnUiThread(() -> Toast(a, "Could not find where the phone is: " + e.getMessage()));
+                    }
+                }, "mdm-save-place").start();
+            }).setNegativeButton("Cancel", null).show();
+        }), 8);
     }
 
     /** What has to work on this phone, read straight from the phone, with a button to fix each. */
