@@ -1136,21 +1136,21 @@ function renderInternetOff(box,d){
 const LEVELS={
  young:{label:'Young child (under 10)',desc:'Only sites you approve. No pictures on web pages, no image search, no web pages inside apps. Every app group blocked; new apps wait for you. WhatsApp Status and Channels closed. Message alerts on.',
   set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:true,blockImageSearch:true,blockAppGroups:'all',approveNew:true,noIncognito:true,blockWaStatus:true,blockWaChannels:true,inAppBrowsers:'all',messageAlerts:true}},
- teen:{label:'Teen',desc:'Strict filter (adult, gambling, drugs, scam, piracy sites blocked). SafeSearch, YouTube Restricted Mode, no image search. Dating apps blocked, new apps wait for you. Browser pages that apps open are closed. Message alerts on.',
-  set:{browserFilter:'strict',safeSearch:true,youtubeDns:'moderate',blockImages:false,blockImageSearch:true,blockAppGroups:['dating'],approveNew:true,noIncognito:true,inAppBrowsers:'tabs',messageAlerts:true}},
+ teen:{label:'Teen',desc:'Strict filter (adult, gambling, drugs, scam, piracy sites blocked). SafeSearch, YouTube Restricted Mode, no image search. Dating apps blocked, new apps wait for you. Browser pages that apps open are closed. Message alerts on. Ads blocked.',
+  set:{browserFilter:'strict',safeSearch:true,youtubeDns:'moderate',blockImages:false,blockImageSearch:true,blockAppGroups:['dating'],approveNew:true,noIncognito:true,inAppBrowsers:'tabs',messageAlerts:true,blockAds:true}},
  kosher:{label:'Kosher phone',desc:'Only sites you approve, no pictures on web pages, no image search, no web pages inside apps. Social media, video, games, dating and shopping apps blocked; new apps wait for you. WhatsApp chats and calls work; Status and Channels closed.',
   set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:true,blockImageSearch:true,blockAppGroups:'all',approveNew:true,noIncognito:true,blockWaStatus:true,blockWaChannels:true,inAppBrowsers:'all'}},
  strictest:{label:'Strictest',desc:'Approved sites only. SafeSearch on, strict YouTube Restricted Mode, no pictures on web pages, no image search. Every app group blocked (social media, games, video, dating, shopping). New apps wait for you. No incognito in Chrome.',
   set:{browserFilter:'off',safeSearch:true,youtubeDns:'strict',blockImages:true,blockImageSearch:true,blockAppGroups:'all',approveNew:true,noIncognito:true}},
- recommended:{label:'Recommended',desc:'Strict filter: adult, gambling, drugs, scam, piracy and social media sites blocked. SafeSearch on, YouTube Restricted Mode, no image search. Social media and dating apps blocked. New apps wait for you. No incognito in Chrome.',
-  set:{browserFilter:'strict',safeSearch:true,youtubeDns:'moderate',blockImages:false,blockImageSearch:true,blockAppGroups:['social','dating'],approveNew:true,noIncognito:true}},
+ recommended:{label:'Recommended',desc:'Strict filter: adult, gambling, drugs, scam, piracy and social media sites blocked. SafeSearch on, YouTube Restricted Mode, no image search. Social media and dating apps blocked. New apps wait for you. No incognito in Chrome. Ads blocked.',
+  set:{browserFilter:'strict',safeSearch:true,youtubeDns:'moderate',blockImages:false,blockImageSearch:true,blockAppGroups:['social','dating'],approveNew:true,noIncognito:true,blockAds:true}},
  light:{label:'Light',desc:'Moderate filter: adult, gambling, drugs, scam and piracy sites blocked. SafeSearch on, YouTube Restricted Mode. Dating apps blocked. Everything else open.',
   set:{browserFilter:'moderate',safeSearch:true,youtubeDns:'moderate',blockImages:false,blockImageSearch:false,blockAppGroups:['dating'],approveNew:false,noIncognito:false}}};
 function applyLevel(c,s){const groups=Object.keys(state.appGroups||{});
  c.browserFilter=s.browserFilter;c.safeSearch=s.safeSearch;c.youtubeDns=s.youtubeDns;c.blockImages=s.blockImages;c.blockImageSearch=s.blockImageSearch;
  c.blockAppGroups=s.blockAppGroups==='all'?groups:s.blockAppGroups.filter(function(g){return groups.includes(g)});
  c.approveNew=s.approveNew;c.chromePolicy=Object.assign({},c.chromePolicy||{},{noIncognito:s.noIncognito});
- for(const k of ['blockWaStatus','blockWaChannels','inAppBrowsers','messageAlerts'])if(s[k]!==undefined)c[k]=s[k]}
+ for(const k of ['blockWaStatus','blockWaChannels','inAppBrowsers','messageAlerts','blockAds'])if(s[k]!==undefined)c[k]=s[k]}
 function renderLevels(box,d){
  const card=h('div',{class:'card'},h('h2',null,'Ready-made setups'),h('div',{class:'mute'},'Not sure what to switch on? Pick the one that fits. One tap sets many settings at once; you can still change any single setting afterwards. Your allowed sites, and apps you set to Allow, are kept.'));
  for(const k of Object.keys(LEVELS)){const L=LEVELS[k];
