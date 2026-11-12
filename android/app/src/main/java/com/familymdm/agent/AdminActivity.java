@@ -2220,6 +2220,15 @@ public class AdminActivity extends Activity {
                 .setView(box)
                 .create();
 
+        final boolean noNet = NetworkBlocklist.list(this).contains(pkg);
+        Ui.add(box, Ui.rowTile(this, noNet ? "Give it internet again" : "No internet (it opens, but cannot go online)", R.drawable.ic_wifi_tile, v -> {
+            dialog.dismiss();
+            if (noNet) NetworkBlocklist.remove(this, pkg); else NetworkBlocklist.add(this, pkg);
+            Agent.addEvent(this, "local", "Master code on phone: " + (noNet ? "internet back for " : "no internet for ") + pkg);
+            AgentService.requestSync();
+            toast("\"" + label + "\" " + (noNet ? "can use the internet again." : "has no internet now."));
+            renderAppsGrid(gridHolder);
+        }), 0);
         Ui.add(box, Ui.rowTile(this, "Hard Block", R.drawable.ic_remove_tile, v -> {
             dialog.dismiss();
             WholeAppBlocklist.add(this, pkg);
