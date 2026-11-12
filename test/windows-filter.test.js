@@ -92,3 +92,17 @@ test("a PC that was connected before the web filter existed keeps working as it 
   assert.equal(old.filterOn, false);
   assert.equal(old.enabled, true);
 });
+
+test("the PC reports its programs; each can be set to No internet or Blocked from the dashboard", async () => {
+  const { token } = await (await req("/windows/register", { method: "POST", headers: J, body: JSON.stringify({ info: { hostname: "PC9" } }) })).json();
+  const sync = async (body = {}) => (await req("/windows/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) })).json();
+  await sync({ info: { hostname: "PC9" }, programs: [{ name: "Steam", path: "C:\\Program Files\\Steam\\steam.exe" }, { name: "Not a program", path: "C:\\x.txt" }] });
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const pc = (await (await req("/api/windevices", { headers: { cookie } })).json()).find((x) => x.info.hostname === "PC9");
+  assert.deepEqual(pc.programs.map((p) => p.name), ["Steam"], "only real programs are listed");
+  await req(`/api/windevices/${pc.id}/config`, { method: "PUT", headers: { cookie, ...J }, body: JSON.stringify({ win: { programRules: { "C:\\Program Files\\Steam\\steam.exe": "blocked", "C:\\Games\\game.exe": "noInternet", "C:\\bad.txt": "blocked" } } }) });
+  const r = await sync();
+  assert.ok(r.filter.blockedPrograms.includes("steam.exe"), "blocked programs are closed by file name");
+  assert.deepEqual(r.filter.noInternetPrograms, ["c:\\games\\game.exe"], "no-internet programs by full path");
+});

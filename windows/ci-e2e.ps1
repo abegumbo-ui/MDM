@@ -55,13 +55,16 @@ Step 'Install build 1 with the web filter on'
 # reaching GitHub: LockGuard still takes over the lookups and blocks going around it, which is what this tests.
 $data = Join-Path $env:ProgramData 'LockGuard'
 New-Item -ItemType Directory -Force $data | Out-Null
-'{"on":true,"level":"moderate","pauseUntil":4102444800000,"base":"https://github.com/abegumbo-ui/MDM/releases/download/blocklists","essential":["github.com","githubusercontent.com","actions.githubusercontent.com","blob.core.windows.net","visualstudio.com","microsoft.com","windows.net","azure.com","azureedge.net"]}' | Set-Content (Join-Path $data 'filter.json') -Encoding ascii
+'{"on":true,"level":"moderate","pauseUntil":4102444800000,"base":"https://github.com/abegumbo-ui/MDM/releases/download/blocklists","essential":["github.com","githubusercontent.com","actions.githubusercontent.com","blob.core.windows.net","visualstudio.com","microsoft.com","windows.net","azure.com","azureedge.net"],"noInternetPrograms":["C:\\Windows\\System32\\curl.exe"]}' | Set-Content (Join-Path $data 'filter.json') -Encoding ascii
 Start-Process (Join-Path $Dir 'LockGuard-Setup-1.exe') -ArgumentList '/quiet' -Wait
 Check ((Svc).Status -eq 'Running') 'LockGuard is running'
 Check (WaitFor 'lookups pointed at the filter' 90 { LoopbackDns }) 'lookups go through the filter (127.0.0.1)'
 Check (WaitFor 'lookups through the filter' 90 { Lookup $null }) 'lookups work through the filter'
 Check (-not (Lookup '8.8.8.8')) 'going around the filter (8.8.8.8) is blocked'
 Check ((TaskExists 'LockGuard Guard')) 'the guard task exists'
+function CurlWorks() { & "$env:SystemRoot\System32\curl.exe" -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
+Check (WaitFor 'curl.exe to lose its internet' 60 { -not (CurlWorks) }) 'a program set to "No internet" (curl.exe) cannot go online'
+Check ((Invoke-WebRequest https://example.com -UseBasicParsing -TimeoutSec 20).StatusCode -eq 200) 'other programs still can'
 
 Step 'Update to build 2, the way the updater does it (a system task)'
 AsSystem 'E2EUpdate' "`"$Dir\LockGuard-Setup-2.exe`" /quiet"
@@ -93,6 +96,7 @@ Check ($rm.HasExited) 'the removal script finished'
 Check (WaitFor 'LockGuard to be removed' 60 { -not (Svc) }) 'LockGuard is removed'
 Check (WaitFor 'normal lookups' 60 { (-not (LoopbackDns)) -and (Lookup $null) }) 'normal lookups work'
 Check (Lookup '8.8.8.8') 'lookups straight to 8.8.8.8 work again'
+Check (CurlWorks) 'the program blocked from the internet can go online again'
 Check (-not (TaskExists 'LockGuard Guard')) 'the guard is gone too'
 Check (-not (Test-Path (Join-Path $env:ProgramFiles 'LockGuard\Service'))) 'no program files left'
 

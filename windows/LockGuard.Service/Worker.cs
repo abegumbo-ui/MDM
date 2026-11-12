@@ -30,6 +30,8 @@ public sealed class Worker : BackgroundService
     private bool _filterApplied;
     private DateTime _lastReport = DateTime.UtcNow;
     private DateTime _lastHarden = DateTime.MinValue;
+    private DateTime _lastPrograms = DateTime.MinValue;
+    private string _appBlocksApplied = "";
     private static string ProtectFile => Path.Combine(Paths.RootDir, "protect.txt");
     /// <summary>On unless the dashboard switched it off.</summary>
     private bool _protect = !File.Exists(ProtectFile) || File.ReadAllText(ProtectFile).Trim() != "off";
@@ -130,6 +132,7 @@ public sealed class Worker : BackgroundService
                 if (!_proxy.Running) return; // could not start; leave the network alone (see status)
                 if (NetworkDns.Apply() && _filterApplied) Note("The computer's network settings were changed; the filter put them back.");
                 FirewallManager.SetFilterRules(true);
+                ApplyAppBlocks(p.NoInternetPrograms);
                 BrowserPolicies.Apply(p);
                 _filterApplied = true;
                 await _lists.EnsureAsync(p.Base, p.Level);
@@ -138,6 +141,7 @@ public sealed class Worker : BackgroundService
             {
                 NetworkDns.Restore();
                 FirewallManager.SetFilterRules(false);
+                ApplyAppBlocks(new List<string>());
                 BrowserPolicies.Remove();
                 _filterApplied = false;
             }
@@ -146,6 +150,14 @@ public sealed class Worker : BackgroundService
         {
             _logger.LogError(e, "Could not apply the web filter.");
         }
+    }
+
+    /// <summary>"No internet" programs: changed only when the list changes.</summary>
+    private void ApplyAppBlocks(List<string> paths)
+    {
+        var key = string.Join("|", paths.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+        if (key == _appBlocksApplied) return;
+        if (WfpBlocker.SetAppBlocks(paths)) _appBlocksApplied = key;
     }
 
     private object Info() => new
@@ -185,7 +197,14 @@ public sealed class Worker : BackgroundService
                 log = _siteLog.Drain();
                 lock (_events) { events = new List<object>(_events); _events.Clear(); }
             }
-            var result = await _dashboard.SyncAsync(config.Enabled, config.AllowedPrograms, Info(), log, events);
+            // The installed programs go up every 30 minutes (and on the first check-in), for the dashboard's list.
+            List<object>? programs = null;
+            if (DateTime.UtcNow - _lastPrograms > TimeSpan.FromMinutes(30))
+            {
+                try { programs = ProgramList.Find().Select(p => (object)new { name = p.Name, path = p.Path }).ToList(); } catch { }
+            }
+            var result = await _dashboard.SyncAsync(config.Enabled, config.AllowedPrograms, Info(), log, events, programs);
+            if (programs != null && result != null) _lastPrograms = DateTime.UtcNow;
             if (result is null) return;
             if (report) _lastReport = DateTime.UtcNow;
 
@@ -254,6 +273,7 @@ public sealed class Worker : BackgroundService
             Hardening.Apply(false); // normal rights again, so everything below (and the script) can remove it
             FirewallManager.RemoveLockdown();
             FirewallManager.SetFilterRules(false);
+            WfpBlocker.SetAppBlocks(new List<string>());
             NetworkDns.Restore();
             BrowserPolicies.Remove();
         }

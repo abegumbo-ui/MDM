@@ -40,6 +40,12 @@ public static class LockGuardGuardWfp {
     [DllImport("fwpuclnt.dll")] static extern uint FwpmEngineClose0(IntPtr e);
     [DllImport("fwpuclnt.dll")] static extern uint FwpmFilterDeleteByKey0(IntPtr e, ref Guid k);
     [DllImport("fwpuclnt.dll")] static extern uint FwpmSubLayerDeleteByKey0(IntPtr e, ref Guid k);
+    [DllImport("fwpuclnt.dll")] static extern uint FwpmFilterDeleteById0(IntPtr e, ulong id);
+    public static int RemoveIds(ulong[] ids) {
+        IntPtr e; if (FwpmEngineOpen0(null, 10, IntPtr.Zero, IntPtr.Zero, out e) != 0) return -1;
+        int n = 0; foreach (var id in ids) if (FwpmFilterDeleteById0(e, id) == 0) n++;
+        FwpmEngineClose0(e); return n;
+    }
     public static string Remove() {
         IntPtr e; uint r = FwpmEngineOpen0(null, 10, IntPtr.Zero, IntPtr.Zero, out e);
         if (r != 0) return "could not open the filtering engine 0x" + r.ToString("x8");
@@ -56,6 +62,10 @@ public static class LockGuardGuardWfp {
 }
 '@ -ErrorAction SilentlyContinue
 Log ('Lookup block: ' + [LockGuardGuardWfp]::Remove())
+# The "no internet" blocks for single programs (their ids are kept in app-blocks.txt).
+$ab = Join-Path $env:ProgramData 'LockGuard\app-blocks.txt'
+if (Test-Path $ab) { $ids = @(Get-Content $ab | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [uint64]$_ }); if ($ids.Count) { [void][LockGuardGuardWfp]::RemoveIds($ids) }; Remove-Item $ab -Force -ErrorAction SilentlyContinue }
+
 
 # 2. Adapters whose lookups point at LockGuard (127.0.0.1 / ::1): back to how they were before
 #    LockGuard (saved in dns-original.json), or automatic.

@@ -1858,8 +1858,22 @@ function renderWinDetail(m,w){
    row(function(){return w.win.blockOtherBrowsers!==false},function(on){w.win.blockOtherBrowsers=on},'Close other browsers','Tor, Opera, Vivaldi and other browsers the filter cannot lock are closed the moment they start. Chrome, Edge, Brave and Firefox stay.'),
    row(function(){return w.win.blockVpnApps!==false},function(on){w.win.blockVpnApps=on},'Close VPN and proxy programs','About 50 known VPN programs (NordVPN, ProtonVPN, Psiphon, Cloudflare WARP...) are closed the moment they start.'),
    h('div',{class:'mute small',style:'margin-top:8px'},'Check what Chrome received by typing chrome://policy in its address bar (edge://policy in Edge).')));
+  // Every program installed on the computer, each with its own choice (like the phones' app list).
+  const rules=w.win.programRules=w.win.programRules||{};
+  const progs=(w.programs||[]).slice().sort(function(a,b){return a.name.localeCompare(b.name)});
+  const pc=h('div',{class:'card'},h('h2',null,'Programs on this computer ('+progs.length+')'),
+   h('div',{class:'mute'},'Choose for each program: Allowed, No internet (it opens but cannot go online), or Blocked (it is closed the moment it starts). Applies within a minute.'+(w.programsAt?' List from '+ago(w.programsAt)+'.':' The list appears after the computer checks in with the latest LockGuard.')));
+  const pq=h('input',{type:'text',placeholder:'Search programs…',style:'width:100%;margin:8px 0'});pc.append(pq);
+  const plist=h('div');pc.append(plist);
+  const drawProgs=function(){plist.textContent='';const q=pq.value.toLowerCase();
+   for(const p of progs){if(q&&!p.name.toLowerCase().includes(q)&&!p.path.toLowerCase().includes(q))continue;
+    const key=p.path.toLowerCase();const sel=h('select',null,new Option('Allowed',''),new Option('No internet','noInternet'),new Option('Blocked','blocked'));sel.value=rules[key]||'';
+    sel.onchange=function(){if(sel.value)rules[key]=sel.value;else delete rules[key];save(sel.value==='blocked'?p.name+' is closed whenever it starts.':sel.value==='noInternet'?p.name+' has no internet.':p.name+' is allowed.')};
+    plist.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},p.name),h('div',{class:'mute small'},p.path)),sel))}};
+  pq.oninput=drawProgs;drawProgs();
+  m.append(pc);
   const bp=h('textarea',{rows:4,style:'width:100%',placeholder:'one program per line, e.g. steam.exe'});bp.value=(w.win.blockedPrograms||[]).join('\n');
-  m.append(h('div',{class:'card'},h('h2',null,'Blocked programs'),h('div',{class:'mute'},'Closed the moment they start. Use the program\'s file name: find it in Task Manager → Details.'),bp,
+  m.append(h('div',{class:'card'},h('h2',null,'Other programs to close (by file name)'),h('div',{class:'mute'},'For programs that are not in the list above (portable programs, games without a Start menu entry). Use the program\'s file name: find it in Task Manager → Details.'),bp,
    h('div',{style:'margin-top:8px'},btn('Save programs','',function(){w.win.blockedPrograms=bp.value.split(/\n+/).map(function(x){return x.trim().toLowerCase()}).filter(Boolean);save('Saved.')}))));
   const controls=h('div',{class:'card'},h('h2',null,'Internet only for chosen programs'),h('div',{class:'mute'},'Stricter than the web filter: every program except the ones listed below is cut off from the internet altogether (they still open). Leave off unless you need it.'));
   controls.append(h('div',{class:'setting'},h('div',{class:'grow'},'Only the programs below may use the internet'),sw(w.enabled,async function(on){

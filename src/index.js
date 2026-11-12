@@ -366,6 +366,19 @@ const normalizeWin = (w) => {
     // LockGuard refuses to be stopped or removed by an administrator (code or dashboard only).
     protectFromAdmins: o.protectFromAdmins !== false,
     blockedPrograms: [...new Set((Array.isArray(o.blockedPrograms) ? o.blockedPrograms : []).map((p) => String(p).trim().toLowerCase()).filter((p) => /^[a-z0-9 ._()+-]{1,80}$/.test(p)))].slice(0, 200),
+    // Per installed program (its full path, lower case), picked from the list the computer reports:
+    // "noInternet" (opens, but cannot go online) or "blocked" (closed the moment it starts).
+    programRules: Object.fromEntries(Object.entries(o.programRules && typeof o.programRules === "object" ? o.programRules : {})
+      .filter(([p, m]) => /^[a-z]:\\[^<>"|?*\n]{1,300}\.exe$/i.test(p) && (m === "noInternet" || m === "blocked"))
+      .map(([p, m]) => [p.toLowerCase(), m]).slice(0, 300)),
+  };
+};
+/** The filter's program lists, from the per-program choices: file names to close, full paths with no internet. */
+const winProgramLists = (w) => {
+  const rules = Object.entries(w.programRules || {});
+  return {
+    blockedPrograms: [...new Set([...w.blockedPrograms, ...rules.filter(([, m]) => m === "blocked").map(([p]) => p.split("\\").pop())])],
+    noInternetPrograms: rules.filter(([, m]) => m === "noInternet").map(([p]) => p),
   };
 };
 // "Email only" (approved sites only, with these): what each email service needs to load and sign in.
@@ -456,6 +469,7 @@ function winFilter(env, d, now, dashboardHost) {
     noIncognito: !!c.chromePolicy.noIncognito,
     startPage: level === "off" && dashboardHost ? `https://${dashboardHost}/start?sites=${encodeURIComponent(startSites(c.dnsAllowlist).join(","))}` : "",
     ...w,
+    ...winProgramLists(w),
   };
 }
 
@@ -473,6 +487,8 @@ const publicWinDevice = (d) => ({
   allowedPrograms: d.allowedPrograms || [],
   reportedEnabled: !!d.reportedEnabled,
   reportedAllowedPrograms: d.reportedAllowedPrograms || [],
+  programs: d.programs || [],
+  programsAt: d.programsAt || 0,
   pending: (d.queue || []).length,
 });
 
@@ -1829,6 +1845,13 @@ async function windowsApi(request, env, url, ctx) {
     }
     if (Array.isArray(body.trafficLog) && body.trafficLog.length) {
       d.siteHistory = addSiteHistory(d.siteHistory, body.trafficLog.slice(0, 300), now);
+      dirty = true;
+    }
+    if (Array.isArray(body.programs)) {
+      // The computer's installed programs (from its Start menu), for the dashboard's program list.
+      d.programs = body.programs.slice(0, 500).filter((p) => p && typeof p.path === "string" && /\.exe$/i.test(p.path))
+        .map((p) => ({ name: String(p.name || "").slice(0, 100), path: String(p.path).slice(0, 300) }));
+      d.programsAt = now;
       dirty = true;
     }
     if (Array.isArray(body.events) && body.events.length) {
