@@ -97,7 +97,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         run: |
-          if (Test-Path e2e-output.txt) { "--- test output"; Get-Content e2e-output.txt }
+          $p = Join-Path $env:TEMP 'lockguard-e2e-progress.txt'; if (Test-Path $p) { "--- test results"; Get-Content $p }
           foreach ($f in 'install.log', 'guard.log') { $p = Join-Path $env:ProgramFiles "LockGuard Guard\$f"; if (Test-Path $p) { "--- $f"; Get-Content $p } }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\Remove-LockGuard.ps1
           Get-DnsClientServerAddress -AddressFamily IPv4 | Format-Table InterfaceAlias, ServerAddresses -AutoSize

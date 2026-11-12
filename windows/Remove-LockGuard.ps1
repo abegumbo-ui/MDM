@@ -31,7 +31,9 @@ Write-Host 'Removing LockGuard...'
 
 # 1. the service (normal rights back first)
 sc.exe sdset LockGuard "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)" | Out-Null
-Stop-Service -Name LockGuard -Force -ErrorAction SilentlyContinue
+# Stop it, waiting at most 30 seconds (Stop-Service could wait forever), then make sure it is gone.
+sc.exe stop LockGuard | Out-Null
+for ($i = 0; $i -lt 30 -and (Get-Process -Name 'LockGuard.Service' -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }
 sc.exe delete LockGuard | Out-Null
 Get-Process -Name 'LockGuard.Service','LockGuard.Setup' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 

@@ -10,9 +10,12 @@ $Dir = (Resolve-Path $Dir).Path
 $guardDir = Join-Path $env:ProgramFiles 'LockGuard Guard'
 $failures = 0
 
-function Step($m) { Write-Host ''; Write-Host ("=== " + (Get-Date -Format HH:mm:ss) + "  $m") }
+# Every line also goes straight into a file, so it survives even if this machine loses touch with GitHub.
+$progress = Join-Path $env:TEMP 'lockguard-e2e-progress.txt'
+function Out($m) { Write-Host $m; Add-Content -Path $progress -Value $m }
+function Step($m) { Out ''; Out ("=== " + (Get-Date -Format HH:mm:ss) + "  $m") }
 function Check($ok, $m) {
-    if ($ok) { Write-Host "PASS  $m" } else { Write-Host "FAIL  $m"; $script:failures++ }
+    if ($ok) { Out "PASS  $m" } else { Out "FAIL  $m"; $script:failures++ }
 }
 function Lookup($server) {
     try {
@@ -23,7 +26,7 @@ function Lookup($server) {
 }
 function WaitFor($what, $seconds, [scriptblock]$cond) {
     for ($i = 0; $i -lt $seconds; $i += 2) { if (& $cond) { return $true }; Start-Sleep 2 }
-    Write-Host "  (gave up waiting for: $what)"
+    Out "  (gave up waiting for: $what)"
     return $false
 }
 function AsSystem($name, $command) {
@@ -83,7 +86,9 @@ Step 'Install again, then remove it completely'
 Start-Process (Join-Path $Dir 'LockGuard-Setup-2.exe') -ArgumentList '/quiet' -Wait
 Check ((Svc).Status -eq 'Running') 'LockGuard is running again'
 Check (WaitFor 'lookups pointed at the filter' 90 { LoopbackDns }) 'lookups go through the filter again'
-& (Join-Path $PSScriptRoot 'Remove-LockGuard.ps1')
+$rm = Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $PSScriptRoot 'Remove-LockGuard.ps1')`"" -PassThru -NoNewWindow
+if (-not $rm.WaitForExit(300000)) { Out '  (the removal script did not finish in 5 minutes)'; $rm.Kill() }
+Check ($rm.HasExited) 'the removal script finished'
 Check (WaitFor 'LockGuard to be removed' 60 { -not (Svc) }) 'LockGuard is removed'
 Check (WaitFor 'normal lookups' 60 { (-not (LoopbackDns)) -and (Lookup $null) }) 'normal lookups work'
 Check (Lookup '8.8.8.8') 'lookups straight to 8.8.8.8 work again'
