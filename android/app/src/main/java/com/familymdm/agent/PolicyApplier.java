@@ -855,10 +855,11 @@ final class PolicyApplier {
             boolean blockImages = policy.optBoolean("blockImages", false);
             boolean blockImageSearch = policy.optBoolean("blockImageSearch", false);
             String pictureGuard = policy.optString("pictureGuard", "off");
+            String browserLook = policy.optString("browserLook", "classic");
             JSONArray wordsArr = policy.optJSONArray("blockedWords");
             String[] words = new String[wordsArr == null ? 0 : wordsArr.length()];
             for (int i = 0; i < words.length; i++) words[i] = wordsArr.optString(i);
-            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard;
+            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook;
             if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
@@ -870,6 +871,7 @@ final class PolicyApplier {
             b.putStringArray("blockedWords", words);
             b.putBoolean("blockImageSearch", blockImageSearch);
             b.putString("pictureGuard", pictureGuard);
+            b.putString("browserLook", browserLook);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
             errorCleared(c, "browserConfig");

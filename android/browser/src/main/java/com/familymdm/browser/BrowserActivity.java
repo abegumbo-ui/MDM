@@ -91,8 +91,16 @@ public class BrowserActivity extends Activity {
     // "Chrome look": white bar, rounded address box with the site's name, tab count, no tab strip.
     private static final int C_BAR = 0xFFFFFFFF, C_FIELD = 0xFFF1F3F4, C_INK = 0xFF202124, C_MUTED = 0xFF5F6368;
 
+    /** The look is set on the dashboard ("Look" on the Browser's page), not in the app. */
     private boolean chromeLook() {
         return getSharedPreferences("look", MODE_PRIVATE).getBoolean("chrome", false);
+    }
+
+    private void setLook(String look) {
+        boolean chrome = "chrome".equals(look);
+        if (chrome == chromeLook()) return;
+        getSharedPreferences("look", MODE_PRIVATE).edit().putBoolean("chrome", chrome).apply();
+        runOnUiThread(this::applyLook);
     }
 
     private void applyLook() {
@@ -289,6 +297,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setBlockImageSearch(this, b != null && b.getBoolean("blockImageSearch", false));
                 FilterStore.setPictureGuard(this, b == null ? "off" : b.getString("pictureGuard", "off"));
                 FilterStore.setSwitches(this, b == null || b.getBoolean("safeSearch", true), b == null || b.getBoolean("adultBlock", true), b == null || b.getBoolean("allowSearch", true));
+                setLook(b == null ? "classic" : b.getString("browserLook", "classic"));
             } else if (m == Mode.ONLINE) {
                 FilterStore.refreshAsync(this, false);
             } else {
@@ -459,11 +468,6 @@ public class BrowserActivity extends Activity {
         if (tabs.size() > 1) menuRow(box, "Close this tab", v -> { dialog.dismiss(); closeTab(currentIndex); });
         if (t != null && canAddToHomeScreen(t)) menuRow(box, "Add to Home Screen", v -> { dialog.dismiss(); addToHomeScreen(); });
         menuCheckRow(box, "Desktop Mode", desktopMode, (btn, on) -> setDesktopMode(on));
-        menuCheckRow(box, "Chrome look", chromeLook(), (btn, on) -> {
-            getSharedPreferences("look", MODE_PRIVATE).edit().putBoolean("chrome", on).apply();
-            dialog.dismiss();
-            applyLook();
-        });
         menuRow(box, "Clear Cache", v -> { dialog.dismiss(); clearBrowserCache(); });
         if (mode != Mode.UNCONFIGURED) menuRow(box, "Allowed sites", v -> { dialog.dismiss(); showAllowedSitesDialog(); });
         if (mode == Mode.ONLINE) menuRow(box, "Sync now", v -> { dialog.dismiss(); maybeSyncOnline(true); toast("Syncing..."); });
@@ -1028,6 +1032,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setBlockImageSearch(this, filter != null && filter.optBoolean("imageSearch", false));
                 FilterStore.setPictureGuard(this, filter == null ? "off" : filter.optString("pictureGuard", "off"));
                 FilterStore.setSwitches(this, filter == null || filter.optBoolean("safeSearch", true), filter == null || filter.optBoolean("adultBlock", true), filter == null || filter.optBoolean("allowSearch", true));
+                setLook(filter == null ? "classic" : filter.optString("look", "classic"));
                 filterModeOk = !"off".equals(FilterStore.tier(this));
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list

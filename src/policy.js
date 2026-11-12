@@ -544,6 +544,8 @@ export function normalizeConfig(input) {
     safeSearchOff: c.safeSearchOff === true,
     adultListOff: c.adultListOff === true,
     searchOff: c.searchOff === true,
+    // How our Browser looks: "classic" (dark, tabs on top) or "chrome" (white bar like Chrome).
+    browserLook: c.browserLook === "chrome" ? "chrome" : "classic",
     // Ad servers blocked phone-wide (with Moderate or Strict): the "+ads" lists.
     blockAds: c.blockAds === true,
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
@@ -789,6 +791,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.blockImages = cfg.blockImages;
   out.blockImageSearch = cfg.blockImageSearch;
   out.pictureGuard = cfg.pictureGuard;
+  out.browserLook = cfg.browserLook;
   out.blockAds = cfg.blockAds;
   out.pauseUntil = cfg.pauseUntil;
   out.internetOffUntil = cfg.internetOffUntil;
