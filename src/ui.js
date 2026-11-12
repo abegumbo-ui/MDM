@@ -1081,6 +1081,9 @@ function renderBrowserSwitches(m,b){
  const save=async function(msg){try{await saveConfigFor(b,msg||'Saved. The Browser picks it up within a minute.')}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,'Search and safety'));
  const row=function(title,desc,on,set){card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute'},desc)),sw(on,function(v){set(v);save()})))};
+ const look=h('select',null,new Option('Classic (dark, tabs on top)','classic'),new Option('Like Chrome (white bar, tab count)','chrome'));look.value=c.browserLook||'classic';
+ look.onchange=function(){c.browserLook=look.value;save('Saved. The Browser changes its look within a minute.')};
+ card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Look'),h('div',{class:'mute'},'How the Browser looks on the phone.')),look));
  row('Search from the address bar','Typing words (not an address) searches Google. Not on "Approved sites only".',!c.searchOff,function(v){c.searchOff=!v});
  row('SafeSearch on Google','Google shows filtered results only.',!c.safeSearchOff,function(v){c.safeSearchOff=!v});
  row('Built-in adult site block','A short built-in list of adult sites that never open, whatever the level.',!c.adultListOff,function(v){c.adultListOff=!v});

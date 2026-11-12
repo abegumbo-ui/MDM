@@ -133,7 +133,8 @@ test("a Browser connects only with a dashboard code, and every switch reaches it
   assert.deepEqual([f.tier, f.safeSearch, f.adultBlock, f.allowSearch, f.pictureGuard], ["off", true, true, true, "off"], "safe by default");
   const id = reg.token.split(".")[0];
   await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" },
-    body: JSON.stringify({ openWeb: true, safeSearchOff: true, adultListOff: true, searchOff: true, pictureGuard: "skin" }) });
+    body: JSON.stringify({ openWeb: true, safeSearchOff: true, adultListOff: true, searchOff: true, pictureGuard: "skin", browserLook: "chrome" }) });
   f = (await sync()).filter;
   assert.deepEqual([f.tier, f.safeSearch, f.adultBlock, f.allowSearch, f.pictureGuard], ["open", false, false, false, "skin"], "every switch can be turned off, and the picture setting is kept");
+  assert.equal(f.look, "chrome", "the look is set on the dashboard");
 });
