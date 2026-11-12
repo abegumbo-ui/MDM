@@ -118,6 +118,50 @@ final class Monitor {
         }
     }
 
+    /* ---- "Oh come on, you're better than that" in any browser ---- */
+    private static long lastBadSearchAt;
+
+    /**
+     * A search for explicit things (Strict) or with a blocked word, once it has been SENT (the box is no
+     * longer being typed in, or the address bar shows the search address): the browser goes back and
+     * the child sees "Oh come on, you're better than that." Never while still typing.
+     */
+    static void watchBadSearch(Context c, String pkg, AccessibilityNodeInfo root) {
+        if (root == null || pkg == null || !SEARCH_APPS.contains(pkg)) return;
+        boolean strict = WebFilter.tier(c).startsWith("strict");
+        List<String> words = BlockedWords.list(c);
+        if (!strict && (words == null || words.isEmpty())) return;
+        long now = System.currentTimeMillis();
+        if (now - lastBadSearchAt < 5000) return;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        while (!q.isEmpty() && seen++ < 300) {
+            AccessibilityNodeInfo n = q.poll();
+            if (n.isEditable() && !n.isPassword() && n.getText() != null && !(android.os.Build.VERSION.SDK_INT >= 26 && n.isShowingHintText())) {
+                String t = n.getText().toString().trim();
+                String searched = null;
+                if (t.startsWith("http") || t.contains("/search?") || t.contains("/results?")) searched = com.familymdm.agent.sitepolicy.BadSearch.query(t.startsWith("http") ? t : "https://" + t);
+                else if (!n.isFocused()) searched = t; // the search was sent; the box shows what was searched
+                if (searched != null && com.familymdm.agent.sitepolicy.BadSearch.isBad(searched, strict, words)) {
+                    lastBadSearchAt = now;
+                    if (c instanceof android.accessibilityservice.AccessibilityService)
+                        ((android.accessibilityservice.AccessibilityService) c).performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
+                    Agent.addEvent(c, "restriction", "Search stopped (" + pkg + "): " + (searched.length() > 60 ? searched.substring(0, 60) + "…" : searched));
+                    try {
+                        c.startActivity(new android.content.Intent(c, BetterThanThatActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } catch (Exception ignored) {
+                    }
+                    return;
+                }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo ch = n.getChild(i);
+                if (ch != null) q.add(ch);
+            }
+        }
+    }
+
     /* ---- searches list ("Keep a list of searches") ---- */
     private static final String SEARCHES = "searchPending";
     private static String typingPkg, typing, lastKept;

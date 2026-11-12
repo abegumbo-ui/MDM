@@ -94,6 +94,14 @@
              (see AdminActivity.buildAddonsSection() and BrowserAddon.setEnabled()). An
              activity-alias instead of a separate APK: there's nothing to install, sign, or keep in
              sync, since it's already part of this same build. -->
+        <!-- "Oh come on, you're better than that." over any browser after a bad search (Monitor.watchBadSearch). -->
+        <activity
+            android:name=".BetterThanThatActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
         <!-- The YouTube add-on (YoutubeAddonActivity): its own "YouTube" icon, off until the dashboard's
              YouTube section turns it on (YoutubeAddon.setEnabled from PolicyApplier). -->
         <activity

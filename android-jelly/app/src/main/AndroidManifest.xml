@@ -19,6 +19,8 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Granted automatically: signed with the same key as the MDM Agent (site requests go to it). -->
     <uses-permission android:name="com.familymdm.agent.permission.BROWSER" />
+    <!-- Only for "Automatic updates" of this Browser itself (Updater); downloaded apps stay refused. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -113,6 +115,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_provider" />
         </provider>
+
+        <receiver
+            android:name="com.familymdm.browser.Updater$Result"
+            android:exported="false" />
 
         <meta-data
             android:name="android.webkit.WebView.EnableSafeBrowsing"

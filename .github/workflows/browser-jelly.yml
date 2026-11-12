@@ -66,4 +66,8 @@ jobs:
           gh release view browser-preview >/dev/null 2>&1 || gh release create browser-preview --prerelease --title "New Browser (preview)" --notes "The new Browser based on LineageOS Jelly, with the family dashboard's rules. Installs over the current Browser."
           gh release upload browser-preview mdm-browser-new.apk --clobber
           cp mdm-browser-new.apk mdm-browser.apk
-          gh release upload latest mdm-browser.apk --clobber
+          # What "Automatic updates" in the Browser looks at: the newest version and its fingerprint.
+          SHA=$(sha256sum mdm-browser.apk | cut -d' ' -f1)
+          echo "{\"versionCode\": $((1000000 + GITHUB_RUN_NUMBER)), \"url\": \"https://github.com/$GITHUB_REPOSITORY/releases/download/latest/mdm-browser.apk\", \"sha256\": \"$SHA\"}" > browser-version.json
+          cat browser-version.json
+          gh release upload latest mdm-browser.apk browser-version.json --clobber

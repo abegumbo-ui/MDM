@@ -286,6 +286,10 @@ public final class Guard {
             return Decision.no(notAllowed(url, null, homeButton()));
         Mode mode = mode(c);
         if (mode == Mode.UNCONFIGURED) return Decision.no(connectPage(null));
+        // A bad search: "Oh come on, you're better than that." (Strict: explicit words; any level: blocked words)
+        String searched = com.familymdm.agent.sitepolicy.BadSearch.query(url);
+        if (searched != null && com.familymdm.agent.sitepolicy.BadSearch.isBad(searched, "strict".equals(FilterStore.tier(c)), FilterStore.blockedWords(c)))
+            return Decision.no(com.familymdm.agent.sitepolicy.BadSearch.page(homeButton()));
         if (WordFilter.match(url, FilterStore.blockedWords(c)) != null)
             return Decision.no(notAllowed(url, "It has a blocked word in it.", homeButton()));
         if (FilterStore.blockImageSearch(c) && ProtectionRules.isImageSearch(url))

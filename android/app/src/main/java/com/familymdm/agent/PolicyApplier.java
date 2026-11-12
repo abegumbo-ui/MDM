@@ -205,7 +205,8 @@ final class PolicyApplier {
         String filterBase = policy.optString("browserFilterBase", "");
         try {
             // "Block ads" asks for the level's "+ads" lists (the same level without ads until they are published).
-            String withAds = policy.optBoolean("blockAds", false) && !"off".equals(filterTier) ? filterTier + "+ads" : filterTier;
+            // On "Approved sites only" it is the ad servers alone ("ads"), so ads are blocked on every level.
+            String withAds = !policy.optBoolean("blockAds", false) ? filterTier : "off".equals(filterTier) ? "ads" : filterTier + "+ads";
             WebFilter.setPolicy(c, withAds, filterBase); // starts downloading the category lists if needed
         } catch (Exception e) {
             Log.w(TAG, "category lists: " + e);
@@ -224,7 +225,8 @@ final class PolicyApplier {
                         || (policy.optJSONArray("blockedWords") != null && policy.optJSONArray("blockedWords").length() > 0)
                 || policy.optBoolean("internetOnlyApps", false)
                 || policy.optLong("internetOffUntil", 0) > System.currentTimeMillis()
-                || policy.optBoolean("recordSites", false));
+                || policy.optBoolean("recordSites", false)
+                || policy.optBoolean("blockAds", false));
         applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
         if (NetworkBlocklist.rev(c) == 0 && !NetworkBlocklist.list(c).isEmpty()) {
             NetworkBlocklist.seed(c);
