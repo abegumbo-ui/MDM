@@ -300,6 +300,7 @@ final class PhoneRules {
         toggle(a, card, c, "blockImages", "Block pictures on web pages", "Pages load without pictures in our browsers (in Chrome only with Inspection on, set on the dashboard).", rebuild);
         choice(a, card, c, "inAppBrowsers", "Web pages inside apps", "Links opened inside Instagram, Gmail and other apps.",
                 new String[]{"off", "tabs", "all"}, new String[]{"Allowed", "Close browser pages that apps open", "Close every web page inside apps"}, "off", rebuild);
+        approvedSites(a, card, c, rebuild);
         words(a, card, c, "blockedWords", "Blocked words", "Searches and site names containing these words are blocked. One per line.", rebuild);
 
         LinearLayout net = Ui.card(a, root);
@@ -730,6 +731,50 @@ final class PhoneRules {
                 rebuild.run();
             }).setNegativeButton("Cancel", null).show();
         });
+    }
+
+    /** Approved sites (websites only; YouTube channels and single pages are kept as the dashboard set them). */
+    private static void approvedSites(Activity a, LinearLayout card, JSONObject c, Runnable rebuild) {
+        JSONObject sites = c.optJSONObject("sites");
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        for (Iterator<String> it = sites == null ? java.util.Collections.<String>emptyIterator() : sites.keys(); it.hasNext(); ) {
+            JSONObject s = sites.optJSONObject(it.next());
+            if (s != null && "domain".equals(s.optString("type"))) {
+                sb.append(n++ == 0 ? "" : "\n").append(s.optString("host"));
+            }
+        }
+        row(a, card, "Approved sites", "Always open, whatever the filter level (with \"Approved sites only\" these are the only ones). One per line.",
+                n == 0 ? "None" : n + (n == 1 ? " site" : " sites"), v -> {
+                    EditText f = new EditText(a);
+                    f.setMinLines(5);
+                    f.setText(sb.toString());
+                    new AlertDialog.Builder(a).setTitle("Approved sites").setView(f).setPositiveButton("Save", (d, w) -> {
+                        try {
+                            JSONObject next = new JSONObject();
+                            JSONObject cur = current(a).optJSONObject("sites");
+                            for (Iterator<String> it = cur == null ? java.util.Collections.<String>emptyIterator() : cur.keys(); it.hasNext(); ) {
+                                String k = it.next();
+                                JSONObject s = cur.optJSONObject(k);
+                                if (s != null && !"domain".equals(s.optString("type"))) next.put(k, s); // YouTube channels, single pages
+                            }
+                            int i = 0;
+                            for (String line : f.getText().toString().split("[\\s,]+")) {
+                                String h = line.trim().toLowerCase(Locale.ROOT).replaceFirst("^https?://", "").replaceFirst("/.*$", "").replaceFirst("^www\\.", "");
+                                if (!h.matches("[a-z0-9.-]+\\.[a-z]{2,}")) continue;
+                                JSONObject s = new JSONObject();
+                                s.put("type", "domain");
+                                s.put("url", "https://" + h);
+                                s.put("host", h);
+                                s.put("label", h);
+                                next.put("p" + Integer.toHexString(h.hashCode()) + (i++), s);
+                            }
+                            set1(a, "sites", next, "approved sites (" + i + ")");
+                        } catch (Exception ignored) {
+                        }
+                        rebuild.run();
+                    }).setNegativeButton("Cancel", null).show();
+                });
     }
 
     private static boolean contains(JSONArray a, String v) {

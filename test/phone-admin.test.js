@@ -89,3 +89,10 @@ test("WhatsApp text and calls only blocks exactly the media servers, not the cha
   assert.ok(!pol.dnsBlocklist.some((h) => h === "cdn.whatsapp.net" || h === "whatsapp.net"), "never the chat servers");
   assert.ok(!buildAgentPolicy(normalizeConfig({}), []).dnsBlocklist.includes("mmg.whatsapp.net"));
 });
+
+test("approved sites added on the phone reach the policy", async () => {
+  const cfg = normalizeConfig({ sites: { p1: { type: "domain", url: "https://chabad.org", host: "chabad.org", label: "chabad.org" }, y: { type: "youtube", url: "https://www.youtube.com/@aish" } } });
+  const pol = buildAgentPolicy(cfg, []);
+  assert.ok(pol.sites.some((s) => s.type === "domain" && s.host === "chabad.org"));
+  assert.ok(pol.sites.some((s) => s.type === "youtube"));
+});
