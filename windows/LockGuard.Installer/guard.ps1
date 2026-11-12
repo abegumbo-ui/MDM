@@ -28,7 +28,6 @@ if ($svc) {
     }
     Log 'It would not start. Giving the computer its normal internet back until it does.'
 } else {
-    if (Get-Process -Name 'LockGuard.Service' -ErrorAction SilentlyContinue) { exit 0 }
     Log 'LockGuard is not installed. Giving the computer its normal internet back.'
 }
 

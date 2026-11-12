@@ -47,10 +47,11 @@ Check (Lookup $null) 'lookups work'
 Check (Lookup '8.8.8.8') 'lookups straight to 8.8.8.8 work'
 
 Step 'Install build 1 with the web filter on'
-# The filter settings the dashboard would send: Moderate, with the category lists from the real release.
+# The filter settings the dashboard would send, paused (everything allowed) so this machine keeps
+# reaching GitHub: LockGuard still takes over the lookups and blocks going around it, which is what this tests.
 $data = Join-Path $env:ProgramData 'LockGuard'
 New-Item -ItemType Directory -Force $data | Out-Null
-'{"on":true,"level":"moderate","base":"https://github.com/abegumbo-ui/MDM/releases/download/blocklists","essential":["github.com","githubusercontent.com","actions.githubusercontent.com","blob.core.windows.net","visualstudio.com","microsoft.com","windows.net","azure.com","azureedge.net"]}' | Set-Content (Join-Path $data 'filter.json') -Encoding ascii
+'{"on":true,"level":"moderate","pauseUntil":4102444800000,"base":"https://github.com/abegumbo-ui/MDM/releases/download/blocklists","essential":["github.com","githubusercontent.com","actions.githubusercontent.com","blob.core.windows.net","visualstudio.com","microsoft.com","windows.net","azure.com","azureedge.net"]}' | Set-Content (Join-Path $data 'filter.json') -Encoding ascii
 Start-Process (Join-Path $Dir 'LockGuard-Setup-1.exe') -ArgumentList '/quiet' -Wait
 Check ((Svc).Status -eq 'Running') 'LockGuard is running'
 Check (WaitFor 'lookups pointed at the filter' 90 { LoopbackDns }) 'lookups go through the filter (127.0.0.1)'

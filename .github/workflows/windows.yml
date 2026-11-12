@@ -88,7 +88,17 @@ jobs:
 
       - name: "End-to-end test: install, update, broken update, guard, removal"
         # This runner is a throwaway Windows machine with administrator rights.
+        timeout-minutes: 25
         run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\ci-e2e.ps1 -Dir e2e
+
+      - name: Put the test machine's network back and show the logs
+        # Always, so a failed test is reported instead of leaving this machine unable to reach GitHub.
+        if: always()
+        timeout-minutes: 5
+        run: |
+          foreach ($f in 'install.log', 'guard.log') { $p = Join-Path $env:ProgramFiles "LockGuard Guard\$f"; if (Test-Path $p) { "--- $f"; Get-Content $p } }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\Remove-LockGuard.ps1
+          Get-DnsClientServerAddress -AddressFamily IPv4 | Format-Table InterfaceAlias, ServerAddresses -AutoSize
 
       - name: Publish a versioned release
         # Only from main, same reasoning as the Android workflow: a feature-branch push shouldn't
