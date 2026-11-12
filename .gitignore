@@ -13,3 +13,7 @@ json.jar
 android/app/src/main/assets/nsfw.tflite
 android/browser/src/main/assets/nsfw.tflite
 out/
+android-jelly/app/src/main/assets/nsfw.tflite
+android-jelly/.gradle/
+android-jelly/build/
+android-jelly/app/build/
