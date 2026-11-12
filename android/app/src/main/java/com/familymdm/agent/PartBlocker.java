@@ -213,16 +213,20 @@ final class PartBlocker {
         bg.setColor(0xEE4F46E5);
         bg.setCornerRadius(Ui.dp(s, 24));
         bar.setBackground(bg);
+        Button check = new Button(s);
+        check.setText("✓ Block this screen");
+        check.setOnClickListener(v -> blockThisScreen(s));
         Button pick = new Button(s);
-        pick.setText("Pick");
+        pick.setText("Pick a part");
         pick.setOnClickListener(v -> showCapture(s));
         Button done = new Button(s);
         done.setText("Done");
         done.setOnClickListener(v -> stopPicking(s));
         TextView hint = new TextView(s);
-        hint.setText("  Open the app, go to the part,\n  tap Pick, then tap the part.  ");
+        hint.setText("  Go to the screen, then press ✓.\n  Or Pick a part to block just one button.  ");
         hint.setTextColor(Color.WHITE);
         bar.addView(hint);
+        bar.addView(check);
         bar.addView(pick);
         bar.addView(done);
         WindowManager.LayoutParams p = lp(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, true);
@@ -233,6 +237,63 @@ final class PartBlocker {
             pickButton = bar;
         } catch (Exception e) {
             picking = false;
+        }
+    }
+
+    /** The screen the person is on right now (the app's own screen, not ours). */
+    static volatile String currentScreen, currentScreenPkg;
+
+    static void noteScreen(String pkg, String cls) {
+        if (pkg == null || cls == null || pkg.equals("com.familymdm.agent") || pkg.equals("com.android.systemui")) return;
+        if (cls.startsWith("android.widget.") || cls.startsWith("android.view.")) return; // a popup, not a screen
+        currentScreenPkg = pkg;
+        currentScreen = pkg + "/" + cls;
+    }
+
+    /** "✓ Block this screen": the whole screen that is open now, from now on (Blocked apps/screens). */
+    private static void blockThisScreen(AccessibilityService s) {
+        String comp = currentScreen;
+        if (comp == null) {
+            showPanel(s, "Open the app and the screen first, then press ✓.", false);
+            return;
+        }
+        String pkg = currentScreenPkg;
+        if (isHome(s, pkg) || pkg.equals("com.android.settings") || pkg.equals("com.android.dialer") || pkg.equals("com.google.android.dialer")) {
+            showPanel(s, "The home screen, Settings and the phone app cannot be blocked this way. Open the app you want first.", false);
+            return;
+        }
+        String cls = comp.substring(comp.indexOf('/') + 1);
+        String nice = cls.substring(cls.lastIndexOf('.') + 1).replaceAll("(Activity|Fragment)$", "").replaceAll("([a-z])([A-Z])", "$1 $2");
+        if (pickButton != null) pickButton.setVisibility(View.GONE);
+        showConfirmScreen(s, pkg, comp, appLabel(s, pkg) + ": " + nice);
+    }
+
+    private static void showConfirmScreen(AccessibilityService s, String pkg, String comp, String label) {
+        WindowManager wm = s.getSystemService(WindowManager.class);
+        removeView(wm, panel);
+        LinearLayout box = new LinearLayout(s);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackgroundColor(0xF2FFFFFF);
+        box.setPadding(Ui.dp(s, 16), Ui.dp(s, 12), Ui.dp(s, 16), Ui.dp(s, 12));
+        TextView t = new TextView(s);
+        t.setText("Block this whole screen?\n" + label + "\n\nIf this app shows almost everything on one screen, this blocks most of the app: use \"Pick a part\" instead.");
+        t.setTextColor(0xFF111111);
+        box.addView(t);
+        LinearLayout row = new LinearLayout(s);
+        addBtn(s, row, "Block it", v -> {
+            AppBlocklist.add(s, comp);
+            Agent.addEvent(s, "local", "Blocked a screen with ✓ on the phone: " + label + " (" + comp + ")");
+            showPanel(s, "Blocked: " + label + ".\nIt closes whenever it opens. Undo: Administrator → Apps → Blocked.", false);
+            s.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);
+        });
+        addBtn(s, row, "Cancel", v -> backToPickButton(s));
+        box.addView(row);
+        WindowManager.LayoutParams p = lp(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT, true);
+        p.gravity = Gravity.BOTTOM;
+        try {
+            wm.addView(box, p);
+            panel = box;
+        } catch (Exception ignored) {
         }
     }
 
@@ -422,6 +483,15 @@ final class PartBlocker {
         if (n.getText() != null && n.getText().length() > 0) return n.getText().toString();
         if (n.getViewIdResourceName() != null) return n.getViewIdResourceName().replaceFirst("^.*:id/", "").replace('_', ' ');
         return "part";
+    }
+
+    private static boolean isHome(Context c, String pkg) {
+        try {
+            android.content.pm.ResolveInfo r = c.getPackageManager().resolveActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME), 0);
+            return r != null && r.activityInfo != null && pkg.equals(r.activityInfo.packageName);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static String appLabel(Context c, String pkg) {

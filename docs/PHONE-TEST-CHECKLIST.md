@@ -336,3 +336,13 @@ Dashboard: the **Calls & texts** group.
 3. Use **Bigger** / **Smaller** to see what gets outlined; tell me any app where nothing can be recognised.
 4. Remove one on the dashboard: within a check-in it stops being blocked.
 
+
+## 7l. Weekend limit, internet off, camera, new-app and search alerts
+
+1. Screen time → Limits → **A different limit on some days**: on a chosen day the phone uses that limit.
+2. Overview → **Turn the internet off → 30 minutes**: browsers and apps get no internet, calls and texts still work; it comes back by itself.
+3. Security → Restrictions → **Block the camera**: the camera app does not open.
+4. Install any app on the phone: you get an alert "New app installed: ..." (Settings → Alerts → new app).
+5. With message alerts on, type a worrying word into Google or YouTube search: it shows under Safety → Message alerts as "Searched: ...".
+6. Tap to block → **✓ Block this screen** inside an app's screen: that screen closes whenever it opens (Apps → Blocked to undo).
+

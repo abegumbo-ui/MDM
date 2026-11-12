@@ -621,6 +621,7 @@ function renderDeviceDetail(m,d){
  renderHealthSummary(ov,d);
  renderAppRequests(ov,d);
  renderPause(ov,d);
+ renderInternetOff(ov,d);
  renderLevels(ov,d);
  const info=h('div',{class:'card'},h('h2',null,'Phone'));
  info.append(kv('Recovery code',d.fallbackCode||'not seen yet (needs a check-in on a current build)'),
@@ -773,7 +774,7 @@ function renderDeviceDetail(m,d){
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
-  ['Blocked apps and screens','apps','blocking'],['Tap to block: block a button, tab or feed inside an app (Shorts, Reels...)','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Per app: filtered, not filtered, or no internet','internet','appnet'],['Sites visited (browsing history)','browser','history'],['Web pages inside apps (links in Instagram, Gmail...)','browser','apps'],['Filter schedule: a different level at set times','browser','access'],['Weekly report','settings',null],['Who can call the phone, and who it can call','calls','rules'],['Allowed phone numbers','calls','rules'],['Call log','calls','calllog'],['Contacts on the phone','calls','contacts'],['WhatsApp Status and Channels','apps','regular'],['Other parents: more logins','settings',null],['Texts (SMS) log','calls','texts'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
+  ['Blocked apps and screens','apps','blocking'],['Tap to block: block a button, tab or feed inside an app (Shorts, Reels...)','apps','blocking'],['System apps','apps','system'],['Browser at a glance: what this phone can open','browser','summary'],['Browser filter level: Moderate, Strict, YouTube','browser','access'],['Safe search: force SafeSearch on Google, Bing, DuckDuckGo','browser','access'],['Blocked words in searches and site names','browser','access'],['Block image search (Google Images and others)','browser','access'],['Protection level: Strictest, Recommended, Light','overview','status'],['Pause web filtering for a while','overview','status'],['Turn the internet off for a while','overview','status'],['Different screen time limit on weekends','time','limits'],['SOS: the phone asked for help','overview','status'],['Internet only for chosen apps','internet','appnet'],['Per app: filtered, not filtered, or no internet','internet','appnet'],['Sites visited (browsing history)','browser','history'],['Web pages inside apps (links in Instagram, Gmail...)','browser','apps'],['Filter schedule: a different level at set times','browser','access'],['Weekly report','settings',null],['Who can call the phone, and who it can call','calls','rules'],['Allowed phone numbers','calls','rules'],['Call log','calls','calllog'],['Contacts on the phone','calls','contacts'],['WhatsApp Status and Channels','apps','regular'],['Other parents: more logins','settings',null],['Texts (SMS) log','calls','texts'],['Location history and places (arrive and leave alerts)','device','location'],['Templates: copy settings to other phones','device','device'],['Alerts: SIM card changed, phone restarted','device','device'],['Block pictures (images) on web pages','browser','access'],['YouTube Restricted Mode in the YouTube app','browser','access'],['Browser: allowed sites and site requests','browser','sites'],['Browser apps: built-in browser, only browser','browser','apps'],['Chrome: no incognito, adult-site filter, no sign-in','browser','apps'],['Block all games','apps','regular'],['Block video and streaming apps','apps','regular'],['Block dating apps','apps','regular'],['Block shopping apps','apps','regular'],['Play Store: block, open for a while, codes','apps','store'],['Screen time today and this week (usage report)','time','report'],['Daily screen time limit','time','limits'],['Bedtime','time','limits'],['Time limit for one app','time','limits'],['Give extra time','time','report'],['Block all social media apps','apps','regular'],['Phone menu: which buttons he sees','device','usermenu'],
   ['Wi-Fi networks','internet','network'],['Website filter (DNS block and allow lists)','internet','dns'],['Traffic log','internet','traffic'],['Browser inspection (certificate): filter inside Chrome and other browsers','browser','inspect'],
   ['Settings menu','device','menu'],['App and system updates','device','updates'],['Device controls: sync, reboot, reset','device','device'],
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device']];
@@ -1116,6 +1117,17 @@ function renderPause(box,d){
  else{card.append(h('div',{class:'mute'},(d.isWindows?'Lets every site through for a while, for example while you use the computer yourself: blocked sites, categories, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked programs stay blocked. Starts within a minute.':'Lets every site through for a while, for example while you use the phone yourself: blocked sites, categories, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked apps stay blocked, and our own browsers keep their allowed-sites list. Starts at the phone\'s next check-in.')));
   const row=h('div',{class:'row',style:'margin-top:8px'});
   for(const [mins,label] of [[15,'15 minutes'],[60,'1 hour'],[180,'3 hours']])row.append(btn(label,'tonal',function(){c.pauseUntil=Date.now()+mins*60000;save('Paused until '+hhmm(c.pauseUntil)+'.')}));
+  card.append(row)}
+ box.append(card)}
+function renderInternetOff(box,d){
+ if(d.isWindows||d.isBrowser)return;
+ const c=d.config,on=(c.internetOffUntil||0)>Date.now();
+ const save=async function(msg){try{await saveConfigFor(d,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,on?'The internet is off':'Turn the internet off'));
+ if(on){card.append(h('div',{class:'mute'},'Until '+hhmm(c.internetOffUntil)+'. Calls and texts still work. It comes back by itself.'),h('div',{style:'margin-top:8px'},btn('Turn the internet back on','',function(){c.internetOffUntil=0;save('The internet comes back on at the next check-in.')})))}
+ else{card.append(h('div',{class:'mute'},'No app can use the internet for a while (homework, dinner, a punishment). Calls and texts still work, and apps you put under "Internet only for chosen apps" keep theirs. The phone itself stays usable.'));
+  const row=h('div',{class:'row',style:'margin-top:8px'});
+  for(const [mins,label] of [[30,'30 minutes'],[60,'1 hour'],[120,'2 hours'],[1440,'Until tomorrow']])row.append(btn(label,'tonal',function(){c.internetOffUntil=Date.now()+mins*60000;save('Internet off until '+hhmm(c.internetOffUntil)+'.')}));
   card.append(row)}
  box.append(card)}
 const LEVELS={
@@ -1511,6 +1523,10 @@ function renderTimeLimits(m,dv){
  dl.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Screen time allowed per day'),
   h('div',{class:'mute'},'When it is used up the phone shows a lock screen until midnight. Emergency calls still work, and he can ask you for more time from that screen.')),
   pick(st.dailyLimit||0,[[0,'No limit'],[30,'30 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours'],[300,'5 hours'],[360,'6 hours'],[480,'8 hours']],function(v){st.dailyLimit=v;save().then(render)})));
+ dl.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'A different limit on some days'),
+  h('div',{class:'mute'},'For example more time on weekends. Choose the days below.')),
+  pick(st.weekendLimit||0,[[0,'Same as every day'],[30,'30 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours'],[300,'5 hours'],[360,'6 hours'],[480,'8 hours']],function(v){st.weekendLimit=v;save().then(render)})));
+ if(st.weekendLimit){const wd=new Set(st.weekendDays||[0,6]);const row=h('div',{class:'days'});['S','M','T','W','T','F','S'].forEach(function(n,i){const b=h('button',{class:wd.has(i)?'on':''},n);b.onclick=function(){wd.has(i)?wd.delete(i):wd.add(i);st.weekendDays=[...wd].sort();save().then(render)};row.append(b)});dl.append(row)}
  m.append(dl);
  // bedtime
  const bt=st.bedtime,on=!!bt;
@@ -2007,7 +2023,8 @@ function renderAlerts(m){
   opt('requests','A phone asks to open a site or sends you a message');
   opt('tamper','Something security related: a phone restarted, its SIM card removed or changed, or a blocked attempt');
   opt('places','A phone arrived at or left a place you saved (Device → Location)');
-  opt('messages','Worrying words in a child\'s chats (phones with Safety → Message alerts on)');
+  opt('messages','Worrying words in a child\'s chats or searches (phones with Safety → Message alerts on)');
+  opt('apps','A new app was installed on a phone');
   if(a.pushCount)body.prepend(h('div',{class:'mute small',style:'margin-bottom:8px'},a.pushCount+(a.pushCount===1?' phone or computer gets':' phones or computers get')+' notifications.'));
   opt('weekly','Weekly report, Sunday evening: screen time, sites, calls, requests for each phone');
   card.append(h('div',{class:'mute small',style:'margin-top:8px'},'When someone taps "I need help" on a phone, you always get an alert.'));

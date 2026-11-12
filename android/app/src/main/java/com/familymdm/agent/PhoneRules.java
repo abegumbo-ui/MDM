@@ -139,7 +139,7 @@ final class PhoneRules {
         try {
             JSONObject x = new JSONObject(Agent.prefs(c).getString("localExtras", "{}"));
             String[] pass = {"safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "inAppBrowsers", "blockWaStatus",
-                    "blockWaChannels", "screenTime", "callsIn", "callsOut", "pauseUntil", "freezeUpdates", "disableBiometricUnlock", "blockedParts"};
+                    "blockWaChannels", "screenTime", "callsIn", "callsOut", "pauseUntil", "freezeUpdates", "disableBiometricUnlock", "blockedParts", "internetOffUntil"};
             for (String k : pass) if (x.has(k)) policy.put(k, x.get(k));
             if (x.has("browserFilter")) {
                 policy.put("browserFilter", x.getString("browserFilter"));
@@ -258,6 +258,20 @@ final class PhoneRules {
                 new String[]{"off", "tabs", "all"}, new String[]{"Allowed", "Close browser pages that apps open", "Close every web page inside apps"}, "off", rebuild);
         words(a, card, c, "blockedWords", "Blocked words", "Searches and site names containing these words are blocked. One per line.", rebuild);
 
+        LinearLayout net = Ui.card(a, root);
+        long offUntil = c.optLong("internetOffUntil", 0);
+        boolean netOff = offUntil > System.currentTimeMillis();
+        net.addView(Ui.titleText(a, netOff ? "The internet is off" : "Turn the internet off"));
+        net.addView(Ui.body(a, netOff ? "Until " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(offUntil)) + ". Calls and texts still work."
+                : "No app can use the internet for a while. Calls and texts still work.", true));
+        if (netOff) Ui.add(net, Ui.button(a, "Turn the internet back on", Ui.FILLED, v -> { set1(a, "internetOffUntil", 0, "internet back on"); rebuild.run(); }), 8);
+        else for (int m : new int[]{30, 60, 120}) {
+            Ui.add(net, Ui.button(a, m < 60 ? m + " minutes" : (m / 60) + (m == 60 ? " hour" : " hours"), Ui.TONAL, v -> {
+                set1(a, "internetOffUntil", System.currentTimeMillis() + m * 60000L, "internet off for " + m + " minutes");
+                rebuild.run();
+            }), 8);
+        }
+
         LinearLayout pause = Ui.card(a, root);
         long until = c.optLong("pauseUntil", 0);
         boolean paused = until > System.currentTimeMillis();
@@ -331,6 +345,20 @@ final class PhoneRules {
             }
         }
 
+        int wl = screen.optInt("weekendLimit", 0);
+        int wsel = 0;
+        for (int i = 0; i < mins.length; i++) if (mins[i] == wl) wsel = i;
+        final int wselected = wsel;
+        String[] wlabels = labels.clone();
+        wlabels[0] = "Same as every day";
+        row(a, card, "Weekends (Saturday and Sunday)", "A different limit on those days. Other days can be chosen on the dashboard.", wlabels[wsel], v ->
+                Ui.alertDialog(a).setTitle("Weekend limit").setSingleChoiceItems(wlabels, wselected, (d, w) -> {
+                    d.dismiss();
+                    putIn(screen, "weekendLimit", mins[w]);
+                    set1(a, "screenTime", screen, "weekend limit " + wlabels[w]);
+                    rebuild.run();
+                }).show());
+
         LinearLayout extra = Ui.card(a, root);
         extra.addView(Ui.titleText(a, "Extra time today"));
         extra.addView(Ui.body(a, "More time on top of the daily limit, for today only.", true));
@@ -371,7 +399,8 @@ final class PhoneRules {
         LinearLayout card = Ui.card(a, root);
         card.addView(Ui.titleText(a, "Tap to block"));
         card.addView(Ui.body(a, "Block one part of an app instead of the whole app: a button, a tab, a feed (YouTube Shorts, Instagram Reels, WhatsApp Status...). "
-                + "Tap Start, open the app, go to that part, tap Pick, then tap the part.", true));
+                + "Tap Start: a bar stays at the bottom of every screen. Open the app and go to the screen, then press ✓ to block that whole screen, "
+                + "or \"Pick a part\" and tap one button or tab to block just that.", true));
         Ui.add(card, Ui.button(a, "Start", Ui.FILLED, v -> {
             String err = PartBlocker.startPicking(a);
             if (err != null) Toast(a, err);

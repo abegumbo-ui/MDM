@@ -63,3 +63,12 @@ test("tap to block: parts of apps are cleaned up, need something to recognise, a
   const pol = buildAgentPolicy(normalizeConfig({ blockedParts: parts }), []);
   assert.equal(pol.blockedParts.length, 2);
 });
+
+test("weekend limit, internet off for a while, camera block and new-app alerts are kept and sent to the phone", async () => {
+  const cfg = normalizeConfig({ screenTime: { dailyLimit: 60, weekendLimit: 180, weekendDays: [5, 6, 9] }, internetOffUntil: 1234567890123, restrictions: { cameraDisabled: true } });
+  assert.deepEqual([cfg.screenTime.weekendLimit, cfg.screenTime.weekendDays], [180, [5, 6]]);
+  const pol = buildAgentPolicy(cfg, []);
+  assert.equal(pol.internetOffUntil, 1234567890123);
+  assert.equal(pol.screenTime.weekendLimit, 180);
+  assert.ok(JSON.stringify(pol.restrictions).includes("no_camera"), "camera block goes to the phone");
+});

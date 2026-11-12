@@ -147,6 +147,13 @@ final class ScreenTime {
 
         boolean free = Agent.prefs(c).getLong("timeFreeUntil", 0) > now;
         int dailyLimit = cfg == null ? 0 : cfg.optInt("dailyLimit", 0);
+        // A different limit on chosen days (weekends), in the phone's own time.
+        int weekendLimit = cfg == null ? 0 : cfg.optInt("weekendLimit", 0);
+        if (weekendLimit > 0) {
+            org.json.JSONArray wd = cfg.optJSONArray("weekendDays");
+            int today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1;
+            for (int i = 0; wd != null && i < wd.length(); i++) if (wd.optInt(i, -1) == today) dailyLimit = weekendLimit;
+        }
         JSONObject bed = cfg == null ? null : cfg.optJSONObject("bedtime");
         boolean bedNow = false;
         int bedTo = -1;

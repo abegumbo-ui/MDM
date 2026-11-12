@@ -11,12 +11,12 @@ last thing I'm able to do inside of it. Simple everything." Full permission for 
 Tick items off here as they merge, so a resumed session knows where to continue.
 
 ## A. Android app: everything the dashboard can do, also on the phone (Administrator screen)
-1. [ ] Inventory: list every dashboard setting/command (src/ui.js groups) vs what AdminActivity offers offline.
-2. [ ] Fill the gaps in the phone's Administrator screen, same plain wording and groups as the dashboard.
-3. [ ] Simple home of the Administrator screen: big tiles, ready-made setups, health check on the phone.
-4. [ ] Phone-side changes flow back to the dashboard (overrides pattern) so both agree.
+1. [x] Inventory: list every dashboard setting/command (src/ui.js groups) vs what AdminActivity offers offline.
+2. [x] Fill the gaps in the phone's Administrator screen, same plain wording and groups as the dashboard.
+3. [x] Simple home of the Administrator screen: big tiles, ready-made setups, health check on the phone.
+4. [x] Phone-side changes flow back to the dashboard (overrides pattern) so both agree.
 
-5. [ ] "Tap to block" picker (user asked ~12:45am): like the developer-assistant / layout-inspector
+5. [x] "Tap to block" (+ ✓ Block this screen, as the user described) picker (user asked ~12:45am): like the developer-assistant / layout-inspector
        apps — on the phone, an overlay where the admin taps any part of any app (a button, tab, feed,
        section); the accessibility service identifies it (view id / class / text / position path) and
        from then on blocks it (closes that screen or covers / backs out of that part). Managed from
@@ -26,6 +26,9 @@ Tick items off here as they merge, so a resumed session knows where to continue.
        Covenant Eyes, MB Smart, NetSpark, Techloq. Write docs/FEATURE-GAPS.md (what they have, what we
        have, what is possible on Android) and build every gap that Android allows. Android app first.
    The user is "laser focused on the Android app" — make it the best. Keep going until 6am+.
+
+7. [ ] Next gaps from docs/FEATURE-GAPS.md: weekend limit, internet off, new-app alert, camera, search alerts (PR night-controls), then more research.
+8. [ ] LAST, after everything else: bring all of this to the "regular tablet app" (the Browser app on tablets?) and the Lockdown app (user asked 2026-11-12 ~1am).
 
 ## B. PC (LockGuard) — user asked at ~12:30am 2026-11-12
 1. [ ] Dashboard PC page: list the computer's installed programs (reported by the service) with a

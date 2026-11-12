@@ -73,6 +73,38 @@ final class Monitor {
         return cachedWords;
     }
 
+    /** Search boxes of browsers, YouTube and the Google app: what is typed there is checked too. */
+    static final java.util.Set<String> SEARCH_APPS = java.util.Set.of(
+            "com.android.chrome", "org.mozilla.firefox", "com.sec.android.app.sbrowser", "com.brave.browser", "com.opera.browser",
+            "com.microsoft.emmx", "com.duckduckgo.mobile.android", "com.google.android.youtube", "com.google.android.googlequicksearchbox",
+            "com.familymdm.browser", "com.zhiliaoapp.musically", "com.instagram.android", "com.pinterest");
+    private static long lastSearchScanAt;
+
+    /** Worrying words typed into a search box (only with message alerts on). At most every 2 s. */
+    static void scanSearch(Context c, String pkg, AccessibilityNodeInfo root) {
+        if (root == null || !on(c) || pkg == null || !SEARCH_APPS.contains(pkg)) return;
+        long now = System.currentTimeMillis();
+        if (now - lastSearchScanAt < 2000) return;
+        lastSearchScanAt = now;
+        List<String> words = words(c);
+        if (words.isEmpty()) return;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        while (!q.isEmpty() && seen++ < 400) {
+            AccessibilityNodeInfo n = q.poll();
+            if (n.isEditable() && n.getText() != null && n.getText().length() >= 3 && !n.isPassword()) {
+                String text = n.getText().toString();
+                String word = MessageRules.match(text, words);
+                if (word != null) found(c, pkg, word, "Searched: " + text, now);
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo ch = n.getChild(i);
+                if (ch != null) q.add(ch);
+            }
+        }
+    }
+
     /** Called by the accessibility service when a chat app's screen changes. At most every 1.5 s. */
     static void scan(Context c, String pkg, AccessibilityNodeInfo root) {
         if (root == null || !on(c) || !MessageRules.watched(pkg)) return;

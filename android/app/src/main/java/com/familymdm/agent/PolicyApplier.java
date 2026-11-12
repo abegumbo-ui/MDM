@@ -220,6 +220,7 @@ final class PolicyApplier {
                 (!"off".equals(filterTier) && !filterBase.isEmpty()) || safeSearch || !"off".equals(youtubeDns)
                         || (policy.optJSONArray("blockedWords") != null && policy.optJSONArray("blockedWords").length() > 0)
                 || policy.optBoolean("internetOnlyApps", false)
+                || policy.optLong("internetOffUntil", 0) > System.currentTimeMillis()
                 || policy.optBoolean("recordSites", false));
         applyDnsAllowlist(c, policy.optJSONArray("dnsAllowlist"));
         if (NetworkBlocklist.rev(c) == 0 && !NetworkBlocklist.list(c).isEmpty()) {
