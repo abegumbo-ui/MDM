@@ -25,11 +25,12 @@ cv2.imwrite("astronaut.jpg", cv2.cvtColor(data.astronaut(), cv2.COLOR_RGB2BGR))
 # 320n.pt is downloaded by the workflow (gh release download), next to this run.
 from ultralytics import YOLO
 print("labels in the weights:", YOLO("320n.pt").names)
-exported = YOLO("320n.pt").export(format="tflite", imgsz=320, half=True)
+exported = YOLO("320n.pt").export(format="tflite", imgsz=320)
 print("exported:", exported)
 import glob
 import shutil
-lite_path = sorted(glob.glob("320n_saved_model/*float16.tflite") or glob.glob("**/*float16.tflite", recursive=True))[0]
+lite_path = str(exported) if str(exported).endswith(".tflite") else sorted(p for p in glob.glob("**/*.tflite", recursive=True) if "nudenet320" not in p)[0]
+print("using:", lite_path)
 shutil.copy(lite_path, "nudenet320.tflite")
 print("nudenet320.tflite:", os.path.getsize("nudenet320.tflite") // 1024, "KB")
 
