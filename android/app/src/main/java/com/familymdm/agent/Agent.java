@@ -360,7 +360,19 @@ final class Agent {
 
     /** Adopts the dashboard's list when it is newer than ours (e.g. "clear local changes"). */
     static synchronized void adoptOverrides(Context c, JSONObject map, long rev) {
-        if (map == null || rev <= overridesRev(c)) return;
+        adoptOverrides(c, map, rev, -1);
+    }
+
+    /**
+     * sentRev: the revision this phone sent in the check-in being answered. If it changed since (a
+     * switch was flipped while the check-in was on its way), the answer does not know about that
+     * change yet, so it must not replace it; the next check-in sends it.
+     */
+    static synchronized void adoptOverrides(Context c, JSONObject map, long rev, long sentRev) {
+        if (map == null) return;
+        if (sentRev >= 0) {
+            if (overridesRev(c) != sentRev) return;
+        } else if (rev <= overridesRev(c)) return;
         JSONObject clean = new JSONObject();
         Iterator<String> it = map.keys();
         try {
@@ -400,7 +412,15 @@ final class Agent {
 
     /** Adopts the dashboard's cleared map once it has folded our change in (same dance as adoptOverrides). */
     static synchronized void adoptRestrictionOverrides(Context c, JSONObject map, long rev) {
-        if (map == null || rev <= restrictionOverridesRev(c)) return;
+        adoptRestrictionOverrides(c, map, rev, -1);
+    }
+
+    /** Same as adoptOverrides: never replaces a switch flipped after the check-in was sent. */
+    static synchronized void adoptRestrictionOverrides(Context c, JSONObject map, long rev, long sentRev) {
+        if (map == null) return;
+        if (sentRev >= 0) {
+            if (restrictionOverridesRev(c) != sentRev) return;
+        } else if (rev <= restrictionOverridesRev(c)) return;
         prefs(c).edit().putString("restrictionOverrides", map.toString()).putLong("restrictionOverridesRev", rev).apply();
     }
 }

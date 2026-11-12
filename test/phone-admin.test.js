@@ -96,3 +96,18 @@ test("approved sites added on the phone reach the policy", async () => {
   assert.ok(pol.sites.some((s) => s.type === "domain" && s.host === "chabad.org"));
   assert.ok(pol.sites.some((s) => s.type === "youtube"));
 });
+
+test("a switch flipped on a phone whose clock is behind the dashboard still counts", async () => {
+  const r = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = r.headers.get("set-cookie").split(";")[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { ...J, cookie }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "SlowClock" } }) })).json();
+  const sync = async (body) => (await req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) })).json();
+  const old = Date.now() - 3600000; // the phone thinks it is an hour earlier
+  let s = await sync({ restrictionOverrides: { no_camera: true }, restrictionOverridesRev: old });
+  assert.ok(s.policy.restrictions.includes("no_camera"));
+  s = await sync({ restrictionOverrides: { no_camera: false }, restrictionOverridesRev: old + 1000 });
+  assert.ok(!s.policy.restrictions.includes("no_camera"), "taken, although its number is older than the dashboard's clock");
+  s = await sync({ restrictionOverrides: { no_camera: true }, restrictionOverridesRev: old + 500 });
+  assert.ok(!s.policy.restrictions.includes("no_camera"), "an older change from the same phone is still ignored");
+});
