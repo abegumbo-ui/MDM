@@ -13,7 +13,12 @@ namespace LockGuard.Common;
 /// </summary>
 public sealed class LockConfig
 {
-    [JsonPropertyName("enabled")] public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// "Only chosen programs online". Off unless switched on from the dashboard or LockGuard's window:
+    /// it used to start on, which left a fresh install with no internet for anything until the
+    /// dashboard answered (found by the end-to-end test; Avast had hidden it on a real PC).
+    /// </summary>
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; }
     [JsonPropertyName("allowedPrograms")] public List<string> AllowedPrograms { get; set; } = new();
 
     public static LockConfig Load()

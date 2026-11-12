@@ -70,15 +70,7 @@ Check ((TaskExists 'LockGuard Guard')) 'the guard task exists'
 function CurlWorks() { & "$env:SystemRoot\System32\curl.exe" -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
 Check (WaitFor 'curl.exe to lose its internet' 60 { -not (CurlWorks) }) 'a program set to "No internet" (curl.exe) cannot go online'
 Check (OtherWorks) 'other programs still can (a copy of curl.exe elsewhere)'
-# Diagnostics: what the filter answers for example.com, and LockGuard's per-program blocks as Windows has them.
-try { Out ('  example.com resolves to: ' + ((Resolve-DnsName example.com -DnsOnly -ErrorAction Stop | Where-Object IPAddress | ForEach-Object IPAddress) -join ', ')) } catch { Out ('  example.com did not resolve: ' + $_.Exception.Message) }
-# Diagnostics: LockGuard's per-program blocks as Windows has them.
-$ErrorActionPreference = 'Continue'
-foreach ($args2 in @('-4 https://example.com', '-k https://1.1.1.1', '-k http://1.1.1.1')) { $o = & $curl2 -sS -o NUL -m 10 ($args2 -split ' ') 2>&1 | Out-String; Out ("  copy curl $args2 -> exit $LASTEXITCODE $o") }
-netsh wfp show filters file="$env:TEMP\wfp.xml" | Out-Null
-if (Test-Path "$env:TEMP\wfp.xml") { [xml]$x = Get-Content "$env:TEMP\wfp.xml"; foreach ($f in $x.SelectNodes('//item[action/type="FWP_ACTION_BLOCK"]')) { if ($f.layerKey -like '*ALE_AUTH_CONNECT_V4*') { Out ('  BLOCK V4: ' + $f.displayData.name + ' | weight ' + $f.effectiveWeight.uint64 + ' | conds ' + (($f.filterCondition.item | ForEach-Object { $_.fieldKey }) -join ',')) } }
-  foreach ($f in $x.SelectNodes('//item[displayData/name="LockGuard: no internet for a program"]')) { Out ('  WFP filter: layer ' + $f.layerKey + ' action ' + $f.action.type + ' conditions ' + $f.filterCondition.numItems + ': ' + ($f.filterCondition.item | ForEach-Object { $_.fieldKey + ' ' + $_.matchType + ' ' + $_.conditionValue.type + ' ' + ($_.conditionValue.byteBlob.asString) }) -join ' | ') } }
-$ErrorActionPreference = 'Stop'
+
 
 Step 'The unlock file: in Downloads, every restriction is off; deleted, back on'
 # What the dashboard would send (written as the system, since the folder is locked to it).
