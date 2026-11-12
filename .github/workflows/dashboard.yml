@@ -1,0 +1,22 @@
+name: Dashboard tests
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "test/**"
+      - "tools/**"
+      - "package.json"
+      - ".github/workflows/dashboard.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run the dashboard tests (every page, the phones', PCs' and browsers' APIs)
+        run: npm test

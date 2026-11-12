@@ -228,6 +228,8 @@ final class ScreenTime {
             int[] sdays = new int[sd == null ? 0 : sd.length()];
             for (int i = 0; i < sdays.length; i++) sdays[i] = sd.optInt(i, -1);
             schoolNow = ScreenTimeRules.inWindow(sdays, minutesOf(school.optString("from")), minutesOf(school.optString("to")), dow, mins);
+            JSONObject brk = cfg.optJSONObject("schoolBreak");
+            if (schoolNow && brk != null && mins >= minutesOf(brk.optString("from")) && mins < minutesOf(brk.optString("to"))) schoolNow = false; // lunch break
         }
         if (schoolNow) over.addAll(schoolBlocked(c, excluded));
         boolean wasSchool = Agent.prefs(c).getBoolean("schoolNow", false);
