@@ -101,6 +101,19 @@ public class LockActivity extends Activity {
                 Toast.makeText(this, "No phone app available.", Toast.LENGTH_LONG).show();
             }
         }), 32);
+        // A locked phone can still call the allowed numbers (the parents), up to three.
+        int shownCalls = 0;
+        for (String num : Calls.allowedNumbers(this)) {
+            if (shownCalls++ >= 3) break;
+            String name = Calls.contactName(this, num);
+            Ui.add(root, Ui.button(this, "Call " + (name != null && !name.isEmpty() ? name : num), Ui.TONAL, v -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:" + num)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Exception e) {
+                    Toast.makeText(this, "No phone app available.", Toast.LENGTH_LONG).show();
+                }
+            }), 8);
+        }
         if (ScreenTime.lockIsOurs(this) && !Agent.standalone(this) && Agent.prefs(this).getString("token", null) != null) {
             Ui.add(root, Ui.button(this, "Ask for more time", Ui.TONAL, v -> {
                 Agent.addAppRequest(this, "time", null, null);
