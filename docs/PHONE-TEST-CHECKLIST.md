@@ -316,3 +316,14 @@ Dashboard: the **Calls & texts** group.
   switch Inspection off, then Refresh on the phone.
 - **Locked out of everything:** the Agent's Administrator screen with your master code works with no
   internet; "Emergency unlock" there clears every restriction.
+
+## 7j. Rules on the phone (Administrator → Rules)
+
+1. On the phone: Administrator (master code) → **Rules** → Websites → switch **Force SafeSearch** on.
+   You should see within a minute: the dashboard shows it on, and its log says "On the phone: ...".
+2. Change the same switch on the dashboard. You should see: the phone's Rules screen follows after a check-in.
+3. **Rules → Ready-made → Teen**: the confirm box lists what it does; the dashboard matches afterwards.
+4. **Rules → Safety**: the health check shows each item; red ones have a **Fix it** button that opens the right Android screen.
+5. Dashboard: Device → Controls → **Only control from the dashboard** on. Change something in Rules on the phone:
+   the dashboard ignores it and the phone goes back to the dashboard's setting at the next check-in.
+

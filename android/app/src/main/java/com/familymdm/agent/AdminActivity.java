@@ -60,16 +60,18 @@ public class AdminActivity extends Activity {
 
     // The Administrator screen has 5 groups (same ones as the dashboard's device page), each with a
     // few tabs. `group` is the open group, `subOf` remembers which tab each group was last on.
-    private static final String[] GROUPS = {"overview", "apps", "internet", "security", "device"};
-    private static final String[] GROUP_LABELS = {"Overview", "Apps", "Internet", "Security", "Device"};
+    private static final String[] GROUPS = {"overview", "rules", "apps", "internet", "security", "device"};
+    private static final String[] GROUP_LABELS = {"Overview", "Rules", "Apps", "Internet", "Security", "Device"};
     private static final String[][] SUBS = {
             {"status", "messages"},
+            PhoneRules.SUBS,
             {"regular", "kiosk", "blocked", "system", "browser"},
             {"wifi", "filter", "cutoff", "traffic"},
             {"lock", "applock", "restrictions", "access"},
             {"menu", "updates", "controls"}};
     private static final String[][] SUB_LABELS = {
             {"Status", "Messages"},
+            PhoneRules.SUB_LABELS,
             {"Apps", "Home screen", "Blocked", "System apps", "Browser"},
             {"Wi-Fi", "Website filter", "Network cutoff", "Traffic log"},
             {"Screen lock", "App lock", "Restrictions", "App access"},
@@ -234,6 +236,10 @@ public class AdminActivity extends Activity {
             case "overview":
                 if ("messages".equals(sub)) buildMessagesSection(root);
                 else buildStatusSection(root);
+                break;
+            case "rules":
+                // The dashboard's settings, on the phone (see PhoneRules).
+                PhoneRules.build(this, root, sub, () -> { if (unlocked()) build(); });
                 break;
             case "apps":
                 if ("kiosk".equals(sub)) buildKioskSection(root);
