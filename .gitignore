@@ -10,4 +10,5 @@ android/local.properties
 android/app/release.keystore
 *.apk
 json.jar
+android/app/src/main/assets/nsfw.tflite
 out/

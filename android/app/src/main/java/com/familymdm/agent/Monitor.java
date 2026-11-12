@@ -61,6 +61,11 @@ final class Monitor {
         boolean hadVideos = Agent.prefs(c).getBoolean("recordVideos", false);
         Agent.prefs(c).edit().putBoolean("recordVideos", videos).apply();
         if (videos && !hadVideos) tellChild(c, "YouTube videos are listed", "Your parent can see the names of the YouTube videos watched on this phone.");
+        boolean nudity = policy.optBoolean("nudityAlerts", false);
+        boolean hadNudity = Agent.prefs(c).getBoolean("nudityAlerts", false);
+        PhotoWatch.apply(c, nudity);
+        if (nudity && !hadNudity) tellChild(c, "Photo alerts are on",
+                "New photos on this phone are checked on the phone itself. If one may show nudity, your parent is told when it was saved. The photo is never sent to anyone.");
         boolean was = Agent.prefs(c).getBoolean("msgAlerts", false);
         Agent.prefs(c).edit().putBoolean("msgAlerts", on).putString("msgWords", sb.toString()).apply();
         if (on && !was) tellChild(c, "Message alerts are on",
@@ -355,6 +360,10 @@ final class Monitor {
         int w = b.getWidth(), h = b.getHeight();
         float scale = Math.min(1f, 720f / Math.max(1, Math.min(w, h)));
         Bitmap small = scale < 1f ? Bitmap.createScaledBitmap(b, Math.round(w * scale), Math.round(h * scale), true) : b;
+        // Never send a picture of the screen that may show nudity (it could be of a child).
+        float nude = NudityCheck.score(c, small);
+        if (nude >= com.familymdm.agent.sitepolicy.NudityPrep.THRESHOLD)
+            return "Not sent: the screen may show nudity, so the picture stayed on the phone.";
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         small.compress(Bitmap.CompressFormat.JPEG, 70, out);
         String server = Agent.prefs(c).getString("server", "");
