@@ -61,6 +61,10 @@ public sealed class DashboardClient
         [JsonPropertyName("update")] public UpdateInfo? Update { get; set; }
         /// <summary>Protect LockGuard from administrators (see Hardening). Missing = keep the current setting.</summary>
         [JsonPropertyName("protect")] public bool? Protect { get; set; }
+        /// <summary>A removal code made on the dashboard (fingerprint and expiry), or null.</summary>
+        [JsonPropertyName("removalCode")] public DashboardExtras.RemovalCode? RemovalCode { get; set; }
+        /// <summary>The unlock file set on the dashboard, or null.</summary>
+        [JsonPropertyName("unlock")] public DashboardExtras.UnlockFile? Unlock { get; set; }
     }
 
     public sealed class UpdateInfo

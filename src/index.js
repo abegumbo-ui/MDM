@@ -371,6 +371,10 @@ const normalizeWin = (w) => {
     programRules: Object.fromEntries(Object.entries(o.programRules && typeof o.programRules === "object" ? o.programRules : {})
       .filter(([p, m]) => /^[a-z]:\\[^<>"|?*\n]{1,300}\.exe$/i.test(p) && (m === "noInternet" || m === "blocked"))
       .map(([p, m]) => [p.toLowerCase(), m]).slice(0, 300)),
+    // The unlock file: while a file with this name, holding this text, is in a user's Downloads
+    // folder, every restriction on the computer is off. Both empty = no unlock file.
+    unlockName: typeof o.unlockName === "string" && /^[A-Za-z0-9 ._-]{3,60}$/.test(o.unlockName.trim()) ? o.unlockName.trim() : "",
+    unlockText: typeof o.unlockText === "string" ? o.unlockText.trim().slice(0, 100) : "",
   };
 };
 /** The filter's program lists, from the per-program choices: file names to close, full paths with no internet. */
@@ -1202,7 +1206,7 @@ async function adminApiInner(request, env, url, session) {
     const wins = await listWinDevices(env);
     return json(wins.map(publicWinDevice));
   }
-  const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command))?$/.exec(path);
+  const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command|removal-code))?$/.exec(path);
   if (wdev) {
     if (!isAdmin(session)) return json({ error: "Unknown device" }, 404);
     const key = `winDevice:${wdev[1]}`;
@@ -1233,6 +1237,15 @@ async function adminApiInner(request, env, url, session) {
       await putJSON(env, key, d);
       await markAdminActive(env);
       return json({ ok: true });
+    }
+    if (method === "POST" && wdev[2] === "removal-code") {
+      // A code for removing LockGuard on the computer itself (Settings → Apps → LockGuard → Uninstall,
+      // which opens LockGuard and asks for it). Works for 48 hours; only its fingerprint is kept.
+      const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 100000000).padStart(8, "0");
+      d.removal = { hash: await sha256(code), until: Date.now() + 48 * 3600 * 1000 };
+      await putJSON(env, key, d);
+      await auditAdd(env, { who: "Administrator", text: `Made a removal code for the computer "${d.name}"` });
+      return json({ code, until: d.removal.until });
     }
     if (method === "POST" && wdev[2] === "command") {
       if (body.type !== "uninstall") return json({ error: "Unknown command" }, 400);
@@ -1879,6 +1892,8 @@ async function windowsApi(request, env, url, ctx) {
       commands,
       filter: winFilter(env, d, now, url.hostname),
       protect: normalizeWin(d.win).protectFromAdmins,
+      removalCode: d.removal && d.removal.until > now ? d.removal : null,
+      unlock: (() => { const w = normalizeWin(d.win); return w.unlockName && w.unlockText ? { name: w.unlockName, text: w.unlockText } : null; })(),
       // Only computers that can update themselves report a build number.
       ...(Number(body.info && body.info.build) > 0 ? await (async () => { const u = await latestLockguard(env); return u && u.build > Number(body.info.build) ? { update: u } : {}; })() : {}),
       pollSeconds: POLL_SECONDS,

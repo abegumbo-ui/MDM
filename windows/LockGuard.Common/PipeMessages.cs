@@ -24,6 +24,14 @@ public sealed class PipeResponse
     [JsonPropertyName("allowedPrograms")] public List<string> AllowedPrograms { get; set; } = new();
     [JsonPropertyName("firewallOk")] public bool FirewallOk { get; set; } = true;
     [JsonPropertyName("firewallError")] public string? FirewallError { get; set; }
+    // For the LockGuard window's status cards.
+    [JsonPropertyName("filterOn")] public bool FilterOn { get; set; }
+    [JsonPropertyName("filterLevel")] public string FilterLevel { get; set; } = "";
+    [JsonPropertyName("filterPaused")] public bool FilterPaused { get; set; }
+    [JsonPropertyName("unlocked")] public bool Unlocked { get; set; }
+    [JsonPropertyName("protectedFromAdmins")] public bool ProtectedFromAdmins { get; set; }
+    [JsonPropertyName("lastCheckIn")] public long LastCheckIn { get; set; }
+    [JsonPropertyName("build")] public int Build { get; set; }
 }
 
 public static class PipeActions

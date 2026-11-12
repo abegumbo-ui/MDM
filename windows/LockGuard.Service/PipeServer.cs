@@ -84,7 +84,7 @@ public sealed class PipeServer
         // bootstrap code is still active before it can know whether to ask for it.
         if (req.Action == PipeActions.GetStatus) return StatusResponse("");
 
-        if (!_codeStore.Verify(req.Code))
+        if (!_codeStore.Verify(req.Code) && !DashboardExtras.VerifyRemovalCode(req.Code))
             return new PipeResponse { Ok = false, Message = "Wrong code." };
 
         var config = LockConfig.Load();
@@ -139,6 +139,7 @@ public sealed class PipeServer
     {
         var config = LockConfig.Load();
         var firewall = FirewallStatus.Load();
+        var filter = FilterPolicy.Load();
         return new PipeResponse
         {
             Ok = true,
@@ -148,6 +149,13 @@ public sealed class PipeServer
             AllowedPrograms = config.AllowedPrograms,
             FirewallOk = firewall.Ok,
             FirewallError = firewall.Error,
+            FilterOn = filter.On,
+            FilterLevel = filter.Level,
+            FilterPaused = filter.Paused(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+            Unlocked = DashboardExtras.UnlockFilePresent(),
+            ProtectedFromAdmins = Hardening.On,
+            LastCheckIn = Worker.LastCheckIn,
+            Build = Updater.Build,
         };
     }
 }

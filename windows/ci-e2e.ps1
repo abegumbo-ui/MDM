@@ -64,8 +64,22 @@ Check (-not (Lookup '8.8.8.8')) 'going around the filter (8.8.8.8) is blocked'
 Check ((TaskExists 'LockGuard Guard')) 'the guard task exists'
 function CurlWorks() { & "$env:SystemRoot\System32\curl.exe" -s -o NUL -m 15 https://example.com; return ($LASTEXITCODE -eq 0) }
 Check (WaitFor 'curl.exe to lose its internet' 60 { -not (CurlWorks) }) 'a program set to "No internet" (curl.exe) cannot go online'
-Check ((Invoke-WebRequest https://example.com -UseBasicParsing -TimeoutSec 20).StatusCode -eq 200) 'other programs still can'
+function WebWorks() { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; return ((Invoke-WebRequest https://example.com -UseBasicParsing -TimeoutSec 20).StatusCode -eq 200) } catch { Out "  (web request: $($_.Exception.Message))"; return $false } }
+Check (WebWorks) 'other programs still can'
 
+Step 'The unlock file: in Downloads, every restriction is off; deleted, back on'
+# What the dashboard would send (written as the system, since the folder is locked to it).
+AsSystem 'E2EUnlockCfg' "echo {""name"":""lockguard-off.txt"",""text"":""secret-123""} > ""%ProgramData%\LockGuard\unlock-file.json"""
+$unlock = Join-Path $env:USERPROFILE 'Downloads\lockguard-off.txt'
+New-Item -ItemType Directory -Force (Split-Path $unlock) | Out-Null
+Set-Content -Path $unlock -Value 'secret-123'
+Check (WaitFor 'the unlock file to take effect' 60 { CurlWorks }) 'with the unlock file, the blocked program can go online'
+Remove-Item $unlock -Force
+Check (WaitFor 'restrictions to come back' 60 { -not (CurlWorks) }) 'without it, the program is blocked again'
+Set-Content -Path $unlock -Value 'wrong text'
+Start-Sleep 12
+Check (-not (CurlWorks)) 'a file with the wrong text does nothing'
+Remove-Item $unlock -Force
 Step 'Update to build 2, the way the updater does it (a system task)'
 AsSystem 'E2EUpdate' "`"$Dir\LockGuard-Setup-2.exe`" /quiet"
 Check ((Svc).Status -eq 'Running') 'LockGuard is running after the update'

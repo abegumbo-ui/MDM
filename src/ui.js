@@ -1898,6 +1898,25 @@ function renderWinDetail(m,w){
   m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect LockGuard from administrators'),
    h('div',{class:'mute small'},'Even an administrator account on the computer cannot stop, change or uninstall LockGuard: only the code (in LockGuard Setup) or "Uninstall from this computer" below removes it. An expert could still get around it, as with any filter. '+(w.info.protectedFromAdmins?'Active on the computer.':w.info.protectError?'Problem on the computer: '+w.info.protectError:pr?'Waiting for the computer (it needs the latest LockGuard).':''))),
    sw(pr,function(on){w.win.protectFromAdmins=on;save(on?'Protection on within a minute.':'Protection off within a minute: administrators can manage LockGuard again.')}))));
+  // A removal code for uninstalling on the computer itself, made here.
+  const rc=h('div',{class:'card'},h('h2',null,'Removal code'),
+   h('div',{class:'mute'},'To uninstall LockGuard on the computer itself (Windows Settings → Apps → LockGuard → Uninstall): it opens LockGuard, which asks for a code. Make one here; it works on this computer for 48 hours. The computer needs to have checked in once after you make it.'));
+  const rcOut=h('div');
+  rc.append(h('div',{style:'margin-top:8px'},btn('Make a removal code','tonal',async function(){
+   if(!confirm('Make a code that removes LockGuard from '+w.name+'? Give it only to whoever should remove it.'))return;
+   const r=await call('POST','/api/windevices/'+w.id+'/removal-code',{});rcOut.textContent='';
+   rcOut.append(h('div',{class:'code',style:'margin-top:8px;font-size:22px;letter-spacing:2px'},r.code),h('div',{class:'mute small'},'Works until '+new Date(r.until).toLocaleString()+'. Shown only now.'))})),rcOut);
+  m.append(rc);
+  // The unlock file: everything off while a secret file is in Downloads.
+  const un=h('div',{class:'card'},h('h2',null,'Unlock file'),
+   h('div',{class:'mute'},'While a file with this name, holding this exact text, is in the Downloads folder on the computer, every restriction is off (the filter, blocked programs, everything). Delete the file and everything is back on within a few seconds. Keep the text secret: anyone with the file has a free computer.'));
+  const unName=h('input',{type:'text',placeholder:'File name, e.g. lockguard-off.txt',value:w.win.unlockName||'',style:'width:100%;margin-top:8px'});
+  const unText=h('input',{type:'text',placeholder:'Secret text inside the file',value:w.win.unlockText||'',style:'width:100%;margin-top:8px'});
+  un.append(unName,unText,h('div',{class:'row',style:'margin-top:8px'},
+   btn('Save','',function(){w.win.unlockName=unName.value.trim();w.win.unlockText=unText.value.trim();if(w.win.unlockName&&!/^[A-Za-z0-9 ._-]{3,60}$/.test(w.win.unlockName)){snack('Use 3 to 60 letters, numbers, spaces, dots, dashes or underscores for the file name.',1);return}save(w.win.unlockName&&w.win.unlockText?'Saved. The computer knows the file within a minute.':'Unlock file turned off.')}),
+   btn('Turn off','outline',function(){w.win.unlockName='';w.win.unlockText='';unName.value='';unText.value='';save('Unlock file turned off.')})),
+   w.info.unlocked?h('div',{style:'margin-top:8px;color:var(--warn);font-weight:500'},'The unlock file is on the computer right now: everything is off.'):null);
+  m.append(un);
   const controls=h('div',{class:'card'},h('h2',null,'This computer'),kv('Name on the computer',w.info.hostname||'unknown'),kv('Last check-in',ago(w.lastSeen)),kv('LockGuard build',w.info.build?String(w.info.build):'not numbered (built on a computer)'));
   controls.append(h('div',{class:'row',style:'margin-top:12px;flex-wrap:wrap'},
    btn('Rename','outline',async function(){const name=prompt('Name for this computer',w.name);if(!name)return;await call('PUT','/api/windevices/'+w.id,{name:name});load()}),

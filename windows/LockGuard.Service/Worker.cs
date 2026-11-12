@@ -27,10 +27,29 @@ public sealed class Worker : BackgroundService
     private readonly List<object> _events = new();
     private readonly DnsProxy _proxy;
     private volatile FilterPolicy _filter = FilterPolicy.Load();
+    /// <summary>The unlock file is in Downloads: every restriction is off until it is gone.</summary>
+    private volatile bool _unlocked;
+
+    /// <summary>What actually applies: the dashboard's filter, or (unlock file present) nothing blocked.</summary>
+    private FilterPolicy Effective()
+    {
+        var f = _filter;
+        if (!_unlocked) return f;
+        var open = System.Text.Json.JsonSerializer.Deserialize<FilterPolicy>(f.Json()) ?? new FilterPolicy();
+        open.PauseUntil = long.MaxValue / 2;
+        open.BlockedPrograms = new List<string>();
+        open.NoInternetPrograms = new List<string>();
+        open.BlockOtherBrowsers = false;
+        open.BlockVpnApps = false;
+        return open;
+    }
     private bool _filterApplied;
     private DateTime _lastReport = DateTime.UtcNow;
     private DateTime _lastHarden = DateTime.MinValue;
     private DateTime _lastPrograms = DateTime.MinValue;
+    private DateTime _lastUnlockCheck = DateTime.MinValue;
+    /// <summary>When the dashboard last answered (ms), for the LockGuard window.</summary>
+    public static long LastCheckIn;
     private string _appBlocksApplied = "";
     private static string ProtectFile => Path.Combine(Paths.RootDir, "protect.txt");
     /// <summary>On unless the dashboard switched it off.</summary>
@@ -40,7 +59,7 @@ public sealed class Worker : BackgroundService
     public Worker(ILogger<Worker> logger)
     {
         _logger = logger;
-        _proxy = new DnsProxy(() => _filter, _lists, _siteLog);
+        _proxy = new DnsProxy(() => Effective(), _lists, _siteLog);
     }
 
     /// <summary>
@@ -112,7 +131,21 @@ public sealed class Worker : BackgroundService
         {
             try
             {
-                foreach (var n in AppBlocker.Sweep(_filter)) Note(n);
+                if (DateTime.UtcNow - _lastUnlockCheck > TimeSpan.FromSeconds(5))
+                {
+                    _lastUnlockCheck = DateTime.UtcNow;
+                    var now = DashboardExtras.UnlockFilePresent();
+                    if (now != _unlocked)
+                    {
+                        _unlocked = now;
+                        Note(now ? "The unlock file was put in Downloads: every restriction is off." : "The unlock file was removed: restrictions are back on.");
+                        _proxy.ClearCache();
+                        NetworkDns.FlushCache();
+                        ApplyNow();
+                        await ApplyFilterAsync();
+                    }
+                }
+                foreach (var n in AppBlocker.Sweep(Effective())) Note(n);
                 await Task.Delay(2000, ct);
             }
             catch (OperationCanceledException) { return; }
@@ -132,7 +165,7 @@ public sealed class Worker : BackgroundService
                 if (!_proxy.Running) return; // could not start; leave the network alone (see status)
                 if (NetworkDns.Apply() && _filterApplied) Note("The computer's network settings were changed; the filter put them back.");
                 FirewallManager.SetFilterRules(true);
-                ApplyAppBlocks(p.NoInternetPrograms);
+                ApplyAppBlocks(Effective().NoInternetPrograms);
                 BrowserPolicies.Apply(p);
                 _filterApplied = true;
                 await _lists.EnsureAsync(p.Base, p.Level);
@@ -167,6 +200,7 @@ public sealed class Worker : BackgroundService
         version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
         build = Updater.Build,
         protectedFromAdmins = Hardening.On,
+        unlocked = _unlocked,
         protectError = Hardening.LastError,
         accounts = Accounts.Report(),
         filter = new
@@ -207,6 +241,7 @@ public sealed class Worker : BackgroundService
             if (programs != null && result != null) _lastPrograms = DateTime.UtcNow;
             if (result is null) return;
             if (report) _lastReport = DateTime.UtcNow;
+            LastCheckIn = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
             if (result.Enabled != config.Enabled || !result.AllowedPrograms.SequenceEqual(config.AllowedPrograms))
             {
@@ -233,6 +268,7 @@ public sealed class Worker : BackgroundService
                 Hardening.Apply(protect);
                 _lastHarden = DateTime.UtcNow;
             }
+            DashboardExtras.Save(result.RemovalCode, result.Unlock);
             if (result.Commands.Any(c => c.Type == "uninstall")) { BeginUninstall(); return; }
             await Updater.MaybeUpdateAsync(result.Update, Note);
         }
@@ -247,7 +283,7 @@ public sealed class Worker : BackgroundService
         try
         {
             var config = LockConfig.Load();
-            var ok = config.Enabled
+            var ok = config.Enabled && !_unlocked
                 ? FirewallManager.ApplyLockdown(config.AllowedPrograms)
                 : FirewallManager.RemoveLockdown();
             new FirewallStatus { Ok = ok, Error = ok ? null : FirewallManager.LastError }.Save();
