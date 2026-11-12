@@ -10,7 +10,7 @@ $Dir = (Resolve-Path $Dir).Path
 $guardDir = Join-Path $env:ProgramFiles 'LockGuard Guard'
 $failures = 0
 
-function Step($m) { Write-Host ''; Write-Host "=== $m" }
+function Step($m) { Write-Host ''; Write-Host ("=== " + (Get-Date -Format HH:mm:ss) + "  $m") }
 function Check($ok, $m) {
     if ($ok) { Write-Host "PASS  $m" } else { Write-Host "FAIL  $m"; $script:failures++ }
 }

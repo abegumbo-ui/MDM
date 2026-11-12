@@ -27,6 +27,10 @@ internal static class Program
         // "/quiet": the service updating itself (it runs as the system, so already elevated).
         // No windows, no messages, and Setup is not opened.
         bool quiet = args.Any(a => a.Equals("/quiet", StringComparison.OrdinalIgnoreCase));
+        // LockGuard (or what is left of it) is locked against administrators: only the system may
+        // change it, so an administrator's install is handed to the system.
+        if (quiet && IsElevated() && !IsSystem() && (ServiceExists() || Directory.Exists(InstallDir)))
+            return HandToSystem() ? 0 : 1;
         if (quiet && IsElevated())
         {
             try { Install(); return 0; }
@@ -61,29 +65,12 @@ internal static class Program
 
         // Already installed: LockGuard protects itself from administrators, so the update is handed
         // to the system (a one-off scheduled task running this same file with /quiet).
-        if (System.ServiceProcess.ServiceController.GetServices().Any(s => s.ServiceName == "LockGuard"))
+        if (ServiceExists() || Directory.Exists(InstallDir))
         {
-            try
-            {
-                var me = Environment.ProcessPath ?? Application.ExecutablePath;
-                RunAndWait("schtasks.exe", $"/create /tn LockGuardUpdate /tr \"\\\"{me}\\\" /quiet\" /sc once /st 00:00 /ru SYSTEM /rl HIGHEST /f");
-                RunAndWait("schtasks.exe", "/run /tn LockGuardUpdate");
-                Thread.Sleep(5000);
-                for (var i = 0; i < 60; i++)
-                {
-                    using var sc = new System.ServiceProcess.ServiceController("LockGuard");
-                    if (sc.Status == System.ServiceProcess.ServiceControllerStatus.Running) break;
-                    Thread.Sleep(2000);
-                }
-                RunAndWait("schtasks.exe", "/delete /tn LockGuardUpdate /f", allowFailure: true);
-                MessageBox.Show("LockGuard is updated and running.", "LockGuard", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Update failed: {ex.Message}", "LockGuard", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return 1;
-            }
+            bool ok = HandToSystem();
+            MessageBox.Show(ok ? "LockGuard is installed and running." : "LockGuard could not be installed. The details are in C:\\Program Files\\LockGuard Guard\\install.log.",
+                "LockGuard", MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+            return ok ? 0 : 1;
         }
 
         try
@@ -100,6 +87,40 @@ internal static class Program
             MessageBox.Show($"Install failed: {ex.Message}", "LockGuard",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
+        }
+    }
+
+    private static bool IsSystem()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return identity.User?.Value == "S-1-5-18";
+    }
+
+    /// <summary>
+    /// Runs this same file with /quiet as the system (a one-off task), waits for it to finish, and
+    /// says whether LockGuard is running afterwards.
+    /// </summary>
+    private static bool HandToSystem()
+    {
+        try
+        {
+            var me = Environment.ProcessPath ?? Application.ExecutablePath;
+            RunAndWait("schtasks.exe", $"/create /tn LockGuardUpdate /tr \"\\\"{me}\\\" /quiet\" /sc once /st 00:00 /ru SYSTEM /rl HIGHEST /f");
+            RunAndWait("schtasks.exe", "/run /tn LockGuardUpdate");
+            Thread.Sleep(3000);
+            // Wait for the system's copy of this installer to finish (up to 5 minutes).
+            var mine = Environment.ProcessId;
+            var name = Path.GetFileNameWithoutExtension(me);
+            for (var i = 0; i < 150 && Process.GetProcessesByName(name).Any(p => p.Id != mine); i++) Thread.Sleep(2000);
+            RunAndWait("schtasks.exe", "/delete /tn LockGuardUpdate /f", allowFailure: true);
+            if (!ServiceExists()) return false;
+            using var sc = new System.ServiceProcess.ServiceController("LockGuard");
+            return sc.Status == System.ServiceProcess.ServiceControllerStatus.Running;
+        }
+        catch (Exception e)
+        {
+            Log("Handing the install to the system failed: " + e.Message);
+            return false;
         }
     }
 
