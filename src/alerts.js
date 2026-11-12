@@ -279,12 +279,12 @@ export async function vapidKeys(env) {
   return k;
 }
 
-async function vapidHeader(env, endpoint) {
+async function vapidHeader(env, endpoint, subject) {
   const k = await vapidKeys(env);
   const key = await crypto.subtle.importKey("jwk", k.privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
   const aud = new URL(endpoint).origin;
   const head = b64uText(JSON.stringify({ typ: "JWT", alg: "ES256" }));
-  const body = b64uText(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: "mailto:alerts@example.invalid" }));
+  const body = b64uText(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: subject && /^https:\/\/[a-z0-9.-]+$/i.test(subject) ? subject : "mailto:alerts@example.invalid" }));
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(head + "." + body));
   return `vapid t=${head}.${body}.${b64u(sig)}, k=${k.publicKey}`;
 }
@@ -299,7 +299,7 @@ export async function sendPush(env, a, title, message) {
   const gone = [];
   for (const sub of subs) {
     try {
-      const r = await fetch(sub.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: "high", authorization: await vapidHeader(env, sub.endpoint), "content-length": "0" } });
+      const r = await fetch(sub.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: "high", authorization: await vapidHeader(env, sub.endpoint, a.pushOrigin), "content-length": "0" } });
       if (r.status === 404 || r.status === 410) gone.push(sub.endpoint);
       else if (r.ok) any = true;
     } catch {

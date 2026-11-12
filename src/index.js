@@ -762,6 +762,7 @@ async function adminApiInner(request, env, url, session) {
     if (!validPushEndpoint(endpoint)) return json({ error: "This browser's notification address was not recognised." }, 400);
     const a = await getAlerts(env);
     const others = (a.push || []).filter((x) => x.endpoint !== endpoint);
+    a.pushOrigin = url.origin; // the push services want a real contact: this dashboard's own address
     a.push = path.endsWith("/subscribe") ? [...others, { endpoint, at: Date.now(), who: session.helper ? String(session.helperName || "Parent") : "Administrator" }].slice(-20) : others;
     await putJSON(env, ALERTS_KEY, a);
     return json({ ok: true, pushCount: a.push.length });
