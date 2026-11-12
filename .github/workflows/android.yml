@@ -81,12 +81,11 @@ jobs:
         env:
           DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-        run: gradle -p android :app:assembleRelease :browser:assembleRelease :lockdown:assembleRelease --no-daemon --stacktrace
+        run: gradle -p android :app:assembleRelease :lockdown:assembleRelease --no-daemon --stacktrace
       - name: Name the APKs and describe this build
         run: |
           cp android/app/build/outputs/apk/full/release/app-full-release.apk mdm-agent.apk
           cp android/app/build/outputs/apk/enroll/release/app-enroll-release.apk mdm-agent-enroll.apk
-          cp android/browser/build/outputs/apk/release/browser-release.apk mdm-browser.apk
           cp android/lockdown/build/outputs/apk/release/lockdown-release.apk mdm-lockdown.apk
           # URL-safe base64 of the raw SHA-256 digest, no padding -- exactly the format Android's
           # QR-code device-owner provisioning expects for EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM.
@@ -99,7 +98,6 @@ jobs:
           path: |
             mdm-agent.apk
             mdm-agent-enroll.apk
-            mdm-browser.apk
             mdm-lockdown.apk
       - name: Publish to the "latest" release
         # Every push to a branch with android/** changes runs this workflow, including a PR
@@ -114,7 +112,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent, browser, and lockdown setup app." --target "$GITHUB_SHA"
-          gh release upload latest mdm-agent.apk mdm-agent-enroll.apk mdm-browser.apk mdm-lockdown.apk version.json --clobber
+          # mdm-browser.apk comes from browser-jelly.yml (the Browser based on Jelly).
+          gh release upload latest mdm-agent.apk mdm-agent-enroll.apk mdm-lockdown.apk version.json --clobber
           # Fixes the flag on every run too, in case an earlier run created this release as a
           # prerelease (this session's own gh token can't edit an already-published release, so
           # that correction has to happen here, with the Actions-provided token, instead).
@@ -128,7 +127,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-agent-enroll.apk mdm-browser.apk mdm-lockdown.apk version.json \
+          gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-agent-enroll.apk mdm-lockdown.apk version.json \
             --title "Agent + Browser + Lockdown build ${{ github.run_number }}" \
             --notes "Android agent, browser, and lockdown setup app, build ${{ github.run_number }}. Commit: ${{ github.sha }}" \
             --target "$GITHUB_SHA"
