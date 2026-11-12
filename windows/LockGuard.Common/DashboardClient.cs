@@ -84,7 +84,7 @@ public sealed class DashboardClient
     /// given, the sites looked up and log lines since last time) and returns what the dashboard
     /// wants applied -- or null if the dashboard can't be reached right now.
     /// </summary>
-    public async Task<SyncResult?> SyncAsync(bool enabled, List<string> allowedPrograms, object info, List<object>? trafficLog = null, List<object>? events = null, List<object>? programs = null)
+    public async Task<SyncResult?> SyncAsync(bool enabled, List<string> allowedPrograms, object info, List<object>? trafficLog = null, List<object>? events = null, List<object>? programs = null, List<object>? siteRequests = null)
     {
         var state = LoadState();
         if (string.IsNullOrEmpty(state.Token))
@@ -99,7 +99,7 @@ public sealed class DashboardClient
 
         var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/windows/sync")
         {
-            Content = JsonContent.Create(new { info, enabled, allowedPrograms, trafficLog = trafficLog ?? new List<object>(), events = events ?? new List<object>(), programs }),
+            Content = JsonContent.Create(new { info, enabled, allowedPrograms, trafficLog = trafficLog ?? new List<object>(), events = events ?? new List<object>(), programs, siteRequests = siteRequests ?? new List<object>() }),
         };
         req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", state.Token);
         var resp = await _http.SendAsync(req);

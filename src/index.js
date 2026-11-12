@@ -495,6 +495,7 @@ const publicWinDevice = (d) => ({
   reportedAllowedPrograms: d.reportedAllowedPrograms || [],
   programs: d.programs || [],
   programsAt: d.programsAt || 0,
+  siteRequests: d.siteRequests || [],
   pending: (d.queue || []).length,
 });
 
@@ -1209,7 +1210,7 @@ async function adminApiInner(request, env, url, session) {
     const wins = await listWinDevices(env);
     return json(wins.map(publicWinDevice));
   }
-  const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command|removal-code))?$/.exec(path);
+  const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command|removal-code|site-requests))?$/.exec(path);
   if (wdev) {
     if (!isAdmin(session)) return json({ error: "Unknown device" }, 404);
     const key = `winDevice:${wdev[1]}`;
@@ -1239,6 +1240,12 @@ async function adminApiInner(request, env, url, session) {
       if (body.win && typeof body.win === "object") d.win = normalizeWin(body.win);
       await putJSON(env, key, d);
       await markAdminActive(env);
+      return json({ ok: true });
+    }
+    if (method === "DELETE" && wdev[2] === "site-requests") {
+      const u = url.searchParams.get("url");
+      d.siteRequests = (d.siteRequests || []).filter((r) => r.url !== u);
+      await putJSON(env, key, d);
       return json({ ok: true });
     }
     if (method === "POST" && wdev[2] === "removal-code") {
@@ -1870,6 +1877,21 @@ async function windowsApi(request, env, url, ctx) {
     if (Array.isArray(body.trafficLog) && body.trafficLog.length) {
       d.siteHistory = addSiteHistory(d.siteHistory, body.trafficLog.slice(0, 300), now);
       dirty = true;
+    }
+    if (Array.isArray(body.siteRequests) && body.siteRequests.length) {
+      // Websites asked for in the LockGuard window on the computer.
+      const have = new Set((d.siteRequests || []).map((r) => r.url));
+      const add = [...new Set(body.siteRequests.slice(0, 20).map((r) => String((r && r.url) || "").trim().slice(0, 300)))].filter((u) => u && !have.has(u));
+      if (add.length) {
+        d.siteRequests = [...(d.siteRequests || []), ...add.map((url) => ({ url, at: now }))].slice(-30);
+        dirty = true;
+        const a = await getAlerts(env);
+        if (alertsOn(a) && a.requests) {
+          const p = sendAlert(env, d.name, add.map((u) => "Asked for the site " + u).join("\n"), a);
+          if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
+          else await p;
+        }
+      }
     }
     if (Array.isArray(body.programs)) {
       // The computer's installed programs (from its Start menu), for the dashboard's program list.
