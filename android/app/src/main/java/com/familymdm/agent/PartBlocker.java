@@ -136,8 +136,13 @@ final class PartBlocker {
         showCovers(s, pkg, toCover);
     }
 
+    private static List<Rect> shown = new ArrayList<>();
+
     private static void showCovers(AccessibilityService s, String pkg, List<Rect> rects) {
+        // Unchanged (the usual case while a video plays or a feed updates): leave the covers as they are, no flicker.
+        if (pkg.equals(coveredPkg) && rects.equals(shown) && covers.size() == Math.min(rects.size(), 12)) return;
         clearCovers(s);
+        shown = new ArrayList<>(rects);
         if (rects.isEmpty()) return;
         WindowManager wm = s.getSystemService(WindowManager.class);
         for (Rect r : rects) {
@@ -174,6 +179,7 @@ final class PartBlocker {
         }
         covers.clear();
         coveredPkg = null;
+        shown = new ArrayList<>();
     }
 
     /* ------------------------------------------------------------------ picking ------------------------------------------------------------------ */
