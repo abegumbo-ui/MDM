@@ -377,8 +377,18 @@ const normalizeWin = (w) => {
     // folder, every restriction on the computer is off. Both empty = no unlock file.
     unlockName: typeof o.unlockName === "string" && /^[A-Za-z0-9 ._-]{3,60}$/.test(o.unlockName.trim()) ? o.unlockName.trim() : "",
     unlockText: typeof o.unlockText === "string" ? o.unlockText.trim().slice(0, 100) : "",
+    // Screen time for the child's (standard) Windows accounts: minutes a day (0 = none), bedtime, extra minutes today.
+    screenLimit: Math.max(0, Math.min(1440, Math.round(Number(o.screenLimit) || 0))),
+    bedFrom: /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(o.bedFrom || "")) ? String(o.bedFrom) : "",
+    bedTo: /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(o.bedTo || "")) ? String(o.bedTo) : "",
+    extraMinutes: Math.max(0, Math.min(600, Math.round(Number(o.extraMinutes) || 0))),
+    extraAt: Math.max(0, Number(o.extraAt) || 0),
   };
 };
+/** What the computer gets for screen time, or null when none is set. */
+const winScreenTime = (w) => (w.screenLimit > 0 || (w.bedFrom && w.bedTo && w.bedFrom !== w.bedTo))
+  ? { limit: w.screenLimit, bedFrom: w.bedFrom, bedTo: w.bedTo, extraMinutes: w.extraMinutes, extraAt: w.extraAt }
+  : null;
 /** The filter's program lists, from the per-program choices: file names to close, full paths with no internet. */
 const winProgramLists = (w) => {
   const rules = Object.entries(w.programRules || {});
@@ -1935,6 +1945,7 @@ async function windowsApi(request, env, url, ctx) {
       commands,
       filter: winFilter(env, d, now, url.hostname),
       protect: normalizeWin(d.win).protectFromAdmins,
+      screenTime: winScreenTime(normalizeWin(d.win)),
       removalCode: d.removal && d.removal.until > now ? d.removal : null,
       unlock: (() => { const w = normalizeWin(d.win); return w.unlockName && w.unlockText ? { name: w.unlockName, text: w.unlockText } : null; })(),
       // Only computers that can update themselves report a build number.

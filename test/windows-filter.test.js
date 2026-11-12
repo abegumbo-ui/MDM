@@ -152,3 +152,21 @@ test("websites asked for on the computer reach the dashboard once, and can be di
   pc = (await (await req("/api/windevices", { headers: { cookie } })).json()).find((x) => x.info.hostname === "PC3");
   assert.equal(pc.siteRequests.length, 0);
 });
+
+test("PC screen time: limit and bedtime reach the computer, and none means none", async () => {
+  const { token } = await (await req("/windows/register", { method: "POST", headers: J, body: JSON.stringify({ info: { hostname: "PCST" } }) })).json();
+  const winSync = async () => (await req("/windows/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify({ info: { hostname: "PCST", tz: 0 } }) })).json();
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const id = (await (await req("/api/windevices", { headers: { cookie } })).json()).find((p) => p.info && p.info.hostname === "PCST").id;
+  const winPut = async (_c, _id, body) => req(`/api/windevices/${id}/config`, { method: "PUT", headers: { cookie, ...J }, body: JSON.stringify(body) });
+  let s = await winSync(token);
+  assert.equal(s.screenTime, null, "nothing set: nothing sent");
+  await winPut(cookie, id, { win: { screenLimit: 120, bedFrom: "21:30", bedTo: "07:00" } });
+  s = await winSync(token);
+  assert.deepEqual({ limit: s.screenTime.limit, bedFrom: s.screenTime.bedFrom, bedTo: s.screenTime.bedTo }, { limit: 120, bedFrom: "21:30", bedTo: "07:00" });
+  await winPut(cookie, id, { win: { screenLimit: 99999, bedFrom: "25:00", bedTo: "x" } });
+  s = await winSync(token);
+  assert.equal(s.screenTime.limit, 1440, "capped at a whole day");
+  assert.equal(s.screenTime.bedFrom, "", "a wrong time is dropped");
+});

@@ -30,6 +30,13 @@ public sealed class Worker : BackgroundService
     /// <summary>The unlock file is in Downloads: every restriction is off until it is gone.</summary>
     private volatile bool _unlocked;
     private bool _internetOff;
+    private static string ScreenRulesFile => Path.Combine(Paths.RootDir, "screentime-rules.json");
+    /// <summary>The dashboard's screen time, kept on disk so it works with no internet.</summary>
+    private volatile ScreenTimeRules? _screenRules = LoadScreenRules();
+    private static ScreenTimeRules? LoadScreenRules()
+    {
+        try { return File.Exists(ScreenRulesFile) ? System.Text.Json.JsonSerializer.Deserialize<ScreenTimeRules>(File.ReadAllText(ScreenRulesFile)) : null; } catch { return null; }
+    }
 
     /// <summary>What actually applies: the dashboard's filter, or (unlock file present) nothing blocked.</summary>
     private FilterPolicy Effective()
@@ -165,6 +172,7 @@ public sealed class Worker : BackgroundService
                     }
                 }
                 foreach (var n in AppBlocker.Sweep(Effective())) Note(n);
+                ScreenTimeGuard.Tick(_screenRules, _unlocked, Note);
                 await Task.Delay(2000, ct);
             }
             catch (OperationCanceledException) { return; }
@@ -222,6 +230,8 @@ public sealed class Worker : BackgroundService
         unlocked = _unlocked,
         protectError = Hardening.LastError,
         accounts = Accounts.Report(),
+        screenTime = ScreenTimeGuard.Report(),
+        screenTimeError = ScreenTimeGuard.LastError,
         filter = new
         {
             on = _filter.On,
@@ -290,6 +300,13 @@ public sealed class Worker : BackgroundService
                 _lastHarden = DateTime.UtcNow;
             }
             DashboardExtras.Save(result.RemovalCode, result.Unlock);
+            var rulesJson = result.ScreenTime is null ? "" : System.Text.Json.JsonSerializer.Serialize(result.ScreenTime);
+            var haveJson = _screenRules is null ? "" : System.Text.Json.JsonSerializer.Serialize(_screenRules);
+            if (rulesJson != haveJson)
+            {
+                _screenRules = result.ScreenTime;
+                try { if (result.ScreenTime is null) File.Delete(ScreenRulesFile); else File.WriteAllText(ScreenRulesFile, rulesJson); } catch { }
+            }
             if (result.Commands.Any(c => c.Type == "uninstall")) { BeginUninstall(); return; }
             await Updater.MaybeUpdateAsync(result.Update, Note);
         }
