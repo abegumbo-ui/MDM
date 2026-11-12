@@ -98,6 +98,7 @@ test("notifications on the parent's phone: sign up, alerts poke the push service
   assert.match(calls[0].auth, /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=[\w-]+$/);
   const jwt = JSON.parse(Buffer.from(calls[0].auth.split(" t=")[1].split(".")[1], "base64url"));
   assert.equal(jwt.aud, "https://fcm.googleapis.com");
+  assert.equal(jwt.sub, "https://x.test", "the contact is the dashboard's own address");
 
   const latest = await (await req("/push/latest", { method: "POST", headers: J, body: JSON.stringify({ endpoint }) })).json();
   assert.equal(latest.title, "MDM test alert");
