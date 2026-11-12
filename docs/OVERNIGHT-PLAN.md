@@ -85,3 +85,9 @@ Done and merged (PRs #244–#248), nothing tested on a real phone yet:
 - **Email only** ready-made setup (dashboard + phone).
 
 Not done: a visual clean-up of both apps (needs eyes on a real screen — do it with the phone in hand).
+
+## 2026-11-12 (day, after "Yes, do it" and "Nude photo detection")
+Merged: YouTube videos watched (#251), PC screen time (#252), PC screenshots (#253), photo alerts (#254).
+Photo checker: built from opennsfw2 by the "Photo checker model" workflow into the `models` release; the
+Android build downloads it (re-run the Android build if the model was published after it started).
+Nothing of this is tested on a real phone/PC yet: checklist 7s, 7t and 8.
