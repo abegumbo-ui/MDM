@@ -11,7 +11,7 @@ const SESSION_SECONDS = 60 * 60 * 12;
 // is also the real upper bound on "how long until a dashboard action takes effect" (the UI says so
 // honestly rather than a shorter number that isn't true). 5 minutes, not something much shorter,
 // to stay well under the KV free tier's write/read caps across many devices.
-const POLL_SECONDS = 300;
+const POLL_SECONDS = 60;
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
@@ -56,7 +56,7 @@ const MAX_TRAFFIC_LOG = 150;
 const MAX_LOCATIONS = 200;
 const MAX_CALLS = 300;
 // Faster check-ins while someone is using the dashboard (see adminActive): every 30 s for 10 minutes.
-const FAST_POLL_SECONDS = 30;
+const FAST_POLL_SECONDS = 15; // while the dashboard is open
 const FAST_WINDOW_MS = 10 * 60 * 1000;
 let adminActiveMarked = 0; // this worker already noted it in the last minute: no storage read at all
 async function markAdminActive(env, now = Date.now()) {
@@ -1443,6 +1443,8 @@ async function agentApi(request, env, url, ctx) {
       if (!config.phoneAdminLocked) {
         const patch = {};
         for (const k of PHONE_EDITABLE) if (Object.prototype.hasOwnProperty.call(cp.values, k)) patch[k] = cp.values[k];
+    // SafeSearch is on unless switched off: the phone's switch maps onto that.
+    if (Object.prototype.hasOwnProperty.call(patch, "safeSearch")) patch.safeSearchOff = patch.safeSearch !== true;
         const next = normalizeConfig({ ...config, ...patch });
         if (next.approveNew && !config.approveNew) d.known = (d.packages || []).map((p) => p.p);
         const changes = summarizeConfigChange(config, next);
