@@ -538,6 +538,8 @@ export function normalizeConfig(input) {
     blockImageSearch: c.blockImageSearch === true,
     // Pictures in our Browser: "off", "nudity" (hide pictures that may show nudity) or "skin" (that, and cover skin).
     pictureGuard: ["nudity", "skin"].includes(c.pictureGuard) ? c.pictureGuard : "off",
+    // "Cover skin of": everyone, or only women / only men (on the phone, NudeNet; in doubt: covered).
+    skinWho: ["women", "men"].includes(c.skinWho) ? c.skinWho : "all",
     // Our Browser's own switches (all on unless switched off): open the whole web with no filter,
     // SafeSearch, the built-in adult-site list, searching from the address bar.
     openWeb: c.openWeb === true,
@@ -793,6 +795,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.blockImages = cfg.blockImages;
   out.blockImageSearch = cfg.blockImageSearch;
   out.pictureGuard = cfg.pictureGuard;
+  out.skinWho = cfg.skinWho;
   out.browserLook = cfg.browserLook;
   out.blockAds = cfg.blockAds;
   out.pauseUntil = cfg.pauseUntil;

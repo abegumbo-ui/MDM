@@ -29,7 +29,7 @@ jobs:
           javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SitePolicyCheck.java
           java -cp json.jar:out com.familymdm.agent.LocalPolicyCheck
           java -cp json.jar:out com.familymdm.agent.sitepolicy.SitePolicyCheck
-          javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SkinMask.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SkinMaskCheck.java
+          javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SkinMask.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/NudeDetect.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SkinMaskCheck.java
           java -cp out com.familymdm.agent.sitepolicy.SkinMaskCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockList.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/BlockListCheck.java
           java -cp out com.familymdm.agent.sitepolicy.BlockListCheck
@@ -72,6 +72,7 @@ jobs:
           mkdir -p android/app/src/main/assets
           mkdir -p android/browser/src/main/assets
           gh release download models -p nsfw.tflite -D android/browser/src/main/assets --clobber || true
+          gh release download models -p nudenet320.tflite -D android/app/src/main/assets --clobber || echo "::warning::No man/woman detector yet."
           gh release download models -p nsfw.tflite -D android/app/src/main/assets --clobber || echo "::warning::No photo checker model yet (run the Photo checker model workflow on main)."
       - name: Build release APKs (agent full + agent enroll + browser + lockdown)
         # "Release" build type here just means Gradle's normal release settings (debuggable=false,

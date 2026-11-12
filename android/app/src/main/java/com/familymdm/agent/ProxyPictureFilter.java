@@ -20,10 +20,18 @@ final class ProxyPictureFilter implements YoutubeInspector.PictureFilter {
     private static final int MAX_SIDE = 1024, TINY = 48;
     private final Context c;
     private final boolean skin;
+    private final String who;
 
     ProxyPictureFilter(Context c, String mode) {
         this.c = c;
         this.skin = "skin".equals(mode);
+        this.who = "all";
+    }
+
+    ProxyPictureFilter(Context c, String mode, String who) {
+        this.c = c;
+        this.skin = "skin".equals(mode);
+        this.who = who == null ? "all" : who;
     }
 
     @Override
@@ -44,7 +52,8 @@ final class ProxyPictureFilter implements YoutubeInspector.PictureFilter {
         if (!skin) return null;
         int[] px = new int[w * h];
         b.getPixels(px, 0, w, 0, 0, w, h);
-        if (SkinMask.cover(px, w, h) <= 0) return null;
+        com.familymdm.agent.sitepolicy.NudeDetect.People people = "all".equals(who) ? null : NudeNetRunner.people(c, b);
+        if (SkinMask.cover(px, w, h, people, who) <= 0) return null;
         b.setPixels(px, 0, w, 0, 0, w, h);
         return png(b);
     }

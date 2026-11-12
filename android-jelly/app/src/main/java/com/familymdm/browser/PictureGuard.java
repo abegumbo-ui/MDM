@@ -74,7 +74,9 @@ final class PictureGuard {
     static WebResourceResponse handle(Context c, WebResourceRequest r, String mode) {
         String url = r.getUrl().toString();
         ensureHttpCache(c);
-        byte[] done = cache.get(mode + "|" + url);
+        final String who = FilterStore.skinWho(c);
+        final String key = mode + "|" + who + "|" + url;
+        byte[] done = cache.get(key);
         if (done != null) return image(done);
         byte[] raw;
         String type;
@@ -117,17 +119,19 @@ final class PictureGuard {
         float score = score(c, b);
         if (score >= NudityPrep.THRESHOLD) {
             byte[] grey = encode(Bitmap.createBitmap(new int[]{SkinMask.GREY}, 1, 1, Bitmap.Config.ARGB_8888), w, h);
-            cache.put(mode + "|" + url, grey);
+            cache.put(key, grey);
             return image(grey);
         }
         if (score < 0 && noModel && "nudity".equals(mode)) return passThrough(raw, type); // no checker in this build
         if ("skin".equals(mode)) {
             int[] px = new int[w * h];
             b.getPixels(px, 0, w, 0, 0, w, h);
-            if (SkinMask.cover(px, w, h) > 0) {
+            // Women only / men only: the man/woman detector says whose skin is where (in doubt: covered).
+            com.familymdm.agent.sitepolicy.NudeDetect.People people = "all".equals(who) ? null : NudeNetRunner.people(c, b);
+            if (SkinMask.cover(px, w, h, people, who) > 0) {
                 b.setPixels(px, 0, w, 0, 0, w, h);
                 byte[] out = encode(b, w, h);
-                cache.put(mode + "|" + url, out);
+                cache.put(key, out);
                 return image(out);
             }
         }
