@@ -126,3 +126,15 @@ test("removal code made on the dashboard, and the unlock file, reach the compute
   await req(`/api/windevices/${pc.id}/config`, { method: "PUT", headers: { cookie, ...J }, body: JSON.stringify({ win: { unlockName: "../evil", unlockText: "x" } }) });
   assert.equal((await sync()).unlock, null, "a file name with a path in it is refused");
 });
+
+test("turning the internet off for a while reaches the computer", async () => {
+  const { token } = await (await req("/windows/register", { method: "POST", headers: J, body: JSON.stringify({ info: { hostname: "PC5" } }) })).json();
+  const sync = async (body = {}) => (await req("/windows/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) })).json();
+  await sync({ info: { hostname: "PC5" } });
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const pc = (await (await req("/api/windevices", { headers: { cookie } })).json()).find((x) => x.info.hostname === "PC5");
+  const until = Date.now() + 3600000;
+  await req(`/api/windevices/${pc.id}/config`, { method: "PUT", headers: { cookie, ...J }, body: JSON.stringify({ config: { ...pc.config, internetOffUntil: until } }) });
+  assert.equal((await sync()).filter.internetOffUntil, until);
+});
