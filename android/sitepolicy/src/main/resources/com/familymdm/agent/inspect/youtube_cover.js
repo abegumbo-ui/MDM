@@ -32,6 +32,11 @@
     '#mdm-block h1{font-size:22px;margin:0 0 10px}#mdm-block p{color:#5f6368;font-size:15px;line-height:1.5;margin:6px 0}' +
     '#mdm-block a{display:block;margin-top:12px;padding:14px;border-radius:24px;background:#4F46E5;color:#fff;text-decoration:none;font-size:16px;cursor:pointer}' +
     '#mdm-block a.o{background:transparent;color:#4F46E5;border:1px solid #4F46E5}' +
+    // Search results that may be asked for: the title stays, the picture does not, and an "Ask for access" button.
+    // (with "skin" the pictures stay: the Browser covers the skin in them)
+    '.mdm-ask:not(.mdm-skin) img,.mdm-ask:not(.mdm-skin) yt-image,.mdm-ask video,.mdm-ask:not(.mdm-skin) ytm-thumbnail-overlay-time-status-renderer,.mdm-ask:not(.mdm-skin) .video-thumbnail-img{visibility:hidden !important}' +
+    '.mdm-ask:not(.mdm-skin) .media-item-thumbnail-container,.mdm-ask:not(.mdm-skin) ytm-thumbnail-cover,.mdm-ask:not(.mdm-skin) a#thumbnail,.mdm-ask:not(.mdm-skin) .compact-media-item-image{background:' + logo('#4F46E5') + ' center/34px 34px no-repeat,#ececf4 !important}' +
+    '.mdm-ask-btn{display:inline-block;margin:6px 12px 12px;padding:10px 18px;border-radius:20px;border:0;background:#4F46E5;color:#fff;font:500 14px Roboto,Arial,sans-serif;cursor:pointer}' +
     '@media(prefers-color-scheme:dark){#mdm-block{background:#111318;color:#e6e1e5}#mdm-block .c{background:#1b1d24}#mdm-block p{color:#a8a8b3}}';
 
   var TILE = ['ytm-video-with-context-renderer', 'ytm-compact-video-renderer', 'ytm-video-card-renderer', 'ytm-media-item',
@@ -62,7 +67,7 @@
     var d = window.__mdmCoverData || {}, v = {}, c = {};
     (d.videos || []).forEach(function (x) { if (x && x.v) v[x.v] = 1; });
     (d.channels || []).forEach(function (x) { if (x && x.h) c[String(x.h).toLowerCase()] = 1; });
-    return { mode: d.cover, guard: !!d.guard, v: v, c: c };
+    return { mode: d.cover, guard: !!d.guard, askSearch: !!d.askSearch, askSkin: d.askPictures === 'skin', v: v, c: c };
   }
 
   // ---- guard: who made each video, and which @handle each channel id has (from YouTube's own data) ----
@@ -183,7 +188,7 @@
       var msg = pageBlocked(L, here);
       if (msg) showBlock(msg); else hideBlock();
     }
-    var decided = new Map();
+    var decided = new Map(), targets = new Map();
     var links = document.querySelectorAll(VIDEO_LINK);
     for (var i = 0; i < links.length; i++) {
       var a = links[i];
@@ -191,8 +196,10 @@
       var tile = a.closest(TILE);
       if (!tile && a.closest(PLAYING)) continue;
       tile = tile || a;
-      var ok = tileAllowed(tile, idOf(a.getAttribute('href') || ''), L, here);
+      var vid = idOf(a.getAttribute('href') || '');
+      var ok = tileAllowed(tile, vid, L, here);
       decided.set(tile, decided.has(tile) ? decided.get(tile) && ok : ok);
+      if (vid && !targets.has(tile)) targets.set(tile, 'https://www.youtube.com/watch?v=' + vid);
     }
     if (L.mode === 'channels') {
       var chs = document.querySelectorAll(CHANNEL_TILE);
@@ -200,17 +207,57 @@
         var link = chs[j].querySelector('a[href]');
         var h = link ? handleOf(link.getAttribute('href') || '') : null;
         decided.set(chs[j], !!(h && L.c[h]));
+        if (h) targets.set(chs[j], 'https://www.youtube.com/' + h);
       }
     }
-    decided.forEach(function (ok, t) { if (t.classList.contains('mdm-cov') === ok) t.classList.toggle('mdm-cov', !ok); });
+    // On search results (when asking is allowed) a video that is not allowed can be asked for.
+    var askHere = L.askSearch && L.mode === 'channels' && path === '/results';
+    decided.forEach(function (ok, t) {
+      var u = targets.get(t);
+      var ask = askHere && !ok && !!u;
+      var cov = !ok && !ask;
+      if (t.classList.contains('mdm-cov') !== cov) t.classList.toggle('mdm-cov', cov);
+      if (t.classList.contains('mdm-ask') !== ask) t.classList.toggle('mdm-ask', ask);
+      var skin = ask && L.askSkin;
+      if (t.classList.contains('mdm-skin') !== skin) t.classList.toggle('mdm-skin', skin);
+      var b = t.querySelector(':scope > .mdm-ask-btn');
+      if (ask) {
+        if (!b) {
+          b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'mdm-ask-btn';
+          b.textContent = 'Ask for access';
+          t.appendChild(b);
+        }
+        var te = t.querySelector('h3,h4,.media-item-headline,#video-title,[role="heading"]');
+        b.setAttribute('data-u', u);
+        b.setAttribute('data-t', te ? te.textContent.replace(/\s+/g, ' ').trim().slice(0, 120) : '');
+      } else if (b) b.remove();
+    });
     // YouTube reuses its tiles for other videos: one no longer showing a video is uncovered.
-    var old = document.querySelectorAll('.mdm-cov');
-    for (var k = 0; k < old.length; k++) if (!decided.has(old[k])) old[k].classList.remove('mdm-cov');
+    var old = document.querySelectorAll('.mdm-cov,.mdm-ask');
+    for (var k = 0; k < old.length; k++) if (!decided.has(old[k])) {
+      old[k].classList.remove('mdm-cov', 'mdm-ask', 'mdm-skin');
+      var ob = old[k].querySelector(':scope > .mdm-ask-btn');
+      if (ob) ob.remove();
+    }
   }
 
   // A tap that still reaches a covered tile does nothing.
+  // "Ask for access" sends the request (the Browser or the YouTube icon shows "Sent").
   document.addEventListener('click', function (e) {
-    if (e.target && e.target.closest && e.target.closest('.mdm-cov')) { e.preventDefault(); e.stopPropagation(); }
+    var t = e.target && e.target.closest ? e.target : null;
+    if (!t) return;
+    var btn = t.closest('.mdm-ask-btn');
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var title = btn.getAttribute('data-t');
+      window.__mdmAsked = btn.getAttribute('data-u');
+      location.href = 'mdmguard://request?u=' + encodeURIComponent(btn.getAttribute('data-u')) + '&note=' + encodeURIComponent('Asked from YouTube search' + (title ? ': ' + title : ''));
+      return;
+    }
+    if (t.closest('.mdm-cov') || t.closest('.mdm-ask')) { e.preventDefault(); e.stopPropagation(); }
   }, true);
 
   var queued = false;

@@ -352,6 +352,24 @@ final class FilterStore {
         return prefs(c).getBoolean("adsAutoCover", true);
     }
 
+    /** "Only what I allow": YouTube search works, to ask for videos (on unless switched off on the dashboard). */
+    static void setYoutubeSearch(Context c, boolean on) {
+        prefs(c).edit().putBoolean("youtubeSearch", on).apply();
+    }
+
+    static boolean youtubeSearch(Context c) {
+        return prefs(c).getBoolean("youtubeSearch", true);
+    }
+
+    /** Search results that are not allowed: "hide" their pictures, or show them with "skin" covered. */
+    static void setYoutubeSearchPictures(Context c, String v) {
+        prefs(c).edit().putString("youtubeSearchPictures", "skin".equals(v) ? "skin" : "hide").apply();
+    }
+
+    static String youtubeSearchPictures(Context c) {
+        return prefs(c).getString("youtubeSearchPictures", "hide");
+    }
+
     // ---------- downloading ----------
 
     /** Gets the lists in the background if they are missing or a day has passed. Safe to call often. */

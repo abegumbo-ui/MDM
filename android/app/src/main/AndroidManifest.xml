@@ -87,7 +87,8 @@
              never launched directly, so it stays unexported. -->
         <activity
             android:name=".BrowserAddonActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:taskAffinity="com.familymdm.agent.browseraddon" />
 
         <!-- The Browser add-on's own launcher icon, disabled by default, same package as this
              agent (not a second installed app), turned on only by the administrator from Add-ons
@@ -107,6 +108,7 @@
         <activity
             android:name=".YoutubeAddonActivity"
             android:exported="false"
+            android:taskAffinity="com.familymdm.agent.youtube"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@android:style/Theme.Material.NoActionBar" />
         <activity-alias

@@ -795,7 +795,7 @@ function renderDeviceDetail(m,d){
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device'],
   ['SafeSearch on or off','browser','access'],['Filter level: Approved sites only, Moderate, Strict (every browser)','browser','access'],['Block ads','browser','access'],['Sites that refuse ad blocking (ads covered in black)','browser','access'],
   ['Pictures: hide nudity, cover skin (men, women), no pictures on some sites','browser','access'],['Blocked words','browser','access'],['Block image search','browser','access'],['Filter schedule','browser','access'],['YouTube Restricted Mode everywhere','browser','access'],
-  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
+  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['Let them search YouTube and ask for videos','browser','youtube'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
   ['Allowed sites, site requests, allow for a while (1 hour, 2 hours, custom)','browser','sites'],['Add-ons: put in or take out YouTube, the Browser add-on, the Browser app','apps','addons'],['YouTube icon on the phone','apps','addons'],['Uninstall an app','apps','regular'],['Browser add-on, make this the only browser, Chrome settings (no incognito)','browser','apps'],['Sites visited, searches list','browser','history'],['Release device, remove management','device','device'],['Check in every 15 seconds while the dashboard is open','device','device']];
  const sWrap=h('div',{class:'search',style:'margin:0;flex:1 1 320px;min-width:220px;max-width:100%'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
@@ -1908,6 +1908,13 @@ function renderYoutube(m,dv){
  card.append(seg,h('div',{class:'mute',style:'margin-top:10px'},(YT_CHOICES.find(function(x){return x[0]===cur})||YT_CHOICES[0])[2]));
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},dv.isBrowser?'In this Browser.':'In our Browser, and in Chrome, Samsung Internet and Edge when Inspection is on. The YouTube app itself is not affected: block it under Apps if needed.'));
  m.append(card);
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Let them search YouTube and ask for videos'),
+  h('div',{class:'mute'},'With "Only what I allow": YouTube search works. Videos that are not allowed show only their title, no picture, with an "Ask for access" button that sends you a request. Off: search is blocked.')),
+  sw(!c.youtubeSearchOff,function(on){c.youtubeSearchOff=!on;save(on?'They can search YouTube and ask for videos.':'YouTube search is blocked.')})),
+  c.youtubeSearchOff?null:(function(){const seg=h('div',{class:'seg',style:'margin-top:10px'});
+   for(const [v,l] of [['hide','Hide their pictures'],['skin','Show pictures with skin covered']]){const b=h('button',{type:'button',class:(c.youtubeSearchPictures||'hide')===v?'on':''},l);
+    b.onclick=function(){c.youtubeSearchPictures=v;save(v==='skin'?'Search pictures show with skin covered.':'Search pictures are hidden.')};seg.append(b)}
+   return h('div',null,h('div',{class:'mute small',style:'margin-top:10px'},'Pictures of the videos in search results that are not allowed:'),seg)})()));
  if(!dv.isBrowser&&!dv.isWindows)m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube app on the phone'),
   h('div',{class:'mute'},'A YouTube icon on the phone, built into the MDM app, so YouTube works even when browsers are blocked. It follows everything on this page: the choice above, your channels and videos, ad blocking and picture covering. When YouTube is Off it shows your message below.')),
   sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears on the phone at its next check-in.':'The YouTube icon is removed at the next check-in.')}))));
