@@ -33,7 +33,15 @@ class WebViewExt @JvmOverloads constructor(
     defStyle: Int = 0,
     backgroundShortcut: BackgroundShortcut? = null,
     backgroundShortcutService: BackgroundShortcutService? = null
-) : WebView(context, attrs, defStyle) {
+) : WebView(context, attrs, defStyle), com.familymdm.browser.PageHost {
+    /** The address one of our pages (not allowed, ask...) stands for: shown in the address bar. */
+    @Volatile
+    var shownFor: String? = null
+
+    override fun showingPageFor(url: String?) {
+        shownFor = url
+    }
+
     private lateinit var activity: WebViewExtActivity
     val requestHeaders = mutableMapOf<String?, String?>()
     private var mobileUserAgent: String? = null

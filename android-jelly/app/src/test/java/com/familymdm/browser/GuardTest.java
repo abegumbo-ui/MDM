@@ -283,4 +283,12 @@ public class GuardTest {
         assertTrue("from the dashboard, with its parts", FilterStore.adsCovered(c, "www.shop.example"));
         assertFalse(FilterStore.adsCovered(c, "notshop.example"));
     }
+
+    @Test
+    public void youtube_videosThatAreNotAllowed_areCovered_onlyInTheLimitedModes() throws Exception {
+        String c1 = Guard.coverScript(c, "channels");
+        assertTrue("the cover script, told what is allowed", c1 != null && c1.contains("mdm-cov") && c1.contains("\"cover\":\"channels\""));
+        String c2 = Guard.coverScript(c, "restricted");
+        assertTrue(c2 != null && c2.contains("\"cover\":\"restricted\""));
+    }
 }

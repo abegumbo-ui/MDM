@@ -61,9 +61,14 @@ internal class WebClient(
 
     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
-        if (url.startsWith("http")) (view as? WebViewExt)?.pageHost = Uri.parse(url).host
-        (view as? WebViewExt)?.syncAdBlock()
-        urlBarLayout.onPageLoadStarted(url)
+        val ext = view as? WebViewExt
+        if (url.startsWith("http")) {
+            ext?.pageHost = Uri.parse(url).host
+            ext?.shownFor = null
+        }
+        ext?.syncAdBlock()
+        // One of our pages (not allowed...): show the address that was tried.
+        urlBarLayout.onPageLoadStarted(ext?.shownFor?.takeIf { url == "about:blank" } ?: url)
         if (view.settings.javaScriptEnabled) {
             view.evaluateJavascript(scripts, null)
         }
@@ -109,7 +114,7 @@ internal class WebClient(
         Guard.videoScript(context)?.let { view.evaluateJavascript(it, null) }
         Guard.adsPageScript(context, (view as? WebViewExt)?.pageHost)?.let { view.evaluateJavascript(it, null) }
         urlBarLayout.onPageLoadFinished(view.certificate)
-        if (view.settings.javaScriptEnabled) {
+        if (view.settings.javaScriptEnabled && url != "about:blank") {
             view.evaluateJavascript(JsSyncUrl.SCRIPT, null)
             view.evaluateJavascript(JsManifest.SCRIPT, null)
         }

@@ -272,3 +272,15 @@ test("sites reach the agent policy", () => {
   assert.equal(p.sites.length, 1);
   assert.equal(p.sites[0].host, "khanacademy.org");
 });
+
+test("sites allowed for a while: sent with their end time, dropped once it is up", () => {
+  const soon = Date.now() + 3600e3;
+  const sites = normalizeSites({
+    a: { type: "domain", url: "games.example", until: soon },
+    b: { type: "domain", url: "over.example", until: Date.now() - 1000 },
+    c: { type: "domain", url: "always.example" },
+  });
+  assert.deepEqual(sites.map((s) => s.host).sort(), ["always.example", "games.example"]);
+  assert.equal(sites.find((s) => s.host === "games.example").until, soon);
+  assert.equal(sites.find((s) => s.host === "always.example").until, undefined, "no end time: always");
+});

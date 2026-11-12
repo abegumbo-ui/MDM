@@ -297,7 +297,7 @@ public final class Guard {
         // A bad search: "Oh come on, you're better than that." (Strict: explicit words; any level: blocked words)
         String searched = com.familymdm.agent.sitepolicy.BadSearch.query(url);
         if (searched != null && com.familymdm.agent.sitepolicy.BadSearch.isBad(searched, "strict".equals(FilterStore.tier(c)), FilterStore.blockedWords(c)))
-            return Decision.no(com.familymdm.agent.sitepolicy.BadSearch.page(homeButton()));
+            return Decision.no(com.familymdm.agent.sitepolicy.BadSearch.page(backButton() + homeButton()));
         if (WordFilter.match(url, FilterStore.blockedWords(c)) != null)
             return Decision.no(notAllowed(url, "It has a blocked word in it.", homeButton()));
         if (FilterStore.blockImageSearch(c) && ProtectionRules.isImageSearch(url))
@@ -502,7 +502,20 @@ public final class Guard {
         String m = FilterStore.youtubeMode(c);
         if (url == null || !isYoutubeAddress(url) || !("restricted".equals(m) || "channels".equals(m))) return null;
         String shelf = shelfScript(c);
-        return YoutubeRestricted.HIDE_SCRIPT + (shelf != null ? shelf : "");
+        String cover = coverScript(c, m);
+        return YoutubeRestricted.HIDE_SCRIPT + (shelf != null ? shelf : "") + (cover != null ? cover : "");
+    }
+
+    /** Covers the videos that may not be watched (every page in "Only what I allow"; suggestions in Restricted). */
+    static String coverScript(Context c, String mode) {
+        try {
+            JSONArray ch = new JSONArray(), vids = new JSONArray();
+            for (SitePolicy.Site s : sites(c)) if ("youtube".equals(s.type) && s.live()) ch.put(new JSONObject().put("h", s.id));
+            for (String id : allowedVideoIds(c)) vids.put(new JSONObject().put("v", id));
+            return com.familymdm.agent.sitepolicy.YoutubeScripts.cover(new JSONObject().put("cover", mode).put("channels", ch).put("videos", vids).toString());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** The allowed list exactly as the dashboard sent it (with pictures and titles). */
@@ -530,7 +543,7 @@ public final class Guard {
         JSONArray a = rawSites(c);
         for (int i = 0; i < a.length(); i++) {
             JSONObject s = a.optJSONObject(i);
-            if (s == null || "youtube".equals(s.optString("type"))) continue;
+            if (s == null || SitePolicy.isExpired(s) || "youtube".equals(s.optString("type"))) continue;
             String u = s.optString("url", "");
             String h = SitePolicy.hostOf(u);
             if (h == null || !(SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h))) continue;
@@ -549,7 +562,7 @@ public final class Guard {
             JSONArray a = rawSites(c);
             for (int i = 0; i < a.length(); i++) {
                 JSONObject s = a.optJSONObject(i);
-                if (s == null) continue;
+                if (s == null || SitePolicy.isExpired(s)) continue;
                 String thumb = s.optString("thumb", "");
                 if (!thumb.startsWith("https://")) thumb = "";
                 if ("youtube".equals(s.optString("type"))) {
@@ -601,6 +614,8 @@ public final class Guard {
     // ---------- our own pages and their buttons ----------
 
     public static void showPage(WebView v, String url, String html) {
+        // The address bar shows the address that was tried, not "about:blank".
+        if (v instanceof PageHost) ((PageHost) v).showingPageFor(url != null && url.startsWith("http") ? url : null);
         // Shown as "about:blank", never as the blocked address, so the browser does not take it for that page.
         v.loadDataWithBaseURL("about:blank", html, "text/html", "utf-8", null);
     }
@@ -665,6 +680,11 @@ public final class Guard {
             case "start":
                 showPage(v, null, startPage(c));
                 return true;
+            case "back":
+                // Back to the page before the one that did not open.
+                if (v.canGoBack()) v.goBack();
+                else showPage(v, null, startPage(c));
+                return true;
             default:
                 return true;
         }
@@ -715,11 +735,16 @@ public final class Guard {
     }
 
     private static String homeButton() {
-        return "<a class=b href='" + SCHEME + "://start'>Go to the start page</a>";
+        return "<a class='b o' href='" + SCHEME + "://start'>Go to the start page</a>";
+    }
+
+    private static String backButton() {
+        return "<a class=b href='" + SCHEME + "://back'>Go back</a>";
     }
 
     /** The family's "This site is not allowed" page (logo behind it), with the reason and the address. */
     static String notAllowed(String url, String reason, String extraHtml) {
+        extraHtml = backButton() + (extraHtml == null ? "" : extraHtml.replace("class=b href='" + SCHEME + "://ask", "class='b o' href='" + SCHEME + "://ask"));
         String body = "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>"
                 + (reason != null ? "<p>" + esc(reason) + "</p>" : "")
                 + (url != null && url.startsWith("http") ? "<p style='font-size:13px'>" + esc(url) + "</p>" : "");

@@ -219,6 +219,12 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         return (restricted || youtubeAdScript != null) && isYoutube(r.host) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html");
     }
 
+    /** Restricted: the suggested videos beside and after a video are covered (youtube_cover.js). */
+    private static String restrictedCover() {
+        String js = com.familymdm.agent.sitepolicy.YoutubeScripts.cover("{\"cover\":\"restricted\"}");
+        return js == null ? "" : "<script>" + js + "</script>";
+    }
+
     @Override
     public byte[] rewrite(InspectProxy.Request r, byte[] body) {
         PictureFilter pf = pictureFilter;
@@ -236,7 +242,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         if (!yt && js == null && ads == null) return body;
         String html = new String(body, StandardCharsets.UTF_8);
         String tag = (ads != null ? "<script>" + ads + "</script>" : "")
-                + (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" : "") + (js != null ? "<script>" + js + "</script>" : "");
+                + (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" + restrictedCover() : "") + (js != null ? "<script>" + js + "</script>" : "");
         int head = html.toLowerCase(java.util.Locale.ROOT).indexOf("<head");
         if (head >= 0) {
             int close = html.indexOf('>', head);

@@ -1056,7 +1056,7 @@ function hostOfUrl(u){try{return new URL(u.includes('://')?u:'https://'+u).hostn
 function renderRequestsCard(m,reqs,dv){
  if(!reqs.length)return;
  const rc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Site requests ('+reqs.length+')'),
-  h('div',{class:'mute'},'Pages tried on this device that weren\'t on its allowlist.'));
+  h('div',{class:'mute'},'Pages tried on this device that weren\'t on its allowlist.'),allowForPicker());
   for(const r of reqs){
    const dismiss=async function(){await call('DELETE',r.path+'?url='+encodeURIComponent(r.url));load()};
    const isVideo=!!ytVideoIdOf(r.url),ytCh=ytChannelOf(r.url),ytFind=(/^https:\/\/(www\.|m\.)?youtube\.com\/results\?search_query=([^&]*)/.exec(r.url)||[])[2];
@@ -1827,7 +1827,7 @@ function renderSitesEditor(m,dv){
   const channel=ytChannelOf(link);
   if(channel){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+channel,id:channel,label:'YouTube channel '+channel});url.value='';return}
   if(isYoutubeUrl(link)&&type.value==='domain'&&!confirm('This would allow ALL of YouTube, including its home page, search and every video. To allow only one channel, paste the channel\'s @handle link instead; to allow one video, paste the video link and choose "Exact page only". Allow all of YouTube anyway?'))return;
-  await addSite(dv,{type:type.value,url:link,label:hostOfUrl(link)});url.value=''})));
+  await addSite(dv,{type:type.value,url:link,label:hostOfUrl(link)});url.value=''})),allowForPicker());
  top.append(h('div',{class:'mute small',style:'margin-top:8px'},'YouTube: paste a channel link like youtube.com/@channelname to allow that channel\'s videos only, or a video link (with "Exact page only") to allow just that video. Anything else on YouTube stays blocked.'));
  m.append(top);
 
@@ -1841,6 +1841,7 @@ function renderSitesEditor(m,dv){
   row.append(h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.label||s.url),
    h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='youtube'?'YouTube channel: ':s.type==='domain'?'Whole site: ':'Exact page: ')+s.url),
    h('div',null,h('span',{class:'chip'},s.type==='youtube'?'this channel\'s videos only':s.type==='domain'?'subpages + subdomains':'this page only'),
+    s.until?h('span',{class:'chip warn'},untilText(s.until)):null,
     s.blockImages?h('span',{class:'chip warn'},'images blocked'):null,
     s.installable===false?h('span',{class:'chip'},'no home-screen shortcut'):null)));
   const col=h('div',{style:'display:flex;flex-direction:column;gap:6px;align-items:flex-end'});
@@ -1898,10 +1899,10 @@ function renderYoutube(m,dv){
   if(ch){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+ch,id:ch,label:'YouTube channel '+ch});return}
   if(isYoutubeUrl(v)&&/[?&]v=|youtu\.be\//.test(v)){await addSite(dv,{type:'exact',url:v.includes('://')?v:'https://'+v,label:'YouTube video'});return}
   snack('That is not a YouTube channel or video link.',1)};
- lc.append(h('div',{class:'row',style:'margin-top:8px'},inp,btn('Add','tonal',add)));
+ lc.append(h('div',{class:'row',style:'margin-top:8px'},inp,btn('Add','tonal',add)),allowForPicker());
  for(const k of keys){const s=sites[k];
   lc.append(h('div',{class:'row',style:'margin:8px 0'},s.thumb?h('img',{src:s.thumb,alt:'',loading:'lazy',style:s.type==='youtube'?'width:40px;height:40px;border-radius:50%;object-fit:cover':'width:72px;height:40px;border-radius:6px;object-fit:cover'}):null,
-   h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.type==='youtube'?((s.label||'').replace(/^YouTube channel /,'')||s.id):(s.label&&s.label!=='YouTube video'?s.label:'Video')),h('div',{class:'mute small',style:'word-break:break-all'},s.type==='youtube'?s.id:s.url)),
+   h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.type==='youtube'?((s.label||'').replace(/^YouTube channel /,'')||s.id):(s.label&&s.label!=='YouTube video'?s.label:'Video')),h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='youtube'?s.id:s.url)+(s.until?' · '+untilText(s.until):''))),
    btn('Remove','outline',async function(){delete c.sites[k];await save('Removed.')})))}
  if(!keys.length)lc.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
  m.append(lc)}
@@ -1918,7 +1919,7 @@ function renderYoutubeSearch(m,dv){
  const go=async function(kind){const q=inp.value.trim();if(!q)return;ytQuery=q;ytKind=kind;ytResults='loading';render();
   try{ytResults=(await call('GET','/api/youtube/search?type='+kind+'&q='+encodeURIComponent(q))).results}catch(e){ytResults=[]}render()};
  inp.onkeydown=function(e){if(e.key==='Enter')go(ytKind)};
- card.append(h('div',{class:'row',style:'margin-top:8px;flex-wrap:wrap'},inp,btn('Channels',ytKind==='channel'?'':'tonal',function(){go('channel')}),btn('Videos',ytKind==='video'?'':'tonal',function(){go('video')})));
+ card.append(h('div',{class:'row',style:'margin-top:8px;flex-wrap:wrap'},inp,btn('Channels',ytKind==='channel'?'':'tonal',function(){go('channel')}),btn('Videos',ytKind==='video'?'':'tonal',function(){go('video')})),allowForPicker());
  const have=new Set(Object.values(dv.config.sites||{}).map(function(s){return s.type==='youtube'?s.id:((/[?&]v=([A-Za-z0-9_-]{11})/.exec(s.url||'')||[])[1]||'')}));
  const allowCh=async function(r){if(!confirm('Allow the channel "'+r.title+'" ('+r.handle+')? Its videos will open.'))return;
   await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+r.handle,id:r.handle,label:r.title,thumb:r.thumb})};
@@ -1938,11 +1939,24 @@ function renderYoutubeSearch(m,dv){
         await addSite(dv,{type:'exact',url:'https://www.youtube.com/watch?v='+r.id,label:r.title,thumb:r.thumb})}),
        r.handle?(chOn?h('span',{class:'chip'},'Channel allowed'):btn('Allow the whole channel','outline',function(){allowCh({handle:r.handle,title:r.channel,thumb:''})})):null))))}}}
  m.append(card)}
+/** How long an allow lasts. Back to "Always" after each one, so a later allow is not short by mistake. */
+let allowFor='always';
+const ALLOW_FOR=[['1h','1 hour'],['3h','3 hours'],['today','Rest of today'],['always','Always']];
+function allowUntil(){const n=Date.now();if(allowFor==='1h')return n+3600e3;if(allowFor==='3h')return n+3*3600e3;if(allowFor==='today'){const d=new Date();d.setHours(24,0,0,0);return d.getTime()}return 0}
+function allowForPicker(){const seg=h('div',{class:'seg'});
+ const paint=function(){[...seg.children].forEach(function(b,i){b.className=ALLOW_FOR[i][0]===allowFor?'on':''})};
+ for(const [v,label] of ALLOW_FOR){const b=h('button',{type:'button'},label);b.onclick=function(){allowFor=v;document.querySelectorAll('.allow-for').forEach(function(x){if(x.__paint)x.__paint()})};seg.append(b)}
+ const wrap=h('div',{class:'allow-for',style:'margin-top:10px'},h('div',{class:'mute small',style:'margin-bottom:6px'},'How long to allow it'),seg);
+ wrap.__paint=paint;paint();return wrap}
+function untilText(t){const d=new Date(t),now=new Date(),time=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+ return 'until '+(d.toDateString()===now.toDateString()?time:d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})+' '+time)}
 async function addSite(dv,entry){
+ const until=allowUntil();allowFor='always';
  const key=entry.type==='youtube'?'youtube:'+entry.id:(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  dv.config.sites=dv.config.sites||{};
  dv.config.sites[key]=entry.type==='youtube'?{type:'youtube',kind:'channel',id:entry.id,url:entry.url,label:entry.label,blockImages:false,installable:false,thumb:entry.thumb}:{type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true,thumb:entry.thumb};
- await saveConfigFor(dv,'Added '+(entry.label||entry.url)+'. Phones pick it up within about 5 minutes.');
+ if(until)dv.config.sites[key].until=until;
+ await saveConfigFor(dv,'Added '+(entry.label||entry.url)+(until?', '+untilText(until):'')+'. Phones pick it up within about 5 minutes.');
 }
 /** Copies another device's (or browser's) whole config -- or just its sites, into a browser -- over this one's. */
 function renderCloneCard(m,dv){

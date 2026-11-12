@@ -220,6 +220,13 @@ export function isBlockedAdultHost(host) {
 /** A YouTube picture (channel avatar or video thumbnail), only from YouTube's own picture servers. */
 const ytThumb = (u) => (typeof u === "string" && /^https:\/\/(i\.ytimg\.com|yt3\.ggpht\.com|yt3\.googleusercontent\.com)\/[^\s"'<>]{1,400}$/.test(u) ? u : undefined);
 
+/** Allowed only until this time (ms), when the parent chose "1 hour", "Rest of today"...; none = always. */
+const untilOf = (raw) => {
+  const u = Number(raw.until);
+  return Number.isFinite(u) && u > 0 ? { until: Math.floor(u) } : {};
+};
+const expired = (s, now = Date.now()) => !!(s && s.until && s.until <= now);
+
 export function normalizeSite(raw) {
   if (!raw || typeof raw !== "object") return null;
   if (raw.type === "youtube") {
@@ -237,6 +244,7 @@ export function normalizeSite(raw) {
       blockImages: false,
       installable: false,
       ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
+      ...untilOf(raw),
     };
   }
   const type = raw.type === "exact" ? "exact" : raw.type === "domain" ? "domain" : null;
@@ -252,6 +260,7 @@ export function normalizeSite(raw) {
     blockImages: raw.blockImages === true,
     installable: raw.installable !== false,
     ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
+    ...untilOf(raw),
   };
 }
 
@@ -261,7 +270,7 @@ export function normalizeSites(raw) {
   const seen = new Set();
   for (const v of Object.values(raw && typeof raw === "object" ? raw : {})) {
     const s = normalizeSite(v);
-    if (!s) continue;
+    if (!s || expired(s)) continue; // allowed for a while, and the time is up
     const key = s.type + ":" + (s.type === "domain" ? s.host : s.type === "youtube" ? s.id : pathKeyOf(s.url));
     if (seen.has(key)) continue;
     seen.add(key);
@@ -517,7 +526,7 @@ export function normalizeConfig(input) {
   const sites = {};
   for (const [key, raw] of Object.entries(c.sites && typeof c.sites === "object" ? c.sites : {})) {
     const s = normalizeSite(raw);
-    if (s) sites[key] = s;
+    if (s && !expired(s)) sites[key] = s;
   }
   return { apps, // Off by default so a fresh device keeps working until you have chosen what to allow.
     blockUnlisted: c.blockUnlisted === true,
