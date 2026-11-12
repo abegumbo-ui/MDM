@@ -722,6 +722,8 @@ public class MainActivity extends Activity {
             build();
         }), 8);
 
+        buildTapToBlockCard(root);
+
         LinearLayout transferCard = Ui.card(this, root);
         transferCard.addView(Ui.titleText(this, "Transfer device owner"));
         transferCard.addView(Ui.body(this, "Hands device-owner status to another admin app already on this "
@@ -2015,5 +2017,55 @@ public class MainActivity extends Activity {
                 PackageManager.DONT_KILL_APP);
         prefs().edit().putBoolean("lockedForever", true).apply();
         finishAndRemoveTask();
+    }
+
+    /**
+     * Tap to block (like the MDM Agent's): block one whole screen of an app (✓) or one part of it
+     * (a button, a tab, a feed), picked on the phone itself. Needs Lockdown's accessibility switch.
+     */
+    private void buildTapToBlockCard(LinearLayout root) {
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "Tap to block"));
+        card.addView(Ui.body(this, "Block one screen or one part of an app instead of the whole app (YouTube Shorts, Instagram Reels, WhatsApp Status...). "
+                + "Tap Start: a bar stays at the bottom of every screen. Open the app and the screen, then press ✓ to block that screen, "
+                + "or \"Pick a part\" and tap one button or tab.", true));
+        if (!TapBlockService.on(this)) {
+            card.addView(Ui.body(this, "First switch on \"Lockdown: Tap to block\" in Accessibility (needed once).", false));
+            Ui.add(card, Ui.button(this, "Open Accessibility settings", Ui.OUTLINED, v ->
+                    startActivity(new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))), 8);
+        }
+        Ui.add(card, Ui.button(this, "Start", Ui.TONAL, v -> {
+            String err = PartBlocker.startPicking(this);
+            if (err != null) {
+                android.widget.Toast.makeText(this, err, android.widget.Toast.LENGTH_LONG).show();
+                return;
+            }
+            startActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+        }), 8);
+        for (String comp : new java.util.TreeSet<>(LockdownPrefs.getSet(this, "tapBlockedScreens"))) {
+            card.addView(Ui.body(this, "Screen: " + comp, false));
+            Ui.add(card, Ui.button(this, "Remove", Ui.OUTLINED, v -> {
+                java.util.Set<String> s = LockdownPrefs.getSet(this, "tapBlockedScreens");
+                s.remove(comp);
+                LockdownPrefs.putSet(this, "tapBlockedScreens", s);
+                build();
+            }), 4);
+        }
+        org.json.JSONArray parts = PartBlocker.stored(this);
+        for (int i = 0; i < parts.length(); i++) {
+            org.json.JSONObject p = parts.optJSONObject(i);
+            if (p == null) continue;
+            final String id = p.optString("id");
+            card.addView(Ui.body(this, "Part: " + p.optString("label") + ("close".equals(p.optString("mode")) ? " (screen closed)" : " (covered)"), false));
+            Ui.add(card, Ui.button(this, "Remove", Ui.OUTLINED, v -> {
+                org.json.JSONArray cur = PartBlocker.stored(this), next = new org.json.JSONArray();
+                for (int k = 0; k < cur.length(); k++) {
+                    org.json.JSONObject x = cur.optJSONObject(k);
+                    if (x != null && !id.equals(x.optString("id"))) next.put(x);
+                }
+                PartBlocker.save(this, next);
+                build();
+            }), 4);
+        }
     }
 }

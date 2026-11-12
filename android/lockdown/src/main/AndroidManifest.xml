@@ -76,6 +76,20 @@
             </intent-filter>
         </service>
 
+        <!-- Tap to block: closes picked screens and covers picked parts of apps (see TapBlockService). -->
+        <service
+            android:name=".TapBlockService"
+            android:exported="true"
+            android:label="Lockdown: Tap to block"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/tapblock_service" />
+        </service>
+
         <!-- The device's DNS blocklist, Block Whole Network, and TLS-SNI-aware traffic log, all in
              one VPN. See DnsFilterVpnService's own class doc for what it captures and the two
              independent layers (device-wide, then per-app) it checks. Only exists/runs while
