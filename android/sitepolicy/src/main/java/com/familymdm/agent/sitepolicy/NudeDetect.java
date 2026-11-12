@@ -42,17 +42,19 @@ public final class NudeDetect {
 
     /**
      * The model's input from a picture already padded to a square (black at the right or bottom,
-     * as NudeNet does) and scaled to SIZE x SIZE: argb pixels -> red, green, blue from 0 to 1,
+     * as NudeNet does) and scaled to SIZE x SIZE: argb pixels -> blue, green, red from 0 to 1,
      * pixel by pixel (the phone model takes them in this order).
      */
     public static float[] input(int[] argbSquare) {
         if (argbSquare.length != SIZE * SIZE) throw new IllegalArgumentException("need " + SIZE + "x" + SIZE);
         float[] out = new float[SIZE * SIZE * 3];
         int i = 0;
+        // Blue, green, red: NudeNet swaps the colours twice on the way in (cvtColor RGBA2BGR on a
+        // BGR picture, then blobFromImage swapRB), so its model was trained on that order.
         for (int p : argbSquare) {
-            out[i++] = ((p >> 16) & 0xFF) / 255f;
-            out[i++] = ((p >> 8) & 0xFF) / 255f;
             out[i++] = (p & 0xFF) / 255f;
+            out[i++] = ((p >> 8) & 0xFF) / 255f;
+            out[i++] = ((p >> 16) & 0xFF) / 255f;
         }
         return out;
     }
