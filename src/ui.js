@@ -1120,13 +1120,14 @@ function renderPause(box,d){
   card.append(row)}
  box.append(card)}
 function renderInternetOff(box,d){
- if(d.isWindows||d.isBrowser)return;
+ if(d.isBrowser)return;
  const c=d.config,on=(c.internetOffUntil||0)>Date.now();
  const save=async function(msg){try{await saveConfigFor(d,msg)}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,on?'The internet is off':'Turn the internet off'));
  if(on){card.append(h('div',{class:'mute'},'Until '+hhmm(c.internetOffUntil)+'. Calls and texts still work. It comes back by itself.'),h('div',{style:'margin-top:8px'},btn('Turn the internet back on','',function(){c.internetOffUntil=0;save('The internet comes back on at the next check-in.')})))}
  else{card.append(h('div',{class:'mute'},'No app can use the internet for a while (homework, dinner, a punishment). Calls and texts still work, and apps you put under "Internet only for chosen apps" keep theirs. The phone itself stays usable.'));
   const row=h('div',{class:'row',style:'margin-top:8px'});
+  if(d.isWindows)card.querySelector('.mute').textContent='No website opens for a while (homework, dinner, a punishment), except the dashboard. Programs that do not look up websites by name are not affected.';
   for(const [mins,label] of [[30,'30 minutes'],[60,'1 hour'],[120,'2 hours'],[1440,'Until tomorrow']])row.append(btn(label,'tonal',function(){c.internetOffUntil=Date.now()+mins*60000;save('Internet off until '+hhmm(c.internetOffUntil)+'.')}));
   card.append(row)}
  box.append(card)}
@@ -1847,7 +1848,7 @@ function renderWinDetail(m,w){
     w.config.dnsAllowlist=[...set];w.config.browserFilter='off';save('Switched to email only. Applies within a minute.')})));
    if(lv==='off')em.append(h('div',{class:'mute small',style:'margin-top:8px'},'Approved sites only is on now. To open the web again choose Moderate or Strict above.'));
    m.append(em);
-   renderPause(m,dv);renderFilterSchedule(m,dv);
+   renderPause(m,dv);renderInternetOff(m,dv);renderFilterSchedule(m,dv);
    const yt=h('select',null,new Option('Off','off'),new Option('Moderate','moderate'),new Option('Strict','strict'));yt.value=w.config.youtubeDns||'off';yt.onchange=function(){w.config.youtubeDns=yt.value;save('Saved.')};
    m.append(h('div',{class:'card'},h('h2',null,'Safe search and pictures'),
     h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Force SafeSearch'),h('div',{class:'mute small'},'Google, Bing and DuckDuckGo show filtered results only, in every browser.')),sw(w.config.safeSearch,function(on){w.config.safeSearch=on;save('Saved.')})),

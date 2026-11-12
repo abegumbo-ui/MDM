@@ -23,6 +23,8 @@ public sealed class FilterPolicy
     /// <summary>"off", "moderate" or "strict".</summary>
     [JsonPropertyName("youtube")] public string Youtube { get; set; } = "off";
     [JsonPropertyName("pauseUntil")] public long PauseUntil { get; set; }
+    /// <summary>"Turn the internet off for a while": until then only the dashboard and essentials look up (ms).</summary>
+    [JsonPropertyName("internetOffUntil")] public long InternetOffUntil { get; set; }
     [JsonPropertyName("recordSites")] public bool RecordSites { get; set; }
     [JsonPropertyName("blockImages")] public bool BlockImages { get; set; }
     [JsonPropertyName("imagesAllow")] public List<string> ImagesAllow { get; set; } = new();

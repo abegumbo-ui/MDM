@@ -21,26 +21,36 @@ Tick items off here as they merge, so a resumed session knows where to continue.
        section); the accessibility service identifies it (view id / class / text / position path) and
        from then on blocks it (closes that screen or covers / backs out of that part). Managed from
        the dashboard too (list of blocked parts per phone, remove).
-6. [ ] RESEARCH for real (WebSearch): feature lists of Qustodio, Bark, Google Family Link, Kidslox,
+6. [x] RESEARCH for real (WebSearch): feature lists of Qustodio, Bark, Google Family Link, Kidslox,
        Net Nanny, MMGuardian, Norton Family, Aura/Circle, Screen Time (Apple), FamiSafe, Canopy,
        Covenant Eyes, MB Smart, NetSpark, Techloq. Write docs/FEATURE-GAPS.md (what they have, what we
        have, what is possible on Android) and build every gap that Android allows. Android app first.
    The user is "laser focused on the Android app" — make it the best. Keep going until 6am+.
 
-7. [ ] Next gaps from docs/FEATURE-GAPS.md: weekend limit, internet off, new-app alert, camera, search alerts (PR night-controls), then more research.
+7. [x] Next gaps from docs/FEATURE-GAPS.md: weekend limit, internet off, new-app alert, camera, search alerts (PR night-controls), then more research.
 8. [ ] LAST, after everything else: bring all of this to the "regular tablet app" (the Browser app on tablets?) and the Lockdown app (user asked 2026-11-12 ~1am).
 
 ## B. PC (LockGuard) — user asked at ~12:30am 2026-11-12
-1. [ ] Dashboard PC page: list the computer's installed programs (reported by the service) with a
+1. [x] Dashboard PC page: list the computer's installed programs (reported by the service) with a
        per-program "No internet" / "Blocked" switch, like the phones' app list. No typing exe names.
-2. [ ] A full LockGuard window like the big commercial filters (status, filter level, requests,
+2. [x] A full LockGuard window like the big commercial filters (status, filter level, requests,
        code entry), LockGuard's own look; do NOT copy Techloq's branding.
-3. [ ] Windows "Installed apps" → Uninstall opens LockGuard, which asks for a removal code made on
+3. [x] Windows "Installed apps" → Uninstall opens LockGuard, which asks for a removal code made on
        the dashboard (one-time, per PC). Local code keeps working offline.
-4. [ ] Unlock file: dashboard sets a file name + secret text; while that file (with that text) is in
+4. [x] Unlock file: dashboard sets a file name + secret text; while that file (with that text) is in
        a user's Downloads, every restriction is off; removed → back on. Like the tablet's emergency unlock.
 5. [ ] Anything else phones have that the PC page lacks, where Windows allows it.
 All Windows changes must pass windows/ci-e2e.ps1 (extend it for new behaviour).
 
 ## C. Wrap-up for the morning
 - [ ] Short plain summary for the user: what was built, what is tested, what still needs the phone.
+
+## Done overnight (merged, live)
+- #207 Rules on the phone · #208 Tap to block · #209 weekend limit, internet off, camera, new-app + search alerts, ✓ Block this screen
+- #210 PC: program list (Allowed / No internet / Blocked), removal code, unlock file, new LockGuard window; fixed 'only chosen programs' being on by default
+- #211 School time + Check in · #212 Quick blocks (Shorts, Reels...) · #213 10-minute warnings
+
+## Next
+- PC: 'Turn the internet off for a while' (like phones)
+- More research rounds (Family Link, Norton, Net Nanny, Canopy, Covenant Eyes)
+- LAST: bring new features to the Lockdown app and check the tablet

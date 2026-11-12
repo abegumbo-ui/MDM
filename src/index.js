@@ -467,6 +467,7 @@ function winFilter(env, d, now, dashboardHost) {
     safeSearch: c.safeSearch,
     youtube: c.youtubeDns,
     pauseUntil: c.pauseUntil,
+    internetOffUntil: c.internetOffUntil,
     recordSites: c.recordSites,
     blockImages: c.blockImages,
     imagesAllow: c.imagesAllow,

@@ -29,11 +29,21 @@ public sealed class Worker : BackgroundService
     private volatile FilterPolicy _filter = FilterPolicy.Load();
     /// <summary>The unlock file is in Downloads: every restriction is off until it is gone.</summary>
     private volatile bool _unlocked;
+    private bool _internetOff;
 
     /// <summary>What actually applies: the dashboard's filter, or (unlock file present) nothing blocked.</summary>
     private FilterPolicy Effective()
     {
         var f = _filter;
+        if (!_unlocked && f.InternetOffUntil > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+        {
+            // Internet off for a while: nothing but the essentials (the dashboard) is looked up.
+            var off = System.Text.Json.JsonSerializer.Deserialize<FilterPolicy>(f.Json()) ?? new FilterPolicy();
+            off.Level = "approved";
+            off.Allow = new List<string>();
+            off.PauseUntil = 0;
+            return off;
+        }
         if (!_unlocked) return f;
         var open = System.Text.Json.JsonSerializer.Deserialize<FilterPolicy>(f.Json()) ?? new FilterPolicy();
         open.PauseUntil = long.MaxValue / 2;
@@ -134,6 +144,15 @@ public sealed class Worker : BackgroundService
                 if (DateTime.UtcNow - _lastUnlockCheck > TimeSpan.FromSeconds(5))
                 {
                     _lastUnlockCheck = DateTime.UtcNow;
+                    // The internet-off time starting or ending: forget earlier answers so it applies at once.
+                    var offNow = _filter.InternetOffUntil > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    if (offNow != _internetOff)
+                    {
+                        _internetOff = offNow;
+                        Note(offNow ? "The internet was turned off for a while." : "The internet is back on.");
+                        _proxy.ClearCache();
+                        NetworkDns.FlushCache();
+                    }
                     var now = DashboardExtras.UnlockFilePresent();
                     if (now != _unlocked)
                     {
