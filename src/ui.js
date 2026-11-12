@@ -213,7 +213,7 @@ function saveSubs(){try{sessionStorage.setItem('subs',JSON.stringify(subs))}catc
 const GROUPS=[
  {key:'overview',label:'Overview',icon:'home',subs:[['status','Status'],['messages','Messages'],['log','Activity log']]},
  {key:'safety',label:'Safety',icon:'message',subs:[['health','Health check'],['msgalerts','Message alerts'],['screenshots','Screenshots']]},
- {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
+ {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['addons','Add-ons'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
  {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
  {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['youtube','YouTube'],['history','Sites visited'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
  {key:'calls',label:'Calls & texts',icon:'phone',subs:[['rules','Who can call'],['contacts','Contacts'],['calllog','Call log'],['texts','Texts']]},
@@ -546,7 +546,8 @@ function buildAppsHub(m,dv){
     const v=await ask('Browse freely for how long?',[{key:'minutes',label:'Duration',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours']],value:'60'}],'Generate');
     if(!v)return;genCode('freebrowse',parseInt(v.minutes,10))})),out);
   m.append(codeBox);
- } else if(appsSub==='kiosk'){
+ } else if(appsSub==='addons'){renderAddons(m,dv);
+} else if(appsSub==='kiosk'){
   const hsCard=h('div',{class:'card'},h('h2',null,'Home screen mode'));
   hsCard.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Only allowed apps can be opened'),
    h('div',{class:'mute'},'The agent becomes this phone\'s home screen and shows only the apps you set to Allow, with your logo and your custom icons, plus a "Settings" tile that always shows regardless of the Allow list (see Settings Menu below -- it\'s the only way to reach any part of Settings while this is on). An app set to Block is fully switched off, same as always; one left at Default or set to Soft block just has no icon here and stays installed and running in the background. Calls and texts still work. On or off, nothing in between: the master code on the phone (Administrator) can turn it off there too, and that reaches this switch on the next sync, same as every other setting here.')),
@@ -795,7 +796,7 @@ function renderDeviceDetail(m,d){
   ['SafeSearch on or off','browser','access'],['Filter level: Approved sites only, Moderate, Strict (every browser)','browser','access'],['Block ads','browser','access'],['Sites that refuse ad blocking (ads covered in black)','browser','access'],
   ['Pictures: hide nudity, cover skin (men, women), no pictures on some sites','browser','access'],['Blocked words','browser','access'],['Block image search','browser','access'],['Filter schedule','browser','access'],['YouTube Restricted Mode everywhere','browser','access'],
   ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
-  ['Allowed sites, site requests, allow for a while (1 hour, 2 hours, custom)','browser','sites'],['Browser add-on, make this the only browser, Chrome settings (no incognito)','browser','apps'],['Sites visited, searches list','browser','history'],['Release device, remove management','device','device'],['Check in every 15 seconds while the dashboard is open','device','device']];
+  ['Allowed sites, site requests, allow for a while (1 hour, 2 hours, custom)','browser','sites'],['Add-ons: put in or take out YouTube, the Browser add-on, the Browser app','apps','addons'],['YouTube icon on the phone','apps','addons'],['Uninstall an app','apps','regular'],['Browser add-on, make this the only browser, Chrome settings (no incognito)','browser','apps'],['Sites visited, searches list','browser','history'],['Release device, remove management','device','device'],['Check in every 15 seconds while the dashboard is open','device','device']];
  const sWrap=h('div',{class:'search',style:'margin:0;flex:1 1 320px;min-width:220px;max-width:100%'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
  const sResults=h('div',{class:'search-results'});
@@ -1030,7 +1031,7 @@ function appRow(a,dv,opts){
  if(!a.s&&!a.prot&&installedHere)ctl.append(btn('Uninstall','danger',async function(){
   if(!confirm('Uninstall '+(a.l||a.p)+' from '+dv.name+'? This removes the app and its data from the phone.'))return;
   await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
-  snack('Uninstall queued. The phone does it at its next check-in (within about 5 minutes).');load()}));
+  snack('Uninstall queued. The phone does it at its next check-in (within a minute).');load()}));
  const schedBtn=h('button',{class:'btn tonal'},d.schedule?'Schedule on':'Schedule');
  schedBtn.onclick=function(){open[a.p]=!open[a.p];render()};
  if(d.mode!=='block')ctl.append(schedBtn);
@@ -1552,6 +1553,23 @@ function renderChromeLock(m,dv){
  m.append(card)}
 
 /** Safe search, YouTube's own Restricted Mode, and hiding pictures. */
+/** Add-ons: put in or take out YouTube, the Browser add-on and the Browser app. */
+function renderAddons(m,dv){const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const has=function(p){return (dv.packages||[]).some(function(x){return x.p===p})};
+ const cmd=async function(type,args,msg){try{await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:args});snack(msg)}catch(e){snack(e.message,1)}load()};
+ m.append(h('div',{class:'card'},h('h2',null,'Add-ons'),h('div',{class:'mute'},'Put in or take out the extras on this phone. Each works with the same rules as everything else here.')));
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube'),
+  h('div',{class:'mute small'},'A YouTube icon on the phone, built into the MDM app. It follows Browser → YouTube (only what you allow, restricted, or off).')),
+  sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'YouTube goes on the phone at its next check-in.':'YouTube comes off the phone at its next check-in.')}))));
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser add-on'),
+  h('div',{class:'mute small'},'A lighter browser built into the MDM app, with its own icon. Opens only allowed sites.')),
+  sw(c.browserAddonEnabled,function(on){c.browserAddonEnabled=on;save(on?'Browser add-on goes on at the next check-in.':'Browser add-on comes off at the next check-in.')}))));
+ const inst=has('com.familymdm.browser');
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser app'),
+  h('div',{class:'mute small'},inst?'Installed. The full Browser (tabs, YouTube, Allow list), following this phone\'s rules by itself.':'Not on the phone. The full Browser (tabs, YouTube, Allow list).')),
+  inst?btn('Take out','outline',function(){if(!confirm('Uninstall the Browser app from '+dv.name+'?'))return;cmd('uninstall',{packageName:'com.familymdm.browser'},'The Browser comes off at the next check-in.')})
+      :btn('Put in','',function(){cmd('install',{url:'https://github.com/abegumbo-ui/MDM/releases/download/latest/mdm-browser.apk'},'The Browser goes on at the next check-in.')}))));}
 /** SafeSearch on or off, on its own (on unless switched off). */
 function renderSafeSearch(m,dv){const c=dv.config;if(dv.isBrowser||dv.isWindows)return;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:600;font-size:17px'},'SafeSearch'),
