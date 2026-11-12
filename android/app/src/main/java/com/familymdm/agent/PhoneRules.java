@@ -430,8 +430,45 @@ final class PhoneRules {
                 Toast(a, m + " minutes added.");
             }), 8);
         }
-        LinearLayout more = Ui.card(a, root);
-        more.addView(Ui.body(a, "Limits for single apps, and apps that never count, are set on the dashboard (Screen time → Limits).", true));
+        appLimits(a, root, screen, rebuild);
+    }
+
+    /** A daily limit for single apps: each app with an icon, its limit, tap to change. */
+    private static void appLimits(Activity a, LinearLayout root, JSONObject screen, Runnable rebuild) {
+        LinearLayout card = Ui.card(a, root);
+        card.addView(Ui.titleText(a, "Limits for single apps"));
+        card.addView(Ui.body(a, "When an app has used its time today, it is put away until tomorrow.", true));
+        JSONObject limits = screen.optJSONObject("appLimits");
+        final JSONObject cur = limits == null ? new JSONObject() : limits;
+        android.content.pm.PackageManager pm = a.getPackageManager();
+        java.util.List<android.content.pm.ResolveInfo> apps = pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0);
+        java.util.TreeMap<String, String> byLabel = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (android.content.pm.ResolveInfo r : apps) {
+            String pkg = r.activityInfo.packageName;
+            if (pkg.equals(a.getPackageName())) continue;
+            byLabel.put(String.valueOf(r.loadLabel(pm)), pkg);
+        }
+        int[] mins = {0, 15, 30, 45, 60, 90, 120, 180};
+        String[] labels = new String[mins.length];
+        for (int i = 0; i < mins.length; i++) labels[i] = mins[i] == 0 ? "No limit" : fmt(mins[i]) + " a day";
+        for (java.util.Map.Entry<String, String> e : byLabel.entrySet()) {
+            final String pkg = e.getValue(), name = e.getKey();
+            int m = cur.optInt(pkg, 0);
+            int sel = 0;
+            for (int i = 0; i < mins.length; i++) if (mins[i] == m) sel = i;
+            final int selected = sel;
+            Ui.add(card, Ui.button(a, name + ":  " + (m == 0 ? "no limit" : fmt(m)), m == 0 ? Ui.OUTLINED : Ui.TONAL, v ->
+                    Ui.alertDialog(a).setTitle(name).setSingleChoiceItems(labels, selected, (d, w) -> {
+                        d.dismiss();
+                        try {
+                            if (mins[w] == 0) cur.remove(pkg); else cur.put(pkg, mins[w]);
+                            screen.put("appLimits", cur);
+                        } catch (Exception ignored) {
+                        }
+                        set1(a, "screenTime", screen, name + " " + labels[w]);
+                        rebuild.run();
+                    }).show()), 4);
+        }
     }
 
     /* ---- Calls ---- */
