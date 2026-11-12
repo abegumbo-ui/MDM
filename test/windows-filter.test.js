@@ -69,7 +69,7 @@ test("a new PC gets the web filter: Moderate, SafeSearch, YouTube, no incognito,
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (u) => String(u).startsWith("https://api.github.com/")
     ? new Response(JSON.stringify([{ tag_name: "latest", assets: [] }, { tag_name: "lockguard-v40", assets: [{ name: "LockGuard-Setup.exe", browser_download_url: "https://github.com/x/releases/download/lockguard-v40/LockGuard-Setup.exe", digest: "sha256:" + "ab".repeat(32) }] }]))
-    : realFetch(u);
+    : new Response("not found", { status: 404 }); // no lockguard.json pointer here: the API is the fallback, and nothing real is fetched
   try {
     const u1 = await sync({ info: { build: 33 } });
     assert.deepEqual(u1.update, { build: 40, url: "https://github.com/x/releases/download/lockguard-v40/LockGuard-Setup.exe", sha256: "ab".repeat(32) });
