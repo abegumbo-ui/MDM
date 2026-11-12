@@ -70,3 +70,18 @@ All Windows changes must pass windows/ci-e2e.ps1 (extend it for new behaviour).
 - 'Regular tablet app' = the MDM Agent on the tablet: it already had the unlock file (emergency unlock), dashboard one-time codes and per-app internet, so the PC features already have their phone/tablet versions.
 - Not built: YouTube 'videos watched' report (no reliable way to read the title), nude-photo detection (needs an image model), PC screen-time limits and PC screenshots (LockGuard runs outside the user's session).
 - Nothing was installed or changed on the user's PC. Downloads\\Fix-Internet-After-LockGuard.cmd still needs one 'Yes' click to clear the old lookup block.
+
+## Night of 2026-11-11 → 12 (after "work all night")
+
+Done and merged (PRs #244–#248), nothing tested on a real phone yet:
+- **Switches flipping back on** (Restrictions and per-app choices): three causes fixed — a change made
+  during a check-in was thrown away by the answer; the dashboard's older list was applied over unconfirmed
+  phone changes; the dashboard compared the phone's change number with its own clock. Test added.
+- **Restrictions in both apps**: one shared list (RestrictionInfo) with the dashboard's names and one line on
+  why; grouped Recommended (18) / More (28) / Advanced (31, behind "Show all").
+- **Settings pages** (all called SubSettings): ✓ now blocks that page by its title, not every Settings page.
+  A blocked screen backs out at once and shows "This screen is not allowed on this phone."
+- **No internet for one app** in the phone's app sheet.
+- **Email only** ready-made setup (dashboard + phone).
+
+Not done: a visual clean-up of both apps (needs eyes on a real screen — do it with the phone in hand).
