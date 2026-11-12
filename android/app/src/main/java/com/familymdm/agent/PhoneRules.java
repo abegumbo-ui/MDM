@@ -195,10 +195,10 @@ final class PhoneRules {
         card.addView(Ui.body(a, "Not sure what to switch on? Pick the one that fits. It sets many rules at once; you can still change any single one afterwards.", true));
         String[][] L = {
                 {"young", "Young child (under 10)", "Only sites you approve. No pictures on web pages, no image search, no web pages inside apps. Every app group blocked; new apps wait for you. WhatsApp Status and Channels closed. Message alerts on."},
-                {"teen", "Teen", "Strict filter (adult, gambling, drugs, scam, piracy sites blocked). SafeSearch, YouTube Restricted Mode, no image search. Dating apps blocked, new apps wait for you. Browser pages that apps open are closed. Message alerts on."},
+                {"teen", "Teen", "Strict filter (adult, gambling, drugs, scam, piracy sites blocked). SafeSearch, YouTube Restricted Mode, no image search. Dating apps blocked, new apps wait for you. Browser pages that apps open are closed. Message alerts on. Ads blocked."},
                 {"kosher", "Kosher phone", "Only sites you approve, no pictures on web pages, no image search, no web pages inside apps. Social media, video, games, dating and shopping apps blocked; new apps wait for you. WhatsApp chats and calls work; Status and Channels closed."},
                 {"strictest", "Strictest", "Approved sites only, SafeSearch, strict YouTube, no pictures, no image search, every app group blocked, new apps wait for you."},
-                {"recommended", "Recommended", "Strict filter, SafeSearch, YouTube Restricted Mode, no image search, social media and dating apps blocked, new apps wait for you."},
+                {"recommended", "Recommended", "Strict filter, SafeSearch, YouTube Restricted Mode, no image search, social media and dating apps blocked, new apps wait for you. Ads blocked."},
                 {"light", "Light", "Moderate filter, SafeSearch, YouTube Restricted Mode, dating apps blocked. Everything else open."}};
         for (String[] l : L) {
             LinearLayout row = Ui.card(a, root);
@@ -240,6 +240,7 @@ final class PhoneRules {
                 chrome.put("noIncognito", !which.equals("light"));
                 v.put("chromePolicy", chrome);
                 if (young || teen) v.put("messageAlerts", true);
+            if (teen || rec) v.put("blockAds", true);
             }
             if (young || kosher) { v.put("blockWaStatus", true); v.put("blockWaChannels", true); v.put("inAppBrowsers", "all"); }
             else if (teen) v.put("inAppBrowsers", "tabs");
