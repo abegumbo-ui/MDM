@@ -65,6 +65,8 @@ public sealed class DashboardClient
         [JsonPropertyName("removalCode")] public DashboardExtras.RemovalCode? RemovalCode { get; set; }
         /// <summary>The unlock file set on the dashboard, or null.</summary>
         [JsonPropertyName("unlock")] public DashboardExtras.UnlockFile? Unlock { get; set; }
+        /// <summary>Screen time for standard accounts; null = none.</summary>
+        [JsonPropertyName("screenTime")] public ScreenTimeRules? ScreenTime { get; set; }
     }
 
     public sealed class UpdateInfo

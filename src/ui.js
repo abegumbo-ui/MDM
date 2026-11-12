@@ -1844,6 +1844,34 @@ function adminWarning(w){
  return h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Administrator accounts on this computer'),
   h('div',{class:'mute'},'These Windows accounts are administrators: '+a.admins.join(', ')+'. Anyone using one of them can remove any filter, this one included. The child\'s account should be a Standard user: on the computer, Settings → Accounts → Other users → the account → Change account type → Standard User. Keep the administrator password to yourself.'),
   others.length?h('div',{class:'mute small',style:'margin-top:6px'},'Standard accounts: '+others.join(', ')+'.'):null)}
+/** Screen time on a computer: daily limit and bedtime for the child's (standard) Windows accounts. */
+function renderWinScreenTime(m,w){
+ const win=w.win,st=(w.info&&w.info.screenTime)||null,today=new Date().toISOString().slice(0,10);
+ const save=async function(msg){try{await saveConfigFor(w,msg)}catch(e){snack(e.message,1)}render()};
+ const used=h('div',{class:'card'},h('h2',null,'Today'));
+ used.append(h('div',{style:'font-size:28px;font-weight:600;margin:4px 0'},st&&st.day?(st.minutes+' min'):'Not reported yet'),
+  h('div',{class:'mute small'},'Time a child\'s account was signed in with the screen unlocked, by the computer\'s own clock. Administrator accounts (yours) are never counted or limited.'));
+ if(w.info&&w.info.screenTimeError)used.append(h('div',{class:'mute small',style:'color:var(--warn)'},'Problem on the computer: '+w.info.screenTimeError));
+ m.append(used);
+ const card=h('div',{class:'card'},h('h2',null,'Daily limit'));
+ card.append(h('div',{class:'mute'},'When the time is up, the child gets a message 5 minutes before, then the computer goes back to the Windows sign-in screen. Nothing is closed. Signing in again works only for an administrator account until tomorrow.'));
+ const row=h('div',{class:'row',style:'margin-top:8px;flex-wrap:wrap'});
+ for(const [mins,label] of [[0,'No limit'],[60,'1 hour'],[90,'1½ hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours']])
+  row.append(btn(label,(win.screenLimit||0)===mins?'':'tonal',function(){win.screenLimit=mins;save(mins?'Limit: '+label+' a day.':'No daily limit.')}));
+ card.append(row);
+ if(win.screenLimit>0){
+  const ex=h('div',{class:'row',style:'margin-top:10px;flex-wrap:wrap'},h('span',{class:'mute small'},'Extra time today:'));
+  for(const mins of [15,30,60])ex.append(btn('+'+mins+' min','outline',function(){const same=win.extraAt&&new Date(win.extraAt).toDateString()===new Date().toDateString();win.extraMinutes=(same?win.extraMinutes||0:0)+mins;win.extraAt=Date.now();save('+'+mins+' minutes for today.')}));
+  if(win.extraAt&&new Date(win.extraAt).toDateString()===new Date().toDateString()&&win.extraMinutes)ex.append(h('span',{class:'mute small'},'(given today: '+win.extraMinutes+' min)'));
+  card.append(ex)}
+ m.append(card);
+ const bed=h('div',{class:'card'},h('h2',null,'Bedtime'));
+ bed.append(h('div',{class:'mute'},'Between these times the child\'s account cannot be used (a warning comes 5 minutes before). Leave both empty for no bedtime.'));
+ const from=h('input',{type:'time',value:win.bedFrom||''}),to=h('input',{type:'time',value:win.bedTo||''});
+ bed.append(h('div',{class:'row',style:'margin-top:8px'},h('span',null,'From'),from,h('span',null,'to'),to,
+  btn('Save','',function(){win.bedFrom=from.value||'';win.bedTo=to.value||'';save(win.bedFrom&&win.bedTo?'Bedtime '+win.bedFrom+'–'+win.bedTo+'.':'No bedtime.')}),
+  btn('No bedtime','outline',function(){win.bedFrom='';win.bedTo='';save('No bedtime.')})));
+ m.append(bed)}
 /** "What's on for this computer": every rule in force, one plain line each. */
 function renderWinWhatsOn(m,w){
  const c=w.config||{},win=w.win||{},now=Date.now(),rows=[];
@@ -1859,6 +1887,8 @@ function renderWinWhatsOn(m,w){
  if(win.blockVpnApps!==false)rows.push('🛡  VPN programs closed');
  if(w.enabled)rows.push('🔒  Only chosen programs may use the internet');
  rows.push(win.protectFromAdmins!==false?'🔐  Administrators cannot remove LockGuard':'🔓  Administrators can manage LockGuard');
+ if(win.screenLimit>0)rows.push('⏳  Screen time: '+(win.screenLimit>=60?(win.screenLimit/60)+' h':win.screenLimit+' min')+' a day for the child\'s account');
+ if(win.bedFrom&&win.bedTo)rows.push('🌙  Bedtime '+win.bedFrom+'–'+win.bedTo);
  if(win.unlockName&&win.unlockText)rows.push('🗝  Unlock file set'+(w.info&&w.info.unlocked?' and IN USE right now: everything is off':''));
  const card=h('div',{class:'card'},h('h2',null,"What's on for this computer"));
  for(const r of rows)card.append(h('div',{class:'act'},r));
@@ -1870,7 +1900,7 @@ function renderWinDetail(m,w){
  m.append(h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('device','currentColor')),h('div',{class:'grow'},h('h1',null,w.name),h('div',{class:'mute small'},(w.info.hostname||'Windows computer')+' · last check-in '+ago(w.lastSeen))),btn('Refresh','tonal',load)));
  if(state.session&&state.session.viewOnly)m.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('div',{class:'mute'},'This login can only look. Changes have to be made from a full login.')));
  const tabs=h('div',{class:'row',style:'margin:0 0 12px;flex-wrap:wrap'});
- for(const [k,l] of [['filter','Web filter'],['programs','Programs & browsers'],['history','Sites visited'],['computer','Computer']])tabs.append(btn(l,winTab===k?'':'tonal',function(){winTab=k;render()}));
+ for(const [k,l] of [['filter','Web filter'],['programs','Programs & browsers'],['time','Screen time'],['history','Sites visited'],['computer','Computer']])tabs.append(btn(l,winTab===k?'':'tonal',function(){winTab=k;render()}));
  m.append(tabs);
  if(winTab==='filter'){
   renderWinWhatsOn(m,w);
@@ -1964,6 +1994,7 @@ function renderWinDetail(m,w){
   const next=[...(w.allowedPrograms||[]),path];await call('PUT','/api/windevices/'+w.id+'/config',{allowedPrograms:next});load()})));
  m.append(progCard);
  }
+ else if(winTab==='time')renderWinScreenTime(m,dv);
  else if(winTab==='history')renderSitesVisited(m,dv);
  else{
   const pr=w.win.protectFromAdmins!==false;
