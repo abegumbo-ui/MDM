@@ -170,3 +170,22 @@ test("PC screen time: limit and bedtime reach the computer, and none means none"
   assert.equal(s.screenTime.limit, 1440, "capped at a whole day");
   assert.equal(s.screenTime.bedFrom, "", "a wrong time is dropped");
 });
+
+test("PC screenshots: asked for on the dashboard, sent by the computer, shown to the parent only", async () => {
+  const { token } = await (await req("/windows/register", { method: "POST", headers: J, body: JSON.stringify({ info: { hostname: "PCSHOT" } }) })).json();
+  const auth = { ...J, authorization: `Bearer ${token}` };
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  await req("/windows/sync", { method: "POST", headers: auth, body: JSON.stringify({ info: { hostname: "PCSHOT" } }) });
+  const pc = (await (await req("/api/windevices", { headers: { cookie } })).json()).find((p) => p.info && p.info.hostname === "PCSHOT");
+  assert.equal((await req(`/api/windevices/${pc.id}/command`, { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "screenshot" }) })).status, 200);
+  const s = await (await req("/windows/sync", { method: "POST", headers: auth, body: "{}" })).json();
+  assert.deepEqual(s.commands.map((c) => c.type), ["screenshot"]);
+  assert.equal((await req("/windows/screenshot", { method: "POST", headers: J, body: JSON.stringify({ jpeg: "A".repeat(200) }) })).status, 401, "needs the computer's token");
+  assert.equal((await req("/windows/screenshot", { method: "POST", headers: auth, body: JSON.stringify({ jpeg: "A".repeat(200) }) })).status, 200);
+  const after = (await (await req("/api/windevices", { headers: { cookie } })).json()).find((p) => p.id === pc.id);
+  assert.equal(after.shots.length, 1);
+  const img = await req(`/api/windevices/${pc.id}/shots/${after.shots[0].id}`, { headers: { cookie } });
+  assert.equal(img.headers.get("content-type"), "image/jpeg");
+  assert.equal((await req(`/api/windevices/${pc.id}/shots/${after.shots[0].id}`)).status !== 200, true, "not without signing in");
+});

@@ -83,6 +83,8 @@ public sealed class PipeServer
         // GetStatus is read-only and needs no code -- the Setup app has to know whether the
         // bootstrap code is still active before it can know whether to ask for it.
         if (req.Action == PipeActions.GetStatus) return StatusResponse("");
+        if (req.Action == PipeActions.Screenshot)
+            return ScreenshotTaker.Accept(req.Code, req.Arg) ? new PipeResponse { Ok = true } : new PipeResponse { Ok = false, Message = "Not asked for." };
         if (req.Action == PipeActions.RequestSite)
         {
             var site = (req.Arg ?? "").Trim();

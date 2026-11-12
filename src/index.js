@@ -507,6 +507,7 @@ const publicWinDevice = (d) => ({
   programs: d.programs || [],
   programsAt: d.programsAt || 0,
   siteRequests: d.siteRequests || [],
+  shots: d.shots || [],
   pending: (d.queue || []).length,
 });
 
@@ -1221,6 +1222,13 @@ async function adminApiInner(request, env, url, session) {
     const wins = await listWinDevices(env);
     return json(wins.map(publicWinDevice));
   }
+  const wshot = /^\/api\/windevices\/([0-9a-f]+)\/shots\/([0-9a-f]{12})$/.exec(path);
+  if (wshot && method === "GET") {
+    if (!isAdmin(session)) return json({ error: "Unknown device" }, 404);
+    const b64 = await env.STATE.get(`winshot:${wshot[1]}:${wshot[2]}`);
+    if (!b64) return json({ error: "That screenshot has expired" }, 404);
+    return new Response(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), { headers: { "content-type": "image/jpeg", "cache-control": "private, max-age=86400" } });
+  }
   const wdev = /^\/api\/windevices\/([0-9a-f]+)(?:\/(config|command|removal-code|site-requests))?$/.exec(path);
   if (wdev) {
     if (!isAdmin(session)) return json({ error: "Unknown device" }, 404);
@@ -1269,8 +1277,8 @@ async function adminApiInner(request, env, url, session) {
       return json({ code, until: d.removal.until });
     }
     if (method === "POST" && wdev[2] === "command") {
-      if (body.type !== "uninstall") return json({ error: "Unknown command" }, 400);
-      d.queue = [...(d.queue || []), { id: randomHex(6), type: "uninstall" }];
+      if (body.type !== "uninstall" && body.type !== "screenshot") return json({ error: "Unknown command" }, 400);
+      d.queue = [...(d.queue || []), { id: randomHex(6), type: body.type }];
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -1871,6 +1879,22 @@ async function windowsApi(request, env, url, ctx) {
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
   }
 
+  if (url.pathname === "/windows/screenshot") {
+    // One picture of the computer's screen, asked for from the dashboard. Kept 7 days, last 10.
+    const auth = await authWinDevice(request, env);
+    if (!auth) return json({ error: "Unauthorized" }, 401);
+    const { key, d } = auth;
+    const wid = key.slice("winDevice:".length);
+    const jpeg = typeof body.jpeg === "string" ? body.jpeg : "";
+    if (jpeg.length < 100 || jpeg.length > 3_000_000 || !B64_RE.test(jpeg)) return json({ error: "No picture" }, 400);
+    const id = randomHex(6);
+    await env.STATE.put(`winshot:${wid}:${id}`, jpeg, { expirationTtl: 7 * 86400 });
+    const keep = [...(d.shots || []), { id, at: Date.now() }];
+    for (const old of keep.slice(0, -10)) await env.STATE.delete(`winshot:${wid}:${old.id}`);
+    d.shots = keep.slice(-10).filter((s) => Date.now() - s.at < 7 * 86400 * 1000);
+    await putJSON(env, key, d);
+    return json({ ok: true });
+  }
   if (url.pathname === "/windows/sync") {
     const auth = await authWinDevice(request, env);
     if (!auth) return json({ error: "Unauthorized" }, 401);
