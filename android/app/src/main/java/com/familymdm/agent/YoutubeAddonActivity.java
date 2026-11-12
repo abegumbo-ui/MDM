@@ -75,7 +75,7 @@ public class YoutubeAddonActivity extends Activity {
         JSONArray a = policy().optJSONArray("sites");
         for (int i = 0; a != null && i < a.length(); i++) {
             JSONObject s = a.optJSONObject(i);
-            if (s == null || "youtube".equals(s.optString("type"))) continue;
+            if (s == null || SitePolicy.isExpired(s) || "youtube".equals(s.optString("type"))) continue;
             String u = s.optString("url", "");
             String h = SitePolicy.hostOf(u);
             if (h != null && (SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h))) {
@@ -258,9 +258,23 @@ public class YoutubeAddonActivity extends Activity {
             js.append(YoutubeRestricted.HIDE_SCRIPT);
             String shelf = shelf("channels".equals(m));
             if (shelf != null) js.append(shelf);
+            String cover = coverScript(m);
+            if (cover != null) js.append(cover);
         }
         if ("skin".equals(p.optString("pictureGuard", "off"))) { String v = YoutubeScripts.load("video_skin.js"); if (v != null) js.append(v); }
         view.evaluateJavascript(js.toString(), null);
+    }
+
+    /** Covers the videos that may not be watched (every page in "Only what I allow"; suggestions in Restricted). */
+    private String coverScript(String mode) {
+        try {
+            JSONArray ch = new JSONArray(), vids = new JSONArray();
+            for (SitePolicy.Site s : sites()) if ("youtube".equals(s.type) && s.live()) ch.put(new JSONObject().put("h", s.id));
+            for (String id : allowedVideoIds()) vids.put(new JSONObject().put("v", id));
+            return YoutubeScripts.cover(new JSONObject().put("cover", mode).put("channels", ch).put("videos", vids).toString());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** "Your channels", "Your videos" and "Ask for a channel or video" on YouTube's home page. */
@@ -270,7 +284,7 @@ public class YoutubeAddonActivity extends Activity {
             JSONArray a = policy().optJSONArray("sites");
             for (int i = 0; a != null && i < a.length(); i++) {
                 JSONObject s = a.optJSONObject(i);
-                if (s == null) continue;
+                if (s == null || SitePolicy.isExpired(s)) continue;
                 String thumb = s.optString("thumb", "");
                 if (!thumb.startsWith("https://")) thumb = "";
                 if ("youtube".equals(s.optString("type"))) {
@@ -308,6 +322,8 @@ public class YoutubeAddonActivity extends Activity {
             show(page("Sent", "Your parent sees it on the dashboard. Once it is allowed, it opens here.", homeButton()));
         } else if ("home".equals(what)) {
             open(HOME);
+        } else if ("back".equals(what)) {
+            if (web.canGoBack()) web.goBack(); else open(HOME);
         }
     }
 
@@ -329,10 +345,11 @@ public class YoutubeAddonActivity extends Activity {
     }
 
     private static String homeButton() {
-        return "<a class=b href='" + SCHEME + "://home'>Go to YouTube's home page</a>";
+        return "<a class='b o' href='" + SCHEME + "://home'>Go to YouTube's home page</a>";
     }
 
     private static String notAllowed(String url, String reason, String buttons) {
+        buttons = "<a class=b href='" + SCHEME + "://back'>Go back</a>" + buttons.replace("class=b href='" + SCHEME + "://ask", "class='b o' href='" + SCHEME + "://ask");
         return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.NOT_ALLOWED,
                 "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>" + (reason != null ? "<p>" + esc(reason) + "</p>" : "")
                         + "<p style='font-size:13px'>" + esc(url) + "</p>", buttons);

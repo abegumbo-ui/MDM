@@ -61,8 +61,14 @@ internal class WebClient(
 
     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
-        (view as? WebViewExt)?.syncAdBlock()
-        urlBarLayout.onPageLoadStarted(url)
+        val ext = view as? WebViewExt
+        if (url.startsWith("http")) {
+            ext?.pageHost = Uri.parse(url).host
+            ext?.shownFor = null
+        }
+        ext?.syncAdBlock()
+        // One of our pages (not allowed...): show the address that was tried.
+        urlBarLayout.onPageLoadStarted(ext?.shownFor?.takeIf { url == "about:blank" } ?: url)
         if (view.settings.javaScriptEnabled) {
             view.evaluateJavascript(scripts, null)
         }
@@ -70,8 +76,9 @@ internal class WebClient(
 
     override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
         // An allowed YouTube channel or video shows as it is (no picture covering).
-        if ((view as? WebViewExt)?.trustedPage == true) return Guard.interceptFilterOnly(context, request) ?: super.shouldInterceptRequest(view, request)
-        return Guard.intercept(context, request) ?: super.shouldInterceptRequest(view, request)
+        val ext = view as? WebViewExt
+        if (ext?.trustedPage == true) return Guard.interceptFilterOnly(context, request) ?: super.shouldInterceptRequest(view, request)
+        return Guard.intercept(context, request, ext?.pageHost) ?: super.shouldInterceptRequest(view, request)
     }
 
     override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
@@ -85,6 +92,7 @@ internal class WebClient(
             } else {
                 // YouTube moves between videos without loading a page: tell the covering which kind this one is.
                 (view as WebViewExt).trustedPage = d.trusted
+                view.pageHost = Uri.parse(url).host
                 view.evaluateJavascript("window.__mdmTrusted=" + d.trusted + ";", null)
             }
         }
@@ -104,8 +112,9 @@ internal class WebClient(
         val trusted = (view as? WebViewExt)?.trustedPage == true
         view.evaluateJavascript("window.__mdmTrusted=$trusted;", null)
         Guard.videoScript(context)?.let { view.evaluateJavascript(it, null) }
+        Guard.adsPageScript(context, (view as? WebViewExt)?.pageHost)?.let { view.evaluateJavascript(it, null) }
         urlBarLayout.onPageLoadFinished(view.certificate)
-        if (view.settings.javaScriptEnabled) {
+        if (view.settings.javaScriptEnabled && url != "about:blank") {
             view.evaluateJavascript(JsSyncUrl.SCRIPT, null)
             view.evaluateJavascript(JsManifest.SCRIPT, null)
         }

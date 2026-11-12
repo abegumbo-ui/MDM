@@ -142,6 +142,17 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/adsButton"
+                    style="@style/Theme.Jelly.MenuItem">
+
+                    <TextView
+                        android:id="@+id/adsButtonText"
+                        style="@style/Theme.Jelly.MenuItemTitle"
+                        android:text="Show ads on this page (covered)"
+                        app:drawableStartCompat="@drawable/ic_cancel" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/findInPageButton"
                     style="@style/Theme.Jelly.MenuItem">
 

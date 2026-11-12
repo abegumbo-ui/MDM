@@ -309,6 +309,10 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
 
                 MenuDialog.Option.DOWNLOADS -> startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
                 MenuDialog.Option.ADD_TO_HOME_SCREEN -> addShortcut()
+                MenuDialog.Option.ADS -> {
+                    Guard.toggleAdsHere(this, webView.pageHost)
+                    webView.reload()
+                }
                 MenuDialog.Option.PRINT -> {
                     val printManager = getSystemService(PrintManager::class.java)
                     val documentName = "Jelly document"
@@ -354,6 +358,7 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
         }
         urlBarLayout.onMoreButtonClickCallback = {
             UiUtils.hideKeyboard(window, urlBarLayout)
+            menuDialog.adsLabel = Guard.adsMenuLabel(this, webView.pageHost)
             menuDialog.showAsDropdownMenu(urlBarLayout, sharedPreferencesExt.reachModeEnabled)
         }
 

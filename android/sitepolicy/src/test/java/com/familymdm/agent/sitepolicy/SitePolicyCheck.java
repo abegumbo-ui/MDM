@@ -88,6 +88,19 @@ public class SitePolicyCheck {
         check(SitePolicy.parse(sites("{\"type\":\"youtube\",\"kind\":\"channel\",\"id\":\"nohandle\"}")).isEmpty(), "a channel entry without a real @handle is dropped");
         check(!SitePolicy.hasYoutubeChannels(SitePolicy.parse(sites("{\"type\":\"domain\",\"url\":\"example.com\"}"))), "no channel entries means none noticed");
 
+        // ---- allowed for a while ("1 hour", "Rest of today") ----
+        long soon = System.currentTimeMillis() + 3_600_000L, past = System.currentTimeMillis() - 1000L;
+        List<SitePolicy.Site> timed = SitePolicy.parse(sites(
+                "{\"type\":\"domain\",\"url\":\"https://games.example\",\"until\":" + soon + "}",
+                "{\"type\":\"domain\",\"url\":\"https://over.example\",\"until\":" + past + "}",
+                "{\"type\":\"youtube\",\"kind\":\"channel\",\"id\":\"@timed\",\"until\":" + past + "}"));
+        check(SitePolicy.allowed("https://games.example/play", timed), "allowed while its time is not up");
+        check(!SitePolicy.allowed("https://over.example/", timed), "blocked again once its time is up");
+        check(!SitePolicy.youtubeChannelAllowed("@timed", timed), "a channel whose time is up is blocked again");
+        List<SitePolicy.Site> live = new java.util.ArrayList<>();
+        live.add(new SitePolicy.Site("domain", "https://x.example", "x.example", "x", false, true, null, null, System.currentTimeMillis() - 1));
+        check(!SitePolicy.allowed("https://x.example/", live), "an entry read before its time ran out stops working when it does");
+
         // ---- restricted YouTube: which kinds of page get through ----
         check(SitePolicy.youtubeKind("https://www.youtube.com/") == SitePolicy.YT_HOME, "home page is HOME");
         check(SitePolicy.youtubeKind("https://m.youtube.com") == SitePolicy.YT_HOME, "bare mobile host is HOME");

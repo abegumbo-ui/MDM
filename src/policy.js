@@ -220,6 +220,13 @@ export function isBlockedAdultHost(host) {
 /** A YouTube picture (channel avatar or video thumbnail), only from YouTube's own picture servers. */
 const ytThumb = (u) => (typeof u === "string" && /^https:\/\/(i\.ytimg\.com|yt3\.ggpht\.com|yt3\.googleusercontent\.com)\/[^\s"'<>]{1,400}$/.test(u) ? u : undefined);
 
+/** Allowed only until this time (ms), when the parent chose "1 hour", "Rest of today"...; none = always. */
+const untilOf = (raw) => {
+  const u = Number(raw.until);
+  return Number.isFinite(u) && u > 0 ? { until: Math.floor(u) } : {};
+};
+const expired = (s, now = Date.now()) => !!(s && s.until && s.until <= now);
+
 export function normalizeSite(raw) {
   if (!raw || typeof raw !== "object") return null;
   if (raw.type === "youtube") {
@@ -237,6 +244,7 @@ export function normalizeSite(raw) {
       blockImages: false,
       installable: false,
       ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
+      ...untilOf(raw),
     };
   }
   const type = raw.type === "exact" ? "exact" : raw.type === "domain" ? "domain" : null;
@@ -252,6 +260,7 @@ export function normalizeSite(raw) {
     blockImages: raw.blockImages === true,
     installable: raw.installable !== false,
     ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
+    ...untilOf(raw),
   };
 }
 
@@ -261,7 +270,7 @@ export function normalizeSites(raw) {
   const seen = new Set();
   for (const v of Object.values(raw && typeof raw === "object" ? raw : {})) {
     const s = normalizeSite(v);
-    if (!s) continue;
+    if (!s || expired(s)) continue; // allowed for a while, and the time is up
     const key = s.type + ":" + (s.type === "domain" ? s.host : s.type === "youtube" ? s.id : pathKeyOf(s.url));
     if (seen.has(key)) continue;
     seen.add(key);
@@ -517,7 +526,7 @@ export function normalizeConfig(input) {
   const sites = {};
   for (const [key, raw] of Object.entries(c.sites && typeof c.sites === "object" ? c.sites : {})) {
     const s = normalizeSite(raw);
-    if (s) sites[key] = s;
+    if (s && !expired(s)) sites[key] = s;
   }
   return { apps, // Off by default so a fresh device keeps working until you have chosen what to allow.
     blockUnlisted: c.blockUnlisted === true,
@@ -558,6 +567,10 @@ export function normalizeConfig(input) {
     blockAds: c.blockAds === true,
     // The YouTube add-on (its own icon in the MDM app) and what YouTube shows when it is turned off.
     youtubeAddon: c.youtubeAddon === true,
+    // Sites that will not open with ads blocked: their ads load but are covered (our Browser).
+    adsCoveredSites: [...new Set(normalizeDnsAllowlist(c.adsCoveredSites).map((h) => h.replace(/^www\./, "")))],
+    // Our Browser notices such sites by itself (on unless switched off).
+    adsAutoCoverOff: c.adsAutoCoverOff === true,
     youtubeOffMessage: typeof c.youtubeOffMessage === "string" ? c.youtubeOffMessage.trim().slice(0, 200) : "",
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
     pauseUntil: Number.isFinite(Number(c.pauseUntil)) && Number(c.pauseUntil) > 0 ? Math.floor(Number(c.pauseUntil)) : 0,
@@ -808,6 +821,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.browserLook = cfg.browserLook;
   out.blockAds = cfg.blockAds;
   out.youtubeAddon = cfg.youtubeAddon;
+  out.adsCoveredSites = cfg.adsCoveredSites;
+  out.adsAutoCover = !cfg.adsAutoCoverOff;
   out.youtubeOffMessage = cfg.youtubeOffMessage;
   out.pauseUntil = cfg.pauseUntil;
   out.internetOffUntil = cfg.internetOffUntil;

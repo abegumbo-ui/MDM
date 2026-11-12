@@ -34,6 +34,12 @@ public final class YoutubeScripts {
     }
 
     /** The home-page list with its data filled in ({"channels":[...],"videos":[...],"ask":true}). */
+    /** Covers the videos that may not be watched (youtube_cover.js); dataJson: {cover: "channels"|"restricted", channels, videos}. */
+    public static String cover(String dataJson) {
+        String js = load("youtube_cover.js");
+        return js == null ? null : js.replace("__MDM_DATA__", dataJson.replace("</", "<\\/"));
+    }
+
     public static String shelf(String dataJson) {
         String js = load("youtube_shelf.js");
         return js == null ? null : js.replace("__MDM_DATA__", dataJson.replace("</", "<\\/"));

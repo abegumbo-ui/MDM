@@ -29,12 +29,19 @@ public final class SitePolicy {
         /** Only for type "youtube": what kind of entry ("channel") and its id (the "@handle", lower case). */
         public final String kind;
         public final String id;
+        /** Allowed only until this time (ms since 1970), 0 = always. */
+        public final long until;
 
         public Site(String type, String url, String host, String label, boolean blockImages, boolean installable) {
             this(type, url, host, label, blockImages, installable, null, null);
         }
 
         public Site(String type, String url, String host, String label, boolean blockImages, boolean installable, String kind, String id) {
+            this(type, url, host, label, blockImages, installable, kind, id, 0);
+        }
+
+        public Site(String type, String url, String host, String label, boolean blockImages, boolean installable, String kind, String id, long until) {
+            this.until = until;
             this.type = type;
             this.url = url;
             this.host = host;
@@ -44,6 +51,17 @@ public final class SitePolicy {
             this.kind = kind;
             this.id = id;
         }
+
+        /** Still allowed (its time, if it has one, is not up). */
+        public boolean live() {
+            return until <= 0 || System.currentTimeMillis() < until;
+        }
+    }
+
+    /** An entry allowed "for 1 hour" (or until some time) whose time is up. */
+    public static boolean isExpired(JSONObject o) {
+        long u = o == null ? 0 : o.optLong("until", 0);
+        return u > 0 && System.currentTimeMillis() >= u;
     }
 
     public static String hostOf(String u) {
@@ -84,19 +102,20 @@ public final class SitePolicy {
         if (arr == null) return out;
         for (int i = 0; i < arr.length(); i++) {
             JSONObject o = arr.optJSONObject(i);
-            if (o == null) continue;
+            if (o == null || isExpired(o)) continue;
+            long until = Math.max(0, o.optLong("until", 0));
             String type = o.optString("type", "");
             String url = o.optString("url", "");
             if (type.equals("youtube")) {
                 String id = o.optString("id", "").toLowerCase(Locale.ROOT);
                 if (!o.optString("kind", "").equals("channel") || !id.matches("@[a-z0-9._-]{3,30}")) continue;
-                out.add(new Site("youtube", url, "youtube.com", o.optString("label", "YouTube " + id), false, false, "channel", id));
+                out.add(new Site("youtube", url, "youtube.com", o.optString("label", "YouTube " + id), false, false, "channel", id, until));
                 continue;
             }
             if (!type.equals("domain") && !type.equals("exact")) continue;
             String host = hostOf(url);
             if (host == null) continue;
-            out.add(new Site(type, url, host, o.optString("label", host), o.optBoolean("blockImages", false), o.optBoolean("installable", true)));
+            out.add(new Site(type, url, host, o.optString("label", host), o.optBoolean("blockImages", false), o.optBoolean("installable", true), null, null, until));
         }
         return out;
     }
@@ -111,6 +130,7 @@ public final class SitePolicy {
         if (host == null) return null;
         String path = pathKeyOf(url);
         for (Site s : sites) {
+            if (!s.live()) continue; // allowed for a while, and the time is up
             if (s.type.equals("youtube")) continue; // channel entries are decided by the Browser (see youtubeChannelAllowed)
             if (s.type.equals("domain") && (host.equals(s.host) || host.endsWith("." + s.host))) return s;
             if (s.type.equals("exact") && path != null && path.equals(pathKeyOf(s.url))) return s;
@@ -217,7 +237,7 @@ public final class SitePolicy {
     }
 
     public static boolean hasYoutubeChannels(List<Site> sites) {
-        for (Site s : sites) if (s.type.equals("youtube")) return true;
+        for (Site s : sites) if (s.type.equals("youtube") && s.live()) return true;
         return false;
     }
 
@@ -225,7 +245,7 @@ public final class SitePolicy {
     public static boolean youtubeChannelAllowed(String handle, List<Site> sites) {
         if (handle == null) return false;
         String h = handle.toLowerCase(Locale.ROOT);
-        for (Site s : sites) if (s.type.equals("youtube") && h.equals(s.id)) return true;
+        for (Site s : sites) if (s.type.equals("youtube") && s.live() && h.equals(s.id)) return true;
         return false;
     }
 

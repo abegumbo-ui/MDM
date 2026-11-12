@@ -263,4 +263,32 @@ public class GuardTest {
         FilterStore.setBlockedWords(c, new String[]{"casino"});
         assertTrue("a blocked word, any level", Guard.check(c, "https://www.google.com/search?q=casino+games", null).html.contains("better than that"));
     }
+
+    @Test
+    public void adsCovered_onSitesThatRefuseAdBlocking_andTheMenuSwitchesBothWays() throws Exception {
+        connected("open");
+        assertNull("ads not blocked: nothing to do", Guard.adsMenuLabel(c, "news.example.com"));
+        FilterStore.setBlockAds(c, true);
+        assertEquals("Show ads on this page (covered)", Guard.adsMenuLabel(c, "news.example.com"));
+        String watcher = Guard.adsPageScript(c, "news.example.com");
+        assertTrue("other sites get the watcher", watcher != null && watcher.contains("MdmAds"));
+        assertFalse("only the page's own site can be switched", Guard.noticedAdBlockWall(c, "evil.example.org", "news.example.com"));
+        assertTrue(Guard.noticedAdBlockWall(c, "news.example.com", "news.example.com"));
+        assertTrue(FilterStore.adsCovered(c, "news.example.com"));
+        assertTrue("covered: the black-out script", Guard.adsPageScript(c, "news.example.com").contains("brightness(0)"));
+        assertEquals("Block ads on this page", Guard.adsMenuLabel(c, "news.example.com"));
+        Guard.toggleAdsHere(c, "news.example.com");
+        assertFalse("switched back from the menu", FilterStore.adsCovered(c, "news.example.com"));
+        FilterStore.setCoveredFromDashboard(c, new String[]{"shop.example"});
+        assertTrue("from the dashboard, with its parts", FilterStore.adsCovered(c, "www.shop.example"));
+        assertFalse(FilterStore.adsCovered(c, "notshop.example"));
+    }
+
+    @Test
+    public void youtube_videosThatAreNotAllowed_areCovered_onlyInTheLimitedModes() throws Exception {
+        String c1 = Guard.coverScript(c, "channels");
+        assertTrue("the cover script, told what is allowed", c1 != null && c1.contains("mdm-cov") && c1.contains("\"cover\":\"channels\""));
+        String c2 = Guard.coverScript(c, "restricted");
+        assertTrue(c2 != null && c2.contains("\"cover\":\"restricted\""));
+    }
 }

@@ -33,7 +33,15 @@ class WebViewExt @JvmOverloads constructor(
     defStyle: Int = 0,
     backgroundShortcut: BackgroundShortcut? = null,
     backgroundShortcutService: BackgroundShortcutService? = null
-) : WebView(context, attrs, defStyle) {
+) : WebView(context, attrs, defStyle), com.familymdm.browser.PageHost {
+    /** The address one of our pages (not allowed, ask...) stands for: shown in the address bar. */
+    @Volatile
+    var shownFor: String? = null
+
+    override fun showingPageFor(url: String?) {
+        shownFor = url
+    }
+
     private lateinit var activity: WebViewExtActivity
     val requestHeaders = mutableMapOf<String?, String?>()
     private var mobileUserAgent: String? = null
@@ -57,6 +65,21 @@ class WebViewExt @JvmOverloads constructor(
         if (js != null && androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
             adScriptHandler = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, js,
                 setOf("https://www.youtube.com", "https://m.youtube.com", "https://youtube.com", "https://music.youtube.com"))
+        }
+    }
+
+    /** The site of the page shown (for "ads load but are covered"). */
+    @Volatile
+    var pageHost: String? = null
+
+    /** The watcher (adblock_detect.js) says this page will not open with ads blocked. */
+    inner class AdsBridge {
+        @android.webkit.JavascriptInterface
+        fun blocked(host: String?) {
+            if (Guard.noticedAdBlockWall(context, host, pageHost)) post {
+                android.widget.Toast.makeText(context, "This site will not open with ads blocked: its ads now load, covered in black.", android.widget.Toast.LENGTH_LONG).show()
+                reload()
+            }
         }
     }
 
@@ -109,6 +132,7 @@ class WebViewExt @JvmOverloads constructor(
         settings.blockNetworkImage = decision.blockImages
         settings.loadsImagesAutomatically = !decision.blockImages
         trustedPage = decision.trusted
+        pageHost = android.net.Uri.parse(url).host
         super.loadUrl(url, this.requestHeaders)
     }
 
@@ -171,6 +195,7 @@ class WebViewExt @JvmOverloads constructor(
             this.requestHeaders[HEADER_DNT] = "1"
         }
 
+        addJavascriptInterface(AdsBridge(), "MdmAds")
         if (settings.javaScriptEnabled) {
             addJavascriptInterface(
                 JsSyncUrl(urlBarLayout, activity),

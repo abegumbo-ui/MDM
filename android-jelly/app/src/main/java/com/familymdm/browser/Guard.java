@@ -94,6 +94,8 @@ public final class Guard {
             FilterStore.setNoPictureSites(c, b.getStringArray("noPictureSites"));
             FilterStore.setSkinWho(c, b.getString("skinWho", "all"));
             FilterStore.setBlockAds(c, b.getBoolean("blockAds", false));
+            FilterStore.setCoveredFromDashboard(c, b.getStringArray("adsCoveredSites"));
+            FilterStore.setAdsAutoCover(c, b.getBoolean("adsAutoCover", true));
             FilterStore.setYoutubeOffMessage(c, b.getString("youtubeOffMessage", ""));
         } else if (m == Mode.ONLINE) {
             sync(c, false);
@@ -146,6 +148,7 @@ public final class Guard {
                 info.put("filter", FilterStore.status(c));
                 info.put("picture", FilterStore.pictureGuard(c));
                 info.put("app", "jelly");
+                info.put("adsCovered", new JSONArray(FilterStore.coveredHere(c))); // set on this phone (menu, or noticed)
                 body.put("info", info);
                 JSONArray visited = takeVisited();
                 body.put("visited", visited);
@@ -174,6 +177,11 @@ public final class Guard {
                 FilterStore.setNoPictureSites(c, npSites);
                 FilterStore.setSkinWho(c, f == null ? "all" : f.optString("skinWho", "all"));
                 FilterStore.setBlockAds(c, f != null && f.optBoolean("blockAds", false));
+                JSONArray ac = f == null ? null : f.optJSONArray("adsCoveredSites");
+                String[] acSites = new String[ac == null ? 0 : ac.length()];
+                for (int i = 0; i < acSites.length; i++) acSites[i] = ac.optString(i);
+                FilterStore.setCoveredFromDashboard(c, acSites);
+                FilterStore.setAdsAutoCover(c, f == null || f.optBoolean("adsAutoCover", true));
                 FilterStore.setYoutubeOffMessage(c, f == null ? "" : f.optString("youtubeOffMessage", ""));
                 FilterStore.refreshAsync(c, false);
             } catch (Exception ignored) {
@@ -289,7 +297,7 @@ public final class Guard {
         // A bad search: "Oh come on, you're better than that." (Strict: explicit words; any level: blocked words)
         String searched = com.familymdm.agent.sitepolicy.BadSearch.query(url);
         if (searched != null && com.familymdm.agent.sitepolicy.BadSearch.isBad(searched, "strict".equals(FilterStore.tier(c)), FilterStore.blockedWords(c)))
-            return Decision.no(com.familymdm.agent.sitepolicy.BadSearch.page(homeButton()));
+            return Decision.no(com.familymdm.agent.sitepolicy.BadSearch.page(backButton() + homeButton()));
         if (WordFilter.match(url, FilterStore.blockedWords(c)) != null)
             return Decision.no(notAllowed(url, "It has a blocked word in it.", homeButton()));
         if (FilterStore.blockImageSearch(c) && ProtectionRules.isImageSearch(url))
@@ -425,18 +433,57 @@ public final class Guard {
 
     /** "Block ads" on YouTube: the script that takes the ads out (run before YouTube's own), or null. */
     public static String adBlockScript(Context ctx) {
-        return FilterStore.blockAds(ctx.getApplicationContext()) ? com.familymdm.agent.sitepolicy.YoutubeScripts.adBlock() : null;
+        Context c = ctx.getApplicationContext();
+        return FilterStore.blockAds(c) && !FilterStore.adsCovered(c, "youtube.com") ? com.familymdm.agent.sitepolicy.YoutubeScripts.adBlock() : null;
+    }
+
+    /** For a page: ads covered (a site that refuses ad blocking), or the watcher that notices such a site; or null. */
+    public static String adsPageScript(Context ctx, String pageHost) {
+        Context c = ctx.getApplicationContext();
+        if (!FilterStore.blockAds(c) || pageHost == null) return null;
+        if (FilterStore.adsCovered(c, pageHost)) return com.familymdm.agent.sitepolicy.YoutubeScripts.load("ads_cover.js");
+        return FilterStore.adsAutoCover(c) ? com.familymdm.agent.sitepolicy.YoutubeScripts.load("adblock_detect.js") : null;
+    }
+
+    /** The page said it will not open with ads blocked: its ads load from now on, covered. True to reload. */
+    public static boolean noticedAdBlockWall(Context ctx, String reportedHost, String pageHost) {
+        Context c = ctx.getApplicationContext();
+        if (pageHost == null || reportedHost == null || !FilterStore.blockAds(c) || !FilterStore.adsAutoCover(c)) return false;
+        if (!pageHost.equalsIgnoreCase(reportedHost) || FilterStore.adsCovered(c, pageHost)) return false;
+        FilterStore.setCoveredHere(c, pageHost, true);
+        sync(c, true);
+        return true;
+    }
+
+    /** The ⋮ menu: "Show ads on this page (covered)" / "Block ads on this page", or null when ads are not blocked. */
+    public static String adsMenuLabel(Context ctx, String pageHost) {
+        Context c = ctx.getApplicationContext();
+        if (!FilterStore.blockAds(c) || pageHost == null) return null;
+        return FilterStore.adsCovered(c, pageHost) ? "Block ads on this page" : "Show ads on this page (covered)";
+    }
+
+    public static void toggleAdsHere(Context ctx, String pageHost) {
+        Context c = ctx.getApplicationContext();
+        if (pageHost == null) return;
+        FilterStore.setCoveredHere(c, pageHost, !FilterStore.adsCovered(c, pageHost));
+        sync(c, true);
     }
 
     public static WebResourceResponse intercept(Context ctx, WebResourceRequest request) {
+        return intercept(ctx, request, null);
+    }
+
+    /** pageHost: the site the page is on (its ads may be allowed, covered). */
+    public static WebResourceResponse intercept(Context ctx, WebResourceRequest request, String pageHost) {
         Context c = ctx.getApplicationContext();
         try {
             String url = request.getUrl().toString();
             String host = SitePolicy.hostOf(url);
-            boolean filterBlocks = FilterStore.active(c) && host != null && FilterStore.blocks(c, host)
+            boolean covered = FilterStore.adsCovered(c, pageHost);
+            boolean filterBlocks = FilterStore.active(c) && host != null && (covered ? FilterStore.blocksExceptAds(c, host) : FilterStore.blocks(c, host))
                     && SitePolicy.matching(url, sites(c)) == null && !(mode(c) == Mode.AGENT && browseWindow(c));
             if (filterBlocks) return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
-            if (FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
+            if (!covered && FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
             String guard = FilterStore.pictureGuard(c);
             if (!"off".equals(guard) && !FilterStore.blockImages(c) && PictureGuard.isPicture(request) && !isAllowedVideoThumb(c, url))
                 return PictureGuard.handle(c, request, guard);
@@ -455,7 +502,20 @@ public final class Guard {
         String m = FilterStore.youtubeMode(c);
         if (url == null || !isYoutubeAddress(url) || !("restricted".equals(m) || "channels".equals(m))) return null;
         String shelf = shelfScript(c);
-        return YoutubeRestricted.HIDE_SCRIPT + (shelf != null ? shelf : "");
+        String cover = coverScript(c, m);
+        return YoutubeRestricted.HIDE_SCRIPT + (shelf != null ? shelf : "") + (cover != null ? cover : "");
+    }
+
+    /** Covers the videos that may not be watched (every page in "Only what I allow"; suggestions in Restricted). */
+    static String coverScript(Context c, String mode) {
+        try {
+            JSONArray ch = new JSONArray(), vids = new JSONArray();
+            for (SitePolicy.Site s : sites(c)) if ("youtube".equals(s.type) && s.live()) ch.put(new JSONObject().put("h", s.id));
+            for (String id : allowedVideoIds(c)) vids.put(new JSONObject().put("v", id));
+            return com.familymdm.agent.sitepolicy.YoutubeScripts.cover(new JSONObject().put("cover", mode).put("channels", ch).put("videos", vids).toString());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** The allowed list exactly as the dashboard sent it (with pictures and titles). */
@@ -483,7 +543,7 @@ public final class Guard {
         JSONArray a = rawSites(c);
         for (int i = 0; i < a.length(); i++) {
             JSONObject s = a.optJSONObject(i);
-            if (s == null || "youtube".equals(s.optString("type"))) continue;
+            if (s == null || SitePolicy.isExpired(s) || "youtube".equals(s.optString("type"))) continue;
             String u = s.optString("url", "");
             String h = SitePolicy.hostOf(u);
             if (h == null || !(SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h))) continue;
@@ -502,7 +562,7 @@ public final class Guard {
             JSONArray a = rawSites(c);
             for (int i = 0; i < a.length(); i++) {
                 JSONObject s = a.optJSONObject(i);
-                if (s == null) continue;
+                if (s == null || SitePolicy.isExpired(s)) continue;
                 String thumb = s.optString("thumb", "");
                 if (!thumb.startsWith("https://")) thumb = "";
                 if ("youtube".equals(s.optString("type"))) {
@@ -554,6 +614,8 @@ public final class Guard {
     // ---------- our own pages and their buttons ----------
 
     public static void showPage(WebView v, String url, String html) {
+        // The address bar shows the address that was tried, not "about:blank".
+        if (v instanceof PageHost) ((PageHost) v).showingPageFor(url != null && url.startsWith("http") ? url : null);
         // Shown as "about:blank", never as the blocked address, so the browser does not take it for that page.
         v.loadDataWithBaseURL("about:blank", html, "text/html", "utf-8", null);
     }
@@ -618,6 +680,11 @@ public final class Guard {
             case "start":
                 showPage(v, null, startPage(c));
                 return true;
+            case "back":
+                // Back to the page before the one that did not open.
+                if (v.canGoBack()) v.goBack();
+                else showPage(v, null, startPage(c));
+                return true;
             default:
                 return true;
         }
@@ -668,11 +735,16 @@ public final class Guard {
     }
 
     private static String homeButton() {
-        return "<a class=b href='" + SCHEME + "://start'>Go to the start page</a>";
+        return "<a class='b o' href='" + SCHEME + "://start'>Go to the start page</a>";
+    }
+
+    private static String backButton() {
+        return "<a class=b href='" + SCHEME + "://back'>Go back</a>";
     }
 
     /** The family's "This site is not allowed" page (logo behind it), with the reason and the address. */
     static String notAllowed(String url, String reason, String extraHtml) {
+        extraHtml = backButton() + (extraHtml == null ? "" : extraHtml.replace("class=b href='" + SCHEME + "://ask", "class='b o' href='" + SCHEME + "://ask"));
         String body = "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>"
                 + (reason != null ? "<p>" + esc(reason) + "</p>" : "")
                 + (url != null && url.startsWith("http") ? "<p style='font-size:13px'>" + esc(url) + "</p>" : "");

@@ -167,10 +167,12 @@ test("requests keep the child's message; Block ads, the YouTube off message and 
   await req("/browser/sync", { method: "POST", headers: auth, body: JSON.stringify({ siteRequests: [{ url: "https://www.youtube.com/results?search_query=lego%20videos", note: "For my school project" }] }) });
   const b = (await (await req("/api/browsers", { headers: { cookie } })).json()).find((x) => x.id === id);
   assert.equal(b.siteRequests[0].note, "For my school project");
-  await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ blockAds: true, youtubeOffMessage: "Homework first." }) });
+  await req(`/api/browsers/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ blockAds: true, youtubeOffMessage: "Homework first.", adsCoveredSites: ["https://www.news-site.com/a"], adsAutoCoverOff: true }) });
   const f = (await (await req("/browser/sync", { method: "POST", headers: auth, body: "{}" })).json()).filter;
   assert.equal(f.blockAds, true);
   assert.equal(f.youtubeOffMessage, "Homework first.");
+  assert.deepEqual(f.adsCoveredSites, ["news-site.com"], "sites whose ads load, covered");
+  assert.equal(f.adsAutoCover, false);
   const p = buildAgentPolicy(normalizeConfig({ youtubeAddon: true, youtubeOffMessage: "Ask Dad." }), []);
   assert.equal(p.youtubeAddon, true, "the phone gets the YouTube add-on switch");
   assert.equal(p.youtubeOffMessage, "Ask Dad.");
