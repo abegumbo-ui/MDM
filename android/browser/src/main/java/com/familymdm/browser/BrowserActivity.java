@@ -164,6 +164,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setBlockImages(this, b != null && b.getBoolean("blockImages", false));
                 FilterStore.setBlockedWords(this, b == null ? null : b.getStringArray("blockedWords"));
                 FilterStore.setBlockImageSearch(this, b != null && b.getBoolean("blockImageSearch", false));
+                FilterStore.setPictureGuard(this, b == null ? "off" : b.getString("pictureGuard", "off"));
             } else if (m == Mode.ONLINE) {
                 FilterStore.refreshAsync(this, false);
             } else {
@@ -172,6 +173,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setBlockImages(this, false);
                 FilterStore.setBlockedWords(this, null);
                 FilterStore.setBlockImageSearch(this, false);
+                FilterStore.setPictureGuard(this, "off");
             }
             filterModeOk = (m == Mode.AGENT || m == Mode.ONLINE) && !"off".equals(FilterStore.tier(this));
         } catch (Exception e) {
@@ -545,6 +547,17 @@ public class BrowserActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 try {
+                    // "Pictures in our Browser": every picture is checked on the phone first (PictureGuard).
+                    String guard = FilterStore.pictureGuard(BrowserActivity.this);
+                    if (!"off".equals(guard) && !FilterStore.blockImages(BrowserActivity.this) && PictureGuard.isPicture(request)) {
+                        String gh = SitePolicy.hostOf(request.getUrl().toString());
+                        boolean filterBlocks = filterModeOk && FilterStore.active(BrowserActivity.this) && gh != null && FilterStore.blocks(BrowserActivity.this, gh);
+                        if (!filterBlocks) return PictureGuard.handle(BrowserActivity.this, request, guard);
+                    }
+                } catch (Exception e) {
+                    // fall through to the normal filter
+                }
+                try {
                     if (!filterModeOk || !FilterStore.active(BrowserActivity.this)) return null;
                     String url = request.getUrl().toString();
                     String host = SitePolicy.hostOf(url);
@@ -859,6 +872,7 @@ public class BrowserActivity extends Activity {
                 for (int i = 0; i < wordList.length; i++) wordList[i] = fw.optString(i);
                 FilterStore.setBlockedWords(this, wordList);
                 FilterStore.setBlockImageSearch(this, filter != null && filter.optBoolean("imageSearch", false));
+                FilterStore.setPictureGuard(this, filter == null ? "off" : filter.optString("pictureGuard", "off"));
                 filterModeOk = !"off".equals(FilterStore.tier(this));
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list

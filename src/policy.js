@@ -536,6 +536,8 @@ export function normalizeConfig(input) {
     blockImages: c.blockImages === true,
     // Refuses the "Images" tab of Google, Bing and DuckDuckGo (own browsers; Chrome with inspection on).
     blockImageSearch: c.blockImageSearch === true,
+    // Pictures in our Browser: "off", "nudity" (hide pictures that may show nudity) or "skin" (that, and cover skin).
+    pictureGuard: ["nudity", "skin"].includes(c.pictureGuard) ? c.pictureGuard : "off",
     // Ad servers blocked phone-wide (with Moderate or Strict): the "+ads" lists.
     blockAds: c.blockAds === true,
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
@@ -780,6 +782,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.youtubeDns = cfg.youtubeDns;
   out.blockImages = cfg.blockImages;
   out.blockImageSearch = cfg.blockImageSearch;
+  out.pictureGuard = cfg.pictureGuard;
   out.blockAds = cfg.blockAds;
   out.pauseUntil = cfg.pauseUntil;
   out.internetOffUntil = cfg.internetOffUntil;
@@ -898,6 +901,7 @@ export function summarizeConfigChange(before, after) {
   if (JSON.stringify(stB.appLimits) !== JSON.stringify(stA.appLimits)) lines.push("App time limits changed (" + Object.keys(stA.appLimits).length + " app(s))");
   if (!!before.safeSearch !== !!after.safeSearch) lines.push("Forced SafeSearch: " + (after.safeSearch ? "on" : "off"));
   if ((before.youtubeDns || "off") !== (after.youtubeDns || "off")) lines.push("YouTube Restricted Mode everywhere: " + (after.youtubeDns || "off"));
+  if ((before.pictureGuard || "off") !== (after.pictureGuard || "off")) lines.push("Pictures in our Browser: " + ({ off: "all shown", nudity: "may-be-nude hidden", skin: "skin covered" })[after.pictureGuard || "off"]);
   if (!!before.blockImages !== !!after.blockImages) lines.push("Block pictures on web pages: " + (after.blockImages ? "on" : "off"));
   if (!!before.tlsInspection !== !!after.tlsInspection) lines.push("Browser inspection: " + (after.tlsInspection ? "on" : "off"));
   if ((before.youtubeMode || "auto") !== (after.youtubeMode || "auto")) lines.push("YouTube in the browsers: " + (after.youtubeMode || "auto"));

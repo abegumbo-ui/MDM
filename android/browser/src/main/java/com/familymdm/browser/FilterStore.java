@@ -99,6 +99,15 @@ final class FilterStore {
         return prefs(c).getBoolean("blockAllImages", false);
     }
 
+    /** "Pictures in our Browser": "off", "nudity" (hide pictures that may show nudity) or "skin" (that, and cover skin). */
+    static void setPictureGuard(Context c, String mode) {
+        prefs(c).edit().putString("pictureGuard", "nudity".equals(mode) || "skin".equals(mode) ? mode : "off").apply();
+    }
+
+    static String pictureGuard(Context c) {
+        return prefs(c).getString("pictureGuard", "off");
+    }
+
     static void setBlockImageSearch(Context c, boolean on) {
         prefs(c).edit().putBoolean("blockImageSearch", on).apply();
     }

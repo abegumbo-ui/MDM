@@ -11,4 +11,5 @@ android/app/release.keystore
 *.apk
 json.jar
 android/app/src/main/assets/nsfw.tflite
+android/browser/src/main/assets/nsfw.tflite
 out/
