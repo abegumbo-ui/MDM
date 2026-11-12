@@ -318,7 +318,8 @@ final class PartBlocker {
                 int x = (int) e.getRawX(), y = (int) e.getRawY();
                 removeView(wm, capture);
                 capture = null;
-                v.postDelayed(() -> picked(s, x, y), 150); // let the app's window be the active one again
+                // Not v.postDelayed: v was just removed, and a removed view never runs its timers.
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> picked(s, x, y), 150); // let the app's window be the active one again
             }
             return true;
         });
