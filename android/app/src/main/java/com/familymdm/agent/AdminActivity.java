@@ -269,6 +269,7 @@ public class AdminActivity extends Activity {
 
     /** Overview > Status: this phone's details, its recovery code, and the sync / phone-settings button. */
     private void buildStatusSection(LinearLayout root) {
+        PhoneRules.whatsOn(this, root);
         buildOverviewCard(root);
         LinearLayout statusCard = Ui.card(this, root);
         statusCard.addView(Ui.body(this, "This phone's own recovery code: " + Agent.fallbackCode(this)

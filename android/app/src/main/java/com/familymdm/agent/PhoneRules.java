@@ -187,6 +187,41 @@ final class PhoneRules {
         }
     }
 
+    /** "What's on for this phone": every rule in force, one plain line each (same as the dashboard's Overview). */
+    static void whatsOn(Activity a, LinearLayout root) {
+        JSONObject c = current(a);
+        if (c.length() == 0) return;
+        java.util.List<String> rows = new java.util.ArrayList<>();
+        long now = System.currentTimeMillis();
+        String lvl = c.optString("browserFilter", "off");
+        rows.add("Websites: " + ("strict".equals(lvl) ? "Strict filter" : "moderate".equals(lvl) ? "Moderate filter" : "Approved sites only")
+                + (c.optBoolean("safeSearch") ? ", SafeSearch" : "") + (!"off".equals(c.optString("youtubeDns", "off")) ? ", YouTube restricted" : "")
+                + (c.optBoolean("blockAds") ? ", ads blocked" : ""));
+        if (c.optLong("pauseUntil", 0) > now) rows.add("Web filtering paused for a while");
+        if (c.optLong("internetOffUntil", 0) > now) rows.add("Internet off for a while");
+        JSONObject st = c.optJSONObject("screenTime");
+        if (st != null) {
+            if (st.optInt("dailyLimit", 0) > 0) rows.add("Daily screen time: " + fmt(st.optInt("dailyLimit")));
+            JSONObject bed = st.optJSONObject("bedtime");
+            if (bed != null) rows.add("Bedtime " + bed.optString("from") + " to " + bed.optString("to"));
+            JSONObject sch = st.optJSONObject("schoolTime");
+            if (sch != null) rows.add("School time " + sch.optString("from") + " to " + sch.optString("to"));
+        }
+        JSONArray groups = c.optJSONArray("blockAppGroups");
+        if (groups != null && groups.length() > 0) rows.add(groups.length() + " app group" + (groups.length() == 1 ? "" : "s") + " blocked");
+        if (c.optBoolean("approveNew")) rows.add("New apps wait for your OK");
+        JSONArray parts = c.optJSONArray("blockedParts");
+        if (parts != null && parts.length() > 0) rows.add(parts.length() + " part" + (parts.length() == 1 ? "" : "s") + " of apps blocked");
+        if (c.optBoolean("blockWaStatus") || c.optBoolean("blockWaChannels") || c.optBoolean("waTextOnly")) rows.add("WhatsApp limited");
+        if (c.optBoolean("messageAlerts")) rows.add("Message alerts on");
+        if (c.optBoolean("recordSearches")) rows.add("Searches kept");
+        if (c.optInt("locationEvery", 0) > 0) rows.add("Location every " + c.optInt("locationEvery") + " minutes");
+        LinearLayout card = Ui.card(a, root);
+        card.addView(Ui.titleText(a, "What's on for this phone"));
+        for (String r : rows) Ui.add(card, Ui.body(a, "•  " + r, false), 4);
+        card.addView(Ui.body(a, "Change them under Rules.", true));
+    }
+
     /* ---- Ready-made setups (the same as the dashboard's) ---- */
 
     private static void setups(Activity a, LinearLayout root, Runnable rebuild, boolean off) {
