@@ -264,6 +264,29 @@ export function normalizeSite(raw) {
   };
 }
 
+/**
+ * The child ended something allowed for a while early (the Browser's "Allow list"): its end time
+ * becomes now, so it ends on the dashboard too. Only entries that match exactly (same address and
+ * same end time) and are still running. True if one changed.
+ */
+export function endSitesEarly(cfg, items, now = Date.now()) {
+  let changed = false;
+  for (const it of (Array.isArray(items) ? items : []).slice(0, 50)) {
+    if (!it || typeof it !== "object") continue;
+    const until = Number(it.until);
+    if (!(until > now)) continue;
+    for (const s of Object.values((cfg && cfg.sites) || {})) {
+      if (!s || s.until !== until) continue;
+      const same = s.type === "youtube" ? it.type === "youtube" && String(it.id || "").toLowerCase() === s.id : s.type === it.type && s.url === it.url;
+      if (same) {
+        s.until = now;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 /** {key: site} -> sorted array of valid, de-duplicated entries, for sending to the phone. */
 export function normalizeSites(raw) {
   const out = [];

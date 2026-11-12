@@ -1863,7 +1863,7 @@ function renderSites(m,dv,part){
  renderSitesPart(m,dv);
 }
 function renderSitesPart(m,dv){
- renderRequestsCard(m,(dv.siteRequests||[]).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at}}),dv);
+ renderRequestsCard(m,(dv.siteRequests||[]).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at,note:r.note}}),dv);
  renderCloneCard(m,dv);
  renderSitesEditor(m,dv);
 }
@@ -1940,18 +1940,33 @@ function renderYoutubeSearch(m,dv){
        r.handle?(chOn?h('span',{class:'chip'},'Channel allowed'):btn('Allow the whole channel','outline',function(){allowCh({handle:r.handle,title:r.channel,thumb:''})})):null))))}}}
  m.append(card)}
 /** How long an allow lasts. Back to "Always" after each one, so a later allow is not short by mistake. */
-let allowFor='always';
-const ALLOW_FOR=[['1h','1 hour'],['3h','3 hours'],['today','Rest of today'],['always','Always']];
-function allowUntil(){const n=Date.now();if(allowFor==='1h')return n+3600e3;if(allowFor==='3h')return n+3*3600e3;if(allowFor==='today'){const d=new Date();d.setHours(24,0,0,0);return d.getTime()}return 0}
+let allowFor='always',customD=0,customH=1,customM=0;
+const ALLOW_FOR=[['1h','1 hour'],['2h','2 hours'],['today','Rest of today'],['custom','Custom'],['always','Always']];
+/** The end time for the chosen length: 0 = always, -1 = a custom length of nothing. */
+function allowUntil(){const n=Date.now();if(allowFor==='1h')return n+3600e3;if(allowFor==='2h')return n+2*3600e3;
+ if(allowFor==='today'){const d=new Date();d.setHours(24,0,0,0);return d.getTime()}
+ if(allowFor==='custom'){const ms=((customD||0)*1440+(customH||0)*60+(customM||0))*60e3;return ms>0?n+ms:-1}
+ return 0}
+function repaintAllowFor(){document.querySelectorAll('.allow-for').forEach(function(x){if(x.__paint)x.__paint()})}
 function allowForPicker(){const seg=h('div',{class:'seg'});
- const paint=function(){[...seg.children].forEach(function(b,i){b.className=ALLOW_FOR[i][0]===allowFor?'on':''})};
- for(const [v,label] of ALLOW_FOR){const b=h('button',{type:'button'},label);b.onclick=function(){allowFor=v;document.querySelectorAll('.allow-for').forEach(function(x){if(x.__paint)x.__paint()})};seg.append(b)}
- const wrap=h('div',{class:'allow-for',style:'margin-top:10px'},h('div',{class:'mute small',style:'margin-bottom:6px'},'How long to allow it'),seg);
+ const inputs=[];
+ const num=function(get,set,max,label){const i=h('input',{type:'number',min:'0',max:String(max),inputmode:'numeric',style:'width:72px'});
+  i.oninput=function(){let v=Math.floor(Number(i.value));if(!(v>=0))v=0;if(v>max)v=max;set(v);repaintAllowFor()};inputs.push([i,get]);
+  return h('label',{class:'row small',style:'gap:6px;align-items:center'},i,label)};
+ const custom=h('div',{class:'row',style:'margin-top:8px;flex-wrap:wrap;gap:14px'},
+  num(function(){return customD},function(v){customD=v},365,'days'),num(function(){return customH},function(v){customH=v},23,'hours'),num(function(){return customM},function(v){customM=v},59,'minutes'));
+ const until=h('div',{class:'mute small',style:'margin-top:6px'});
+ const paint=function(){[...seg.children].forEach(function(b,i){b.className=ALLOW_FOR[i][0]===allowFor?'on':''});
+  custom.style.display=allowFor==='custom'?'':'none';
+  for(const [i,get] of inputs)if(document.activeElement!==i)i.value=String(get());
+  const u=allowUntil();until.textContent=u>0?'Allowed '+untilText(u)+', then blocked again by itself.':u<0?'Choose how long: days can be 0, with some hours or minutes.':'Allowed with no end.'};
+ for(const [v,label] of ALLOW_FOR){const b=h('button',{type:'button'},label);b.onclick=function(){allowFor=v;repaintAllowFor()};seg.append(b)}
+ const wrap=h('div',{class:'allow-for',style:'margin-top:10px'},h('div',{class:'mute small',style:'margin-bottom:6px'},'How long to allow it'),seg,custom,until);
  wrap.__paint=paint;paint();return wrap}
 function untilText(t){const d=new Date(t),now=new Date(),time=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
  return 'until '+(d.toDateString()===now.toDateString()?time:d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})+' '+time)}
 async function addSite(dv,entry){
- const until=allowUntil();allowFor='always';
+ const until=allowUntil();if(until<0){snack('Choose how long to allow it (at least one minute).',1);return}allowFor='always';
  const key=entry.type==='youtube'?'youtube:'+entry.id:(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  dv.config.sites=dv.config.sites||{};
  dv.config.sites[key]=entry.type==='youtube'?{type:'youtube',kind:'channel',id:entry.id,url:entry.url,label:entry.label,blockImages:false,installable:false,thumb:entry.thumb}:{type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true,thumb:entry.thumb};
@@ -2010,7 +2025,7 @@ function renderBrowserDetail(m,b){
   const n=(g.key==='overview'||g.key==='sites')?nReq:0;if(n)x.append(h('span',{class:'badge'},String(n)));
   x.onclick=function(){browserSection=g.key;try{sessionStorage.setItem('browserSection',g.key)}catch(e){}render()};side.append(x)}
  const content=h('div',{class:'content'});
- const requests=function(){renderRequestsCard(content,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b)};
+ const requests=function(){renderRequestsCard(content,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at,note:r.note}}),b)};
  if(sec==='overview'){renderBrowserGlance(content,b);requests();renderBrowserSitesOpened(content,b)}
  else if(sec==='web'){renderWebAccess(content,b);renderBrowserSwitches(content,b);renderBlockAds(content,b);renderAdsCovered(content,b);renderBlockedWords(content,b);renderImageSearch(content,b)}
  else if(sec==='youtube')renderYoutube(content,b);

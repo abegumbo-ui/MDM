@@ -5,6 +5,10 @@
 //  "restricted": on a video's own page, every suggested video (only the one playing stays).
 // Works from each video's own address, not from YouTube's page layout, so it keeps working when
 // YouTube renames its page parts. The family's own panel ("My channels", "My videos") is left alone.
+// With guard (Chrome and the other browsers, through Inspection): YouTube changes videos without
+// loading a new page, so a video, channel or page that is not allowed is also stopped here: the
+// video is paused and the family's "not allowed" screen covers the page. Who made a video is read
+// from YouTube's own data (its player answer), never looked up elsewhere.
 (function () {
   window.__mdmCoverData = __MDM_DATA__;
   if (window.__mdmCover) return;
@@ -21,7 +25,14 @@
     'html[dark] .mdm-cov::after,html[darker-dark-theme] .mdm-cov::after{background:' + logo('#6366F1') + ' calc(50% - 42px) 50%/26px 26px no-repeat,#1f1f2a;color:#aaa}' +
     // Suggestions over and after the video, and "Up next".
     '.ytp-endscreen-content,.ytp-ce-element,.ytp-autonav-endscreen,.ytp-autonav-endscreen-countdown-container,.ytp-suggestion-set,' +
-    '.ytp-pause-overlay,.ytp-videowall-still,.ytp-upnext,.ytm-autonav-bar,ytm-autonav-renderer{display:none !important}';
+    '.ytp-pause-overlay,.ytp-videowall-still,.ytp-upnext,.ytm-autonav-bar,ytm-autonav-renderer{display:none !important}' +
+    '#mdm-block{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:#f4f4fb;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:Roboto,Arial,sans-serif;color:#1d1b20}' +
+    '#mdm-block .c{background:#fff;border-radius:20px;padding:28px 22px;max-width:440px;width:100%;box-sizing:border-box;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.08)}' +
+    '#mdm-block .bd{width:64px;height:64px;border-radius:18px;background:#4F46E5;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}' +
+    '#mdm-block h1{font-size:22px;margin:0 0 10px}#mdm-block p{color:#5f6368;font-size:15px;line-height:1.5;margin:6px 0}' +
+    '#mdm-block a{display:block;margin-top:12px;padding:14px;border-radius:24px;background:#4F46E5;color:#fff;text-decoration:none;font-size:16px;cursor:pointer}' +
+    '#mdm-block a.o{background:transparent;color:#4F46E5;border:1px solid #4F46E5}' +
+    '@media(prefers-color-scheme:dark){#mdm-block{background:#111318;color:#e6e1e5}#mdm-block .c{background:#1b1d24}#mdm-block p{color:#a8a8b3}}';
 
   var TILE = ['ytm-video-with-context-renderer', 'ytm-compact-video-renderer', 'ytm-video-card-renderer', 'ytm-media-item',
     'ytm-shorts-lockup-view-model', 'ytm-shorts-lockup-view-model-v2', 'ytm-reel-item-renderer', 'ytm-playlist-video-renderer',
@@ -51,7 +62,86 @@
     var d = window.__mdmCoverData || {}, v = {}, c = {};
     (d.videos || []).forEach(function (x) { if (x && x.v) v[x.v] = 1; });
     (d.channels || []).forEach(function (x) { if (x && x.h) c[String(x.h).toLowerCase()] = 1; });
-    return { mode: d.cover, v: v, c: c };
+    return { mode: d.cover, guard: !!d.guard, v: v, c: c };
+  }
+
+  // ---- guard: who made each video, and which @handle each channel id has (from YouTube's own data) ----
+  var owners = {}, channelHandles = {}, firstSeen = {};
+  function note(r) {
+    try {
+      if (!r || typeof r !== 'object') return;
+      if (r.playerResponse) note(r.playerResponse);
+      var vd = r.videoDetails, mf = r.microformat && r.microformat.playerMicroformatRenderer;
+      if (vd && vd.videoId) {
+        var h = mf && mf.ownerProfileUrl ? handleOf(String(mf.ownerProfileUrl)) : null;
+        if (h || owners[vd.videoId] === undefined) owners[vd.videoId] = h || '';
+      }
+      var cm = r.metadata && r.metadata.channelMetadataRenderer;
+      if (cm && cm.externalId) channelHandles[cm.externalId] = cm.vanityChannelUrl ? handleOf(String(cm.vanityChannelUrl)) || '' : '';
+    } catch (e) {}
+  }
+  if ((window.__mdmCoverData || {}).guard) {
+    try {
+      var parse = JSON.parse;
+      JSON.parse = function () { var r = parse.apply(this, arguments); note(r); return r; };
+    } catch (e) {}
+    try {
+      var rjson = Response.prototype.json;
+      Response.prototype.json = function () { return rjson.call(this).then(function (r) { note(r); return r; }); };
+    } catch (e) {}
+  }
+  var OWNER = 'ytm-slim-owner-renderer a[href],ytd-video-owner-renderer a[href],#owner a[href],ytm-reel-player-header-renderer a[href],ytm-slim-video-metadata-section-renderer a[href*="/@"]';
+  var SHIELD_SVG = "<svg width='34' height='34' viewBox='0 0 24 24'><path fill='#fff' d='" + SHIELD + "'/></svg>";
+
+  /** Null when this page may be shown, otherwise what to say. */
+  function pageBlocked(L, here) {
+    var p = location.pathname;
+    if (p === '/' || p === '') return null;
+    if (here.playing) {
+      if (L.v[here.playing]) return null;
+      note(window.ytInitialPlayerResponse);
+      var o = owners[here.playing];
+      if (!o) {
+        var el = document.querySelector(OWNER);
+        var dom = el ? handleOf(el.getAttribute('href') || '') : null;
+        if (dom) o = dom;
+      }
+      if (o && L.c[o]) return null;
+      if (o === undefined || o === null || o === '') {
+        if (!firstSeen[here.playing]) firstSeen[here.playing] = Date.now();
+        if (Date.now() - firstSeen[here.playing] < 4000) return 'Checking this video…';
+      }
+      return 'This video is not allowed';
+    }
+    if (here.allowedChannelPage) return null;
+    if (/^\/@/.test(p)) return 'This channel is not allowed';
+    var cid = /^\/channel\/([A-Za-z0-9_-]+)/.exec(p);
+    if (cid) {
+      note(window.ytInitialData);
+      var ch = channelHandles[cid[1]];
+      return ch && L.c[ch] ? null : 'This channel is not allowed';
+    }
+    return 'This part of YouTube is not available';
+  }
+
+  function showBlock(msg) {
+    var vids = document.querySelectorAll('video');
+    for (var i = 0; i < vids.length; i++) { try { vids[i].pause(); vids[i].muted = true; } catch (e) {} }
+    var b = document.getElementById('mdm-block');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'mdm-block';
+      b.innerHTML = '<div class="c"><div class="bd">' + SHIELD_SVG + '</div><h1></h1><p>Only the YouTube channels and videos that were allowed open here.</p>' +
+        '<p>Contact your administrator if you have any questions.</p><a id="mdm-back">Go back</a><a class="o" href="/">Go to YouTube\'s home page</a></div>';
+      (document.body || document.documentElement).appendChild(b);
+      b.querySelector('#mdm-back').addEventListener('click', function (e) { e.preventDefault(); history.back(); });
+    }
+    var h1 = b.querySelector('h1');
+    if (h1.textContent !== msg) h1.textContent = msg;
+  }
+  function hideBlock() {
+    var b = document.getElementById('mdm-block');
+    if (b) b.remove();
   }
 
   function addCss() {
@@ -89,11 +179,15 @@
       watchPage: path === '/watch' || path.indexOf('/shorts/') === 0,
       allowedChannelPage: !!(page && L.c[page[1].toLowerCase()])
     };
+    if (L.guard && L.mode === 'channels') {
+      var msg = pageBlocked(L, here);
+      if (msg) showBlock(msg); else hideBlock();
+    }
     var decided = new Map();
     var links = document.querySelectorAll(VIDEO_LINK);
     for (var i = 0; i < links.length; i++) {
       var a = links[i];
-      if (a.closest('#mdm-shelf')) continue;
+      if (a.closest('#mdm-shelf') || a.closest('#mdm-block')) continue;
       var tile = a.closest(TILE);
       if (!tile && a.closest(PLAYING)) continue;
       tile = tile || a;

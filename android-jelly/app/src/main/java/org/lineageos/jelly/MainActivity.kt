@@ -5,6 +5,7 @@
 
 package org.lineageos.jelly
 
+import com.familymdm.browser.AllowList
 import com.familymdm.browser.Updater
 import com.familymdm.browser.Guard
 import android.app.Activity
@@ -355,6 +356,19 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
                 )
             }
             menuDialog.dismiss()
+        }
+        // "Allow list" (top right): what is allowed, how long is left, end early, ask again.
+        urlBarLayout.onAllowListClickCallback = {
+            UiUtils.hideKeyboard(window, urlBarLayout)
+            AllowList.show(this, Guard.allSites(this), object : AllowList.Callback {
+                override fun open(url: String) {
+                    webView.followUrl(url)
+                }
+
+                override fun changed() {
+                    webView.reload()
+                }
+            })
         }
         urlBarLayout.onMoreButtonClickCallback = {
             UiUtils.hideKeyboard(window, urlBarLayout)

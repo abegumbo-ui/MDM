@@ -43,6 +43,7 @@ class UrlBarLayout @JvmOverloads constructor(
     private val incognitoIcon by lazy { findViewById<ImageButton>(R.id.incognitoIcon) }
     private val loadingProgressIndicator by lazy { findViewById<LinearProgressIndicator>(R.id.loadingProgressIndicator) }
     private val moreButton by lazy { findViewById<ImageButton>(R.id.moreButton)!! }
+    private val allowListButton by lazy { findViewById<ImageButton>(R.id.allowListButton)!! }
     private val searchCancelButton by lazy { findViewById<ImageButton>(R.id.searchCancelButton) }
     private val searchClearButton by lazy { findViewById<ImageButton>(R.id.searchClearButton) }
     private val searchEditText by lazy { findViewById<EditText>(R.id.searchEditText) }
@@ -122,6 +123,7 @@ class UrlBarLayout @JvmOverloads constructor(
 
     // Callbacks
     var onMoreButtonClickCallback: (() -> Unit)? = null
+    var onAllowListClickCallback: (() -> Unit)? = null
     var onLoadUrlCallback: ((url: String) -> Unit)? = null
     var onStartSearchCallback: ((query: String) -> Unit)? = null
     var onSearchPositionChangeCallback: ((next: Boolean) -> Unit)? = null
@@ -201,6 +203,7 @@ class UrlBarLayout @JvmOverloads constructor(
         }
 
         moreButton.setOnClickListener { onMoreButtonClickCallback?.invoke() }
+        allowListButton.setOnClickListener { onAllowListClickCallback?.invoke() }
 
         // Set secure button callback
         secureButton.setOnClickListener {

@@ -1,4 +1,4 @@
-import { MESSAGE_WORD_GROUPS, effectiveFilter, placesAt, messageWordList, matchMessageWord, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { endSitesEarly, MESSAGE_WORD_GROUPS, effectiveFilter, placesAt, messageWordList, matchMessageWord, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { maybeSendDaily, maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY, alertsOn, validPushEndpoint, vapidKeys, latestForPush, SERVICE_WORKER } from "./alerts.js";
@@ -1894,6 +1894,11 @@ async function browserApi(request, env, url, ctx) {
     }
     const { cfg: config, seeded } = await configOf(env, d);
     if (seeded) dirty = true;
+    // Ended early in the Browser's "Allow list": ended here too.
+    if (Array.isArray(body.endedEarly) && body.endedEarly.length && endSitesEarly(config, body.endedEarly, now)) {
+      d.config = config;
+      dirty = true;
+    }
     if (dirty) await putJSON(env, key, d);
     return json({ sites: normalizeSites(config.sites), restrictBrowsing: config.restrictBrowsing, filter: filterFor(env, config), pollSeconds: POLL_SECONDS });
   }

@@ -15,7 +15,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:visibility="visible"
-        app:constraint_referenced_ids="urlCardView,moreButton" />
+        app:constraint_referenced_ids="urlCardView,allowListButton,moreButton" />
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/urlCardView"
@@ -28,7 +28,7 @@
         android:backgroundTint="?attr/colorSurfaceVariant"
         app:cardCornerRadius="32dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@+id/moreButton"
+        app:layout_constraintEnd_toStartOf="@+id/allowListButton"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:strokeWidth="0dp">
@@ -96,6 +96,19 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
 
     </com.google.android.material.card.MaterialCardView>
+
+    <!-- "Allow list": what is allowed and how long is left (com.familymdm.browser.AllowList) -->
+    <ImageButton
+        android:id="@+id/allowListButton"
+        android:layout_width="44dp"
+        android:layout_height="48dp"
+        android:background="?selectableItemBackgroundBorderless"
+        android:contentDescription="Allow list"
+        android:src="@drawable/ic_allow_list"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/moreButton"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="?attr/colorOnSurfaceVariant" />
 
     <ImageButton
         android:id="@+id/moreButton"
