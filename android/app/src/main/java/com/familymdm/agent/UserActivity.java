@@ -43,6 +43,7 @@ public class UserActivity extends Activity {
             buildUpdatesSection(root);
         } else {
             buildMenu(root);
+            buildWhatParentSees(root);
         }
 
         ScrollView scroll = new ScrollView(this);
@@ -58,6 +59,33 @@ public class UserActivity extends Activity {
         } catch (Exception e) {
             return true;
         }
+    }
+
+    /**
+     * "What your parent can see": every kind of monitoring that is on, in plain words, so nothing is
+     * secret from the person holding the phone (read from the phone's own settings).
+     */
+    private void buildWhatParentSees(LinearLayout root) {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        android.content.SharedPreferences p = Agent.prefs(this);
+        org.json.JSONObject pol;
+        try {
+            pol = new org.json.JSONObject(p.getString("policy", "{}"));
+        } catch (Exception e) {
+            pol = new org.json.JSONObject();
+        }
+        if (Monitor.on(this)) lines.add("Worrying words in chats (bullying, sexual, self-harm, drugs) are sent to your parent, with the sentence.");
+        if (p.getBoolean("recordSearches", false)) lines.add("What you search for in Google, YouTube and browsers.");
+        if (pol.optBoolean("recordSites", false)) lines.add("Which websites this phone opens.");
+        if (pol.optInt("locationEvery", 0) > 0) lines.add("Where the phone is, every " + pol.optInt("locationEvery", 0) + " minutes.");
+        if (p.getBoolean("callLog", false)) lines.add("Who you call and who calls you.");
+        if (p.getBoolean("textLog", false)) lines.add(p.getBoolean("textContent", false) ? "Your text messages, with what they say." : "Who you text with (not what the texts say).");
+        if (p.getBoolean("reportContacts", false)) lines.add("The contacts on this phone.");
+        if (android.os.Build.VERSION.SDK_INT >= 30 && Agent.accessibilityServiceOn(this)) lines.add("A picture of the screen, if your parent asks for one (the phone tells you when it happens).");
+        lines.add("Which apps are used, and for how long.");
+        LinearLayout card = Ui.card(this, root);
+        card.addView(Ui.titleText(this, "What your parent can see"));
+        for (String l : lines) Ui.add(card, Ui.body(this, "•  " + l, false), 6);
     }
 
     /** The list of things the person holding the phone can do or ask for, without any code. */
