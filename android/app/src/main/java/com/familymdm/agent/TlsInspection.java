@@ -123,6 +123,13 @@ final class TlsInspection {
         rules = new YoutubeInspector("restricted".equals(policy.optString("youtubeMode", "channels")), bypass,
                 policy.optBoolean("blockImages", false), imagesAllow, words);
         rules.setBlockImageSearch(policy.optBoolean("blockImageSearch", false));
+        Set<String> noPics = new HashSet<>();
+        JSONArray np = policy.optJSONArray("noPictureSites");
+        for (int i = 0; np != null && i < np.length(); i++) {
+            String h = np.optString(i, "").trim().toLowerCase(Locale.ROOT);
+            if (!h.isEmpty()) noPics.add(h.startsWith("www.") ? h.substring(4) : h);
+        }
+        rules.setNoPictureSites(noPics);
         String guard = policy.optString("pictureGuard", "off");
         rules.setPictureFilter("nudity".equals(guard) || "skin".equals(guard) ? new ProxyPictureFilter(c.getApplicationContext(), guard) : null);
     }

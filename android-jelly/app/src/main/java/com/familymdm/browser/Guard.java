@@ -91,6 +91,7 @@ public final class Guard {
             FilterStore.setBlockImageSearch(c, b.getBoolean("blockImageSearch", false));
             FilterStore.setPictureGuard(c, b.getString("pictureGuard", "off"));
             FilterStore.setSwitches(c, b.getBoolean("safeSearch", true), b.getBoolean("adultBlock", true), b.getBoolean("allowSearch", true));
+            FilterStore.setNoPictureSites(c, b.getStringArray("noPictureSites"));
         } else if (m == Mode.ONLINE) {
             sync(c, false);
         } else {
@@ -143,10 +144,13 @@ public final class Guard {
                 info.put("picture", FilterStore.pictureGuard(c));
                 info.put("app", "jelly");
                 body.put("info", info);
+                JSONArray visited = takeVisited();
+                body.put("visited", visited);
                 JSONArray requests = BrowserState.peekSiteRequests(c);
                 body.put("siteRequests", requests);
                 JSONObject reply = Api.post(server + "/browser/sync", body, token);
                 BrowserState.dropSiteRequests(c, requests.length());
+                visitedSent = true;
                 JSONArray sites = reply.optJSONArray("sites");
                 BrowserState.setCachedSites(c, sites != null ? sites : new JSONArray());
                 sitesAt = 0;
@@ -161,13 +165,47 @@ public final class Guard {
                 FilterStore.setBlockImageSearch(c, f != null && f.optBoolean("imageSearch", false));
                 FilterStore.setPictureGuard(c, f == null ? "off" : f.optString("pictureGuard", "off"));
                 FilterStore.setSwitches(c, f == null || f.optBoolean("safeSearch", true), f == null || f.optBoolean("adultBlock", true), f == null || f.optBoolean("allowSearch", true));
+                JSONArray np = f == null ? null : f.optJSONArray("noPictureSites");
+                String[] npSites = new String[np == null ? 0 : np.length()];
+                for (int i = 0; i < npSites.length; i++) npSites[i] = np.optString(i);
+                FilterStore.setNoPictureSites(c, npSites);
                 FilterStore.refreshAsync(c, false);
             } catch (Exception ignored) {
                 // offline or the dashboard unreachable: keep the last settings
             } finally {
+                if (!visitedSent) putBackVisited();
+                visitedSent = false;
                 syncing = false;
             }
         }).start();
+    }
+
+    // ---------- sites opened, for the dashboard's "Sites opened" list ----------
+    private static final List<JSONObject> visited = new ArrayList<>();
+    private static List<JSONObject> inFlight = new ArrayList<>();
+    private static volatile boolean visitedSent;
+    private static String lastVisitedHost;
+
+    static synchronized void noteVisit(String url, boolean blocked) {
+        String host = SitePolicy.hostOf(url);
+        if (host == null || host.equals(lastVisitedHost)) return;
+        lastVisitedHost = host;
+        try {
+            visited.add(new JSONObject().put("host", host).put("at", System.currentTimeMillis()).put("blocked", blocked));
+            if (visited.size() > 300) visited.remove(0);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static synchronized JSONArray takeVisited() {
+        inFlight = new ArrayList<>(visited);
+        visited.clear();
+        return new JSONArray(inFlight);
+    }
+
+    private static synchronized void putBackVisited() {
+        visited.addAll(0, inFlight);
+        inFlight = new ArrayList<>();
     }
 
     /** For the tests: read the site list again right away. */
@@ -219,8 +257,14 @@ public final class Guard {
 
     /** May `url` open? `recheck` is run later when the answer was not known yet (a YouTube video's channel). */
     public static Decision check(Context ctx, String url, Runnable recheck) {
+        Decision d = decide(ctx, url, recheck);
+        if (url != null && url.startsWith("http")) noteVisit(url, !d.allow);
+        return d;
+    }
+
+    private static Decision decide(Context ctx, String url, Runnable recheck) {
         Context c = ctx.getApplicationContext();
-        boolean noPics = FilterStore.blockImages(c);
+        boolean noPics = FilterStore.blockImages(c) || FilterStore.noPicturesFor(c, SitePolicy.hostOf(url));
         if (url == null || url.startsWith("about:") || url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("javascript:"))
             return Decision.yes(noPics);
         if (FilterStore.adultBlock(c) && SitePolicy.isBlockedAdult(url))

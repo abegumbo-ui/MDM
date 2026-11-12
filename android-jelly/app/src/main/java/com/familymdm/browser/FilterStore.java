@@ -136,6 +136,23 @@ final class FilterStore {
 
     static boolean allowSearch(Context c) { return prefs(c).getBoolean("searchOn", true); }
 
+    /** "No pictures on these sites" from the dashboard. */
+    static void setNoPictureSites(Context c, String[] sites) {
+        StringBuilder b = new StringBuilder();
+        if (sites != null) for (String s : sites) if (s != null && !s.trim().isEmpty()) b.append(s.trim().toLowerCase(java.util.Locale.ROOT)).append('\n');
+        prefs(c).edit().putString("noPictureSites", b.toString()).apply();
+    }
+
+    /** True when `host` is one of those sites (or a part of one, like images.amazon.com for amazon.com). */
+    static boolean noPicturesFor(Context c, String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(java.util.Locale.ROOT);
+        for (String s : prefs(c).getString("noPictureSites", "").split("\n")) {
+            if (!s.isEmpty() && (h.equals(s) || h.endsWith("." + s))) return true;
+        }
+        return false;
+    }
+
     /** "Pictures in our Browser": "off", "nudity" (hide pictures that may show nudity) or "skin" (that, and cover skin). */
     static void setPictureGuard(Context c, String mode) {
         prefs(c).edit().putString("pictureGuard", "nudity".equals(mode) || "skin".equals(mode) ? mode : "off").apply();

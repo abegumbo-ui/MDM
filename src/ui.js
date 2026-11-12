@@ -1075,6 +1075,33 @@ function renderRequestsCard(m,reqs,dv){
   }
  m.append(rc)}
 /** How much of the web this browser may open: only the allowlist (default), or the open web minus blocked categories. */
+/** Pictures off on chosen sites: the page works, only its pictures are gone. */
+function renderNoPictureSites(m,dv){
+ const c=dv.config,list=(c.noPictureSites||[]).slice();
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'No pictures on these sites'),
+  h('div',{class:'mute'},'The site works as usual, only its pictures are not shown. '+(dv.isBrowser?'In this Browser.':'In our Browser, and in Chrome, Samsung Internet and Edge when Inspection (the last tab) is on.')));
+ const inp=h('input',{type:'text',placeholder:'e.g. amazon.com',class:'grow'});
+ const add=function(){const host=hostOfUrl(inp.value.trim()).replace(/^www\./,'');if(!host){snack('Type a site, e.g. amazon.com',1);return}
+  c.noPictureSites=[...new Set([...(c.noPictureSites||[]),host])];save('Pictures off on '+host+'.')};
+ card.append(h('div',{class:'row',style:'margin-top:8px'},inp,btn('Add','tonal',add)));
+ for(const s of list)card.append(h('div',{class:'row',style:'margin:6px 0'},h('span',{class:'grow'},s),btn('Pictures back','outline',function(){c.noPictureSites=(c.noPictureSites||[]).filter(function(x){return x!==s});save('Pictures back on '+s+'.')})));
+ if(!list.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet. Add a site above, or press "No pictures" next to a site in "Sites opened" below.'));
+ m.append(card)}
+/** Sites opened in our Browser (last 7 days), each with a "No pictures" button. */
+function renderBrowserSitesOpened(m,b){
+ const hist=b.siteHistory||{},days=Object.keys(hist).sort().reverse(),c=b.config;
+ const card=h('div',{class:'card'},h('h2',null,'Sites opened'),h('div',{class:'mute'},'What was opened in this Browser, by day (the last 7 days). Blocked ones are marked.'));
+ if(!days.length){card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing yet. Sites show up a minute after they are opened (needs the newest Browser).'));m.append(card);return}
+ const off=new Set(c.noPictureSites||[]);
+ for(const day of days.slice(0,7)){
+  card.append(h('div',{style:'margin-top:12px;font-weight:500'},new Date(day+'T12:00:00Z').toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})));
+  for(const [site,r] of Object.entries(hist[day])){
+   const isOff=off.has(site);
+   card.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},site+(r[1]?' (blocked)':'')),h('span',{class:'mute small'},r[0]+'×'),
+    btn(isOff?'Pictures back':'No pictures',isOff?'outline':'tonal',async function(){c.noPictureSites=isOff?(c.noPictureSites||[]).filter(function(x){return x!==site}):[...new Set([...(c.noPictureSites||[]),site])];
+     try{await saveConfigFor(b,isOff?'Pictures back on '+site+'.':'Pictures off on '+site+'.')}catch(e){snack(e.message,1)}render()})))}}
+ m.append(card)}
 /** Our Browser's own on/off switches: everything can be switched off. */
 function renderBrowserSwitches(m,b){
  const c=b.config;
@@ -1631,7 +1658,7 @@ function renderTimeLimits(m,dv){
 function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
- else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderBlockAds(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
+ else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='history')renderSitesVisited(m,dv);
  else if(sub==='sites')renderSites(m,dv,'sites');
  else if(sub==='apps'){renderInAppBrowsers(m,dv);renderSites(m,dv,'apps')}
@@ -1853,7 +1880,7 @@ function renderBrowserDetail(m,b){
  }
 
  // Every setting first, then requests, the allowed list, and copying from another device.
- renderWebAccess(m,b);renderBrowserSwitches(m,b);renderSearchPictures(m,b);renderImageSearch(m,b);renderBlockedWords(m,b);
+ renderWebAccess(m,b);renderBrowserSwitches(m,b);renderSearchPictures(m,b);renderNoPictureSites(m,b);renderImageSearch(m,b);renderBlockedWords(m,b);renderBrowserSitesOpened(m,b);
  renderRequestsCard(m,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at}}),b);
  renderSitesEditor(m,b);
  renderCloneCard(m,b);

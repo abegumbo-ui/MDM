@@ -168,4 +168,15 @@ public class GuardTest {
         Guard.Decision d = Guard.check(c, "https://example.com/<script>alert(1)</script>", null);
         assertFalse(d.html.contains("<script>alert"));
     }
+
+    @Test
+    public void noPictureSites_turnOffPicturesOnThatSiteOnly() throws Exception {
+        connected("open");
+        FilterStore.setNoPictureSites(c, new String[]{"amazon.com"});
+        Guard.Decision amazon = Guard.check(c, "https://www.amazon.com/s?k=shoes", null);
+        assertTrue("the site still opens", amazon.allow);
+        assertTrue("without pictures", amazon.blockImages);
+        assertFalse("other sites keep their pictures", Guard.check(c, "https://example.com/", null).blockImages);
+        assertFalse("look-alike names are not caught", Guard.check(c, "https://notamazon.com/", null).blockImages);
+    }
 }
