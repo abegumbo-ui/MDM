@@ -5,6 +5,7 @@
 
 package org.lineageos.jelly
 
+import com.familymdm.browser.Guard
 import android.app.Activity
 import android.app.ActivityManager.TaskDescription
 import android.app.DownloadManager
@@ -429,14 +430,14 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
     }
 
     public override fun onPause() {
-        com.familymdm.browser.Guard.pause()
+        Guard.pause()
         if (backgroundShortcutId == null) webView.onPause()
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
-        com.familymdm.browser.Guard.resume(this)
+        Guard.resume(this)
         if (backgroundShortcutId == null) webView.onResume()
         CookieManager.getInstance()
             .setAcceptCookie(!incognito && sharedPreferencesExt.cookiesEnabled)
@@ -562,7 +563,7 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
         mimeType: String?,
         contentLength: Long
     ) {
-        if (!com.familymdm.browser.Guard.downloadAllowed(url, mimeType)) {
+        if (!Guard.downloadAllowed(url, mimeType)) {
             Snackbar.make(webView, "Apps can't be downloaded in this browser.", Snackbar.LENGTH_LONG).show()
             return
         }
