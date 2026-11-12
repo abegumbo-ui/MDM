@@ -248,7 +248,23 @@ final class PartBlocker {
     }
 
     /** The screen the person is on right now (the app's own screen, not ours). */
-    static volatile String currentScreen, currentScreenPkg;
+    static volatile String currentScreen, currentScreenPkg, currentTitle;
+
+    /** Screens blocked by their title (Settings pages, which all have the same class name). */
+    static java.util.Set<String> blockedTitles(Context c) {
+        return Agent.getSet(c, "blockedTitles");
+    }
+
+    static void noteScreen(String pkg, String cls, String title) {
+        noteScreen(pkg, cls);
+        if (pkg != null && !pkg.equals("com.familymdm.agent") && !pkg.equals("com.android.systemui") && cls != null
+                && !cls.startsWith("android.widget.") && !cls.startsWith("android.view.")) currentTitle = title;
+    }
+
+    /** One class for many screens (Settings' SubSettings and the like): those are told apart by their title. */
+    static boolean sharedClass(String pkg, String cls) {
+        return pkg.contains("settings") || cls.endsWith("SubSettings") || cls.endsWith("SettingsActivity") || cls.endsWith("$SubSettings");
+    }
 
     static void noteScreen(String pkg, String cls) {
         if (pkg == null || cls == null || pkg.equals("com.familymdm.agent") || pkg.equals("com.android.systemui")) return;
@@ -272,6 +288,12 @@ final class PartBlocker {
         String cls = comp.substring(comp.indexOf('/') + 1);
         String nice = cls.substring(cls.lastIndexOf('.') + 1).replaceAll("(Activity|Fragment)$", "").replaceAll("([a-z])([A-Z])", "$1 $2");
         if (pickButton != null) pickButton.setVisibility(View.GONE);
+        String title = currentTitle;
+        if (sharedClass(pkg, cls) && title != null && !title.trim().isEmpty()) {
+            // Settings: every page is "SubSettings", so blocking the class would block them all.
+            showConfirmScreen(s, pkg, "title:" + pkg + "|" + title.trim(), appLabel(s, pkg) + ": " + title.trim());
+            return;
+        }
         showConfirmScreen(s, pkg, comp, appLabel(s, pkg) + ": " + nice);
     }
 
@@ -288,7 +310,11 @@ final class PartBlocker {
         box.addView(t);
         LinearLayout row = new LinearLayout(s);
         addBtn(s, row, "Block it", v -> {
-            AppBlocklist.add(s, comp);
+            if (comp.startsWith("title:")) {
+                java.util.Set<String> titles = Agent.getSet(s, "blockedTitles");
+                titles.add(comp.substring(6));
+                Agent.putSet(s, "blockedTitles", titles);
+            } else AppBlocklist.add(s, comp);
             Agent.addEvent(s, "local", "Blocked a screen with ✓ on the phone: " + label + " (" + comp + ")");
             showPanel(s, "Blocked: " + label + ".\nIt closes whenever it opens. Undo: Administrator → Apps → Blocked.", false);
             s.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);

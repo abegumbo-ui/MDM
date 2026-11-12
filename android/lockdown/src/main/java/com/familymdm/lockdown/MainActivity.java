@@ -2056,6 +2056,15 @@ public class MainActivity extends Activity {
             }
             startActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
         }), 8);
+        for (String t : new java.util.TreeSet<>(LockdownPrefs.getSet(this, "tapBlockedTitles"))) {
+            card.addView(Ui.body(this, "Screen: " + t.substring(t.indexOf('|') + 1) + "  (" + t.substring(0, t.indexOf('|')) + ")", false));
+            Ui.add(card, Ui.button(this, "Remove", Ui.OUTLINED, v -> {
+                java.util.Set<String> s = LockdownPrefs.getSet(this, "tapBlockedTitles");
+                s.remove(t);
+                LockdownPrefs.putSet(this, "tapBlockedTitles", s);
+                build();
+            }), 4);
+        }
         for (String comp : new java.util.TreeSet<>(LockdownPrefs.getSet(this, "tapBlockedScreens"))) {
             card.addView(Ui.body(this, "Screen: " + comp, false));
             Ui.add(card, Ui.button(this, "Remove", Ui.OUTLINED, v -> {

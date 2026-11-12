@@ -260,7 +260,17 @@ final class PartBlocker {
     }
 
     /** The screen the person is on right now (the app's own screen, not ours). */
-    static volatile String currentScreen, currentScreenPkg;
+    static volatile String currentScreen, currentScreenPkg, currentTitle;
+
+    static void noteScreen(String pkg, String cls, String title) {
+        noteScreen(pkg, cls);
+        if (pkg != null && !pkg.equals("com.familymdm.lockdown") && !pkg.equals("com.android.systemui") && cls != null
+                && !cls.startsWith("android.widget.") && !cls.startsWith("android.view.")) currentTitle = title;
+    }
+
+    static boolean sharedClass(String pkg, String cls) {
+        return pkg.contains("settings") || cls.endsWith("SubSettings") || cls.endsWith("SettingsActivity");
+    }
 
     static void noteScreen(String pkg, String cls) {
         if (pkg == null || cls == null || pkg.equals("com.familymdm.lockdown") || pkg.equals("com.android.systemui")) return;
@@ -284,6 +294,11 @@ final class PartBlocker {
         String cls = comp.substring(comp.indexOf('/') + 1);
         String nice = cls.substring(cls.lastIndexOf('.') + 1).replaceAll("(Activity|Fragment)$", "").replaceAll("([a-z])([A-Z])", "$1 $2");
         if (pickButton != null) pickButton.setVisibility(View.GONE);
+        String title = currentTitle;
+        if (sharedClass(pkg, cls) && title != null && !title.trim().isEmpty()) {
+            showConfirmScreen(s, pkg, "title:" + pkg + "|" + title.trim(), appLabel(s, pkg) + ": " + title.trim());
+            return;
+        }
         showConfirmScreen(s, pkg, comp, appLabel(s, pkg) + ": " + nice);
     }
 
@@ -300,9 +315,10 @@ final class PartBlocker {
         box.addView(t);
         LinearLayout row = new LinearLayout(s);
         addBtn(s, row, "Block it", v -> {
-            java.util.Set<String> screens = LockdownPrefs.getSet(s, "tapBlockedScreens");
-            screens.add(comp);
-            LockdownPrefs.putSet(s, "tapBlockedScreens", screens);
+            boolean byTitle = comp.startsWith("title:");
+            java.util.Set<String> screens = LockdownPrefs.getSet(s, byTitle ? "tapBlockedTitles" : "tapBlockedScreens");
+            screens.add(byTitle ? comp.substring(6) : comp);
+            LockdownPrefs.putSet(s, byTitle ? "tapBlockedTitles" : "tapBlockedScreens", screens);
             showPanel(s, "Blocked: " + label + ".\nIt closes whenever it opens. Undo: Administrator → Apps → Blocked.", false);
             s.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);
         });

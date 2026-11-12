@@ -34,9 +34,12 @@ public class TapBlockService extends AccessibilityService {
         int type = event.getEventType();
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.getClassName() != null) {
             String cls = event.getClassName().toString();
-            PartBlocker.noteScreen(pkg, cls);
+            String title = event.getText() != null && !event.getText().isEmpty() && event.getText().get(0) != null ? event.getText().get(0).toString() : "";
+            PartBlocker.noteScreen(pkg, cls, title);
             if (!enforcing()) return;
-            if (!PartBlocker.picking && LockdownPrefs.getSet(this, "tapBlockedScreens").contains(pkg + "/" + cls)) {
+            if (!PartBlocker.picking && (LockdownPrefs.getSet(this, "tapBlockedScreens").contains(pkg + "/" + cls)
+                    || (!title.isEmpty() && LockdownPrefs.getSet(this, "tapBlockedTitles").contains(pkg + "|" + title)))) {
+                android.widget.Toast.makeText(getApplicationContext(), "This screen is not allowed on this phone.", android.widget.Toast.LENGTH_SHORT).show();
                 long now = System.currentTimeMillis();
                 if (now - lastBack > 600) {
                     lastBack = now;
