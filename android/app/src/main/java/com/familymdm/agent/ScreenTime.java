@@ -165,6 +165,26 @@ final class ScreenTime {
             bedNow = ScreenTimeRules.inWindow(days, minutesOf(bed.optString("from")), bedTo, dow, mins);
         }
 
+        // ---- a warning 10 minutes before ----
+        int soonDow = mins + 10 >= 24 * 60 ? (dow + 1) % 7 : dow, soonMins = (mins + 10) % (24 * 60);
+        if (bed != null && !bedNow) {
+            JSONArray d = bed.optJSONArray("days");
+            int[] days = new int[d == null ? 0 : d.length()];
+            for (int i = 0; i < days.length; i++) days[i] = d.optInt(i, -1);
+            if (ScreenTimeRules.inWindow(days, minutesOf(bed.optString("from")), bedTo, soonDow, soonMins)) warnOnce(c, "bed:" + day, "Bedtime in 10 minutes", "The phone locks at " + bed.optString("from") + ".");
+        }
+        JSONObject schoolSoon = cfg == null ? null : cfg.optJSONObject("schoolTime");
+        if (schoolSoon != null) {
+            JSONArray d = schoolSoon.optJSONArray("days");
+            int[] days = new int[d == null ? 0 : d.length()];
+            for (int i = 0; i < days.length; i++) days[i] = d.optInt(i, -1);
+            int sFrom = minutesOf(schoolSoon.optString("from")), sTo = minutesOf(schoolSoon.optString("to"));
+            if (!ScreenTimeRules.inWindow(days, sFrom, sTo, dow, mins) && ScreenTimeRules.inWindow(days, sFrom, sTo, soonDow, soonMins))
+                warnOnce(c, "school:" + day, "School time in 10 minutes", "Only the basics open from " + schoolSoon.optString("from") + ".");
+        }
+        if (dailyLimit > 0 && !free && canCount && total < dailyLimit * 60_000L && total >= (dailyLimit - 10) * 60_000L)
+            warnOnce(c, "limit:" + day, "10 minutes of screen time left today", "When it is used up, the phone locks until tomorrow. You can ask for more time.");
+
         // ---- the whole phone ----
         int reason = ScreenTimeRules.reason(bedNow, dailyLimit, total, free);
         boolean ours = lockIsOurs(c);
@@ -244,6 +264,20 @@ final class ScreenTime {
             if (!keep.contains(p)) out.add(p);
         }
         return out;
+    }
+
+    /** A notification on the phone, once per key (kind and day). */
+    private static void warnOnce(Context c, String key, String title, String text) {
+        android.content.SharedPreferences p = Agent.prefs(c);
+        if (p.getBoolean("warned:" + key, false)) return;
+        p.edit().putBoolean("warned:" + key, true).apply();
+        try {
+            android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+            nm.createNotificationChannel(new android.app.NotificationChannel("timewarn", "Screen time warnings", android.app.NotificationManager.IMPORTANCE_HIGH));
+            nm.notify(44, new android.app.Notification.Builder(c, "timewarn").setContentTitle(title).setContentText(text)
+                    .setStyle(new android.app.Notification.BigTextStyle().bigText(text)).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setAutoCancel(true).build());
+        } catch (Exception ignored) {
+        }
     }
 
     private static Map<String, Long> usage(Context c, long from, long to) {
