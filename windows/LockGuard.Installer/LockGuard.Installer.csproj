@@ -23,6 +23,10 @@
     <EmbeddedResource Include="Resources\Setup.zip" Condition="Exists('Resources\Setup.zip')">
       <LogicalName>Setup.zip</LogicalName>
     </EmbeddedResource>
+    <!-- The guard: a separate system task that keeps LockGuard running, or gives the internet back. -->
+    <EmbeddedResource Include="guard.ps1">
+      <LogicalName>guard.ps1</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

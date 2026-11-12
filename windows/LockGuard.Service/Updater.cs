@@ -50,7 +50,11 @@ public static class Updater
             }
             await File.WriteAllBytesAsync(path, bytes);
             note($"Updating LockGuard from build {Build} to build {u.Build}.");
-            Process.Start(new ProcessStartInfo(path, "/quiet") { UseShellExecute = false, CreateNoWindow = true });
+            // As its own system task, not a child of this service: the update stops this service,
+            // and must keep going (or put the old version back) without it.
+            var task = $"/create /tn LockGuardUpdate /tr \"\\\"{path}\\\" /quiet\" /sc once /st 00:00 /ru SYSTEM /rl HIGHEST /f";
+            using (var p = Process.Start(new ProcessStartInfo("schtasks.exe", task) { UseShellExecute = false, CreateNoWindow = true })!) p.WaitForExit(30000);
+            using (var p = Process.Start(new ProcessStartInfo("schtasks.exe", "/run /tn LockGuardUpdate") { UseShellExecute = false, CreateNoWindow = true })!) p.WaitForExit(30000);
         }
         catch (Exception e)
         {

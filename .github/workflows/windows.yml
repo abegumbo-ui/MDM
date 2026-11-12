@@ -69,6 +69,27 @@ jobs:
           name: LockGuard-Setup-exe
           path: LockGuard-Setup.exe
 
+      - name: Build test installers (no dashboard, so tests never appear on the real one)
+        run: |
+          Remove-Item windows\LockGuard.Service\DashboardUrl.txt, windows\LockGuard.Service\Build.txt -ErrorAction SilentlyContinue
+          dotnet publish windows\LockGuard.Service -c Release -r win-x64 --self-contained false -o e2e-build\service
+          New-Item -ItemType Directory -Force e2e | Out-Null
+          $setupZip = 'windows\LockGuard.Installer\Resources\Setup.zip'
+          Compress-Archive -Path e2e-build\service\* -DestinationPath windows\LockGuard.Installer\Resources\Service.zip -Force
+          dotnet publish windows\LockGuard.Installer -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o e2e-build\good
+          copy e2e-build\good\LockGuard.Installer.exe e2e\LockGuard-Setup-1.exe
+          copy e2e-build\good\LockGuard.Installer.exe e2e\LockGuard-Setup-2.exe
+          # A broken update: its LockGuard cannot start.
+          Copy-Item e2e-build\service e2e-build\service-bad -Recurse
+          Set-Content e2e-build\service-bad\LockGuard.Service.dll 'not a program'
+          Compress-Archive -Path e2e-build\service-bad\* -DestinationPath windows\LockGuard.Installer\Resources\Service.zip -Force
+          dotnet publish windows\LockGuard.Installer -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o e2e-build\bad
+          copy e2e-build\bad\LockGuard.Installer.exe e2e\LockGuard-Setup-bad.exe
+
+      - name: "End-to-end test: install, update, broken update, guard, removal"
+        # This runner is a throwaway Windows machine with administrator rights.
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\ci-e2e.ps1 -Dir e2e
+
       - name: Publish a versioned release
         # Only from main, same reasoning as the Android workflow: a feature-branch push shouldn't
         # create a public release of its own, only a merge should.

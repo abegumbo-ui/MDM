@@ -60,7 +60,31 @@ foreach ($ad in Get-NetAdapter) {
     }
 }
 
-# 3. firewall
+# 3. firewall, and the low-level lookup block (Windows Filtering Platform; see WfpBlocker.cs),
+#    which stays through restarts and is not a firewall rule
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class LockGuardRemoveWfp {
+    [DllImport("fwpuclnt.dll", CharSet = CharSet.Unicode)] static extern uint FwpmEngineOpen0(string s, uint a, IntPtr i, IntPtr ses, out IntPtr e);
+    [DllImport("fwpuclnt.dll")] static extern uint FwpmEngineClose0(IntPtr e);
+    [DllImport("fwpuclnt.dll")] static extern uint FwpmFilterDeleteByKey0(IntPtr e, ref Guid k);
+    [DllImport("fwpuclnt.dll")] static extern uint FwpmSubLayerDeleteByKey0(IntPtr e, ref Guid k);
+    public static int Remove() {
+        IntPtr e; if (FwpmEngineOpen0(null, 10, IntPtr.Zero, IntPtr.Zero, out e) != 0) return -1;
+        int removed = 0;
+        for (int i = 0; i < 4; i++) {
+            Guid k = new Guid("6a1f0c5e-7b2d-4c11-9a8e-4c6f636b67" + (0x10 + i).ToString("x2"));
+            if (FwpmFilterDeleteByKey0(e, ref k) == 0) removed++;
+        }
+        Guid s = new Guid("6a1f0c5e-7b2d-4c11-9a8e-4c6f636b6701");
+        FwpmSubLayerDeleteByKey0(e, ref s);
+        FwpmEngineClose0(e);
+        return removed;
+    }
+}
+'@
+Write-Host "  lookup block removed ($([LockGuardRemoveWfp]::Remove()) part(s))"
 Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'LockGuard-*' -or $_.Name -like 'LockGuard-*' } | Remove-NetFirewallRule -ErrorAction SilentlyContinue
 Set-NetFirewallProfile -Profile Domain,Private,Public -DefaultOutboundAction Allow
 Write-Host '  firewall rules removed'
@@ -96,5 +120,8 @@ ipconfig /flushdns | Out-Null
 Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LockGuard' -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force (Join-Path $env:ProgramFiles 'LockGuard') -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force $data -ErrorAction SilentlyContinue
+schtasks.exe /delete /tn 'LockGuard Guard' /f 2>$null | Out-Null
+schtasks.exe /delete /tn 'LockGuard Guard at startup' /f 2>$null | Out-Null
+Remove-Item -Recurse -Force (Join-Path $env:ProgramFiles 'LockGuard Guard') -ErrorAction SilentlyContinue
 Get-ChildItem ([Environment]::GetFolderPath('CommonDesktopDirectory')), ([Environment]::GetFolderPath('Desktop')) -Filter 'LockGuard Setup*.lnk' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 Write-Host 'Done. LockGuard is removed and the computer is back to how it was.'
