@@ -46,3 +46,20 @@ test("settings changed on the phone's Administrator screen reach the dashboard, 
   assert.equal(locked.config.safeSearch, true);
   assert.equal(locked.configPatchRev, 4, "acknowledged, so the phone stops resending it");
 });
+
+import { normalizeBlockedParts, buildAgentPolicy, normalizeConfig } from "../src/policy.js";
+test("tap to block: parts of apps are cleaned up, need something to recognise, and reach the phone's policy", () => {
+  const parts = normalizeBlockedParts([
+    { pkg: "com.google.android.youtube", desc: "Shorts", mode: "cover", label: "YouTube: Shorts" },
+    { pkg: "com.instagram.android", viewId: "com.instagram.android:id/clips_tab", mode: "close" },
+    { pkg: "com.instagram.android", viewId: "com.instagram.android:id/clips_tab", mode: "cover" },
+    { pkg: "bad pkg!", desc: "x" },
+    { pkg: "com.x", mode: "cover" },
+  ]);
+  assert.equal(parts.length, 2, "duplicates, bad package names and unrecognisable parts are dropped");
+  assert.equal(parts[1].mode, "close");
+  assert.equal(parts[1].label, "com.instagram.android:id/clips_tab");
+  assert.match(parts[0].id, /^[0-9a-f]{6,16}$/);
+  const pol = buildAgentPolicy(normalizeConfig({ blockedParts: parts }), []);
+  assert.equal(pol.blockedParts.length, 2);
+});

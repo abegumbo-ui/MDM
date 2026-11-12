@@ -243,7 +243,7 @@ public class AdminActivity extends Activity {
                 break;
             case "apps":
                 if ("kiosk".equals(sub)) buildKioskSection(root);
-                else if ("blocked".equals(sub)) { buildBlockedComponentsSection(root); buildBlockedWholeAppsSection(root); }
+                else if ("blocked".equals(sub)) { PhoneRules.tapToBlock(this, root, () -> { if (unlocked()) build(); }); buildBlockedComponentsSection(root); buildBlockedWholeAppsSection(root); }
                 else if ("system".equals(sub)) buildSystemAppsSection(root);
                 else if ("browser".equals(sub)) buildAddonsSection(root);
                 else buildAppsSection(root);

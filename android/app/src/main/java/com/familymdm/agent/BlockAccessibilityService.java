@@ -35,6 +35,8 @@ public class BlockAccessibilityService extends AccessibilityService {
     @Override
     public void onDestroy() {
         instance = null;
+        PartBlocker.stopPicking(this);
+        PartBlocker.clearCovers(this);
         super.onDestroy();
     }
     private long lastWindowAt, lastCheckAt, lastNoteAt;
@@ -46,6 +48,9 @@ public class BlockAccessibilityService extends AccessibilityService {
         if (pkgCs == null) return;
         String pkg = pkgCs.toString();
         long now = System.currentTimeMillis();
+        // Tap to block: parts of apps (covered or closed), on every screen change and scroll.
+        int type = event.getEventType();
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || type == AccessibilityEvent.TYPE_VIEW_SCROLLED) PartBlocker.onScreen(this, pkg);
 
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             if (clsCs == null) return;
