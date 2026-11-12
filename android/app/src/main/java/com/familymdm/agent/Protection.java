@@ -100,7 +100,7 @@ final class Protection {
     }
 
     /** A notification that opens Settings → Accessibility, where the Agent is switched on once. At most every 6 hours. */
-    private static void remindAccessibility(Context c) {
+    static void remindAccessibility(Context c) {
         android.content.SharedPreferences p = Agent.prefs(c);
         long now = System.currentTimeMillis();
         if (now - p.getLong("a11yReminded", 0) < 6 * 3600 * 1000L) return;

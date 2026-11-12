@@ -50,6 +50,8 @@ public class DnsFilterVpnService extends VpnService {
     private static final int MTU = 1500;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
+    /** For the dashboard's health check. */
+    static volatile boolean filterRunning;
     private ParcelFileDescriptor tun;
     private Thread readerThread;
     private final Object writeLock = new Object();
@@ -68,9 +70,11 @@ public class DnsFilterVpnService extends VpnService {
                 udpRelay = new UdpRelay(this, this, this::writePacket);
                 readerThread = new Thread(this::readLoop, "mdm-dns-filter");
                 readerThread.start();
+                filterRunning = true;
             } catch (Exception e) {
                 Log.w(TAG, "DNS filter failed to start: " + e);
                 running.set(false);
+                filterRunning = false;
                 stopSelf();
             }
         }
@@ -85,6 +89,7 @@ public class DnsFilterVpnService extends VpnService {
     @Override
     public void onDestroy() {
         running.set(false);
+        filterRunning = false;
         if (readerThread != null) readerThread.interrupt();
         if (tcpRelay != null) tcpRelay.shutdown();
         if (udpRelay != null) udpRelay.shutdown();

@@ -12,6 +12,7 @@ export const DEFAULT_ALERTS = {
   tamper: true, // the Agent noticed something security related on the phone
   places: true, // a phone arrived at or left a saved place (location history)
   weekly: true, // a summary of every phone, Sunday evenings
+  messages: true, // worrying words in a child's chats (only phones with "Message alerts" on)
 };
 
 export const ALERTS_KEY = "alerts";
@@ -43,8 +44,8 @@ export function publicAlerts(a) {
       hint = "set";
     }
   }
-  const { url, ...rest } = a;
-  return { ...rest, urlSet: !!a.url, urlHint: hint };
+  const { url, push, ...rest } = a;
+  return { ...rest, urlSet: !!a.url, urlHint: hint, pushCount: (push || []).length };
 }
 
 /** Merges an admin's edit into the stored alerts. An absent `url` keeps the old one; "" clears it. */
@@ -55,7 +56,7 @@ export function mergeAlerts(current, body) {
     if (u && !validWebhook(u)) throw new Error("That is not a valid https:// address.");
     out.url = u;
   }
-  for (const k of ["offline", "battery", "requests", "tamper", "places", "weekly"]) if (typeof body[k] === "boolean") out[k] = body[k];
+  for (const k of ["offline", "battery", "requests", "tamper", "places", "weekly", "messages"]) if (typeof body[k] === "boolean") out[k] = body[k];
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v))));
   if (body.offlineHours !== undefined && Number.isFinite(Number(body.offlineHours))) out.offlineHours = clamp(body.offlineHours, 1, 72);
   if (body.batteryPct !== undefined && Number.isFinite(Number(body.batteryPct))) out.batteryPct = clamp(body.batteryPct, 5, 50);
@@ -66,7 +67,8 @@ export function mergeAlerts(current, body) {
 export async function sendAlert(env, title, message, alerts) {
   try {
     const a = alerts || (await getAlerts(env));
-    if (!a.url || !validWebhook(a.url)) return { ok: false, error: "no webhook set" };
+    const pushed = await sendPush(env, a, title, message);
+    if (!a.url || !validWebhook(a.url)) return pushed ? { ok: true } : { ok: false, error: "no webhook set and no phone signed up for notifications" };
     const host = new URL(a.url).hostname;
     const isNtfy = host === "ntfy.sh" || host.endsWith(".ntfy.sh");
     const r = await fetch(
@@ -80,7 +82,7 @@ export async function sendAlert(env, title, message, alerts) {
             body: JSON.stringify({ content: `**${title}**\n${message}`, text: `${title}\n${message}`, username: "MDM" }),
           }
     );
-    return r.ok ? { ok: true } : { ok: false, error: `the address answered ${r.status}` };
+    return r.ok || pushed ? { ok: true } : { ok: false, error: `the address answered ${r.status}` };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };
   }
@@ -89,7 +91,7 @@ export async function sendAlert(env, title, message, alerts) {
 /** Runs the message in the background when we have a way to, otherwise waits for it. */
 export async function sendAlertLater(env, ctx, title, message) {
   const a = await getAlerts(env);
-  if (!a.url) return;
+  if (!alertsOn(a)) return;
   const p = sendAlert(env, title, message, a);
   if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
   else await p;
@@ -103,7 +105,7 @@ export async function sendAlertLater(env, ctx, title, message) {
  */
 export async function checkDevices(env, devices, now = Date.now()) {
   const a = await getAlerts(env);
-  if (!a.url || (!a.offline && !a.battery)) return { sent: 0 };
+  if (!alertsOn(a) || (!a.offline && !a.battery)) return { sent: 0 };
   let sent = 0;
   for (const d of devices) {
     const key = `alertstate:${d.id}`;
@@ -185,7 +187,7 @@ export async function maybeSendWeekly(env, devices, now = Date.now()) {
   const t = new Date(now);
   if (t.getUTCDay() !== 0 || t.getUTCHours() < 17 || !devices.length) return { sent: false };
   const a = await getAlerts(env);
-  if (!a.url || !a.weekly) return { sent: false };
+  if (!alertsOn(a) || !a.weekly) return { sent: false };
   const week = t.toISOString().slice(0, 10);
   if ((await env.STATE.get("weeklySent")) === week) return { sent: false };
   await env.STATE.put("weeklySent", week);
@@ -237,3 +239,106 @@ export function describeChange(method, path, body) {
   if (path.startsWith("/api/apk")) return { text: "Uploaded an APK", target: null };
   return null;
 }
+
+/* ------------------------------ notifications on the parent's own phone (Web Push) ------------------------------ */
+// The dashboard, installed on a phone's home screen (or open in a computer's browser), signs up for
+// notifications. An alert then "pokes" each signed-up phone through its browser's push service
+// (Google, Apple, Mozilla, Microsoft) with an empty message; the dashboard's service worker wakes up,
+// fetches the newest alert from here, and shows it. Nothing about the alert passes through the push
+// service itself. The poke is signed with this dashboard's own key (VAPID), made on first use.
+
+/** Is there anywhere to send alerts to? */
+export function alertsOn(a) {
+  return !!a.url || (Array.isArray(a.push) && a.push.length > 0);
+}
+
+const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /(^|\.)push\.apple\.com$/, /\.notify\.windows\.com$/];
+export function validPushEndpoint(u) {
+  if (typeof u !== "string" || u.length > 1000) return false;
+  try {
+    const x = new URL(u);
+    return x.protocol === "https:" && PUSH_HOSTS.some((r) => r.test(x.hostname));
+  } catch {
+    return false;
+  }
+}
+
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64uText = (t) => b64u(new TextEncoder().encode(t));
+
+/** This dashboard's push key pair, made once and kept. Returns the public key (for the browser) and the private key. */
+export async function vapidKeys(env) {
+  let k = await env.STATE.get("vapid", "json");
+  if (!k) {
+    const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+    const raw = await crypto.subtle.exportKey("raw", pair.publicKey);
+    k = { publicKey: b64u(raw), privateJwk: await crypto.subtle.exportKey("jwk", pair.privateKey) };
+    await env.STATE.put("vapid", JSON.stringify(k));
+  }
+  return k;
+}
+
+async function vapidHeader(env, endpoint) {
+  const k = await vapidKeys(env);
+  const key = await crypto.subtle.importKey("jwk", k.privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const aud = new URL(endpoint).origin;
+  const head = b64uText(JSON.stringify({ typ: "JWT", alg: "ES256" }));
+  const body = b64uText(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: "mailto:alerts@example.invalid" }));
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(head + "." + body));
+  return `vapid t=${head}.${body}.${b64u(sig)}, k=${k.publicKey}`;
+}
+
+/** Keeps the newest alerts for the service worker to pick up, then pokes every signed-up phone. True if any took it. */
+export async function sendPush(env, a, title, message) {
+  const subs = Array.isArray(a.push) ? a.push : [];
+  if (!subs.length) return false;
+  const log = ((await env.STATE.get("pushlog", "json")) || []).concat([{ id: Math.random().toString(36).slice(2, 10), title: String(title).slice(0, 120), message: String(message).slice(0, 1000), at: Date.now() }]).slice(-20);
+  await env.STATE.put("pushlog", JSON.stringify(log));
+  let any = false;
+  const gone = [];
+  for (const sub of subs) {
+    try {
+      const r = await fetch(sub.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: "high", authorization: await vapidHeader(env, sub.endpoint), "content-length": "0" } });
+      if (r.status === 404 || r.status === 410) gone.push(sub.endpoint);
+      else if (r.ok) any = true;
+    } catch {
+      // that phone just misses this one
+    }
+  }
+  if (gone.length) {
+    const cur = await getAlerts(env);
+    cur.push = (cur.push || []).filter((x) => !gone.includes(x.endpoint));
+    await env.STATE.put(ALERTS_KEY, JSON.stringify(cur));
+  }
+  return any;
+}
+
+/** What a woken service worker shows: the newest alert, only for an endpoint that is signed up. */
+export async function latestForPush(env, endpoint) {
+  const a = await getAlerts(env);
+  if (!(a.push || []).some((x) => x.endpoint === endpoint)) return null;
+  const log = (await env.STATE.get("pushlog", "json")) || [];
+  return log[log.length - 1] || null;
+}
+
+/** The service worker for the installed dashboard. */
+export const SERVICE_WORKER = `self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('push', (e) => {
+  e.waitUntil((async () => {
+    let t = 'MDM Dashboard', body = 'Something needs your attention. Tap to open the dashboard.', tag = 'mdm';
+    try {
+      const sub = await self.registration.pushManager.getSubscription();
+      const r = await fetch('/push/latest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: sub && sub.endpoint }) });
+      const j = await r.json();
+      if (j && j.title) { t = j.title; body = j.message; tag = j.id; }
+    } catch (err) {}
+    await self.registration.showNotification(t, { body, tag, icon: '/icon-192.png', badge: '/icon-192.png' });
+  })());
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then((cs) => cs.length ? cs[0].focus() : self.clients.openWindow('/')));
+});
+self.addEventListener('fetch', () => {});
+`;

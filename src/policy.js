@@ -551,6 +551,10 @@ export function normalizeConfig(input) {
     // WhatsApp: close Status (watching statuses) and/or Channels; chats and calls keep working.
     blockWaStatus: c.blockWaStatus === true,
     blockWaChannels: c.blockWaChannels === true,
+    // Message alerts: worrying words in chats on the screen (and in texts) are sent to the parent. The child is told.
+    messageAlerts: c.messageAlerts === true,
+    messageGroups: [...new Set((Array.isArray(c.messageGroups) ? c.messageGroups : Object.keys(MESSAGE_WORD_GROUPS)).filter((g) => Object.prototype.hasOwnProperty.call(MESSAGE_WORD_GROUPS, g)))],
+    messageWords: normalizeMessageWords(c.messageWords),
     // Contacts: send the phone's contacts to the dashboard; put the allowed numbers into the phone's contacts.
     reportContacts: c.reportContacts === true,
     syncContacts: c.syncContacts === true,
@@ -764,6 +768,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.inAppBrowsers = cfg.inAppBrowsers;
   out.blockWaStatus = cfg.blockWaStatus;
   out.blockWaChannels = cfg.blockWaChannels;
+  out.messageAlerts = cfg.messageAlerts;
+  out.messageWords = cfg.messageAlerts ? messageWordList(cfg) : [];
   out.reportContacts = cfg.reportContacts;
   out.contactsToAdd = cfg.syncContacts ? cfg.callNumbers.map((n) => ({ name: n.name, number: n.number })) : [];
   out.inAppExceptions = cfg.inAppExceptions;
@@ -828,6 +834,8 @@ export function summarizeConfigChange(before, after) {
   if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
   if (JSON.stringify(before.filterSkipApps || []) !== JSON.stringify(after.filterSkipApps || [])) lines.push("Apps not filtered: " + (after.filterSkipApps || []).length);
   if (!!before.blockWaStatus !== !!after.blockWaStatus) lines.push("WhatsApp Status: " + (after.blockWaStatus ? "closed" : "allowed"));
+  if (!!before.messageAlerts !== !!after.messageAlerts) lines.push("Message alerts: " + (after.messageAlerts ? "on" : "off"));
+  if (JSON.stringify(before.messageWords || []) !== JSON.stringify(after.messageWords || []) || JSON.stringify(before.messageGroups || null) !== JSON.stringify(after.messageGroups || null)) lines.push("Message alert words changed");
   if (!!before.blockWaChannels !== !!after.blockWaChannels) lines.push("WhatsApp Channels: " + (after.blockWaChannels ? "closed" : "allowed"));
   if (!!before.reportContacts !== !!after.reportContacts) lines.push("Contacts shown on the dashboard: " + (after.reportContacts ? "on" : "off"));
   if (!!before.syncContacts !== !!after.syncContacts) lines.push("Allowed numbers in the phone's contacts: " + (after.syncContacts ? "on" : "off"));
@@ -878,4 +886,39 @@ function sameStringSet(a, b) {
   const as = [...new Set(a || [])].sort();
   const bs = [...new Set(b || [])].sort();
   return JSON.stringify(as) === JSON.stringify(bs);
+}
+
+/* ------------------------------ message alerts ------------------------------ */
+
+/** Built-in word groups for message alerts. Whole words and phrases; the parent can add their own. */
+export const MESSAGE_WORD_GROUPS = {
+  bullying: { label: "Bullying and threats", words: ["kill yourself", "kys", "go die", "nobody likes you", "everyone hates you", "you're ugly", "youre ugly", "loser", "i will hurt you", "beat you up", "gonna kill you"] },
+  selfharm: { label: "Self-harm and suicide", words: ["suicide", "kill myself", "want to die", "wanna die", "cut myself", "cutting myself", "end it all", "self harm", "hurt myself", "no reason to live"] },
+  sexual: { label: "Sexual messages", words: ["nudes", "send nudes", "send pics", "naked", "sexting", "porn", "onlyfans", "dick pic", "horny", "sex"] },
+  drugs: { label: "Drugs and alcohol", words: ["weed", "vape", "vaping", "cocaine", "molly", "xanax", "edibles", "get high", "getting high", "drunk", "plug"] },
+  strangers: { label: "Strangers and secrets", words: ["dont tell your parents", "don't tell your parents", "our secret", "delete this chat", "meet up alone", "how old are you", "where do you live", "snap me", "add me on"] },
+};
+
+export function normalizeMessageWords(v) {
+  const list = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,\n]/) : [];
+  return [...new Set(list.map((w) => String(w || "").trim().toLowerCase().slice(0, 60)).filter((w) => w.length >= 2))].slice(0, 200);
+}
+
+/** The full list a phone checks: the chosen groups plus the parent's own words. */
+export function messageWordList(cfg) {
+  const out = [];
+  for (const g of cfg.messageGroups || []) if (MESSAGE_WORD_GROUPS[g]) out.push(...MESSAGE_WORD_GROUPS[g].words);
+  out.push(...(cfg.messageWords || []));
+  return [...new Set(out)];
+}
+
+/** Same matching as the phone's MessageRules: whole words, case and punctuation ignored. */
+export function matchMessageWord(text, words) {
+  const norm = (x) => " " + String(x || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim() + " ";
+  const t = norm(text);
+  for (const w of words) {
+    const n = norm(w);
+    if (n.trim() && t.includes(n)) return w;
+  }
+  return null;
 }

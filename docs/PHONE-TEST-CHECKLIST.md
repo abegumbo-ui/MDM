@@ -264,6 +264,25 @@ Dashboard: the **Calls & texts** group.
    You should see: the phones, but any change says "This login can only look". A "Full" login
    can change settings; both appear by name in **Activity**.
 
+## 7i. Safety: health check, message alerts, screenshots, notifications
+
+1. Open the phone on the dashboard → **Safety → Health check**.
+   You should see: everything that works with a ✅, anything red with "How to fix". Do the red
+   ones and press Refresh after the next check-in: they turn green.
+2. **Safety → Message alerts** → switch on (accessibility switch on, see 7g).
+   You should see on the phone: a notice "Message alerts are on". Then in WhatsApp, open a chat
+   with a test message containing "send nudes" (send it from your own phone).
+   You should see on the dashboard within a minute or two: it under **Found**, with the sentence.
+3. **Safety → Screenshots → Take a screenshot now** (Android 11 or later).
+   You should see: the phone shows "A screenshot was sent to your parent", and the picture appears
+   on the dashboard after Refresh.
+4. On your own phone: open the dashboard → **Settings → Alerts → Get notifications on this device**
+   (iPhone: Add to Home Screen first and open it from that icon). Press **Send a test**.
+   You should see: a notification "MDM test alert" on your phone.
+5. **Overview → Ready-made setups → Teen** on a test phone.
+   You should see: the confirm box lists what it does; afterwards the filter level, apps and
+   message alerts match it.
+
 ## 8. Inspection (certificate) - one test phone only
 
 1. Dashboard: **Browser → Inspection (advanced)**, switch it on, confirm.

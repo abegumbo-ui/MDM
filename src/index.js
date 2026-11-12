@@ -1,7 +1,7 @@
-import { effectiveFilter, placesAt, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { MESSAGE_WORD_GROUPS, effectiveFilter, placesAt, messageWordList, matchMessageWord, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
-import { maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY } from "./alerts.js";
+import { maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY, alertsOn, validPushEndpoint, vapidKeys, latestForPush, SERVICE_WORKER } from "./alerts.js";
 import { ICON_192, ICON_512 } from "./icons.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -29,7 +29,7 @@ async function cachedLogoRev(env) {
   logoRevCacheAt = now;
   return logoRevCache;
 }
-const COMMANDS = new Set(["addTime", "openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp"]);
+const COMMANDS = new Set(["addTime", "openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp", "screenshot"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_IMAGE_BYTES = 200 * 1024;
@@ -121,6 +121,9 @@ const MAX_STORE_MINUTES = 24 * 60;
 const MAX_FREEBROWSE_MINUTES = 240;
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
+// Friendly names for the chat apps message alerts look at.
+const CHAT_APPS = { 'com.whatsapp': 'WhatsApp', 'com.whatsapp.w4b': 'WhatsApp Business', 'org.telegram.messenger': 'Telegram', 'com.instagram.android': 'Instagram', 'com.facebook.orca': 'Messenger', 'com.facebook.mlite': 'Messenger Lite', 'com.snapchat.android': 'Snapchat', 'org.thoughtcrime.securesms': 'Signal', 'com.discord': 'Discord', 'com.zhiliaoapp.musically': 'TikTok', 'com.google.android.apps.messaging': 'Messages', 'com.samsung.android.messaging': 'Samsung Messages', 'com.kik.android': 'Kik', 'com.viber.voip': 'Viber', 'com.google.android.apps.dynamite': 'Google Chat', texts: 'a text message' };
+export const appName = (pkg) => CHAT_APPS[pkg] || (pkg ? 'a chat app (' + pkg + ')' : 'a chat app');
 const MAX_ICON_B64 = 30000;
 const MAX_ICONS_PER_SYNC = 12;
 
@@ -293,6 +296,8 @@ const publicDevice = (d) => ({
   appRequests: d.appRequests || [],
   usage: d.usage || {},
   messages: d.messages || [],
+  msgAlerts: (d.msgAlerts || []).slice(-100),
+  shots: d.shots || [],
   pushLog: (d.pushLog || []).slice(-30),
   ownerId: d.ownerId || null,
 });
@@ -709,6 +714,21 @@ async function adminApiInner(request, env, url, session) {
     }
   }
 
+  // ---- notifications on a parent's own phone (any parent login) ----
+  if (path === "/api/push/key" && method === "GET") return json({ publicKey: (await vapidKeys(env)).publicKey });
+  if ((path === "/api/push/subscribe" || path === "/api/push/unsubscribe") && method === "POST") {
+    // Alerts cover every phone on this dashboard, so only the administrator (and their other parents) can sign up.
+    if (session.role !== "admin") return json({ error: "Administrator only" }, 403);
+    const b = await request.json().catch(() => ({}));
+    const endpoint = b && b.endpoint;
+    if (!validPushEndpoint(endpoint)) return json({ error: "This browser's notification address was not recognised." }, 400);
+    const a = await getAlerts(env);
+    const others = (a.push || []).filter((x) => x.endpoint !== endpoint);
+    a.push = path.endsWith("/subscribe") ? [...others, { endpoint, at: Date.now(), who: session.helper ? String(session.helperName || "Parent") : "Administrator" }].slice(-20) : others;
+    await putJSON(env, ALERTS_KEY, a);
+    return json({ ok: true, pushCount: a.push.length });
+  }
+
   // ---- admin-only security pages: change history, two-step login, alerts ----
   if (path === "/api/audit" || path.startsWith("/api/2fa") || path.startsWith("/api/alerts")) {
     if (!isAdmin(session)) return json({ error: "Administrator only" }, 403);
@@ -844,6 +864,7 @@ async function adminApiInner(request, env, url, session) {
     return json({
       restrictions: RESTRICTIONS,
       appGroups: APP_GROUPS,
+      messageWordGroups: Object.fromEntries(Object.entries(MESSAGE_WORD_GROUPS).map(([k, v]) => [k, { label: v.label, words: v.words }])),
       userMenu: USER_MENU,
       origin: url.origin,
       masterIterations: MASTER_ITERATIONS,
@@ -1044,7 +1065,15 @@ async function adminApiInner(request, env, url, session) {
       return json({ ok: true });
     }
   }
-  const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command|site-requests|app-requests|messages))?$/.exec(path);
+  const shotM = /^\/api\/devices\/([0-9a-f]+)\/shots\/([0-9a-f]{12})$/.exec(path);
+  if (shotM && method === "GET") {
+    const sd = await getJSON(env, `device:${shotM[1]}`, null);
+    if (!sd || !canSee(session, sd.ownerId)) return json({ error: "Unknown device" }, 404);
+    const b64 = await env.STATE.get(`shot:${shotM[1]}:${shotM[2]}`);
+    if (!b64) return json({ error: "That screenshot has expired" }, 404);
+    return new Response(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), { headers: { "content-type": "image/jpeg", "cache-control": "private, max-age=86400" } });
+  }
+  const dev = /^\/api\/devices\/([0-9a-f]+)(?:\/(command|site-requests|app-requests|messages|msg-alerts))?$/.exec(path);
   if (dev) {
     const key = `device:${dev[1]}`;
     const d = await getJSON(env, key, null);
@@ -1063,6 +1092,11 @@ async function adminApiInner(request, env, url, session) {
     if (method === "DELETE" && dev[2] === "app-requests") {
       const reqKey = url.searchParams.get("key");
       d.appRequests = (d.appRequests || []).filter((r) => r.key !== reqKey);
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
+    if (method === "DELETE" && dev[2] === "msg-alerts") {
+      d.msgAlerts = [];
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -1234,13 +1268,27 @@ async function agentApi(request, env, url, ctx) {
     url.pathname === "/agent/sync" ||
     url.pathname === "/agent/redeem" ||
     url.pathname === "/agent/update" ||
-    url.pathname === "/agent/play-token"
+    url.pathname === "/agent/play-token" ||
+    url.pathname === "/agent/screenshot"
   ) {
     const auth = await authDevice(request, env);
     if (!auth) return json({ error: "Unauthorized" }, 401);
     const { key, d } = auth;
 
     if (url.pathname === "/agent/update") return json({ latest: await latestAgent(env) });
+    if (url.pathname === "/agent/screenshot") {
+      // One picture of the phone's screen, asked for from the dashboard. Kept for 7 days, last 10 per phone.
+      const b = body;
+      const jpeg = typeof b.jpeg === "string" ? b.jpeg : "";
+      if (jpeg.length < 100 || jpeg.length > 3_000_000 || !B64_RE.test(jpeg)) return json({ error: "No picture" }, 400);
+      const id = randomHex(6);
+      await env.STATE.put(`shot:${d.id}:${id}`, jpeg, { expirationTtl: 7 * 86400 });
+      const keep = [...(d.shots || []), { id, at: Date.now(), app: String(b.app || "").slice(0, 100) }];
+      for (const old of keep.slice(0, -10)) await env.STATE.delete(`shot:${d.id}:${old.id}`);
+      d.shots = keep.slice(-10).filter((s) => Date.now() - s.at < 7 * 86400 * 1000);
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
     if (url.pathname === "/agent/play-token") {
       const result = await playToken(env);
       return json(result, result.error ? 503 : 200);
@@ -1483,6 +1531,26 @@ async function agentApi(request, env, url, ctx) {
       d.texts = [...(d.texts || []), ...body.texts.slice(0, 150).map((x) => { const r = logRow(x, ["in", "out"]); delete r.secs; return r; })].slice(-MAX_TEXTS);
       dirty = true;
     }
+    // Message alerts: worrying words found on the phone (in a chat on the screen), and in texts sent here.
+    const newMsgAlerts = [];
+    if (config.messageAlerts && Array.isArray(body.msgAlerts)) {
+      for (const x of body.msgAlerts.slice(0, 40)) {
+        if (!x || typeof x !== "object") continue;
+        newMsgAlerts.push({ app: String(x.app || "").slice(0, 100), word: String(x.word || "").slice(0, 60), text: String(x.text || "").slice(0, 320), at: Number(x.at) || now });
+      }
+    }
+    if (config.messageAlerts && Array.isArray(body.texts)) {
+      const words = messageWordList(config);
+      for (const x of body.texts.slice(0, 150)) {
+        const word = x && typeof x.text === "string" ? matchMessageWord(x.text, words) : null;
+        if (word) newMsgAlerts.push({ app: "texts", word, text: x.text.slice(0, 320), who: String(x.name || x.number || "").slice(0, 80), at: Number(x.at) || now });
+      }
+    }
+    if (newMsgAlerts.length) {
+      d.msgAlerts = [...(d.msgAlerts || []), ...newMsgAlerts].slice(-100);
+      for (const m of newMsgAlerts) toAlert.push({ kind: "messages", text: `Worrying words ("${m.word}") in ${appName(m.app)}: ${m.text.slice(0, 200)}` });
+      dirty = true;
+    }
     if (Array.isArray(body.locations) && body.locations.length) {
       // Location history (switched on per phone), and "arrived at / left" a saved place.
       const fixes = body.locations.slice(-30)
@@ -1603,7 +1671,7 @@ async function agentApi(request, env, url, ctx) {
     if (toAlert.length) {
       const a = await getAlerts(env);
       const lines = toAlert.filter((x) => x.kind === "sos" || a[x.kind]).map((x) => x.text); // a call for help always goes out
-      if (a.url && lines.length) {
+      if (alertsOn(a) && lines.length) {
         const p = sendAlert(env, d.name, lines.join("\n"), a);
         if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
         else await p;
@@ -1726,7 +1794,7 @@ async function windowsApi(request, env, url, ctx) {
       d.events = [...(d.events || []), ...evs].slice(-MAX_EVENTS);
       dirty = true;
       const a = await getAlerts(env);
-      if (a.url && a.tamper) {
+      if (alertsOn(a) && a.tamper) {
         const p = sendAlert(env, d.name, evs.map((e) => e.m).join("\n"), a);
         if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
         else await p;
@@ -1785,6 +1853,13 @@ export default {
           }),
           { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" } }
         );
+      }
+      if (url.pathname === "/sw.js") return new Response(SERVICE_WORKER, { headers: { "content-type": "text/javascript", "cache-control": "no-cache" } });
+      if (url.pathname === "/push/latest" && request.method === "POST") {
+        // Asked by the service worker after a poke; answers only an address that is signed up.
+        const b = await request.json().catch(() => ({}));
+        const item = validPushEndpoint(b && b.endpoint) ? await latestForPush(env, b.endpoint) : null;
+        return json(item || {});
       }
       const iconM = /^\/icon-(192|512)\.png$/.exec(url.pathname);
       if (iconM) {
