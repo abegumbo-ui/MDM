@@ -255,6 +255,8 @@ public class AgentService extends Service {
         if (locations.length() > 0) body.put("locations", locations);
         JSONArray msgAlerts = Monitor.peek(this);
         if (msgAlerts.length() > 0) body.put("msgAlerts", msgAlerts);
+        JSONObject configPatch = PhoneRules.pendingPatch(this);
+        if (configPatch != null) body.put("configPatch", configPatch); // Administrator → Rules changes
         body.put("overrides", Agent.getOverrides(this));
         body.put("overridesRev", Agent.overridesRev(this));
         body.put("restrictionOverrides", Agent.getRestrictionOverrides(this));
@@ -344,6 +346,7 @@ public class AgentService extends Service {
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0));
         Agent.adoptRestrictionOverrides(this, reply.optJSONObject("restrictionOverrides"), reply.optLong("restrictionOverridesRev", 0));
         Master.store(this, reply.optJSONObject("master"));
+        PhoneRules.adopt(this, reply);
         if (!iconsSent.isEmpty()) {
             Set<String> sent = Agent.getSet(this, "icons_sent");
             sent.addAll(iconsSent);

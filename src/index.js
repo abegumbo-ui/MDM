@@ -121,6 +121,8 @@ const MAX_STORE_MINUTES = 24 * 60;
 const MAX_FREEBROWSE_MINUTES = 240;
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
+// Settings the phone's own Administrator screen may change (sent up as configPatch).
+const PHONE_EDITABLE = ["browserFilter", "safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "pauseUntil", "recordSites", "inAppBrowsers", "internetOnlyApps", "screenTime", "callsIn", "callsOut", "callLog", "textLog", "textContent", "reportContacts", "syncContacts", "locationEvery", "blockAppGroups", "approveNew", "blockUnlisted", "blockWaStatus", "blockWaChannels", "messageAlerts", "messageGroups", "messageWords", "freezeUpdates", "disableBiometricUnlock", "autoUpdate", "reportWifi", "chromePolicy", "youtubeMode"];
 // Friendly names for the chat apps message alerts look at.
 const CHAT_APPS = { 'com.whatsapp': 'WhatsApp', 'com.whatsapp.w4b': 'WhatsApp Business', 'org.telegram.messenger': 'Telegram', 'com.instagram.android': 'Instagram', 'com.facebook.orca': 'Messenger', 'com.facebook.mlite': 'Messenger Lite', 'com.snapchat.android': 'Snapchat', 'org.thoughtcrime.securesms': 'Signal', 'com.discord': 'Discord', 'com.zhiliaoapp.musically': 'TikTok', 'com.google.android.apps.messaging': 'Messages', 'com.samsung.android.messaging': 'Samsung Messages', 'com.kik.android': 'Kik', 'com.viber.voip': 'Viber', 'com.google.android.apps.dynamite': 'Google Chat', texts: 'a text message' };
 export const appName = (pkg) => CHAT_APPS[pkg] || (pkg ? 'a chat app (' + pkg + ')' : 'a chat app');
@@ -1356,8 +1358,29 @@ async function agentApi(request, env, url, ctx) {
       d.results = [...(d.results || []), ...body.results.slice(0, 20).map((r) => ({ ...r, at: now }))].slice(-30);
       dirty = true;
     }
-    const { cfg: config, seeded } = await configOf(env, d);
+    let { cfg: config, seeded } = await configOf(env, d);
     if (seeded) dirty = true;
+    // Settings changed on the phone's own Administrator screen (same settings as the dashboard).
+    // Each change has a number; a change is taken once, and only while the dashboard allows the
+    // phone to be managed from itself ("Only control from the dashboard" off).
+    const cp = body.configPatch;
+    if (cp && typeof cp === "object" && cp.values && typeof cp.values === "object" && Number(cp.rev) > (d.configPatchRev || 0)) {
+      d.configPatchRev = Number(cp.rev);
+      dirty = true;
+      if (!config.phoneAdminLocked) {
+        const patch = {};
+        for (const k of PHONE_EDITABLE) if (Object.prototype.hasOwnProperty.call(cp.values, k)) patch[k] = cp.values[k];
+        const next = normalizeConfig({ ...config, ...patch });
+        if (next.approveNew && !config.approveNew) d.known = (d.packages || []).map((p) => p.p);
+        const changes = summarizeConfigChange(config, next);
+        d.config = next;
+        config = next;
+        if (changes.length) {
+          d.pushLog = [...(d.pushLog || []), { at: now, changes: changes.map((c) => "On the phone: " + c) }].slice(-30);
+          await auditAdd(env, { who: `Phone "${d.name}"`, text: "Changed on the phone: " + changes.join("; ") });
+        }
+      }
+    }
     const reported = (d.packages || []).map((p) => p.p);
     if (!Array.isArray(d.known)) {
       if (reported.length) {
@@ -1700,7 +1723,7 @@ async function agentApi(request, env, url, ctx) {
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
     const master = d.master || null;
     const logoRev = await cachedLogoRev(env);
-    return json({ policy, commands, pollSeconds: await pollFor(env, now), overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, restrictionOverrides: d.restrictionOverrides || {}, restrictionOverridesRev: d.restrictionOverridesRev || 0, master, logoRev });
+    return json({ policy, config, configPatchRev: d.configPatchRev || 0, commands, pollSeconds: await pollFor(env, now), overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, restrictionOverrides: d.restrictionOverrides || {}, restrictionOverridesRev: d.restrictionOverridesRev || 0, master, logoRev });
   }
   return json({ error: "Not found" }, 404);
 }

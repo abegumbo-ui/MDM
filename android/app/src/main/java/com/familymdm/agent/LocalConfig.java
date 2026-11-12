@@ -68,6 +68,7 @@ final class LocalConfig {
         }
 
         JSONObject policy = LocalPolicy.build(cfg, names, known);
+        PhoneRules.addOfflineExtras(c, policy); // the dashboard-style settings changed on this phone (Administrator → Rules)
         Agent.prefs(c).edit().putString("policy", policy.toString()).apply();
         PolicyApplier.apply(c, policy);
         return policy;
