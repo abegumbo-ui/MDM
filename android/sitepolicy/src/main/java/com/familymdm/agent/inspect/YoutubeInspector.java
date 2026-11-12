@@ -169,16 +169,13 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     public InspectProxy.Response onRequest(InspectProxy.Request r) {
         if (imageBlocked(r)) return new InspectProxy.Response(200, "image/gif", BLANK_GIF);
         if (youtubeOff && isDocument(r) && isYoutube(r.host)) {
-            return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
-                    + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>YouTube is turned off on this phone.</p></body></html>");
+            return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), "YouTube is turned off on this phone.", null));
         }
         if (blockImageSearch && isDocument(r) && com.familymdm.agent.sitepolicy.ProtectionRules.isImageSearch(r.url())) {
-            return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
-                    + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>Image search is turned off on this phone.</p></body></html>");
+            return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), "Image search is turned off on this phone.", null));
         }
         if (!blockedWords.isEmpty() && isDocument(r) && com.familymdm.agent.sitepolicy.WordFilter.match(r.url(), blockedWords) != null) {
-            return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
-                    + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>This page has a blocked word in it.</p></body></html>");
+            return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), "This page has a blocked word in it.", null));
         }
         if (!restricted || !isYoutube(r.host)) return null;
         r.headers.set(YoutubeRestricted.RESTRICT_HEADER, YoutubeRestricted.RESTRICT_VALUE);
@@ -187,8 +184,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         int kind = SitePolicy.youtubeKind(url);
         if (kind == SitePolicy.YT_HOME) return null; // YouTube's own home page; its feed is emptied by the script added to the page
         if (!SitePolicy.youtubeRestrictedAllows(url) && r.host.toLowerCase(java.util.Locale.ROOT).matches(".*youtube(-nocookie)?\\.com|youtu\\.be")) {
-            return InspectProxy.Response.html(403, "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
-                    + "<body style='font-family:sans-serif;padding:24px'><h2>Not available</h2><p>This part of YouTube isn't available.</p></body></html>");
+            return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), "This part of YouTube isn't available.", null));
         }
         return null;
     }

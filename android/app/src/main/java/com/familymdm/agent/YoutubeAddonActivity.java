@@ -167,7 +167,7 @@ public class YoutubeAddonActivity extends Activity {
         // Signing in to YouTube and its consent page are fine; nothing else opens here.
         if (!yt) {
             if (h.equals("accounts.google.com") || h.equals("consent.youtube.com") || h.equals("accounts.youtube.com") || h.endsWith(".gstatic.com")) return null;
-            return page("Only YouTube opens here", "This is the YouTube app; other sites are not part of it.", homeButton());
+            return notAllowed(url, "Only YouTube opens in this app.", homeButton());
         }
         String m = mode();
         if ("blocked".equals(m)) return offPage();
@@ -189,9 +189,9 @@ public class YoutubeAddonActivity extends Activity {
         if (kind == SitePolicy.YT_HOME) return null; // its feed is emptied and the allowed ones are shown (scripts)
         if ("restricted".equals(m)) {
             if (SitePolicy.youtubeRestrictedAllows(url)) return null;
-            return page("Not available", "This part of YouTube isn't available.", homeButton());
+            return notAllowed(url, "This part of YouTube is not available.", homeButton());
         }
-        return page("This part of YouTube isn't allowed", "Only the channels and videos your parent allowed open here.", askButton(url, "Ask for access") + homeButton());
+        return notAllowed(url, "Only the YouTube channels and videos that were allowed open here.", askButton(url, "Ask for access") + homeButton());
     }
 
     private String offPage() {
@@ -332,12 +332,14 @@ public class YoutubeAddonActivity extends Activity {
         return "<a class=b href='" + SCHEME + "://home'>Go to YouTube's home page</a>";
     }
 
+    private static String notAllowed(String url, String reason, String buttons) {
+        return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.NOT_ALLOWED,
+                "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>" + (reason != null ? "<p>" + esc(reason) + "</p>" : "")
+                        + "<p style='font-size:13px'>" + esc(url) + "</p>", buttons);
+    }
+
     private static String page(String title, String body, String buttons) {
-        return "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-                + "<style>body{font-family:Roboto,sans-serif;padding:32px 20px;max-width:520px;margin:auto;color:#0f0f0f;background:#fff}"
-                + "@media(prefers-color-scheme:dark){body{background:#0f0f0f;color:#f1f1f1}}h2{margin:0 0 8px}p{color:#606060;word-break:break-word}"
-                + ".b{display:block;text-align:center;margin-top:12px;padding:14px;border-radius:24px;background:#cc0000;color:#fff;text-decoration:none;font-size:16px}"
-                + "</style></head><body><h2>" + esc(title) + "</h2><p>" + body + "</p>" + buttons + "</body></html>";
+        return com.familymdm.agent.sitepolicy.BlockedPage.raw(title, body == null || body.isEmpty() ? "" : "<p>" + body + "</p>", buttons);
     }
 
     private static String esc(String s) {

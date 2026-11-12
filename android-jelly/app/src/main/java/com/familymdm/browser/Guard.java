@@ -283,13 +283,13 @@ public final class Guard {
         if (url == null || url.startsWith("about:") || url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("javascript:"))
             return Decision.yes(noPics);
         if (FilterStore.adultBlock(c) && SitePolicy.isBlockedAdult(url))
-            return Decision.no(page("Not available", "This kind of site isn't available in this browser.", homeButton()));
+            return Decision.no(notAllowed(url, null, homeButton()));
         Mode mode = mode(c);
         if (mode == Mode.UNCONFIGURED) return Decision.no(connectPage(null));
         if (WordFilter.match(url, FilterStore.blockedWords(c)) != null)
-            return Decision.no(page("Not available", "This page or search has a blocked word in it.", homeButton()));
+            return Decision.no(notAllowed(url, "It has a blocked word in it.", homeButton()));
         if (FilterStore.blockImageSearch(c) && ProtectionRules.isImageSearch(url))
-            return Decision.no(page("Not available", "Image search is turned off.", homeButton()));
+            return Decision.no(notAllowed(url, "Image search is turned off.", homeButton()));
         String ytMode = FilterStore.youtubeMode(c);
         if ("blocked".equals(ytMode) && SitePolicy.isYoutubeHost(SitePolicy.hostOf(url)))
             return Decision.no(page("YouTube is off", esc(FilterStore.youtubeOffMessage(c)), askButton("https://www.youtube.com/", "Ask to open YouTube") + homeButton()));
@@ -305,7 +305,7 @@ public final class Guard {
             int kind = SitePolicy.youtubeKind(url);
             if (kind == SitePolicy.YT_HOME) return Decision.yes(noPics); // YouTube's own home page, its feed emptied (afterLoadScript)
             if (SitePolicy.youtubeRestrictedAllows(url)) return Decision.yes(noPics);
-            return Decision.no(page("Not available", "This part of YouTube isn't available.", homeButton()));
+            return Decision.no(notAllowed(url, "This part of YouTube is not available.", homeButton()));
         }
         List<SitePolicy.Site> list = sites(c);
         SitePolicy.Site match = SitePolicy.matching(url, list);
@@ -330,7 +330,7 @@ public final class Guard {
         if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host) && SitePolicy.youtubeKind(url) == SitePolicy.YT_HOME)
             return Decision.yes(noPics);
         if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host))
-            return Decision.no(page("This part of YouTube isn't allowed", "Only the channels and videos your parent allowed open here.",
+            return Decision.no(notAllowed(url, "Only the YouTube channels and videos that were allowed open here.",
                     askButton(url, "Ask for access") + homeButton()));
         if (mode == Mode.AGENT && browseWindow(c)) {
             reportOnce(c, url);
@@ -343,7 +343,7 @@ public final class Guard {
             FilterStore.refreshAsync(c, true);
             note = "<p class=n>The filter lists are still downloading. Until they are ready, only approved sites open. Try again in a minute.</p>";
         }
-        return Decision.no(page("This page isn't allowed", esc(url) + note, askButton(url, "Ask for access") + homeButton()));
+        return Decision.no(notAllowed(url, null, note + askButton(url, "Ask for access") + homeButton()));
     }
 
     private static boolean isYoutubeAddress(String url) {
@@ -667,12 +667,16 @@ public final class Guard {
         return "<a class=b href='" + SCHEME + "://start'>Go to the start page</a>";
     }
 
+    /** The family's "This site is not allowed" page (logo behind it), with the reason and the address. */
+    static String notAllowed(String url, String reason, String extraHtml) {
+        String body = "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>"
+                + (reason != null ? "<p>" + esc(reason) + "</p>" : "")
+                + (url != null && url.startsWith("http") ? "<p style='font-size:13px'>" + esc(url) + "</p>" : "");
+        return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.NOT_ALLOWED, body, extraHtml);
+    }
+
     static String page(String title, String body, String buttons) {
-        return "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-                + "<style>body{font-family:sans-serif;padding:32px 20px;max-width:520px;margin:auto;color:#202124;background:#fff}"
-                + "@media(prefers-color-scheme:dark){body{background:#121212;color:#e8eaed}}h2{margin:0 0 8px}p{color:#5f6368;word-break:break-all}"
-                + ".n{color:#b06000}.b{display:block;text-align:center;margin-top:12px;padding:14px;border-radius:24px;background:#1a73e8;color:#fff;text-decoration:none;font-size:16px}"
-                + "</style></head><body><h2>" + esc(title) + "</h2><p>" + body + "</p>" + buttons + "</body></html>";
+        return com.familymdm.agent.sitepolicy.BlockedPage.raw(title, body == null || body.isEmpty() ? "" : "<p>" + body + "</p>", buttons);
     }
 
     private static String esc(String s) {
