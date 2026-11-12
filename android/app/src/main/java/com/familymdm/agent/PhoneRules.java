@@ -440,7 +440,9 @@ final class PhoneRules {
                 {"YouTube: Shorts", "com.google.android.youtube", "Shorts"},
                 {"Instagram: Reels", "com.instagram.android", "Reels"},
                 {"Instagram: Search and explore", "com.instagram.android", "Search and explore"},
-                {"Facebook: Reels", "com.facebook.katana", "Reels"}};
+                {"Facebook: Reels", "com.facebook.katana", "Reels"},
+                {"Google Maps: Explore", "com.google.android.apps.maps", "Explore"},
+                {"Snapchat: Spotlight", "com.snapchat.android", "Spotlight"}};
         JSONArray have = current(a).optJSONArray("blockedParts");
         for (String[] q : quick) {
             boolean on = false;
