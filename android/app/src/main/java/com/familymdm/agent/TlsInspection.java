@@ -74,7 +74,7 @@ final class TlsInspection {
             boolean want = policy.optBoolean("tlsInspection", false);
             boolean applied = Agent.prefs(c).getBoolean("tlsInspectionApplied", false);
             if (want) {
-                updateRules(policy);
+                updateRules(c, policy);
                 enable(c, dpm, admin, applied);
             } else if (applied || runningPort != -1) {
                 disable(c, dpm, admin, "turned off");
@@ -96,7 +96,7 @@ final class TlsInspection {
         }
     }
 
-    private static void updateRules(JSONObject policy) {
+    private static void updateRules(Context c, JSONObject policy) {
         Set<String> bypass = new HashSet<>();
         for (String d : DEFAULT_BYPASS) bypass.add(d);
         JSONArray extra = policy.optJSONArray("inspectBypass");
@@ -123,6 +123,8 @@ final class TlsInspection {
         rules = new YoutubeInspector("restricted".equals(policy.optString("youtubeMode", "channels")), bypass,
                 policy.optBoolean("blockImages", false), imagesAllow, words);
         rules.setBlockImageSearch(policy.optBoolean("blockImageSearch", false));
+        String guard = policy.optString("pictureGuard", "off");
+        rules.setPictureFilter("nudity".equals(guard) || "skin".equals(guard) ? new ProxyPictureFilter(c.getApplicationContext(), guard) : null);
     }
 
     private static void enable(Context c, DevicePolicyManager dpm, ComponentName admin, boolean applied) throws Exception {

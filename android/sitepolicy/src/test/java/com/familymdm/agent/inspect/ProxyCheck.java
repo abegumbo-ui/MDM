@@ -358,6 +358,21 @@ public class ProxyCheck {
         check(pics.onRequest(new InspectProxy.Request("GET", "img.school.test", 443, true, "/a", ih)) == null, "pictures from a listed site show anywhere");
         check(new YoutubeInspector(false, Collections.<String>emptySet()).onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a", ih)) == null, "with the setting off, pictures are untouched");
 
+        // ---- picture filter (photo checker / cover skin, carried to every browser) ----
+        YoutubeInspector pf = new YoutubeInspector(false, Collections.<String>emptySet());
+        check(!pf.rewrites(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a.jpg", new InspectProxy.Headers()), "image/jpeg"), "without a picture filter, pictures are not touched");
+        final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 0, 'x'};
+        pf.setPictureFilter(pic -> PNG);
+        InspectProxy.Request pr = new InspectProxy.Request("GET", "cdn.test", 443, true, "/a.jpg", new InspectProxy.Headers());
+        check(pf.rewrites(pr, "image/jpeg") && pf.rewrites(pr, "image/webp"), "with a picture filter, pictures go through it");
+        check(!pf.rewrites(pr, "image/svg+xml") && !pf.rewrites(pr, "text/html"), "drawings (SVG) and pages are not handed to it");
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 16, 'J', 'F', 'I', 'F', 0, 1, 1};
+        check(java.util.Arrays.equals(pf.rewrite(pr, jpeg), PNG), "a picture is replaced by what the filter returns");
+        check(java.util.Arrays.equals(pf.rewrite(pr, "<html>not a picture</html>".getBytes()), "<html>not a picture</html>".getBytes()), "something that is not really a picture is passed unchanged");
+        pf.setPictureFilter(pic -> null);
+        check(java.util.Arrays.equals(pf.rewrite(pr, jpeg), jpeg), "a picture the filter leaves alone arrives unchanged");
+        pf.setPictureFilter(pic -> { throw new RuntimeException("broken"); });
+        check(java.util.Arrays.equals(pf.rewrite(pr, jpeg), jpeg), "a filter problem never breaks the page");
         proxy2.close();
         System.out.println(failures == 0 ? "ALL OK" : failures + " FAILED");
         System.exit(failures == 0 ? 0 : 1);
