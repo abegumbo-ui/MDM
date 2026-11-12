@@ -58,6 +58,26 @@ final class FilterStore {
         if (("moderate".equals(t) || "strict".equals(t)) && !b.isEmpty()) refreshAsync(c, changed);
     }
 
+    /** For the dashboard: what the filter is really doing on this phone. */
+    static JSONObject status(Context c) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("tier", tier(c));
+            o.put("ready", "open".equals(tier(c)) || "off".equals(tier(c)) || active(c));
+            o.put("downloading", refreshing);
+            String err = prefs(c).getString("filterError", null);
+            if (err != null && !active(c)) o.put("error", err);
+        } catch (Exception ignored) {
+        }
+        return o;
+    }
+
+    /** True when a filter level is chosen but its lists are not ready yet (so only approved sites open). */
+    static boolean waitingForLists(Context c) {
+        String t = tier(c);
+        return ("moderate".equals(t) || "strict".equals(t)) && !active(c);
+    }
+
     static String tier(Context c) {
         return prefs(c).getString("filterTier", "off");
     }
@@ -222,8 +242,10 @@ final class FilterStore {
             try {
                 prefs(c).edit().putLong("filterTried", System.currentTimeMillis()).apply();
                 refresh(c);
-            } catch (Exception ignored) {
+                prefs(c).edit().remove("filterError").apply();
+            } catch (Exception e) {
                 // offline or GitHub unreachable: keep whatever is already verified, try again later
+                prefs(c).edit().putString("filterError", String.valueOf(e.getMessage())).apply();
             } finally {
                 refreshing = false;
             }

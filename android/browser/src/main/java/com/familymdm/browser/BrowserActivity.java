@@ -272,9 +272,21 @@ public class BrowserActivity extends Activity {
         if (url != null) showTab(newTab(url));
     }
 
+    // While the Browser is open it checks with the dashboard every 30 seconds, so changes arrive quickly.
+    private final android.os.Handler syncTimer = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable syncTick = new Runnable() {
+        @Override
+        public void run() {
+            if (mode() == Mode.ONLINE) maybeSyncOnline(true);
+            syncTimer.postDelayed(this, 30_000);
+        }
+    };
+
     @Override
     protected void onResume() {
         super.onResume();
+        syncTimer.removeCallbacks(syncTick);
+        syncTimer.postDelayed(syncTick, 30_000);
         registerReceiver(restrictionsChanged, new IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED));
         applyFilterPolicy();
         if (mode() == Mode.ONLINE) maybeSyncOnline(false);
@@ -317,6 +329,7 @@ public class BrowserActivity extends Activity {
 
     @Override
     protected void onPause() {
+        syncTimer.removeCallbacks(syncTick);
         try {
             unregisterReceiver(restrictionsChanged);
         } catch (Exception ignored) {
@@ -847,6 +860,10 @@ public class BrowserActivity extends Activity {
                     return true;
                 }
             }
+            if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.waitingForLists(this)) {
+                FilterStore.refreshAsync(this, true);
+                toast("The filter lists are still downloading. Until they are ready, only approved sites open. Try again in a minute.");
+            }
             showBlocked(t, url, mode);
             return false;
         }
@@ -1013,6 +1030,8 @@ public class BrowserActivity extends Activity {
                 JSONObject info = new JSONObject();
                 info.put("manufacturer", Build.MANUFACTURER);
                 info.put("model", Build.MODEL);
+                info.put("filter", FilterStore.status(this)); // shown on the dashboard
+                info.put("picture", FilterStore.pictureGuard(this));
                 body.put("info", info);
                 JSONArray requests = BrowserState.peekSiteRequests(this);
                 body.put("siteRequests", requests);
@@ -1034,6 +1053,7 @@ public class BrowserActivity extends Activity {
                 FilterStore.setSwitches(this, filter == null || filter.optBoolean("safeSearch", true), filter == null || filter.optBoolean("adultBlock", true), filter == null || filter.optBoolean("allowSearch", true));
                 setLook(filter == null ? "classic" : filter.optString("look", "classic"));
                 filterModeOk = !"off".equals(FilterStore.tier(this));
+                FilterStore.refreshAsync(this, false); // start the lists now if the level needs them
             } catch (Exception ignored) {
                 // offline, or the dashboard is unreachable: keep using the last cached list
             } finally {
