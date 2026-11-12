@@ -179,4 +179,15 @@ public class GuardTest {
         assertFalse("other sites keep their pictures", Guard.check(c, "https://example.com/", null).blockImages);
         assertFalse("look-alike names are not caught", Guard.check(c, "https://notamazon.com/", null).blockImages);
     }
+
+    @Test
+    public void videoCovering_onlyWithCoverSkin() throws Exception {
+        connected("open");
+        FilterStore.setPictureGuard(c, "nudity");
+        assertNull(Guard.videoScript(c));
+        FilterStore.setPictureGuard(c, "skin");
+        String js = Guard.videoScript(c);
+        assertNotNull(js);
+        assertTrue(js.contains("requestVideoFrameCallback") && js.contains("texImage2D"));
+    }
 }

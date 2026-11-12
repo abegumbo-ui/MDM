@@ -83,6 +83,7 @@ internal class WebClient(
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
         Guard.afterLoadScript(context, url)?.let { view.evaluateJavascript(it, null) }
+        Guard.videoScript(context)?.let { view.evaluateJavascript(it, null) }
         urlBarLayout.onPageLoadFinished(view.certificate)
         if (view.settings.javaScriptEnabled) {
             view.evaluateJavascript(JsSyncUrl.SCRIPT, null)

@@ -392,6 +392,25 @@ public final class Guard {
         return url != null && FilterStore.youtubeRestricted(c) && isYoutubeAddress(url) ? YoutubeRestricted.HIDE_SCRIPT : null;
     }
 
+    private static volatile String videoSkinJs;
+
+    /** "Cover skin" also covers skin in videos (assets/video_skin.js), or null when that setting is off. */
+    public static String videoScript(Context ctx) {
+        Context c = ctx.getApplicationContext();
+        if (!"skin".equals(FilterStore.pictureGuard(c))) return null;
+        if (videoSkinJs == null) {
+            try (java.io.InputStream in = c.getAssets().open("video_skin.js")) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] b = new byte[8192];
+                for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+                videoSkinJs = out.toString("UTF-8");
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return videoSkinJs;
+    }
+
     /** No installing apps from downloads. */
     public static boolean downloadAllowed(String url, String mimeType) {
         String u = url == null ? "" : url.toLowerCase(java.util.Locale.ROOT);
