@@ -106,3 +106,17 @@ test("notifications on the parent's phone: sign up, alerts poke the push service
   await req("/api/push/unsubscribe", { method: "POST", headers: { cookie: admin, ...J }, body: JSON.stringify({ endpoint }) });
   assert.equal((await (await req("/api/alerts", { headers: { cookie: admin } })).json()).pushCount, 0);
 });
+
+test("searches typed on the phone are kept only while the switch is on", async () => {
+  const admin = await login({ password: env.ADMIN_PASSWORD });
+  const { token, dev } = await enroll(admin, "Searcher");
+  const sync = (body) => req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const list = async () => (await (await req("/api/devices", { headers: { cookie: admin } })).json()).find((x) => x.id === dev.id);
+  await sync({ searches: [{ app: "com.android.chrome", q: "math homework", at: 1 }] });
+  assert.equal((await list()).searches.length, 0, "off: nothing kept");
+  const d = await list();
+  await req(`/api/devices/${dev.id}/config`, { method: "PUT", headers: { cookie: admin, ...J }, body: JSON.stringify({ ...d.config, recordSearches: true }) });
+  const r = await (await sync({ searches: [{ app: "com.google.android.youtube", q: "  minecraft  ", at: 2 }, { q: "" }] })).json();
+  assert.equal(r.policy.recordSearches, true);
+  assert.deepEqual((await list()).searches.map((s) => s.q), ["minecraft"]);
+});

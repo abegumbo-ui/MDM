@@ -352,3 +352,9 @@ Dashboard: the **Calls & texts** group.
 1. Screen time → Limits → **School time** on, with the next few minutes as its hours: every app with an icon disappears except the phone, texts, settings, clock, calculator and apps marked "does not count"; they come back when it ends.
 2. Phone menu → **Check in**: you get an alert "Checked in" with a map link.
 
+
+## 7n. Searches list
+
+1. Browser → Sites visited → **Keep a list of searches** on (accessibility switch on). The phone shows "Searches are kept".
+2. Search for something in Google, YouTube and Chrome. After a check-in the searches show on that tab (one line per finished search, not every letter).
+
