@@ -364,3 +364,8 @@ Dashboard: the **Calls & texts** group.
 1. Browser → Filter level → **Block ads** on (level Moderate or Strict). After the next check-in, open a news site in Chrome: ad boxes are empty.
 2. If an app breaks, switch it off and tell me which app.
 
+
+## 7p. Calling from the lock screen
+
+1. Put a number under Calls & texts → Who can call, then Lock for 5 minutes. The lock screen shows **Call <name>**; tapping it opens the phone app with the number ready.
+

@@ -152,6 +152,11 @@ final class Calls {
         }
     }
 
+    /** The allowed numbers (dashboard: Calls & texts → Who can call), for the lock screen's call buttons. */
+    static List<String> allowedNumbers(Context c) {
+        return numbers(c);
+    }
+
     private static List<String> numbers(Context c) {
         List<String> out = new ArrayList<>();
         for (String s : Agent.prefs(c).getString("callNumbers", "").split(",")) if (!s.isEmpty()) out.add(s);
