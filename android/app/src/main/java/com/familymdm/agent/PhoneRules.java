@@ -139,7 +139,7 @@ final class PhoneRules {
         try {
             JSONObject x = new JSONObject(Agent.prefs(c).getString("localExtras", "{}"));
             String[] pass = {"safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "inAppBrowsers", "blockWaStatus",
-                    "blockWaChannels", "screenTime", "callsIn", "callsOut", "pauseUntil", "freezeUpdates", "disableBiometricUnlock"};
+                    "blockWaChannels", "screenTime", "callsIn", "callsOut", "pauseUntil", "freezeUpdates", "disableBiometricUnlock", "blockedParts"};
             for (String k : pass) if (x.has(k)) policy.put(k, x.get(k));
             if (x.has("browserFilter")) {
                 policy.put("browserFilter", x.getString("browserFilter"));
@@ -366,7 +366,45 @@ final class PhoneRules {
 
     /* ---- App groups ---- */
 
+    /** "Tap to block": pick a part of an app on this phone (see PartBlocker), and the list of what is blocked. */
+    static void tapToBlock(Activity a, LinearLayout root, Runnable rebuild) {
+        LinearLayout card = Ui.card(a, root);
+        card.addView(Ui.titleText(a, "Tap to block"));
+        card.addView(Ui.body(a, "Block one part of an app instead of the whole app: a button, a tab, a feed (YouTube Shorts, Instagram Reels, WhatsApp Status...). "
+                + "Tap Start, open the app, go to that part, tap Pick, then tap the part.", true));
+        Ui.add(card, Ui.button(a, "Start", Ui.FILLED, v -> {
+            String err = PartBlocker.startPicking(a);
+            if (err != null) Toast(a, err);
+            else {
+                Toast(a, "Now open the app. A Pick button is at the bottom of the screen.");
+                Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                a.startActivity(home);
+            }
+        }), 8);
+        JSONArray parts = current(a).optJSONArray("blockedParts");
+        for (int i = 0; parts != null && i < parts.length(); i++) {
+            JSONObject p = parts.optJSONObject(i);
+            if (p == null) continue;
+            final String id = p.optString("id");
+            LinearLayout row = new LinearLayout(a);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.addView(Ui.body(a, p.optString("label") + "  (" + ("close".equals(p.optString("mode")) ? "screen closed" : "covered") + ")", false));
+            Ui.add(row, Ui.button(a, "Remove", Ui.OUTLINED, v -> {
+                JSONArray cur = current(a).optJSONArray("blockedParts");
+                JSONArray next = new JSONArray();
+                for (int k = 0; cur != null && k < cur.length(); k++) {
+                    JSONObject x = cur.optJSONObject(k);
+                    if (x != null && !id.equals(x.optString("id"))) next.put(x);
+                }
+                set1(a, "blockedParts", next, "removed " + p.optString("label"));
+                rebuild.run();
+            }), 4);
+            Ui.add(card, row, 10);
+        }
+    }
+
     private static void apps(Activity a, LinearLayout root, JSONObject c, Runnable rebuild, boolean off) {
+        tapToBlock(a, root, rebuild);
         LinearLayout card = Ui.card(a, root);
         card.addView(Ui.titleText(a, "Apps"));
         if (!off) {

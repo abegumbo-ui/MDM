@@ -555,6 +555,8 @@ export function normalizeConfig(input) {
     messageAlerts: c.messageAlerts === true,
     messageGroups: [...new Set((Array.isArray(c.messageGroups) ? c.messageGroups : Object.keys(MESSAGE_WORD_GROUPS)).filter((g) => Object.prototype.hasOwnProperty.call(MESSAGE_WORD_GROUPS, g)))],
     messageWords: normalizeMessageWords(c.messageWords),
+    // Parts of apps blocked with "tap to block" on the phone (a button, tab, feed...), see normalizeBlockedParts.
+    blockedParts: normalizeBlockedParts(c.blockedParts),
     // Contacts: send the phone's contacts to the dashboard; put the allowed numbers into the phone's contacts.
     reportContacts: c.reportContacts === true,
     syncContacts: c.syncContacts === true,
@@ -769,6 +771,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.blockWaStatus = cfg.blockWaStatus;
   out.blockWaChannels = cfg.blockWaChannels;
   out.messageAlerts = cfg.messageAlerts;
+  out.blockedParts = cfg.blockedParts;
   out.messageWords = cfg.messageAlerts ? messageWordList(cfg) : [];
   out.reportContacts = cfg.reportContacts;
   out.contactsToAdd = cfg.syncContacts ? cfg.callNumbers.map((n) => ({ name: n.name, number: n.number })) : [];
@@ -834,6 +837,7 @@ export function summarizeConfigChange(before, after) {
   if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
   if (JSON.stringify(before.filterSkipApps || []) !== JSON.stringify(after.filterSkipApps || [])) lines.push("Apps not filtered: " + (after.filterSkipApps || []).length);
   if (!!before.blockWaStatus !== !!after.blockWaStatus) lines.push("WhatsApp Status: " + (after.blockWaStatus ? "closed" : "allowed"));
+  if (JSON.stringify(before.blockedParts || []) !== JSON.stringify(after.blockedParts || [])) lines.push("Blocked parts of apps: " + (after.blockedParts || []).length);
   if (!!before.messageAlerts !== !!after.messageAlerts) lines.push("Message alerts: " + (after.messageAlerts ? "on" : "off"));
   if (JSON.stringify(before.messageWords || []) !== JSON.stringify(after.messageWords || []) || JSON.stringify(before.messageGroups || null) !== JSON.stringify(after.messageGroups || null)) lines.push("Message alert words changed");
   if (!!before.blockWaChannels !== !!after.blockWaChannels) lines.push("WhatsApp Channels: " + (after.blockWaChannels ? "closed" : "allowed"));
@@ -921,4 +925,31 @@ export function matchMessageWord(text, words) {
     if (n.trim() && t.includes(n)) return w;
   }
   return null;
+}
+
+/* ------------------------------ tap to block: parts of apps ------------------------------ */
+
+/**
+ * A part of an app picked on the phone (Administrator → Apps → Tap to block): the app, and what
+ * identifies that part on the screen (its view id, its description, its text, its kind). "cover"
+ * puts a "Blocked" box over it wherever it shows (so it cannot be seen or tapped); "close" leaves
+ * the screen whenever it appears.
+ */
+export function normalizeBlockedParts(v) {
+  const str = (x, n) => (typeof x === "string" ? x.trim().slice(0, n) : "");
+  const out = [];
+  const seen = new Set();
+  for (const p of Array.isArray(v) ? v : []) {
+    if (!p || typeof p !== "object") continue;
+    const pkg = str(p.pkg, 200);
+    if (!/^[A-Za-z0-9_.]{1,200}$/.test(pkg)) continue;
+    const part = { id: /^[0-9a-f]{6,16}$/.test(p.id || "") ? p.id : Math.random().toString(16).slice(2, 10), pkg, viewId: str(p.viewId, 200), desc: str(p.desc, 200), text: str(p.text, 200), cls: str(p.cls, 200), mode: p.mode === "close" ? "close" : "cover", label: str(p.label, 120) || str(p.desc, 120) || str(p.text, 120) || str(p.viewId, 120) || pkg, at: Number.isFinite(Number(p.at)) ? Number(p.at) : 0 };
+    if (!part.viewId && !part.desc && !part.text) continue;
+    const key = [part.pkg, part.viewId, part.desc, part.text].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(part);
+    if (out.length >= 100) break;
+  }
+  return out;
 }

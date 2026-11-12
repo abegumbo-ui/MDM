@@ -327,3 +327,12 @@ Dashboard: the **Calls & texts** group.
 5. Dashboard: Device → Controls → **Only control from the dashboard** on. Change something in Rules on the phone:
    the dashboard ignores it and the phone goes back to the dashboard's setting at the next check-in.
 
+
+## 7k. Tap to block (parts of apps)
+
+1. Administrator → Apps → Blocked → **Tap to block → Start**. Open YouTube, tap **Pick**, tap the **Shorts** tab, choose **Cover it**.
+   You should see: a dark "Blocked" box over the Shorts tab that cannot be tapped; the dashboard lists it under Apps → Blocked → Parts of apps.
+2. Same in Instagram with the **Reels** tab, choose **Close the screen**: opening Reels backs straight out.
+3. Use **Bigger** / **Smaller** to see what gets outlined; tell me any app where nothing can be recognised.
+4. Remove one on the dashboard: within a check-in it stops being blocked.
+
