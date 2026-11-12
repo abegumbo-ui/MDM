@@ -42,9 +42,17 @@ jobs:
           DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
         run: |
           chmod +x gradlew
+          # Every dashboard rule, checked without a phone (GuardTest).
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
           ls -la app/build/outputs/apk/release/
           cp app/build/outputs/apk/release/*.apk ../mdm-browser-new.apk
+      - name: Keep the test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-tests
+          path: android-jelly/app/build/reports/tests/
       - uses: actions/upload-artifact@v4
         with:
           name: mdm-browser-new

@@ -170,6 +170,11 @@ public final class Guard {
         }).start();
     }
 
+    /** For the tests: read the site list again right away. */
+    static void forgetCache() {
+        sitesAt = 0;
+    }
+
     private static List<SitePolicy.Site> sites(Context c) {
         long now = System.currentTimeMillis();
         if (now - sitesAt < 3000) return sitesCache;

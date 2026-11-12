@@ -46,6 +46,10 @@ android {
         resValues = true
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
@@ -102,4 +106,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.tensorflow.lite)
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
 }
