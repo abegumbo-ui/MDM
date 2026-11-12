@@ -386,3 +386,18 @@ Dashboard: the **Calls & texts** group.
 6. Safety → **Save where the phone is now as a place** at home; leaving and coming back sends alerts (with location history on).
 7. The phone menu shows **What your parent can see**; check it matches what is switched on.
 
+
+## 7s. YouTube videos watched (phone)
+1. Dashboard → the phone → Activity → switch on "Keep a list of YouTube videos watched". The phone says it is on.
+2. On the phone, open a video in the YouTube app and let it play 15 seconds; open a second one.
+3. Within a minute or two both names are in the list. Scrolling the home feed without opening videos adds nothing.
+   If nothing shows up, YouTube's screen layout differs from what the phone looks for: send a note.
+
+## 8. Computer: screen time and screenshots (needs a child's standard Windows account)
+1. Dashboard → the computer → Screen time → limit "1 hour"; give "+15 min" and see it listed.
+2. Signed in as the child: after the time, a message, then the sign-in screen a minute later; programs are still open
+   when an administrator signs in. Signing in as the child again goes back to the sign-in screen within 15 seconds.
+3. An administrator account is never sent back, whatever the limit.
+4. Bedtime: set it to start in 6 minutes; a warning at 5 minutes, then the sign-in screen.
+5. Computer tab → "Take a screenshot now": the picture arrives within two minutes, and the child sees
+   "A picture of this screen was sent to your parent". With the screen locked, a note says it could not be read.

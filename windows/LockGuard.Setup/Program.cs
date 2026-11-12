@@ -5,6 +5,13 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // "/screenshot ticket": started by the service for the dashboard's "See the screen" (see Screenshot.cs).
+        if (args.Length >= 2 && args[0].Equals("/screenshot", StringComparison.OrdinalIgnoreCase))
+        {
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+            Screenshot.Run(args[1]);
+            return;
+        }
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);

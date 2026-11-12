@@ -44,5 +44,6 @@ public static class PipeActions
     public const string RemoveProgram = "RemoveProgram";
     public const string SetEnabled = "SetEnabled"; // arg: "true" or "false"
     public const string Uninstall = "Uninstall"; // tells the service to remove itself cleanly
+    public const string Screenshot = "Screenshot"; // code: the one-time ticket the service started Setup with; arg: the picture (JPEG, base64)
     public const string RequestSite = "RequestSite"; // arg: a website; anyone may ask, no code (the parent decides on the dashboard)
 }

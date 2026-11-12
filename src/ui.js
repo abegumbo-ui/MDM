@@ -1844,6 +1844,20 @@ function adminWarning(w){
  return h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'Administrator accounts on this computer'),
   h('div',{class:'mute'},'These Windows accounts are administrators: '+a.admins.join(', ')+'. Anyone using one of them can remove any filter, this one included. The child\'s account should be a Standard user: on the computer, Settings → Accounts → Other users → the account → Change account type → Standard User. Keep the administrator password to yourself.'),
   others.length?h('div',{class:'mute small',style:'margin-top:6px'},'Standard accounts: '+others.join(', ')+'.'):null)}
+/** "See the computer's screen": one picture, asked for here; the child is told on the computer. */
+function renderWinScreenshots(m,w){
+ const card=h('div',{class:'card'},h('h2',null,'See the computer\'s screen'),
+  h('div',{class:'mute'},'Takes one picture of whatever is on the computer\'s screen and shows it here. The computer then shows "A picture of this screen was sent to your parent". Pictures are kept for 7 days (the last 10). Nothing is taken while the screen is locked or nobody is signed in.'));
+ card.append(h('div',{style:'margin-top:10px'},btn('Take a screenshot now','',async function(){
+  try{await call('POST','/api/windevices/'+w.id+'/command',{type:'screenshot'});snack('Asked the computer. The picture shows up here in a minute or two (tap Refresh).')}catch(e){snack(e.message,1)}load()})));
+ const why=(w.events||[]).slice().reverse().find(function(e){return /^Screenshot/.test(e.m||'')});
+ if(why)card.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--warn)'},why.m+' ('+ago(why.at)+')'));
+ const shots=(w.shots||[]).slice().reverse();
+ const grid=h('div',{style:'display:flex;flex-wrap:wrap;gap:12px;margin-top:10px'});
+ for(const s of shots){const src='/api/windevices/'+w.id+'/shots/'+s.id;
+  grid.append(h('a',{href:src,target:'_blank',rel:'noopener',style:'display:block;width:200px;text-decoration:none;color:inherit'},h('img',{src:src,alt:'Screenshot',loading:'lazy',style:'width:200px;border-radius:10px;border:1px solid var(--outline);display:block'}),h('div',{class:'mute small'},ago(s.at))))}
+ if(shots.length)card.append(grid);
+ m.append(card)}
 /** Screen time on a computer: daily limit and bedtime for the child's (standard) Windows accounts. */
 function renderWinScreenTime(m,w){
  const win=w.win,st=(w.info&&w.info.screenTime)||null,today=new Date().toISOString().slice(0,10);
@@ -1997,6 +2011,7 @@ function renderWinDetail(m,w){
  else if(winTab==='time')renderWinScreenTime(m,dv);
  else if(winTab==='history')renderSitesVisited(m,dv);
  else{
+  renderWinScreenshots(m,w);
   const pr=w.win.protectFromAdmins!==false;
   m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect LockGuard from administrators'),
    h('div',{class:'mute small'},'Even an administrator account on the computer cannot stop, change or uninstall LockGuard: only the code (in LockGuard Setup) or "Uninstall from this computer" below removes it. An expert could still get around it, as with any filter. '+(w.info.protectedFromAdmins?'Active on the computer.':w.info.protectError?'Problem on the computer: '+w.info.protectError:pr?'Waiting for the computer (it needs the latest LockGuard).':''))),

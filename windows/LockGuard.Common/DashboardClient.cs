@@ -86,6 +86,16 @@ public sealed class DashboardClient
     /// given, the sites looked up and log lines since last time) and returns what the dashboard
     /// wants applied -- or null if the dashboard can't be reached right now.
     /// </summary>
+    /// <summary>Sends one picture of the screen (JPEG, base64) to the dashboard; true when it arrived.</summary>
+    public async Task<bool> SendScreenshotAsync(string jpegBase64)
+    {
+        var state = LoadState();
+        if (string.IsNullOrEmpty(state.Token)) return false;
+        var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/windows/screenshot") { Content = JsonContent.Create(new { jpeg = jpegBase64 }) };
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", state.Token);
+        try { return (await _http.SendAsync(req)).IsSuccessStatusCode; } catch { return false; }
+    }
+
     public async Task<SyncResult?> SyncAsync(bool enabled, List<string> allowedPrograms, object info, List<object>? trafficLog = null, List<object>? events = null, List<object>? programs = null, List<object>? siteRequests = null)
     {
         var state = LoadState();

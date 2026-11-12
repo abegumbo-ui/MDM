@@ -308,6 +308,21 @@ public sealed class Worker : BackgroundService
                 try { if (result.ScreenTime is null) File.Delete(ScreenRulesFile); else File.WriteAllText(ScreenRulesFile, rulesJson); } catch { }
             }
             if (result.Commands.Any(c => c.Type == "uninstall")) { BeginUninstall(); return; }
+            if (result.Commands.Any(c => c.Type == "screenshot"))
+            {
+                var why = ScreenshotTaker.Start();
+                if (why != null) Note("Screenshot not taken: " + why);
+                else
+                {
+                    var dash = _dashboard;
+                    _ = Task.Run(async () =>
+                    {
+                        var pic = await ScreenshotTaker.WaitAsync(_stopping);
+                        if (pic is null) Note("Screenshot not taken: the screen could not be read (maybe it is locked).");
+                        else if (!await dash.SendScreenshotAsync(pic)) Note("Screenshot taken but it could not be sent.");
+                    });
+                }
+            }
             await Updater.MaybeUpdateAsync(result.Update, Note);
         }
         catch (Exception e)
