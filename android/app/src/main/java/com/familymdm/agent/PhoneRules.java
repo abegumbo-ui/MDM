@@ -252,6 +252,7 @@ final class PhoneRules {
         toggle(a, card, c, "safeSearch", "Force SafeSearch", "Google, Bing and DuckDuckGo show filtered results only, in every browser and app.", rebuild);
         choice(a, card, c, "youtubeDns", "YouTube Restricted Mode", "YouTube's own filter, everywhere, the YouTube app included.",
                 new String[]{"off", "moderate", "strict"}, new String[]{"Off", "Moderate", "Strict"}, "off", rebuild);
+        toggle(a, card, c, "blockAds", "Block ads", "Ad servers are blocked in every app and browser (with Moderate or Strict). A few apps may show empty boxes where ads were.", rebuild);
         toggle(a, card, c, "blockImageSearch", "Block image search", "The \"Images\" tab of Google, Bing and DuckDuckGo is refused.", rebuild);
         toggle(a, card, c, "blockImages", "Block pictures on web pages", "Pages load without pictures in our browsers (in Chrome only with Inspection on, set on the dashboard).", rebuild);
         choice(a, card, c, "inAppBrowsers", "Web pages inside apps", "Links opened inside Instagram, Gmail and other apps.",

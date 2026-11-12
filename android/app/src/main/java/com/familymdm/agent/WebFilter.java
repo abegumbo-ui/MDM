@@ -50,13 +50,21 @@ final class WebFilter {
 
     /** Remembers what the dashboard (or the agent) says the level is, and starts getting the lists if it needs them. */
     static void setPolicy(Context c, String tier, String base) {
-        String t = "moderate".equals(tier) || "strict".equals(tier) ? tier : "off";
+        String t = "moderate".equals(tier) || "strict".equals(tier) || "moderate+ads".equals(tier) || "strict+ads".equals(tier) ? tier : "off";
         String b = base != null && base.startsWith(GITHUB) && base.length() < 300 ? base : "";
         SharedPreferences p = prefs(c);
         boolean changed = !t.equals(p.getString("filterTier", "off")) || !b.equals(p.getString("filterBase", ""));
         if (changed) p.edit().putString("filterTier", t).putString("filterBase", b).apply();
         if (changed) synchronized (LOCK) { loaded = null; loadedFor = ""; }
         if (!"off".equals(t) && !b.isEmpty()) refreshAsync(c, changed);
+    }
+
+    /** The level's lists; "x+ads" falls back to plain "x" while the published lists do not have it yet. */
+    private static JSONArray tierCats(JSONObject man, String tier) throws Exception {
+        JSONObject tiers = man.getJSONObject("tiers");
+        JSONArray cats = tiers.optJSONArray(tier);
+        if ((cats == null || cats.length() == 0) && tier.endsWith("+ads")) cats = tiers.optJSONArray(tier.substring(0, tier.length() - 4));
+        return cats;
     }
 
     static String tier(Context c) {
@@ -134,7 +142,7 @@ final class WebFilter {
             String m = prefs(c).getString("filterManifest", null);
             if (m == null) return null;
             JSONObject man = new JSONObject(m);
-            JSONArray cats = man.getJSONObject("tiers").optJSONArray(tier(c));
+            JSONArray cats = tierCats(man, tier(c));
             if (cats == null || cats.length() == 0) return null;
             Map<String, JSONObject> out = new HashMap<>();
             for (int i = 0; i < cats.length(); i++) {
@@ -204,7 +212,7 @@ final class WebFilter {
         String base = prefs(c).getString("filterBase", "");
         String manifestText = new String(fetch(base + "/manifest.json", 256 * 1024), "UTF-8");
         JSONObject man = new JSONObject(manifestText);
-        JSONArray cats = man.getJSONObject("tiers").optJSONArray(tier(c));
+        JSONArray cats = tierCats(man, tier(c));
         if (cats == null || cats.length() == 0) throw new Exception("unknown level");
         for (int i = 0; i < cats.length(); i++) {
             JSONObject cat = man.getJSONObject("categories").getJSONObject(cats.getString(i));

@@ -1159,6 +1159,11 @@ function renderLevels(box,d){
  box.append(card)}
 
 /** "Images" tab of Google, Bing and DuckDuckGo. */
+/** Ad servers blocked phone-wide (with Moderate or Strict). */
+function renderBlockAds(m,dv){const c=dv.config;if(dv.isBrowser||dv.isWindows)return;
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block ads'),
+  h('div',{class:'mute small'},'Ad servers are blocked in every app and browser on the phone. Works with the Moderate or Strict level. A few apps may show empty boxes where ads were; switch it off if one stops working.')),
+  sw(c.blockAds,async function(on){c.blockAds=on;try{await saveConfigFor(dv,on?'Ads blocked from the next check-in.':'Ads allowed again.')}catch(e){snack(e.message,1)}render()}))))}
 function renderImageSearch(m,dv){const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block image search'),
   h('div',{class:'mute small'},'The "Images" tab of Google, Bing and DuckDuckGo is refused; normal searches keep working. '+(dv.isBrowser?'Applies to this browser.':'In our own browsers always. In Chrome and other browsers only with Inspection on (the last tab).'))),
@@ -1584,7 +1589,7 @@ function renderTimeLimits(m,dv){
 function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
- else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
+ else if(sub==='access'){renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderBlockAds(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
  else if(sub==='history')renderSitesVisited(m,dv);
  else if(sub==='sites')renderSites(m,dv,'sites');
  else if(sub==='apps'){renderInAppBrowsers(m,dv);renderSites(m,dv,'apps')}

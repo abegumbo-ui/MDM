@@ -23,10 +23,14 @@ export const CATEGORIES = {
   scams: { label: "Scams, phishing and ransomware", sources: ["phishing.txt", "fraud.txt", "scam.txt", "ransomware.txt"] },
   piracy: { label: "Piracy and torrents", sources: ["piracy.txt", "torrent.txt"] },
   social: { label: "Social media", sources: ["facebook.txt", "twitter.txt", "tiktok.txt"] },
+  ads: { label: "Ads", sources: ["ads.txt"] },
 };
 export const TIERS = {
   moderate: ["adult", "gambling", "drugs", "scams", "piracy"],
   strict: ["adult", "gambling", "drugs", "scams", "piracy", "social"],
+  // "Block ads" on top of a level (phones ask for these; older ones never do).
+  "moderate+ads": ["adult", "gambling", "drugs", "scams", "piracy", "ads"],
+  "strict+ads": ["adult", "gambling", "drugs", "scams", "piracy", "social", "ads"],
 };
 
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/;

@@ -533,6 +533,8 @@ export function normalizeConfig(input) {
     blockImages: c.blockImages === true,
     // Refuses the "Images" tab of Google, Bing and DuckDuckGo (own browsers; Chrome with inspection on).
     blockImageSearch: c.blockImageSearch === true,
+    // Ad servers blocked phone-wide (with Moderate or Strict): the "+ads" lists.
+    blockAds: c.blockAds === true,
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
     pauseUntil: Number.isFinite(Number(c.pauseUntil)) && Number(c.pauseUntil) > 0 ? Math.floor(Number(c.pauseUntil)) : 0,
     // The internet is off for every app (except Android's essentials and "internet only" apps) until this time (ms).
@@ -770,6 +772,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.youtubeDns = cfg.youtubeDns;
   out.blockImages = cfg.blockImages;
   out.blockImageSearch = cfg.blockImageSearch;
+  out.blockAds = cfg.blockAds;
   out.pauseUntil = cfg.pauseUntil;
   out.internetOffUntil = cfg.internetOffUntil;
   out.internetOnlyApps = cfg.internetOnlyApps;
@@ -842,6 +845,7 @@ export function summarizeConfigChange(before, after) {
     const b = !before.userMenu || before.userMenu[k] !== false, a = !after.userMenu || after.userMenu[k] !== false;
     if (a !== b) lines.push('Phone menu "' + label + '": ' + (a ? "shown" : "hidden"));
   }
+  if (!!before.blockAds !== !!after.blockAds) lines.push("Ads: " + (after.blockAds ? "blocked" : "allowed"));
   if (!!before.blockImageSearch !== !!after.blockImageSearch) lines.push("Image search: " + (after.blockImageSearch ? "blocked" : "allowed"));
   if ((before.internetOffUntil || 0) !== (after.internetOffUntil || 0)) lines.push(after.internetOffUntil ? "Internet off for a while" : "Internet back on");
   if ((before.pauseUntil || 0) !== (after.pauseUntil || 0)) lines.push(after.pauseUntil ? "Web filtering paused for a while" : "Web filtering back on");

@@ -358,3 +358,9 @@ Dashboard: the **Calls & texts** group.
 1. Browser → Sites visited → **Keep a list of searches** on (accessibility switch on). The phone shows "Searches are kept".
 2. Search for something in Google, YouTube and Chrome. After a check-in the searches show on that tab (one line per finished search, not every letter).
 
+
+## 7o. Block ads
+
+1. Browser → Filter level → **Block ads** on (level Moderate or Strict). After the next check-in, open a news site in Chrome: ad boxes are empty.
+2. If an app breaks, switch it off and tell me which app.
+
