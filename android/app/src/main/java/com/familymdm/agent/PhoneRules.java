@@ -577,6 +577,18 @@ final class PhoneRules {
                 rebuild.run();
             }), 6);
         }
+        for (String t : new java.util.TreeSet<>(PartBlocker.blockedTitles(a))) {
+            LinearLayout row = new LinearLayout(a);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.addView(Ui.body(a, "Screen: " + t.substring(t.indexOf('|') + 1) + "  (" + t.substring(0, t.indexOf('|')) + ")", false));
+            Ui.add(row, Ui.button(a, "Remove", Ui.OUTLINED, v -> {
+                java.util.Set<String> s = PartBlocker.blockedTitles(a);
+                s.remove(t);
+                Agent.putSet(a, "blockedTitles", s);
+                rebuild.run();
+            }), 4);
+            Ui.add(card, row, 10);
+        }
         JSONArray parts = current(a).optJSONArray("blockedParts");
         for (int i = 0; parts != null && i < parts.length(); i++) {
             JSONObject p = parts.optJSONObject(i);

@@ -57,10 +57,17 @@ public class BlockAccessibilityService extends AccessibilityService {
             if (clsCs == null) return;
             String component = pkg + "/" + clsCs;
             AppBlocklist.recordSeen(this, component);
-            PartBlocker.noteScreen(pkg, clsCs.toString());
-            if (AppBlocklist.list(this).contains(component) && !AppBlocklist.isPaused(this, component)) {
+            String title = event.getText() != null && !event.getText().isEmpty() && event.getText().get(0) != null ? event.getText().get(0).toString() : "";
+            PartBlocker.noteScreen(pkg, clsCs.toString(), title);
+            boolean byTitle = !title.isEmpty() && PartBlocker.blockedTitles(this).contains(pkg + "|" + title);
+            if (byTitle || (AppBlocklist.list(this).contains(component) && !AppBlocklist.isPaused(this, component))) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
-                Agent.addEvent(this, "restriction", "Blocked app/screen opened (" + component + ") -- backed out instantly");
+                Agent.addEvent(this, "restriction", "Blocked screen opened (" + (byTitle ? title : component) + ") -- backed out instantly");
+                if (now - lastNoteAt > 3000) {
+                    lastNoteAt = now;
+                    new Handler(Looper.getMainLooper()).post(() ->
+                            Toast.makeText(getApplicationContext(), "This screen is not allowed on this phone.", Toast.LENGTH_SHORT).show());
+                }
                 return;
             }
             if (InAppRules.whatsAppBlocks(pkg, clsCs.toString(), Protection.waStatus(this), Protection.waChannels(this))) {
