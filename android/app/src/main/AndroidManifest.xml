@@ -9,6 +9,8 @@
          which screen was last open. A device owner gets this automatically on some phones, with no
          Settings prompt; declaring it here is still required either way. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <!-- A device owner may grant itself this (SelfSetup): it is how the agent switches its own accessibility service on. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Lets DnsFilterVpnService ask the OS which app owns a given connection (ConnectivityManager
          getConnectionOwnerUid), so the Traffic Log can show which app made a request. A normal

@@ -87,18 +87,24 @@ test("YouTube follows the filter level by default, and an explicit choice always
   await put({ browserFilter: "moderate", youtubeMode: "channels" });
   assert.equal((await sync()).filter.youtube, "channels", "an explicit choice wins over the level");
 });
-test("browser inspection is off unless exactly true, and its skip list is sanitized", () => {
-  assert.equal(normalizeConfig({}).tlsInspection, false);
-  assert.equal(normalizeConfig({ tlsInspection: true }).tlsInspection, true);
-  for (const bad of ["true", 1, "yes", null]) assert.equal(normalizeConfig({ tlsInspection: bad }).tlsInspection, false, String(bad));
+test("browser inspection is on unless exactly false, locks the certificate in, skips Google, and its skip list is sanitized", () => {
+  assert.equal(normalizeConfig({}).tlsInspection, true, "on by default");
+  assert.equal(normalizeConfig({ tlsInspectionOff: true }).tlsInspection, false, "only an explicit choice turns it off");
+  assert.equal(normalizeConfig({ tlsInspection: false }).tlsInspection, true, "an old stored 'off' that nobody chose does not count");
+  assert.equal(normalizeConfig({ inspectSkipGoogle: false }).inspectSkipGoogle, false);
+  assert.equal(normalizeConfig({}).inspectSkipGoogle, true);
   // Tolerant on purpose (pasted links and wildcards become plain hostnames); junk is dropped; always lower-case.
   assert.deepEqual(normalizeConfig({ inspectBypass: ["MyBank.com", "bad host!", "https://x.com/y", "pay.example.org", "*.wild.com"] }).inspectBypass.sort(),
     ["mybank.com", "pay.example.org", "wild.com", "x.com"]);
-  const p = buildAgentPolicy(normalizeConfig({ tlsInspection: true, inspectBypass: ["mybank.com"] }), []);
+  const p = buildAgentPolicy(normalizeConfig({ inspectBypass: ["mybank.com"] }), []);
   assert.equal(p.tlsInspection, true);
-  assert.deepEqual(p.inspectBypass, ["mybank.com"]);
-  assert.equal(buildAgentPolicy(normalizeConfig({}), []).tlsInspection, false);
-  assert.deepEqual(summarizeConfigChange(normalizeConfig({}), normalizeConfig({ tlsInspection: true })).filter((l) => l.startsWith("Browser inspection")), ["Browser inspection: on"]);
+  assert.deepEqual([...p.inspectBypass].sort(), ["google.com", "mybank.com"], "Google is skipped too");
+  assert.ok(p.restrictions.includes("no_config_credentials"), "with inspection on the certificate cannot be removed");
+  const off = buildAgentPolicy(normalizeConfig({ tlsInspectionOff: true, inspectSkipGoogle: false }), []);
+  assert.equal(off.tlsInspection, false);
+  assert.deepEqual(off.inspectBypass, []);
+  assert.ok(!off.restrictions.includes("no_config_credentials"));
+  assert.deepEqual(summarizeConfigChange(normalizeConfig({ tlsInspectionOff: true }), normalizeConfig({})).filter((l) => l.startsWith("Browser inspection")), ["Browser inspection: on"]);
 });
 
 test("safe search, YouTube Restricted Mode everywhere and picture blocking are off unless chosen, and reach the phone", async () => {

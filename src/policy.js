@@ -651,8 +651,14 @@ export function normalizeConfig(input) {
     blockAppGroups: [...new Set((Array.isArray(c.blockAppGroups) ? c.blockAppGroups : []).filter((g) => Object.prototype.hasOwnProperty.call(APP_GROUPS, g)))],
     userMenu: normalizeUserMenu(c.userMenu),
     // Optional: the Agent installs a certificate of its own and runs a local proxy, so browsers' secure
-    // pages can be filtered by what is on them (see TlsInspection.java). Off unless chosen, per phone.
-    tlsInspection: c.tlsInspection === true,
+    // pages can be filtered by what is on them (see TlsInspection.java). On unless switched off, per phone:
+    // the certificate is always there, and what the filter does with it is set under Filter level.
+    // Only an explicit choice to turn it off counts (phones saved before this default stored "off" without anyone choosing it).
+    tlsInspectionOff: c.tlsInspectionOff === true,
+    tlsInspection: c.tlsInspectionOff !== true,
+    // Google (search, Gmail...) is not looked inside: through our filter Google asks "are you a robot".
+    // SafeSearch is forced by name anyway, and a bad search is caught on the phone's screen.
+    inspectSkipGoogle: c.inspectSkipGoogle !== false,
     // Sites never looked inside even when inspection is on (banks and the like), added to the Agent's built-in list.
     inspectBypass: normalizeDnsAllowlist(c.inspectBypass),
     // Android caps any single freeze at 90 days and forces a 60-day gap before the next one --
@@ -838,7 +844,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
     else show.add(pkg);
   }
   const restrictions = Object.entries(RESTRICTIONS)
-    .filter(([k]) => cfg.restrictions[k])
+    .filter(([k]) => cfg.restrictions[k] || (k === "configCredentialsDisabled" && cfg.tlsInspection)) // with inspection on, the certificate cannot be removed
     .map(([, v]) => v.key);
   // The phone checks these against its own clock, so apps open and close on time even offline.
   const schedules = {};
@@ -848,7 +854,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // homeScreen: the agent becomes the home screen; only `allowed` apps can be opened. A "soft"
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
-  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
+  const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectSkipGoogle ? [...new Set([...cfg.inspectBypass, "google.com"])] : cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
   if (cfg.approveNew && known) out.known = [...known];
   out.userMenu = cfg.userMenu;
   out.screenTime = cfg.screenTime;
@@ -990,6 +996,7 @@ export function summarizeConfigChange(before, after) {
   if ((before.pictureGuard || "off") !== (after.pictureGuard || "off")) lines.push("Pictures in our Browser: " + ({ off: "all shown", nudity: "may-be-nude hidden", skin: "skin covered" })[after.pictureGuard || "off"]);
   if (!!before.blockImages !== !!after.blockImages) lines.push("Block pictures on web pages: " + (after.blockImages ? "on" : "off"));
   if (!!before.tlsInspection !== !!after.tlsInspection) lines.push("Browser inspection: " + (after.tlsInspection ? "on" : "off"));
+  if (!!before.inspectSkipGoogle !== !!after.inspectSkipGoogle) lines.push("Inspecting Google: " + (after.inspectSkipGoogle ? "skipped" : "on"));
   if ((before.youtubeMode || "auto") !== (after.youtubeMode || "auto")) lines.push("YouTube in the browsers: " + (after.youtubeMode || "auto"));
   if (JSON.stringify(before.frpAccounts) !== JSON.stringify(after.frpAccounts)) lines.push("Factory Reset Protection accounts changed");
   if (JSON.stringify(Object.keys(before.sites || {})) !== JSON.stringify(Object.keys(after.sites || {}))) lines.push("Sites list changed");

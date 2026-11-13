@@ -35,10 +35,17 @@ public final class BadSearch {
             String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
             String path = u.getPath() == null ? "" : u.getPath();
             String key = null;
-            if (host.matches("(www\\.)?google\\.[a-z.]+") && (path.equals("/search") || path.equals("/webhp"))) key = "q";
+            if (host.matches("(.+\\.)?google\\.[a-z.]+") && (path.equals("/search") || path.equals("/webhp") || path.equals("/m/search"))) key = "q";
             else if (host.endsWith("bing.com") && path.startsWith("/search")) key = "q";
             else if (host.endsWith("duckduckgo.com")) key = "q";
-            else if (host.endsWith("search.yahoo.com")) key = "p";
+            else if (host.endsWith("yahoo.com") && path.startsWith("/search")) key = "p";
+            else if (host.endsWith("search.brave.com") && path.startsWith("/search")) key = "q";
+            else if (host.endsWith("ecosia.org") && path.startsWith("/search")) key = "q";
+            else if (host.endsWith("qwant.com")) key = "q";
+            else if (host.endsWith("startpage.com") && path.contains("search")) key = "query";
+            else if (host.matches("(.+\\.)?yandex\\.[a-z.]+") && path.startsWith("/search")) key = "text";
+            else if (host.endsWith("baidu.com") && (path.equals("/s") || path.equals("/m"))) key = "wd";
+            else if (host.endsWith("youtube.com") && path.equals("/results")) key = "search_query";
             else if (SitePolicy.isYoutubeHost(host) && path.equals("/results")) key = "search_query";
             if (key == null || u.getRawQuery() == null) return null;
             for (String part : u.getRawQuery().split("&")) {
