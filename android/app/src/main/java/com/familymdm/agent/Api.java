@@ -30,6 +30,14 @@ final class Api {
     // does not answer; the next call tries the Pi again, so the phone is back on it as soon as it is.
     private static volatile String primary, backup;
     static volatile boolean onBackup; // the last answer came from the backup
+    private static volatile String primaryProblem; // why the Raspberry Pi did not take the last check-in (for the dashboard's activity log)
+
+    /** Why the Raspberry Pi failed the last check-in (and the backup was used), once; null when it did not. */
+    static String takePrimaryProblem() {
+        String p = primaryProblem;
+        primaryProblem = null;
+        return p;
+    }
     // After the Pi failed to answer, go straight to the backup for a minute (instead of waiting 15 seconds at every call
     // for a Pi that is off), then try the Pi again.
     private static volatile long primaryDownUntil;
@@ -101,14 +109,18 @@ final class Api {
         if (System.currentTimeMillis() < primaryDownUntil) {
             down = true; // it failed a moment ago: do not wait for it again right now
         } else {
+            long started = System.currentTimeMillis();
             try {
                 JSONObject r = postOnce(p + path, body, bearer);
                 onBackup = false;
                 return r;
             } catch (HttpException e) {
                 down = e.code == 502 || e.code == 503 || e.code == 504; // the front door answered for a Pi that is off; any other error means the Pi itself answered
+                String why = String.valueOf(e.getMessage());
+                primaryProblem = "HTTP " + e.code + " after " + (System.currentTimeMillis() - started) + " ms" + (why.isEmpty() ? "" : ": " + why.substring(0, Math.min(100, why.length())));
             } catch (IOException e) {
                 down = true;
+                primaryProblem = e.getClass().getSimpleName() + " after " + (System.currentTimeMillis() - started) + " ms: " + e.getMessage();
             }
             if (down) primaryDownUntil = System.currentTimeMillis() + PRIMARY_RETRY_MS;
         }
