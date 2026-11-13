@@ -118,11 +118,11 @@ test("YouTube Music: Settings keeps General, Downloads and Language, loses Priva
   assert.equal(hidden(about), false, "an artist's own About section is not touched");
 });
 
-test("YouTube Music: the side menu has no Explore or Upgrade; Home and Library stay", () => {
+test("YouTube Music: the side menu has no Explore, Upgrade or Open App; Home and Library stay", () => {
   let rows;
-  const s = stand("/", (root) => { const g = new El("ytmusic-guide-renderer", "", root); rows = ["Home", "Explore", "Library", "Upgrade"].map((t) => row(g, t)); });
+  const s = stand("/", (root) => { const g = new El("ytmusic-guide-renderer", "", root); rows = ["Home", "Explore", "Library", "Upgrade", "Open App"].map((t) => row(g, t)); });
   s.run("music_clean.js"); s.tick();
-  assert.deepEqual(rows.map(hidden), [false, true, false, true]);
+  assert.deepEqual(rows.map(hidden), [false, true, false, true, true]);
 });
 
 test("YouTube Music: Restricted mode is switched on when the parent forces it, and cannot be turned off there", () => {
@@ -157,6 +157,14 @@ test("YouTube Music: an Ask button under each song, artist and album that is not
   songBtn.onclick({ preventDefault() {}, stopPropagation() {} });
   assert.match(s.loc.href, /^mdmguard:\/\/request\?u=https%3A%2F%2Fmusic\.youtube\.com%2Fwatch%3Fv%3DZZZZZZZZZZZ&note=Asked%20from%20YouTube%20Music%3A%20Some%20song&stay=1$/);
   assert.equal(songBtn.textContent, "Asked ✓");
+});
+
+test("YouTube Music: the top result card gets a button for the artist, not a second one for its first song", () => {
+  let card;
+  const s = stand("/results", (root) => { card = new El("ytmusic-card-shelf-renderer", "", root); new El("a", "", card, { href: "https://music.youtube.com/channel/UCabcdefghijklmnopqrstuv" }); new El("yt-formatted-string", "Avraham Fried", card); new El("a", "", card, { href: "https://music.youtube.com/watch?v=ZZZZZZZZZZZ" }); });
+  s.run("music_ask.js"); s.tick();
+  const buttons = card.children.filter((c) => c.className === "mdm-ask");
+  assert.deepEqual(buttons.map((b) => b.textContent), ["Ask for this artist"]);
 });
 
 test("YouTube Music: the song list stops above the bar of the song that is playing, and Library shows the downloaded songs", () => {

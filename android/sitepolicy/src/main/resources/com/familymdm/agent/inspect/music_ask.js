@@ -33,7 +33,9 @@
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
       if (item.getAttribute('data-mdm-ask')) continue;
-      var a = item.querySelector(LINKS);
+      // The top result card holds the artist (or album) and a few of its songs: its own button is for the artist / album, the songs have theirs.
+      var isCard = String(item.tagName).toLowerCase() === 'ytmusic-card-shelf-renderer';
+      var a = isCard ? item.querySelector('a[href*="/channel/"], a[href*="/browse/"]') : item.querySelector(LINKS);
       if (!a) continue;
       item.setAttribute('data-mdm-ask', '1');
       var what = identify(a.href || '');
