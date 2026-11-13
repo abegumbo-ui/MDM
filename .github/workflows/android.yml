@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "android/**"
+      - "android-jelly/**"
       - ".github/workflows/android.yml"
   workflow_dispatch:
 

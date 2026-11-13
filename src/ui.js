@@ -796,7 +796,7 @@ function renderDeviceDetail(m,d){
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device'],
   ['SafeSearch on or off','browser','access'],['Filter level: Approved sites only, Moderate, Strict (every browser)','browser','access'],['Block ads','browser','access'],['Sites that refuse ad blocking (ads covered in black)','browser','access'],
   ['Pictures: hide nudity, cover skin (men, women), no pictures on some sites','browser','access'],['Blocked words','browser','access'],['Block image search','browser','access'],['Filter schedule','browser','access'],['YouTube Restricted Mode everywhere','browser','access'],
-  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['Let them search YouTube and ask for videos','browser','youtube'],['Allow signing in to YouTube','browser','youtube'],['Blocked screens: remove a screen that was blocked on the phone','apps','blocking'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
+  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['Let them search YouTube and ask for videos','browser','youtube'],['Allow signing in to YouTube','browser','youtube'],['Blocked screens: remove a screen that was blocked on the phone','apps','blocking'],['Protect the MDM app: its accessibility switch and the certificate can not be turned off or removed in Settings','apps','blocking'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
   ['Allowed sites, site requests, allow for a while (1 hour, 2 hours, custom)','browser','sites'],['Add-ons: put in or take out YouTube, the Browser add-on, the Browser app','apps','addons'],['YouTube icon on the phone','apps','addons'],['Uninstall an app','apps','regular'],['Browser add-on, make this the only browser, Chrome settings (no incognito)','browser','apps'],['Sites visited, searches list','browser','history'],['Release device, remove management','device','device'],['Check in every 15 seconds while the dashboard is open','device','device']];
  const sWrap=h('div',{class:'search',style:'margin:0;flex:1 1 320px;min-width:220px;max-width:100%'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
@@ -1563,14 +1563,10 @@ function renderAddons(m,dv){const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube'),
   h('div',{class:'mute small'},'A YouTube icon on the phone, built into the MDM app. It follows Browser → YouTube (only what you allow, restricted, or off).')),
   sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'YouTube goes on the phone at its next check-in.':'YouTube comes off the phone at its next check-in.')}))));
- m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser add-on'),
-  h('div',{class:'mute small'},'A lighter browser built into the MDM app, with its own icon. Opens only allowed sites.')),
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser'),
+  h('div',{class:'mute small'},'The full Browser (tabs, favorites, history, the Allow list), built into the MDM app with its own icon: not a second app, nothing to connect, nothing separate to uninstall. It follows every rule on this dashboard.')),
   sw(c.browserAddonEnabled,function(on){c.browserAddonEnabled=on;save(on?'Browser add-on goes on at the next check-in.':'Browser add-on comes off at the next check-in.')}))));
- const inst=has('com.familymdm.browser');
- m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser app'),
-  h('div',{class:'mute small'},inst?'Installed. The full Browser (tabs, YouTube, Allow list), following this phone\'s rules by itself.':'Not on the phone. The full Browser (tabs, YouTube, Allow list).')),
-  inst?btn('Take out','outline',function(){if(!confirm('Uninstall the Browser app from '+dv.name+'?'))return;cmd('uninstall',{packageName:'com.familymdm.browser'},'The Browser comes off at the next check-in.')})
-      :btn('Put in','',function(){cmd('install',{url:'https://github.com/abegumbo-ui/MDM/releases/download/latest/mdm-browser.apk'},'The Browser goes on at the next check-in.')}))));}
+}
 /** SafeSearch on or off, on its own (on unless switched off). */
 function renderSafeSearch(m,dv){const c=dv.config;if(dv.isBrowser||dv.isWindows)return;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:600;font-size:17px'},'SafeSearch'),
@@ -2459,6 +2455,9 @@ function renderBlockedScreens(m,dv){
  const c=dv.config,list=c.blockedScreens||[];
  const card=h('div',{class:'card'},h('h2',null,'Blocked screens ('+list.length+')'),
   h('div',{class:'mute'},'Screens picked on the phone with ✓ Block this screen (a Settings page, a screen of an app). Each closes the moment it opens. Remove one here and the phone opens it again at its next check-in.'));
+ card.append(h('div',{class:'setting',style:'margin-top:10px'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect the MDM app and the certificate'),
+  h('div',{class:'mute small'},'Closes, the moment they open: the MDM app\'s own Settings pages (its accessibility switch, App info) and the pages that show or remove the phone\'s certificate. So neither can be turned off. Needs the accessibility switch on; not applied during an emergency unlock.')),
+  sw(c.protectScreens!==false,async function(on){c.protectScreens=on;try{await saveConfigFor(dv,on?'Those Settings pages are protected.':'Those Settings pages open normally.')}catch(e){snack(e.message,1)}render()})));
  if(!list.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
  for(const s of list){const p=s.split('\u001f');
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},p.slice(1).join(' › ')),h('div',{class:'mute small'},appLabelOf(dv,p[0]))),

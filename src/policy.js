@@ -596,6 +596,8 @@ export function normalizeConfig(input) {
     youtubeSearchPictures: c.youtubeSearchPictures === "skin" ? "skin" : "hide",
     // Signing in to YouTube (and Google's sign-in page) opens only when the parent allowed it.
     youtubeSignIn: c.youtubeSignIn === true,
+    // The phone closes the Settings pages of the MDM app (accessibility switch, App info) and the certificate pages.
+    protectScreens: c.protectScreens !== false,
     // Whole screens of apps closed the moment they open (picked on the phone with ✓ Block this screen).
     blockedScreens: normalizeBlockedScreens(c.blockedScreens),
     // Sites that will not open with ads blocked: their ads load but are covered (our Browser).
@@ -876,6 +878,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.youtubeSearch = !cfg.youtubeSearchOff;
   out.youtubeSearchPictures = cfg.youtubeSearchPictures;
   out.youtubeSignIn = cfg.youtubeSignIn;
+  out.protectScreens = cfg.protectScreens;
   out.blockedScreens = cfg.blockedScreens;
   out.adsCoveredSites = cfg.adsCoveredSites;
   out.adsAutoCover = !cfg.adsAutoCoverOff;
@@ -966,6 +969,7 @@ export function summarizeConfigChange(before, after) {
   if (!!before.blockWaStatus !== !!after.blockWaStatus) lines.push("WhatsApp Status: " + (after.blockWaStatus ? "closed" : "allowed"));
   if (JSON.stringify(before.blockedParts || []) !== JSON.stringify(after.blockedParts || [])) lines.push("Blocked parts of apps: " + (after.blockedParts || []).length);
   if (JSON.stringify(before.blockedScreens || []) !== JSON.stringify(after.blockedScreens || [])) lines.push("Blocked whole screens of apps: " + (after.blockedScreens || []).length);
+  if (!!before.protectScreens !== !!after.protectScreens) lines.push("Protected Settings pages (MDM app, certificate): " + (after.protectScreens ? "on" : "off"));
   if (!!before.youtubeSignIn !== !!after.youtubeSignIn) lines.push("Signing in to YouTube: " + (after.youtubeSignIn ? "allowed" : "not allowed"));
   if (!!before.messageAlerts !== !!after.messageAlerts) lines.push("Message alerts: " + (after.messageAlerts ? "on" : "off"));
   if (JSON.stringify(before.messageWords || []) !== JSON.stringify(after.messageWords || []) || JSON.stringify(before.messageGroups || null) !== JSON.stringify(after.messageGroups || null)) lines.push("Message alert words changed");

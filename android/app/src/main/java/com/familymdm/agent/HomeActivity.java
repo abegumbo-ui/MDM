@@ -356,9 +356,12 @@ public class HomeActivity extends Activity {
         t.addView(name);
 
         t.setOnClickListener(v -> {
-            Intent launch = getPackageManager().getLaunchIntentForPackage("com.familymdm.browser");
-            if (launch != null) startActivity(launch);
-            else Toast.makeText(this, "The Browser app isn't installed on this phone yet.", Toast.LENGTH_SHORT).show();
+            Intent launch = new Intent().setClassName(getPackageName(), "org.lineageos.jelly.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                startActivity(launch);
+            } catch (Exception e) {
+                Toast.makeText(this, "The Browser could not open.", Toast.LENGTH_SHORT).show();
+            }
         });
         return t;
     }

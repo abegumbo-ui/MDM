@@ -8,7 +8,7 @@ def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
 
 android {
     namespace 'com.familymdm.agent'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.familymdm.agent"
@@ -21,6 +21,8 @@ android {
         // repository variable), so enrolling only ever needs typing a code, never the server too.
         // Leave it unset to build a generic APK that still asks for the server once.
         resValue "string", "default_server", (System.getenv("DASHBOARD_URL") ?: "")
+        // Where the Browser's "check for updates" looks (unused here: this app updates itself).
+        resValue "string", "update_url", (System.getenv("GITHUB_REPOSITORY") ? "https://github.com/" + System.getenv("GITHUB_REPOSITORY") + "/releases/download/latest/browser-version.json" : "")
     }
 
     // Two outputs from the same source, same applicationId, same signing key:
@@ -88,6 +90,8 @@ android {
 
 dependencies {
     implementation project(':sitepolicy')
+    // The family Browser, as an add-on of this app (its icon is turned on from the dashboard).
+    implementation project(':browserlib')
     // The on-phone photo checker (NudityCheck); the model file comes from the "models" release at build time.
     implementation 'org.tensorflow:tensorflow-lite:2.16.1'
     // The real Play Store protocol, for PlayUpdates.kt -- see SETUP.md's "Keeping a few apps

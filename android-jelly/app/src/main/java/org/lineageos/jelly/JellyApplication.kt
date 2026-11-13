@@ -22,7 +22,7 @@ class JellyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Observe dynamic colors changes
-        DynamicColors.applyToActivitiesIfAvailable(this)
+        // Observe dynamic colors changes (not inside the MDM app: its own screens keep their look)
+        if (packageName != "com.familymdm.agent") DynamicColors.applyToActivitiesIfAvailable(this)
     }
 }

@@ -342,19 +342,59 @@ final class PartBlocker {
     private static long lastSigScan;
     private static long lastSigBack;
 
-    /** Is the screen open now one that was blocked by its fingerprint? Backs out of it if so. */
+    // ---------- built-in protection: the MDM app's own Settings pages and the certificate pages ----------
+
+    /** The Settings pages where the certificate is listed or removed (their titles, as shown at the top of the page). */
+    private static final String[] CERTIFICATE_PAGES = {"user credentials", "trusted credentials", "view security certificates",
+            "user certificates", "install a certificate", "install from device storage", "ca certificate", "credential storage",
+            "security certificates", "certificates"};
+
+    private static boolean protectOn(Context c) {
+        return PhoneRules.current(c).optBoolean("protectScreens", true);
+    }
+
+    private static boolean isSettingsApp(String pkg) {
+        return pkg != null && pkg.contains("settings") && !pkg.equals("com.familymdm.agent");
+    }
+
+    /**
+     * "Protect the MDM app": in Settings, the page of this app (its accessibility switch, App info, notifications...)
+     * and the pages that list or remove the phone's certificate close the moment they open. Off from the dashboard,
+     * and not applied during an emergency unlock.
+     */
+    private static boolean protectedPage(Context c, List<String> top) {
+        String label = appLabel(c, c.getPackageName());
+        for (int i = 0; i < top.size() && i < 4; i++) {
+            String t = top.get(i);
+            if (label != null && t.equalsIgnoreCase(label)) return true;
+            if (i < 3) for (String p : CERTIFICATE_PAGES) if (t.equalsIgnoreCase(p)) return true;
+        }
+        return false;
+    }
+
+    /** Is the screen open now one that was blocked by its fingerprint (or a protected Settings page)? Backs out of it if so. */
     private static boolean screenBlockedNow(AccessibilityService s, String pkg) {
         java.util.Set<String> all = blockedScreens(s);
-        if (all.isEmpty()) return false;
+        boolean guard = isSettingsApp(pkg) && protectOn(s);
         List<String> mine = new ArrayList<>();
         for (String sig : all) if (sig.startsWith(pkg + SEP)) mine.add(sig);
-        if (mine.isEmpty()) return false;
+        if (mine.isEmpty() && !guard) return false;
         long now = System.currentTimeMillis();
         if (now - lastSigScan < 250) return false;
         lastSigScan = now;
         AccessibilityNodeInfo root = s.getRootInActiveWindow();
         if (root == null || root.getPackageName() == null || !pkg.contentEquals(root.getPackageName())) return false;
         List<String> here = topTexts(root, 14);
+        if (guard && protectedPage(s, here)) {
+            if (now - lastSigBack > 700) {
+                lastSigBack = now;
+                s.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
+                Agent.addEvent(s, "restriction", "A protected Settings page opened (" + String.join(" › ", here.subList(0, Math.min(3, here.size()))) + ") -- closed instantly");
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                        android.widget.Toast.makeText(s.getApplicationContext(), "This setting is protected on this phone.", android.widget.Toast.LENGTH_SHORT).show());
+            }
+            return true;
+        }
         for (String sig : mine) {
             String[] p = sig.split(SEP);
             boolean all3 = p.length > 1;

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The family Browser's screens, as part of the MDM app (see android/browserlib/build.gradle).
+  Differences from android-jelly's own manifest: no <application> attributes, no MAIN/LAUNCHER entry
+  (the Browser icon is the MDM app's "Browser" add-on alias), its own task so it never mixes with the
+  MDM app's screens, and permissions are declared in the MDM app's manifests.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <activity
+            android:name="org.lineageos.jelly.MainActivity"
+            android:label="Browser"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.familymdm.agent.browser"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize"
+            android:documentLaunchMode="always"
+            android:exported="true"
+            android:theme="@style/Theme.Jelly.NoActionBar"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:scheme="content" />
+                <data android:mimeType="text/html" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="application/xhtml+xml" />
+                <data android:mimeType="application/vnd.wap.xhtml+xml" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="org.lineageos.jelly.history.HistoryActivity"
+            android:label="@string/history_title"
+            android:taskAffinity="com.familymdm.agent.browser"
+            android:theme="@style/Theme.Jelly.NoActionBar" />
+
+        <activity
+            android:name="org.lineageos.jelly.favorite.FavoriteActivity"
+            android:label="@string/favorite_title"
+            android:taskAffinity="com.familymdm.agent.browser"
+            android:theme="@style/Theme.Jelly.NoActionBar" />
+
+        <activity
+            android:name="org.lineageos.jelly.SettingsActivity"
+            android:label="@string/settings_title"
+            android:taskAffinity="com.familymdm.agent.browser"
+            android:theme="@style/Theme.Jelly.Settings" />
+
+        <activity
+            android:name="org.lineageos.jelly.shortcut.BackgroundShortcutActivity"
+            android:label="@string/background_shortcuts_title"
+            android:taskAffinity="com.familymdm.agent.browser"
+            android:theme="@style/Theme.Jelly.NoActionBar" />
+
+        <service
+            android:name="org.lineageos.jelly.shortcut.BackgroundShortcutService"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="WebView Service" />
+        </service>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider" />
+        </provider>
+
+        <receiver
+            android:name="com.familymdm.browser.Updater$Result"
+            android:exported="false" />
+
+        <meta-data
+            android:name="android.webkit.WebView.EnableSafeBrowsing"
+            android:value="true" />
+
+    </application>
+</manifest>

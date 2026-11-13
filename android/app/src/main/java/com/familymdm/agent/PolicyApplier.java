@@ -174,6 +174,7 @@ final class PolicyApplier {
         }
         applyFrp(c, dpm, admin, policy.optJSONArray("frpAccounts"));
         SelfSetup.run(c, dpm, admin); // grants itself what it needs, switches its accessibility service on, keeps it on
+        removeOldBrowserApp(c); // the Browser is an add-on of this app now: the separate Browser app goes
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
         applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
         applyAccessibilityLock(c, dpm, admin, policy.optBoolean("blockAccessibility", false));
@@ -586,6 +587,23 @@ final class PolicyApplier {
         return out;
     }
 
+    /** The Browser is part of this app now. A separate Browser app left over from before is removed once. */
+    private static void removeOldBrowserApp(Context c) {
+        try {
+            c.getPackageManager().getPackageInfo("com.familymdm.browser", 0);
+        } catch (PackageManager.NameNotFoundException e) {
+            return; // not installed
+        }
+        if (Agent.prefs(c).getLong("oldBrowserRemoveAt", 0) > System.currentTimeMillis() - 6 * 3600 * 1000L) return; // tried lately
+        Agent.prefs(c).edit().putLong("oldBrowserRemoveAt", System.currentTimeMillis()).apply();
+        try {
+            Installer.uninstall(c, "com.familymdm.browser");
+            Agent.addEvent(c, "app", "The separate Browser app was removed: the Browser is part of this app now");
+        } catch (Exception e) {
+            Log.w(TAG, "could not remove the old Browser app: " + e);
+        }
+    }
+
     /**
      * Android shows the Wi-Fi network name only to apps holding the location permission while Location is on.
      * This grants the permission to the agent and turns the setting on. No location is read or reported.
@@ -889,7 +907,7 @@ final class PolicyApplier {
             // installed again, and then it would look "not connected" (the connect screen) until a rule changed.
             Bundle held = null;
             try {
-                held = dpm.getApplicationRestrictions(admin, "com.familymdm.browser");
+                held = dpm.getApplicationRestrictions(admin, c.getPackageName());
             } catch (Exception ignored) {
             }
             boolean holdsRules = held != null && held.containsKey("sites");
@@ -913,6 +931,9 @@ final class PolicyApplier {
             b.putBoolean("youtubeSearch", policy.optBoolean("youtubeSearch", true));
             b.putString("youtubeSearchPictures", policy.optString("youtubeSearchPictures", "hide"));
             b.putBoolean("youtubeSignIn", policy.optBoolean("youtubeSignIn", false));
+            // The Browser is part of this app now (its rules are read back from this app's own settings); a
+            // leftover separate Browser app, if any, gets them too until it is removed (removeOldBrowserApp).
+            dpm.setApplicationRestrictions(admin, c.getPackageName(), b);
             dpm.setApplicationRestrictions(admin, "com.familymdm.browser", b);
             Agent.prefs(c).edit().putString("browserConfigApplied", cacheKey).apply();
             errorCleared(c, "browserConfig");
