@@ -416,6 +416,7 @@ public class YoutubeAddonActivity extends Activity {
         }
         if (music()) {
             if (!p.optBoolean("youtubeSignIn", false)) js.append("window.__mdmNoSignIn=true;");
+            if (!"show".equals(p.optString("musicPictures", "hide"))) js.append("window.__mdmHidePics=true;"); // album art, thumbnails and video frames stay hidden
             String clean = YoutubeScripts.load("music_clean.js");
             if (clean != null) js.append(clean);
         }
@@ -447,7 +448,7 @@ public class YoutubeAddonActivity extends Activity {
                 JSONObject s = a.optJSONObject(i);
                 if (s == null || SitePolicy.isExpired(s)) continue;
                 String thumb = s.optString("thumb", "");
-                if (!thumb.startsWith("https://")) thumb = "";
+                if (!thumb.startsWith("https://") || (music() && !"show".equals(policy().optString("musicPictures", "hide")))) thumb = "";
                 if ("youtube".equals(s.optString("type"))) {
                     if (music()) continue; // channels are YouTube's, not Music's
                     String handle = s.optString("id", "");

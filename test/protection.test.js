@@ -134,3 +134,16 @@ test("'turn off all restrictions for a while': cleaned, capped at 24 hours, sent
   assert.ok(summarizeConfigChange(normalizeConfig({}), c).includes("ALL restrictions turned off for a while"));
   assert.ok(summarizeConfigChange(c, normalizeConfig({})).includes("Restrictions back on"));
 });
+
+test("YouTube Music: song pictures are hidden unless turned on, and songs allowed together keep the artist or album they came from", () => {
+  assert.equal(normalizeConfig({}).musicPictures, "hide");
+  assert.equal(normalizeConfig({ musicPictures: "show" }).musicPictures, "show");
+  assert.equal(normalizeConfig({ musicPictures: "whatever" }).musicPictures, "hide");
+  const c = normalizeConfig({ musicPictures: "show", sites: { a: { type: "exact", url: "https://music.youtube.com/watch?v=abcdefghijk", label: "A song", group: "  Avraham Fried  " }, b: { type: "exact", url: "https://music.youtube.com/watch?v=lmnopqrstuv", label: "Another", group: 5 } } });
+  const p = buildAgentPolicy(c, []);
+  assert.equal(p.musicPictures, "show");
+  const songs = p.sites.filter((s) => s.host === "music.youtube.com");
+  assert.equal(songs.length, 2);
+  assert.equal(songs.find((s) => s.label === "A song").group, "Avraham Fried");
+  assert.equal(songs.find((s) => s.label === "Another").group, undefined, "a group must be a name");
+});

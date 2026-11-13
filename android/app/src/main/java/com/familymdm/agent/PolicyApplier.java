@@ -1128,6 +1128,8 @@ final class PolicyApplier {
             } catch (Exception ignored) {
             }
             c.stopService(new Intent(c, DnsFilterVpnService.class));
+            // The filter is no longer running: forget that it was applied, or the next apply thinks it still is and never starts it again.
+            Agent.prefs(c).edit().putBoolean("dnsFilterApplied", false).apply();
         }
         if (keepSelfProtection) return;
         try {

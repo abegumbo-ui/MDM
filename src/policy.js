@@ -263,6 +263,8 @@ export function normalizeSite(raw) {
     ...(raw.videos === "allow" || raw.videos === "block" ? { videos: raw.videos } : {}),
     installable: raw.installable !== false,
     ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
+    // Songs allowed together (an artist or an album) are filed under its name on the dashboard.
+    ...(typeof raw.group === "string" && raw.group.trim() ? { group: raw.group.trim().slice(0, 60) } : {}),
     ...untilOf(raw),
   };
 }
@@ -605,6 +607,8 @@ export function normalizeConfig(input) {
     youtubeAddon: c.youtubeAddon === true,
     // The YouTube Music icon on the phone (same rules as YouTube).
     youtubeMusicAddon: c.youtubeMusicAddon === true,
+    // Pictures in the YouTube Music icon (album art, thumbnails, video frames): hidden unless the parent turns them on.
+    musicPictures: c.musicPictures === "show" ? "show" : "hide",
     // Downloading YouTube videos (yt-dlp, in the MDM app): on unless switched off.
     downloadsOff: c.downloadsOff === true,
     // "Only what I allow": the child may search YouTube and ask for videos (on unless switched off).
@@ -902,6 +906,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.blockAds = cfg.blockAds;
   out.youtubeAddon = cfg.youtubeAddon;
   out.youtubeMusicAddon = cfg.youtubeMusicAddon;
+  out.musicPictures = cfg.musicPictures;
   out.downloads = !cfg.downloadsOff;
   out.youtubeSearch = !cfg.youtubeSearchOff;
   out.youtubeSearchPictures = cfg.youtubeSearchPictures;
