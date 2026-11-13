@@ -1,4 +1,4 @@
-// Videos that may not be watched are covered with the family logo and cannot be tapped.
+// Videos that may not be watched are taken out of the page (nothing is shown in their place).
 //  "channels" (Only what I allow): every video that is not on the list and not from an allowed
 //    channel, on every YouTube page: beside a video, in search, on channel pages, in Shorts,
 //    playlists; channel tiles of channels that are not allowed too.
@@ -18,11 +18,7 @@
   function logo(color) {
     return 'url("data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='" + color + "' d='" + SHIELD + "'/></svg>") + '")';
   }
-  var css = '.mdm-cov{position:relative !important;pointer-events:none !important;overflow:hidden !important;background:transparent !important;min-height:40px}' +
-    '.mdm-cov *{visibility:hidden !important}' +
-    '.mdm-cov::after{content:"Not allowed";visibility:visible !important;position:absolute;left:0;top:0;right:0;bottom:0;z-index:9;display:flex;align-items:center;justify-content:center;' +
-    'padding-left:34px;box-sizing:border-box;border-radius:12px;background:' + logo('#4F46E5') + ' calc(50% - 42px) 50%/26px 26px no-repeat,#ececf4;color:#5f6368;font:500 13px Roboto,Arial,sans-serif;opacity:1 !important}' +
-    'html[dark] .mdm-cov::after,html[darker-dark-theme] .mdm-cov::after{background:' + logo('#6366F1') + ' calc(50% - 42px) 50%/26px 26px no-repeat,#1f1f2a;color:#aaa}' +
+  var css = '.mdm-cov{display:none !important}' +
     // Suggestions over and after the video, and "Up next".
     '.ytp-endscreen-content,.ytp-ce-element,.ytp-autonav-endscreen,.ytp-autonav-endscreen-countdown-container,.ytp-suggestion-set,' +
     '.ytp-pause-overlay,.ytp-videowall-still,.ytp-upnext,.ytm-autonav-bar,ytm-autonav-renderer{display:none !important}' +
