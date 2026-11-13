@@ -43,6 +43,11 @@ public final class InspectProxy implements Closeable {
         /** True to tunnel this host untouched (banks, apps that insist on their own certificates). */
         boolean bypass(String host, int port);
 
+        /** True when this host may not be reached at all (a kind of site that is closed on the phone). Checked before anything is tunnelled. */
+        default boolean refuses(String host) {
+            return false;
+        }
+
         /** Look at (and optionally edit the headers of) a request; return a Response to answer it yourself, or null to forward it. */
         Response onRequest(Request r);
 
@@ -247,6 +252,10 @@ public final class InspectProxy implements Closeable {
             if (host.startsWith("[") && host.endsWith("]")) host = host.substring(1, host.length() - 1);
             OutputStream out = client.getOutputStream();
             if (!tlsPorts.contains(port) || inspector.bypass(host, port)) {
+                if (inspector.refuses(host)) {
+                    out.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+                    return;
+                }
                 Socket up;
                 try {
                     up = upstream.open(host, port, false);

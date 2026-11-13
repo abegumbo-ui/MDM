@@ -58,11 +58,26 @@ final class TlsInspection {
     private static InspectProxy proxy;
     private static int runningPort = -1;
     private static volatile YoutubeInspector rules = new YoutubeInspector(false, new HashSet<String>());
+    private static volatile Context appContext; // for the category rule (BrowserCategoryFilter.blocksViaProxy)
 
     /** Forwards to whichever rules are current, so a policy change never needs a restart. */
     private static final InspectProxy.Inspector LIVE = new InspectProxy.Inspector() {
         public boolean bypass(String host, int port) { return rules.bypass(host, port); }
-        public InspectProxy.Response onRequest(InspectProxy.Request r) { return rules.onRequest(r); }
+        public boolean refuses(String host) {
+            Context c = appContext;
+            return c != null && BrowserCategoryFilter.blocksViaProxy(c, host);
+        }
+        public InspectProxy.Response onRequest(InspectProxy.Request r) {
+            Context c = appContext;
+            if (c != null && BrowserCategoryFilter.blocksViaProxy(c, r.host)) {
+                String dest = r.headers.get("Sec-Fetch-Dest");
+                String accept = r.headers.get("Accept");
+                boolean page = dest != null ? dest.equals("document") : accept != null && accept.startsWith("text/html");
+                if (page) return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), "This kind of site is closed on this phone.", null));
+                return new InspectProxy.Response(403, "text/plain", "Closed on this phone.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            return rules.onRequest(r);
+        }
         public boolean rewrites(InspectProxy.Request r, String ct) { return rules.rewrites(r, ct); }
         public boolean wantsIdentity(InspectProxy.Request r) { return rules.wantsIdentity(r); }
         public byte[] rewrite(InspectProxy.Request r, byte[] body) { return rules.rewrite(r, body); }
@@ -196,6 +211,7 @@ final class TlsInspection {
         }
         boolean fresh = proxy == null;
         final Context app = c.getApplicationContext();
+        appContext = app;
         // Forced SafeSearch / YouTube Restricted Mode for browsers that go through this proxy (same rule as the DNS filter).
         InspectProxy.setHostMap(host -> com.familymdm.agent.sitepolicy.SafeSearchDns.target(host,
                 !Protection.paused(app) && Agent.prefs(app).getBoolean("safeSearch", false),
