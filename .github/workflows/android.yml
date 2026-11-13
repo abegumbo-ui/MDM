@@ -78,6 +78,11 @@ jobs:
           gh release download models -p nsfw.tflite -D android/browser/src/main/assets --clobber || true
           gh release download models -p nudenet320.tflite -D android/app/src/main/assets --clobber || echo "::warning::No man/woman detector yet."
           gh release download models -p nsfw.tflite -D android/app/src/main/assets --clobber || echo "::warning::No photo checker model yet (run the Photo checker model workflow on main)."
+      - name: Check the ADB library of the phone-to-phone setup app (against a pretend phone)
+        run: |
+          mkdir -p adbout
+          javac -d adbout android/otgsetup/src/main/java/com/cgutman/adblib/*.java android/otgsetup/src/test/java/com/cgutman/adblib/AdbLibCheck.java
+          java -cp adbout com.cgutman.adblib.AdbLibCheck
       - name: Build release APKs (agent full + agent enroll + browser + lockdown + phone-to-phone setup)
         # "Release" build type here just means Gradle's normal release settings (debuggable=false,
         # our own dedicated signing key) -- these still aren't Play Store builds, just sideloaded
