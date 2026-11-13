@@ -342,11 +342,19 @@ final class PartBlocker {
 
     /** The first words on screen, top to bottom (the title, then the headings), at most max of them. */
     static List<String> topTexts(AccessibilityNodeInfo root, int max) {
+        return topTexts(root, max, 42);
+    }
+
+    /**
+     * Like topTexts, reading the top percent of the screen. Pages whose words are all lower down (a big title in the
+     * middle, only icons at the top: Samsung's Software update) need 100.
+     */
+    static List<String> topTexts(AccessibilityNodeInfo root, int max, int percent) {
         List<Object[]> found = new ArrayList<>();
         if (root == null) return new ArrayList<>();
         Rect screen = new Rect();
         root.getBoundsInScreen(screen);
-        int limit = screen.top + Math.max(1, screen.height()) * 42 / 100;
+        int limit = screen.top + Math.max(1, screen.height()) * percent / 100;
         ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
         q.add(root);
         int seen = 0;
@@ -421,6 +429,20 @@ final class PartBlocker {
     }
 
     /** Is the screen open now one that was blocked by its fingerprint (or a protected Settings page)? Backs out of it if so. */
+    /** True when a saved fingerprint (package, title, headings...) is what `list` shows: its title among the first few words, all of its words present. */
+    private static boolean sigMatches(String[] p, List<String> list) {
+        if (p.length < 2) return false;
+        boolean near = false;
+        for (int k = 0; k < Math.min(5, list.size()); k++) if (list.get(k).equalsIgnoreCase(p[1])) { near = true; break; }
+        if (!near) return false;
+        for (int i = 1; i < p.length; i++) {
+            boolean found = false;
+            for (String h : list) if (h.equalsIgnoreCase(p[i])) { found = true; break; }
+            if (!found) return false;
+        }
+        return true;
+    }
+
     private static boolean screenBlockedNow(AccessibilityService s, String pkg) {
         java.util.Set<String> all = blockedScreens(s);
         boolean guard = isSettingsApp(pkg) && protectOn(s);
@@ -443,18 +465,13 @@ final class PartBlocker {
             }
             return true;
         }
+        List<String> wide = null; // the whole screen, read only when needed (pages with no words at the top)
         for (String sig : mine) {
             String[] p = sig.split(SEP);
-            boolean all3 = p.length > 1;
-            if (all3) { // the first word is the page's title: it has to be among the first few on screen
-                boolean near = false;
-                for (int k = 0; k < Math.min(5, here.size()); k++) if (here.get(k).equalsIgnoreCase(p[1])) { near = true; break; }
-                all3 = near;
-            }
-            for (int i = 1; i < p.length && all3; i++) {
-                boolean found = false;
-                for (String h : here) if (h.equalsIgnoreCase(p[i])) { found = true; break; }
-                if (!found) all3 = false;
+            boolean all3 = sigMatches(p, here);
+            if (!all3) {
+                if (wide == null) wide = topTexts(root, 14, 100);
+                all3 = sigMatches(p, wide);
             }
             if (!all3) continue;
             if (now - lastSigBack > 700) {
@@ -529,6 +546,10 @@ final class PartBlocker {
             List<String> all = root != null && root.getPackageName() != null && pkg.contentEquals(root.getPackageName()) ? topTexts(root, 8) : new ArrayList<String>();
             List<String> top = new ArrayList<>();
             for (String t : all) if (!isGenericText(s, pkg, t) && top.size() < 3) top.add(t);
+            if (top.isEmpty() && root != null && root.getPackageName() != null && pkg.contentEquals(root.getPackageName())) {
+                // Nothing readable in the top part (a page with only icons up there): read the whole screen, two words are enough.
+                for (String t : topTexts(root, 14, 100)) if (!isGenericText(s, pkg, t) && top.size() < 2) top.add(t);
+            }
             if (!top.isEmpty()) {
                 showConfirmScreen(s, pkg, "sig:" + signatureOf(pkg, top), appLabel(s, pkg) + ": " + String.join(" › ", top));
                 return;

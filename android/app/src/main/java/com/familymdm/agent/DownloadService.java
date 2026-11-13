@@ -33,10 +33,11 @@ public class DownloadService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(2, note("Getting ready…", -1));
         final String url = intent == null ? null : intent.getStringExtra("url");
+        final boolean music = intent != null && intent.getBooleanExtra("music", false);
         final int id = startId;
         POOL.execute(() -> {
             try {
-                if (url != null) download(url);
+                if (url != null) download(url, music);
             } finally {
                 stopSelf(id);
             }
@@ -52,7 +53,7 @@ public class DownloadService extends Service {
         NotificationManager nm = getSystemService(NotificationManager.class);
         NoBadge.install(nm, CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW);
         Notification.Builder b = new Notification.Builder(this, CHANNEL)
-                .setContentTitle("Downloading a video")
+                .setContentTitle("Downloading")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setOnlyAlertOnce(true);
@@ -78,7 +79,7 @@ public class DownloadService extends Service {
         }
     }
 
-    private void download(String url) {
+    private void download(String url, boolean music) {
         String vid = SitePolicy.youtubeVideoId(url);
         try {
             prepare(getApplicationContext());
@@ -94,9 +95,10 @@ public class DownloadService extends Service {
             req.addOption("--no-playlist");
             req.addOption("--no-mtime");
             // One file with sound and picture (no merging needed): 360p, or the best single-file mp4/webm up to 720p.
-            req.addOption("-f", "18/best[ext=mp4][height<=720]/best[height<=720]/best");
+            // A song is only its sound (m4a); a video is one file with sound and picture.
+            req.addOption("-f", music ? "140/bestaudio[ext=m4a]/bestaudio/best" : "18/best[ext=mp4][height<=720]/best[height<=720]/best");
             req.addOption("-o", dir.getAbsolutePath() + "/%(id)s.%(ext)s");
-            final String title = info != null && info.getTitle() != null ? info.getTitle() : "Video";
+            final String title = info != null && info.getTitle() != null ? info.getTitle() : (music ? "Song" : "Video");
             final NotificationManager nm = getSystemService(NotificationManager.class);
             YoutubeDL.getInstance().execute(req, "dl-" + vid, (progress, eta, line) -> {
                 nm.notify(2, note(title, Math.max(0, Math.min(100, Math.round(progress)))));
@@ -104,8 +106,8 @@ public class DownloadService extends Service {
             });
             File[] files = dir.listFiles((d, name) -> name.startsWith(vid + ".") && !name.endsWith(".part") && !name.endsWith(".ytdl"));
             if (files == null || files.length == 0) throw new Exception("no file was made");
-            Downloads.add(this, vid, title, files[0].getName(), info != null ? info.getThumbnail() : null);
-            Agent.addEvent(this, "app", "Downloaded a YouTube video: " + title);
+            Downloads.add(this, vid, title, files[0].getName(), info != null ? info.getThumbnail() : null, music);
+            Agent.addEvent(this, "app", (music ? "Downloaded a YouTube Music song: " : "Downloaded a YouTube video: ") + title);
             toast("Downloaded: " + title);
         } catch (Exception e) {
             Agent.addEvent(this, "error", "A download did not work: " + e.getMessage());
