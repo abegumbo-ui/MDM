@@ -210,6 +210,7 @@ final class PolicyApplier {
             // "Block ads" asks for the level's "+ads" lists (the same level without ads until they are published).
             // On "Approved sites only" it is the ad servers alone ("ads"), so ads are blocked on every level.
             String withAds = !policy.optBoolean("blockAds", false) ? filterTier : "off".equals(filterTier) ? "ads" : filterTier + "+ads";
+            WebFilter.setExtras(c, policy.optJSONArray("filterExtras")); // news, shopping... on top of the level
             WebFilter.setPolicy(c, withAds, filterBase); // starts downloading the category lists if needed
             // "Approved sites only" applies in Chrome and every other browser too (BrowserCategoryFilter).
             Agent.prefs(c).edit().putBoolean("approvedOnlyBrowsers", "off".equals(filterTier)).apply();

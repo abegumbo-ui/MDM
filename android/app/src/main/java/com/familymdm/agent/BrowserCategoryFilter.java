@@ -59,7 +59,7 @@ final class BrowserCategoryFilter {
     /** True when the app's connections need identifying (only Strict's social rule depends on which app it is). */
     static boolean needsUid(Context c) {
         if (approvedOnly(c)) return true;
-        return WebFilter.tier(c).startsWith("strict") && WebFilter.active(c);
+        return WebFilter.active(c) && (WebFilter.tier(c).startsWith("strict") || WebFilter.hasBrowserOnly(c));
     }
 
     /** QUIC (UDP 443) hides the site name from the filter, so it is dropped while category filtering is on. */

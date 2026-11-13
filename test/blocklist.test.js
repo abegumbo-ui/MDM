@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildBinary, hash64, parseLine, TIERS, CATEGORIES } from "../tools/build-blocklists.mjs";
+import zlib from "node:zlib";
+import { buildBinary, hash64, parseLine, readTarFile, TIERS, CATEGORIES, BROWSER_ONLY } from "../tools/build-blocklists.mjs";
 
 // A plain-JS reader of the same file format BlockList.java reads, to prove the builder's output is valid.
 function contains(bin, domain) {
@@ -51,4 +52,28 @@ test("every tier only uses categories that exist, and strict includes moderate",
   for (const [tier, cats] of Object.entries(TIERS)) for (const c of cats) assert.ok(CATEGORIES[c], `${tier}: ${c}`);
   for (const c of TIERS.moderate) assert.ok(TIERS.strict.includes(c));
   assert.ok(TIERS.strict.length > TIERS.moderate.length);
+});
+
+test("the topic lists (news, shopping, games, video, dating) are read from a UT1 archive, and the biggest sites are always in", () => {
+  // A tiny gzipped tar like UT1's: press/domains and press/usage.
+  const entry = (name, text) => {
+    const body = Buffer.from(text, "utf8");
+    const h = Buffer.alloc(512);
+    h.write(name, 0, "latin1");
+    h.write(body.length.toString(8).padStart(11, "0") + "\0", 124, "latin1");
+    return Buffer.concat([h, body, Buffer.alloc((512 - (body.length % 512)) % 512)]);
+  };
+  const gz = zlib.gzipSync(Buffer.concat([entry("press/usage", "white\n"), entry("press/domains", "wsj.com\nexample-news.org\n"), Buffer.alloc(1024)]));
+  assert.equal(readTarFile(gz, "domains"), "wsj.com\nexample-news.org\n");
+  assert.equal(readTarFile(gz, "nothing"), null);
+  for (const k of ["news", "shopping", "games", "video", "dating"]) {
+    assert.ok(CATEGORIES[k], k + " is a category");
+    assert.ok(BROWSER_ONLY.includes(k), k + " closes only in browsers");
+    for (const d of CATEGORIES[k].seeds || []) assert.ok(parseLine(d), "a usable domain: " + d);
+  }
+  assert.ok(CATEGORIES.news.seeds.includes("wsj.com") && CATEGORIES.news.seeds.includes("nytimes.com"));
+  assert.ok(CATEGORIES.shopping.seeds.includes("temu.com") && CATEGORIES.shopping.seeds.includes("amazon.com"));
+  assert.ok(BROWSER_ONLY.includes("social"));
+  for (const level of ["moderate", "strict"]) for (const c of TIERS[level]) assert.ok(CATEGORIES[c], level + " names a real category: " + c);
+  assert.ok(!TIERS.moderate.includes("news") && !TIERS.strict.includes("shopping"), "the two levels do not silently include the new topics");
 });

@@ -2946,7 +2946,21 @@ Object.assign(ICONS,{
  server:'M4,1h16c1.1,0 2,0.9 2,2v6c0,1.1 -0.9,2 -2,2H4c-1.1,0 -2,-0.9 -2,-2V3c0,-1.1 0.9,-2 2,-2zM6,7.5c0.83,0 1.5,-0.67 1.5,-1.5S6.83,4.5 6,4.5 4.5,5.17 4.5,6 5.17,7.5 6,7.5zM4,13h16c1.1,0 2,0.9 2,2v6c0,1.1 -0.9,2 -2,2H4c-1.1,0 -2,-0.9 -2,-2v-6c0,-1.1 0.9,-2 2,-2zM6,19.5c0.83,0 1.5,-0.67 1.5,-1.5s-0.67,-1.5 -1.5,-1.5 -1.5,0.67 -1.5,1.5 0.67,1.5 1.5,1.5z'});
 
 /** The two things at the top of every page: which server shows this page, and the New / Legacy switch. */
+/** The page you opened is Cloudflare's, the backup copy. When the Raspberry Pi answers, go to it (once per visit; add ?stay to the address to stay here). */
+let piChecked=false;
+function maybeGoToPi(){
+ try{
+  if(piChecked||!state||!state.server)return;
+  const s=state.server;
+  if(s.runtime!=='cloudflare'||!s.primary||s.outage)return;
+  piChecked=true;
+  if(sessionStorage.getItem('stayOnCloudflare'))return;
+  if(/[?&]stay\b/.test(location.search||'')){sessionStorage.setItem('stayOnCloudflare','1');return}
+  const ctl=new AbortController();const to=setTimeout(function(){ctl.abort()},4000);
+  fetch(s.primary+'/healthz',{mode:'no-cors',cache:'no-store',signal:ctl.signal}).then(function(){clearTimeout(to);location.replace(s.primary+(location.pathname||'/')+(location.hash||''))}).catch(function(){clearTimeout(to)})
+ }catch(e){}}
 function renderBar(){
+ maybeGoToPi();
  const srv=document.getElementById('srv');
  if(srv){srv.textContent='';const s=state&&state.server;
   if(s){const pi=s.runtime==='pi';
@@ -3106,13 +3120,21 @@ function essBrowser(box,dv){
  const cur=c.browserFilter||'off';
  const lvl=h('div',{class:'card'},h('h2',null,'What can they open on the web?'));
  lvl.append(choiceList([
-  ['off','Only sites I approve','Nothing opens unless it is on your list below. The safest choice.'],
-  ['moderate','The web, without the bad sites','Blocks adult, gambling, drugs, scam and piracy sites.'],
-  ['strict','The web, without the bad sites and social media','The same, and also Facebook, Instagram, TikTok and X.']],cur,function(v){
-  if(v!=='off'&&cur==='off'&&!confirm('This opens the whole web, except the blocked kinds of sites. Filters only know sites that are already on public lists, so they cannot catch everything. Continue?'))return;
+  ['strict','Strict','Closed in every browser: adult sites, gambling, drugs and vaping, scams and malware, piracy and torrents, social media.'],
+  ['moderate','Medium','Closed in every browser: adult sites, gambling, drugs and vaping, scams and malware, piracy and torrents. Social media stays open.'],
+  ['off','Approved sites only','Nothing opens unless it is on your list below. The safest choice.']],cur,function(v){
+  if(v!=='off'&&cur==='off'&&!confirm('This opens the whole web, except the closed kinds of sites. Filters only know sites that are already on public lists, so they cannot catch everything. Continue?'))return;
   c.browserFilter=v;save(v==='off'?'Approved sites only.':'Saved. The phone downloads the lists at its next check-in and stays on approved sites only until it has them.')}));
- lvl.append(h('div',{class:'mute small',style:'margin-top:8px'},'Sites on your approved list below always open, whichever you choose. Applies to our Browser and to Chrome and other browsers on the phone.'));
+ lvl.append(h('div',{class:'mute small',style:'margin-top:8px'},'The same in Chrome, Samsung Internet, Firefox, Edge and our own Browser. The lists are rebuilt every week from public lists, so new sites are added by themselves. Sites on your approved list below always open.'));
  box.append(lvl);
+ if(cur!=='off'){
+  const ex=h('div',{class:'card'},h('h2',null,'Also close these in every browser'),h('div',{class:'mute'},'Tick what you want closed on top of '+(cur==='strict'?'Strict':'Medium')+'. These lists are kept up to date by themselves too.'));
+  const have=new Set(c.filterExtras||[]);
+  const kinds=[['social','Social media','Facebook, Instagram, TikTok, X'],['news','News','Wall Street Journal, CNN, BBC, Fox News and thousands more'],['shopping','Shopping','Temu, Amazon, eBay, Shein, Walmart and thousands more'],['games','Games','Roblox, Steam, Fortnite, Minecraft and thousands more'],['video','Video and streaming','Netflix, Hulu, Disney+, Twitch and more'],['dating','Dating','Dating sites']];
+  for(const k of kinds){
+   if(k[0]==='social'&&cur==='strict')continue; // Strict already closes it
+   ex.append(simpleSwitch(k[1],k[2],have.has(k[0]),function(on){const set=new Set(c.filterExtras||[]);if(on)set.add(k[0]);else set.delete(k[0]);c.filterExtras=[...set];save((on?'Closing ':'Opening ')+k[1].toLowerCase()+' in every browser. Phones download the list at their next check-in.')}))}
+  box.append(ex)}
  // 2. Safe browsing.
  const sf=h('div',{class:'card'},h('h2',null,'Safe browsing'));
  sf.append(simpleSwitch('SafeSearch','Google, Bing and DuckDuckGo show filtered results only, in every browser and app.',!c.safeSearchOff,function(on){c.safeSearchOff=!on;c.safeSearch=on;save(on?'SafeSearch on.':'SafeSearch off.')}));

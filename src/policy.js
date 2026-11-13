@@ -456,6 +456,14 @@ export function normalizeFilterSchedule(s) {
 }
 
 /** The filter level right now: the schedule's level inside its hours, else the normal one. tz = the phone's offset from UTC in minutes. */
+/** The kinds of site that can be closed on top of Strict or Medium, in every browser (the same ids the phones' lists use). */
+export const FILTER_EXTRAS = ["social", "news", "shopping", "games", "video", "dating"];
+export function normalizeFilterExtras(v) {
+  const out = [];
+  for (const x of Array.isArray(v) ? v : []) if (FILTER_EXTRAS.includes(x) && !out.includes(x)) out.push(x);
+  return out;
+}
+
 export function effectiveFilter(cfg, now = Date.now(), tz = 0) {
   const s = normalizeFilterSchedule(cfg && cfg.filterSchedule);
   const normal = BROWSER_FILTERS.includes(cfg && cfg.browserFilter) ? cfg.browserFilter : "off";
@@ -658,6 +666,7 @@ export function normalizeConfig(input) {
     inAppExceptions: [...new Set((Array.isArray(c.inAppExceptions) ? c.inAppExceptions : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 200),
     // A different filter level at set times, in the phone's own time (see effectiveFilter).
     filterSchedule: normalizeFilterSchedule(c.filterSchedule),
+    filterExtras: normalizeFilterExtras(c.filterExtras),
     textLog: c.textLog === true,
     textContent: c.textContent === true,
     imagesAllow: normalizeDnsAllowlist(c.imagesAllow),
@@ -870,6 +879,9 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
   const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectSkipGoogle ? [...new Set([...cfg.inspectBypass, "google.com"])] : cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
+  out.filterExtras = cfg.browserFilter === "moderate" || cfg.browserFilter === "strict"
+    ? cfg.filterExtras.filter((x) => !(cfg.browserFilter === "strict" && x === "social"))
+    : [];
   if (cfg.approveNew && known) out.known = [...known];
   out.userMenu = cfg.userMenu;
   out.screenTime = cfg.screenTime;
@@ -1000,6 +1012,9 @@ export function summarizeConfigChange(before, after) {
   if (!!before.nudityAlerts !== !!after.nudityAlerts) lines.push("Photo alerts: " + (after.nudityAlerts ? "on" : "off"));
   if (!!before.recordVideos !== !!after.recordVideos) lines.push("YouTube videos list: " + (after.recordVideos ? "on" : "off"));
   if (!!before.recordSites !== !!after.recordSites) lines.push("Sites visited list: " + (after.recordSites ? "on" : "off"));
+  if (JSON.stringify(normalizeFilterExtras(before.filterExtras)) !== JSON.stringify(normalizeFilterExtras(after.filterExtras))) {
+    lines.push("Also closed in every browser: " + (normalizeFilterExtras(after.filterExtras).join(", ") || "nothing extra"));
+  }
   if (JSON.stringify(normalizeFilterSchedule(before.filterSchedule)) !== JSON.stringify(normalizeFilterSchedule(after.filterSchedule))) {
     const s = normalizeFilterSchedule(after.filterSchedule);
     lines.push("Filter schedule: " + (s.on ? s.level + " " + s.from + " to " + s.to : "off"));
