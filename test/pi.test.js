@@ -284,6 +284,11 @@ test("the dashboard says which server it is, and each phone says which one it us
   assert.equal((await (await fetch(base + "/api/devices", { headers: { cookie } })).json())[0].via, "pi", "a phone that reached the Pi says so");
   await sync({ viaBackup: true });
   assert.equal((await (await fetch(base + "/api/devices", { headers: { cookie } })).json())[0].via, "cloudflare", "a phone that fell back says so");
+  // The dashboard shows the real last check-in, not the (at most every 10 minutes) saved one.
+  const before = Date.now();
+  await sync({});
+  const seenAt = (await (await fetch(base + "/api/devices", { headers: { cookie } })).json())[0].lastSeen;
+  assert.ok(seenAt >= before - 50, "the last check-in shown is the newest one, not a saved one up to 10 minutes old");
   await app.stop();
 
   // On Cloudflare (the backup).
