@@ -1589,6 +1589,9 @@ function renderSearchPictures(m,dv){
  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block pictures on web pages'),
   h('div',{class:'mute'},dv.isBrowser?'Pages load without any pictures in this browser.':'Pages load without pictures in our own browsers and in Chrome. Other browsers (Firefox, Samsung Internet...) only with Inspection (the last tab) on'+(c.tlsInspection?', which it is.':', which it is not right now.'))),
   sw(c.blockImages,function(v){c.blockImages=v;save()})));
+ card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Block videos on web pages'),
+  h('div',{class:'mute'},'Videos do not play on web pages (YouTube has its own choice above). Allow one site\'s videos with its "Allow videos" box in the Allow list. Works in our own browsers, in Chrome, and in other browsers with Inspection (the last tab) on.')),
+  sw(c.blockVideos,function(v){c.blockVideos=v;save()})));
  if(!c.blockImages){
   const pg=h('select',null);for(const [v,l] of [['off','Show all pictures'],['nudity','Hide pictures that may show nudity'],['skin','Hide those, and cover skin in every picture']])pg.append(new Option(l,v));
   if((c.pictureGuard||'off')==='skin'){
@@ -1600,10 +1603,10 @@ function renderSearchPictures(m,dv){
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Pictures in our Browser'),
    h('div',{class:'mute'},'Every picture on a web page is checked on the phone before it shows. "Hide" greys out a picture that may show nudity. "Cover skin" also paints grey blocks over every skin-coloured patch (faces and hands too; it goes by colour). Works in our own Browser, and in Chrome, Samsung Internet and Edge when Inspection (the last tab) is on'+(c.tlsInspection?' (it is).':' (it is not right now).')+' Videos are not covered; pages with many pictures load a little slower.')),pg))}
  if(!dv.isBrowser){
-  const ta=h('textarea',{rows:3,style:'width:100%;margin-top:8px',placeholder:'one site per line, e.g. maps.google.com'});ta.value=(c.imagesAllow||[]).join('\n');
-  card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Show pictures on these sites anyway'),
-   h('div',{class:'mute'},'Applies in Chrome, and in other browsers with Inspection on. In our own browsers, pictures are all on or all off for now.'),ta,
-   h('div',{style:'margin-top:8px'},btn('Save list','tonal',async function(){c.imagesAllow=ta.value.split(/\s+/).map(function(x){return x.trim().toLowerCase()}).filter(Boolean);await save('Saved.')})));
+  card.append(h('div',{class:'mute small',style:'margin-top:12px'},'Pictures and videos are chosen per site: open the Allow list (Sites) and use the Allow / Block boxes next to each site. Nothing to type or copy here.'));
+  const older=(c.imagesAllow||[]).slice();
+  if(older.length){card.append(h('div',{style:'font-weight:500;margin-top:8px'},'Older "show pictures anyway" sites'));
+   for(const x of older)card.append(h('div',{class:'row',style:'margin:6px 0'},h('span',{class:'grow'},x),btn('Remove','outline',function(){c.imagesAllow=(c.imagesAllow||[]).filter(function(y){return y!==x});save('Removed.')})))}
   card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Safe search and YouTube Restricted Mode run through the Agent\'s site filter, so the phone shows a VPN (key) icon while either is on.'));
  }
  m.append(card)}
@@ -1870,10 +1873,17 @@ function renderSitesEditor(m,dv){
    h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='youtube'?'YouTube channel: ':s.type==='domain'?'Whole site: ':'Exact page: ')+s.url),
    h('div',null,h('span',{class:'chip'},s.type==='youtube'?'this channel\'s videos only':s.type==='domain'?'subpages + subdomains':'this page only'),
     s.until?h('span',{class:'chip warn'},untilText(s.until)):null,
-    s.blockImages?h('span',{class:'chip warn'},'images blocked'):null,
+    (s.pictures==='allow')?h('span',{class:'chip'},'pictures always shown'):(s.pictures==='block'||s.blockImages)?h('span',{class:'chip warn'},'pictures blocked'):null,
+    s.videos==='allow'?h('span',{class:'chip'},'videos allowed'):s.videos==='block'?h('span',{class:'chip warn'},'videos blocked'):null,
     s.installable===false?h('span',{class:'chip'},'no home-screen shortcut'):null)));
   const col=h('div',{style:'display:flex;flex-direction:column;gap:6px;align-items:flex-end'});
-  if(s.type!=='youtube')col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.blockImages?true:false,onchange:async function(e){s.blockImages=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Block images'));
+  if(s.type!=='youtube'){
+   // One box for each choice, right here on the site: choosing "Allow" clears "Block" and the other way round.
+   const media=function(field,val,label){return h('label',{class:'row small'},h('input',{type:'checkbox',checked:(s[field]||(field==='pictures'&&s.blockImages?'block':''))===val,onchange:async function(e){
+     s[field]=e.target.checked?val:'';
+     if(field==='pictures')s.blockImages=s.pictures==='block';
+     await saveConfigFor(dv,'Saved.')}}),label)};
+   col.append(media('pictures','allow','Allow pictures'),media('pictures','block','Block pictures'),media('videos','allow','Allow videos'),media('videos','block','Block videos'))}
   if(s.type!=='youtube')col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.installable===false?false:true,onchange:async function(e){s.installable=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Allow home-screen shortcut'));
   col.append(btn('Remove','danger',async function(){if(!confirm('Remove '+(s.label||s.url)+' from the allowlist?'))return;delete dv.config.sites[key];await saveConfigFor(dv,'Removed.')}));
   row.append(col);list.append(row)}

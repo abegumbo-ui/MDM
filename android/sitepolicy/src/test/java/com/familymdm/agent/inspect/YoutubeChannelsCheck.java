@@ -47,6 +47,32 @@ public class YoutubeChannelsCheck {
         check(!y.wantsIdentity(inIcon), "the YouTube / Music icon: no decoding asked for");
         check(java.util.Arrays.equals(y.rewrite(inIcon, page), page), "the YouTube / Music icon: the page is left as it is");
 
+        // Videos on web pages: blocked everywhere except the sites marked "Allow videos", and always on the sites marked "Block videos" (never YouTube).
+        y.setVideoRules(true, new HashSet<>(Arrays.asList("allowed.example")), new HashSet<>(Arrays.asList("never.example")));
+        java.util.function.BiFunction<String, String, InspectProxy.Request> media = (referer, dest) -> {
+            InspectProxy.Headers h = new InspectProxy.Headers();
+            h.set("Sec-Fetch-Dest", dest);
+            if (referer != null) h.set("Referer", referer);
+            return new InspectProxy.Request("GET", "cdn.example.net", 443, true, "/files/clip", h);
+        };
+        check(y.onRequest(media.apply("https://other.example/page", "video")) != null, "videos blocked everywhere: a video on another site is refused");
+        check(y.onRequest(media.apply("https://www.allowed.example/page", "video")) == null, "...except on a site marked Allow videos");
+        check(y.onRequest(media.apply("https://other.example/page", "image")) == null, "...pictures are not touched");
+        check(y.onRequest(media.apply("https://other.example/page", "document")) == null, "...nor pages");
+        InspectProxy.Request hls = new InspectProxy.Request("GET", "cdn.example.net", 443, true, "/live/stream.m3u8?x=1", new InspectProxy.Headers());
+        check(y.onRequest(hls) != null, "a stream file (m3u8) is refused too");
+        y.setVideoRules(false, new HashSet<String>(), new HashSet<>(Arrays.asList("never.example")));
+        check(y.onRequest(media.apply("https://never.example/watch", "video")) != null, "Block videos on one site, with the switch off");
+        check(y.onRequest(media.apply("https://other.example/watch", "video")) == null, "...other sites keep their videos");
+        check(y.videosBlockedOn("never.example") && y.videosBlockedOn("www.never.example") && !y.videosBlockedOn("other.example") && !y.videosBlockedOn("m.youtube.com"), "which sites have their videos blocked");
+        InspectProxy.Headers docHeaders = new InspectProxy.Headers();
+        docHeaders.set("Sec-Fetch-Dest", "document");
+        InspectProxy.Request docOnBlocked = new InspectProxy.Request("GET", "never.example", 443, true, "/", docHeaders);
+        InspectProxy.Request docOnOther = new InspectProxy.Request("GET", "other.example", 443, true, "/", docHeaders);
+        check(y.rewrites(docOnBlocked, "text/html") && !y.rewrites(docOnOther, "text/html"), "only pages of a Block videos site are rewritten");
+        check(new String(y.rewrite(docOnBlocked, page), java.nio.charset.StandardCharsets.UTF_8).contains("video{display:none"), "its video elements are hidden and stopped");
+        y.setVideoRules(false, null, null);
+
         System.out.println(failures == 0 ? "ALL PASSED" : failures + " FAILED");
         if (failures > 0) System.exit(1);
     }

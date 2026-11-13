@@ -176,6 +176,46 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         noPictureSites = sites == null ? java.util.Collections.<String>emptySet() : sites;
     }
 
+    // ---- videos on web pages (not YouTube: it has its own choices) ----
+    private volatile boolean blockVideos;
+    private volatile Set<String> videoAllow = java.util.Collections.emptySet();
+    private volatile Set<String> noVideoSites = java.util.Collections.emptySet();
+
+    /** "Block videos": everywhere (all = true) except the sites in allow, and always on the sites in block. */
+    public void setVideoRules(boolean all, Set<String> allow, Set<String> block) {
+        blockVideos = all;
+        videoAllow = allow == null ? java.util.Collections.<String>emptySet() : allow;
+        noVideoSites = block == null ? java.util.Collections.<String>emptySet() : block;
+    }
+
+    /** Are videos blocked on pages of this site? */
+    boolean videosBlockedOn(String host) {
+        if (host == null || isYoutube(host)) return false;
+        if (inList(noVideoSites, host)) return true;
+        return blockVideos && !inList(videoAllow, host);
+    }
+
+    private static final java.util.regex.Pattern VIDEO_PATH = java.util.regex.Pattern.compile("[^?]*\\.(mp4|m4v|webm|mov|mkv|ogv|m3u8|mpd|m4s|ts)(\\?.*)?", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /** A video file or stream on a page of a site whose videos are blocked (or from such a site). */
+    private boolean videoBlocked(InspectProxy.Request r) {
+        if (!r.method.equals("GET") || (!blockVideos && noVideoSites.isEmpty())) return false;
+        String referer = SitePolicy.hostOf(r.headers.get("Referer"));
+        boolean perSite = inList(noVideoSites, referer) || inList(noVideoSites, r.host);
+        if (!blockVideos && !perSite) return false;
+        if (isYoutube(r.host) || (referer != null && isYoutube(referer))) return false;
+        String dest = r.headers.get("Sec-Fetch-Dest");
+        boolean video = "video".equals(dest) || ((dest == null || "empty".equals(dest)) && VIDEO_PATH.matcher(r.path).matches());
+        if (!video) return false;
+        if (perSite) return true;
+        return !inList(videoAllow, referer) && !inList(videoAllow, r.host);
+    }
+
+    /** Added to the pages of a site whose videos are blocked: no video element shows or plays. */
+    private static final String NO_VIDEO_TAG = "<style>video{display:none!important}</style><script>(function(){function k(){var v=document.querySelectorAll('video');"
+            + "for(var i=0;i<v.length;i++){if(v[i].__mdmNo)continue;v[i].__mdmNo=1;try{v[i].pause();v[i].removeAttribute('src');v[i].load();}catch(e){}}}"
+            + "k();new MutationObserver(k).observe(document.documentElement,{childList:true,subtree:true});})();</script>";
+
     private static boolean inList(Set<String> list, String host) {
         if (host == null) return false;
         String h = host.toLowerCase(java.util.Locale.ROOT);
@@ -266,6 +306,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     @Override
     public InspectProxy.Response onRequest(InspectProxy.Request r) {
         if (imageBlocked(r)) return new InspectProxy.Response(200, "image/gif", BLANK_GIF);
+        if (videoBlocked(r)) return new InspectProxy.Response(403, "text/plain", "Videos are turned off here.".getBytes(StandardCharsets.UTF_8));
         if (youtubeAdScript != null && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(r.url())) return new InspectProxy.Response(200, "text/plain", new byte[0]);
         if (isDocument(r)) {
             String searched = com.familymdm.agent.sitepolicy.BadSearch.query(r.url());
@@ -309,6 +350,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     @Override
     public boolean wantsIdentity(InspectProxy.Request r) {
         if (isAddon(r)) return false;
+        if (isDocument(r) && videosBlockedOn(r.host)) return true;
         return isDocument(r) && (((restricted || youtubeAdScript != null || channelScripts != null) && isYoutube(r.host)) || pageScript != null);
     }
 
@@ -316,6 +358,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     public boolean rewrites(InspectProxy.Request r, String contentType) {
         if (filtersPicture(r, contentType)) return true;
         if (isAddon(r) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return false;
+        if (videosBlockedOn(r.host) && isDocument(r) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return true;
         if (pageScript != null && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return true;
         return (restricted || youtubeAdScript != null || channelScripts != null) && isYoutube(r.host) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html");
     }
@@ -342,14 +385,16 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         String ads = youtubeAdScript != null && isYoutube(r.host) ? youtubeAdScript : null;
         String js = pageScript;
         boolean ch = channels(r.host);
-        if (!yt && !ch && js == null && ads == null) return body;
+        boolean noVideo = isDocument(r) && videosBlockedOn(r.host);
+        if (!yt && !ch && js == null && ads == null && !noVideo) return body;
         String html = new String(body, StandardCharsets.UTF_8);
         // "Only what I allow": a video (or /channel/ page) that is not allowed is refused, now that the page says who made it.
         if (ch && !channelPageAllowed(r.url(), html)) return notAllowedYoutube(r.url()).getBytes(StandardCharsets.UTF_8);
         String tag = (ads != null ? "<script>" + ads + "</script>" : "")
                 + (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" + restrictedCover() : "")
                 + (ch ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" + channelScripts : "")
-                + (js != null ? "<script>" + js + "</script>" : "");
+                + (js != null ? "<script>" + js + "</script>" : "")
+                + (noVideo ? NO_VIDEO_TAG : "");
         int head = html.toLowerCase(java.util.Locale.ROOT).indexOf("<head");
         if (head >= 0) {
             int close = html.indexOf('>', head);
