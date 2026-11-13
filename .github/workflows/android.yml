@@ -27,7 +27,7 @@ jobs:
         run: |
           curl -sSL -o json.jar https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
           mkdir -p out
-          javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SitePolicyCheck.java
+          javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockedPage.java android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SitePolicyCheck.java
           java -cp json.jar:out com.familymdm.agent.LocalPolicyCheck
           java -cp json.jar:out com.familymdm.agent.sitepolicy.SitePolicyCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SkinMask.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/NudeDetect.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SkinMaskCheck.java
