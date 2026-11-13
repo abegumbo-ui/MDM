@@ -1563,6 +1563,9 @@ function renderAddons(m,dv){const c=dv.config;
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube'),
   h('div',{class:'mute small'},'A YouTube icon on the phone, built into the MDM app. It follows Browser → YouTube (only what you allow, restricted, or off).')),
   sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'YouTube goes on the phone at its next check-in.':'YouTube comes off the phone at its next check-in.')}))));
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music'),
+  h('div',{class:'mute small'},'A YouTube Music icon on the phone, built into the MDM app, under the same rules as YouTube (only what you allow, restricted, or off).')),
+  sw(c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'YouTube Music goes on the phone at its next check-in.':'YouTube Music comes off the phone at its next check-in.')}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser'),
   h('div',{class:'mute small'},'The full Browser (tabs, favorites, history, the Allow list), built into the MDM app with its own icon: not a second app, nothing to connect, nothing separate to uninstall. It follows every rule on this dashboard.')),
   sw(c.browserAddonEnabled,function(on){c.browserAddonEnabled=on;save(on?'Browser add-on goes on at the next check-in.':'Browser add-on comes off at the next check-in.')}))));

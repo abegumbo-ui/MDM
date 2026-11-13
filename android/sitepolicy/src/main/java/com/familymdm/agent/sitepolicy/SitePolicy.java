@@ -237,7 +237,7 @@ public final class SitePolicy {
         try {
             String path = new URI(u.contains("://") ? u : "https://" + u).getPath();
             if (path == null || path.isEmpty() || path.equals("/")) return YT_HOME;
-            if (path.equals("/results")) return YT_SEARCH;
+            if (path.equals("/results") || (host.equals("music.youtube.com") && path.equals("/search"))) return YT_SEARCH;
             if (path.equals("/playlist")) return YT_CHANNEL;
             if (path.matches("^/(@[^/]+|channel/[^/]+|c/[^/]+|user/[^/]+)(/.*)?$")) return YT_CHANNEL;
         } catch (URISyntaxException e) {

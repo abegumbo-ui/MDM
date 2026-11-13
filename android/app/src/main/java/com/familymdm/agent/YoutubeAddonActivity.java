@@ -42,7 +42,12 @@ import java.util.Set;
  * Off it shows the parent's own message.
  */
 public class YoutubeAddonActivity extends Activity {
-    private static final String HOME = "https://m.youtube.com/";
+    private static final String HOME_YT = "https://m.youtube.com/";
+
+    /** Where this screen starts and where "home" goes (YouTube Music overrides it). */
+    protected String home() {
+        return HOME_YT;
+    }
     private static final String SCHEME = "mdmguard";
 
     private FrameLayout root;
@@ -124,12 +129,13 @@ public class YoutubeAddonActivity extends Activity {
         });
         root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
-        open(HOME);
+        lastAllowed = home();
+        open(home());
     }
 
     // Where "back" goes from a page that did not open: the last page that did (not the web view's history,
     // which fills with copies of the blocked page).
-    private String lastAllowed = HOME;
+    private String lastAllowed = HOME_YT;
     private boolean showingBlock;
     private boolean clearHistoryNext;
 
@@ -149,8 +155,8 @@ public class YoutubeAddonActivity extends Activity {
 
     /** Back from a page that did not open: the last page that did. False when there is none that still opens. */
     private boolean backToAllowed() {
-        String target = lastAllowed == null ? HOME : lastAllowed;
-        if (decide(target) != null) target = HOME;
+        String target = lastAllowed == null ? home() : lastAllowed;
+        if (decide(target) != null) target = home();
         if (decide(target) != null) return false; // even the home page does not open (YouTube is off): leave
         open(target);
         return true;
@@ -230,7 +236,7 @@ public class YoutubeAddonActivity extends Activity {
     private String offPage() {
         String msg = policy().optString("youtubeOffMessage", "");
         if (msg.isEmpty()) msg = "Sorry, YouTube is not available right now. Ask your administrator to open it.";
-        return page("YouTube is off", esc(msg), askButton(HOME, "Ask to open YouTube"));
+        return page("YouTube is off", esc(msg), askButton(home(), "Ask to open YouTube"));
     }
 
     private class Client extends WebViewClient {
@@ -371,7 +377,7 @@ public class YoutubeAddonActivity extends Activity {
             }
             show(page("Sent", "Your parent sees it on the dashboard. Once it is allowed, it opens here.", homeButton()));
         } else if ("home".equals(what)) {
-            open(HOME);
+            open(home());
         } else if ("back".equals(what)) {
             if (!backToAllowed()) finish();
         }
