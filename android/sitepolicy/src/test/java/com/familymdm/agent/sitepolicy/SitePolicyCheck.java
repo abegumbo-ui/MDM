@@ -88,6 +88,15 @@ public class SitePolicyCheck {
         check(SitePolicy.parse(sites("{\"type\":\"youtube\",\"kind\":\"channel\",\"id\":\"nohandle\"}")).isEmpty(), "a channel entry without a real @handle is dropped");
         check(!SitePolicy.hasYoutubeChannels(SitePolicy.parse(sites("{\"type\":\"domain\",\"url\":\"example.com\"}"))), "no channel entries means none noticed");
 
+        // ---- signing in, and what a blocked page says ----
+        check(SitePolicy.isYoutubeSignIn("https://accounts.google.com/ServiceLogin?service=youtube"), "Google's sign-in page");
+        check(SitePolicy.isYoutubeSignIn("https://m.youtube.com/signin?action_handle_signin=true"), "YouTube's own sign-in link");
+        check(!SitePolicy.isYoutubeSignIn("https://m.youtube.com/watch?v=" + v), "a video is not a sign-in");
+        check(!SitePolicy.isYoutubeSignIn("https://example.com/accounts"), "another site's /accounts is not ours");
+        check(BlockedPage.YOUTUBE_NOT_ALLOWED.equals(BlockedPage.titleFor("https://accounts.google.com/ServiceLogin")), "the sign-in page says it is a part of YouTube");
+        check(BlockedPage.YOUTUBE_NOT_ALLOWED.equals(BlockedPage.titleFor("https://m.youtube.com/feed/library")), "a YouTube page says it is a part of YouTube");
+        check(BlockedPage.NOT_ALLOWED.equals(BlockedPage.titleFor("https://example.com/")), "another site says it is a site");
+
         // ---- allowed for a while ("1 hour", "Rest of today") ----
         long soon = System.currentTimeMillis() + 3_600_000L, past = System.currentTimeMillis() - 1000L;
         List<SitePolicy.Site> timed = SitePolicy.parse(sites(

@@ -19,3 +19,8 @@ android/app/src/main/assets/nudenet320.tflite
 android-jelly/.gradle/
 android-jelly/build/
 android-jelly/app/build/
+android/browserlib/build/
+android/browserlib/schemas/
+android/sitepolicy/build/
+android/lockdown/build/
+android/browser/build/

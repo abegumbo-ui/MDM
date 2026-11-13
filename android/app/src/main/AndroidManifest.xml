@@ -43,6 +43,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:name="org.lineageos.jelly.JellyApplication"
         android:label="MDM Agent"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false"
@@ -130,9 +131,10 @@
 
         <activity-alias
             android:name=".BrowserAddon"
-            android:targetActivity=".BrowserAddonActivity"
+            android:targetActivity="org.lineageos.jelly.MainActivity"
             android:enabled="false"
             android:exported="true"
+            android:icon="@drawable/ic_browser_addon"
             android:label="Browser">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

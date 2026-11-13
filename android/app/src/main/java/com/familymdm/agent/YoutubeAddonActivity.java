@@ -127,14 +127,33 @@ public class YoutubeAddonActivity extends Activity {
         open(HOME);
     }
 
+    // Where "back" goes from a page that did not open: the last page that did (not the web view's history,
+    // which fills with copies of the blocked page).
+    private String lastAllowed = HOME;
+    private boolean showingBlock;
+    private boolean clearHistoryNext;
+
     @Override
     public void onBackPressed() {
         if (fullscreen != null) {
             web.getWebChromeClient().onHideCustomView();
             return;
         }
+        if (showingBlock) {
+            if (!backToAllowed()) super.onBackPressed();
+            return;
+        }
         if (web.canGoBack()) web.goBack();
         else super.onBackPressed();
+    }
+
+    /** Back from a page that did not open: the last page that did. False when there is none that still opens. */
+    private boolean backToAllowed() {
+        String target = lastAllowed == null ? HOME : lastAllowed;
+        if (decide(target) != null) target = HOME;
+        if (decide(target) != null) return false; // even the home page does not open (YouTube is off): leave
+        open(target);
+        return true;
     }
 
     @Override
@@ -146,12 +165,21 @@ public class YoutubeAddonActivity extends Activity {
 
     private void open(String url) {
         String page = decide(url);
-        if (page != null) show(page);
-        else web.loadUrl(url);
+        if (page != null) {
+            show(page);
+            return;
+        }
+        // Leaving a page that did not open: forget its copies in the history, so back never lands on one.
+        if (showingBlock) clearHistoryNext = true;
+        showingBlock = false;
+        lastAllowed = url;
+        web.stopLoading();
+        web.loadUrl(url);
     }
 
     private void show(String html) {
         trusted = false;
+        showingBlock = true;
         web.loadDataWithBaseURL("about:blank", html, "text/html", "utf-8", null);
     }
 
@@ -165,8 +193,11 @@ public class YoutubeAddonActivity extends Activity {
         String h = host.toLowerCase(java.util.Locale.ROOT);
         boolean yt = SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h);
         // Signing in to YouTube and its consent page are fine; nothing else opens here.
+        // Signing in opens only when the parent allowed it; YouTube's consent page and Google's page parts are fine.
+        if (SitePolicy.isYoutubeSignIn(url) && !policy().optBoolean("youtubeSignIn", false))
+            return notAllowed(url, "Signing in to YouTube is turned off on this phone.", homeButton());
         if (!yt) {
-            if (h.equals("accounts.google.com") || h.equals("consent.youtube.com") || h.equals("accounts.youtube.com") || h.endsWith(".gstatic.com")) return null;
+            if (SitePolicy.isYoutubeSignIn(url) || h.equals("consent.youtube.com") || h.endsWith(".gstatic.com")) return null;
             return notAllowed(url, "Only YouTube opens in this app.", homeButton());
         }
         String m = mode();
@@ -211,6 +242,8 @@ public class YoutubeAddonActivity extends Activity {
             if (!url.startsWith("http")) return true; // no other apps from here (intent:, market:...)
             String page = decide(url);
             if (page != null) { show(page); return true; }
+            showingBlock = false;
+            lastAllowed = url;
             return false;
         }
 
@@ -221,7 +254,11 @@ public class YoutubeAddonActivity extends Activity {
             // YouTube moves between pages without loading them: check each one.
             String page = decide(url);
             if (page != null) { view.stopLoading(); show(page); }
-            else view.evaluateJavascript("window.__mdmTrusted=" + trusted + ";", null);
+            else {
+                showingBlock = false;
+                lastAllowed = url;
+                view.evaluateJavascript("window.__mdmTrusted=" + trusted + ";", null);
+            }
         }
 
         @Override
@@ -231,6 +268,12 @@ public class YoutubeAddonActivity extends Activity {
 
         @Override
         public void onPageFinished(WebView view, String url) {
+            if (clearHistoryNext && url != null && url.startsWith("http")) {
+                clearHistoryNext = false;
+                view.clearHistory(); // only the page now showing stays in the back list
+            }
+            // Back from a stale copy of a blocked page (restored from the history) goes to the last allowed page too.
+            if ("about:blank".equals(url)) showingBlock = true;
             scripts(view, url);
         }
 
@@ -330,7 +373,7 @@ public class YoutubeAddonActivity extends Activity {
         } else if ("home".equals(what)) {
             open(HOME);
         } else if ("back".equals(what)) {
-            if (web.canGoBack()) web.goBack(); else open(HOME);
+            if (!backToAllowed()) finish();
         }
     }
 
@@ -357,7 +400,7 @@ public class YoutubeAddonActivity extends Activity {
 
     private static String notAllowed(String url, String reason, String buttons) {
         buttons = "<a class=b href='" + SCHEME + "://back'>Go back</a>" + buttons.replace("class=b href='" + SCHEME + "://ask", "class='b o' href='" + SCHEME + "://ask");
-        return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.NOT_ALLOWED,
+        return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.titleFor(url),
                 "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>" + (reason != null ? "<p>" + esc(reason) + "</p>" : "")
                         + "<p style='font-size:13px'>" + esc(url) + "</p>", buttons);
     }

@@ -10,6 +10,16 @@ public final class BlockedPage {
 
     public static final String NOT_ALLOWED = "This site is not allowed";
     public static final String CONTACT = "Contact your administrator if you have any questions.";
+    /** What a blocked page inside YouTube says (the same in the Browser and the YouTube icon). */
+    public static final String YOUTUBE_NOT_ALLOWED = "This part of YouTube is not allowed";
+
+    /** The title for an address: "This part of YouTube is not allowed" on YouTube and its sign-in, otherwise "This site is not allowed". */
+    public static String titleFor(String address) {
+        if (address == null) return NOT_ALLOWED;
+        String h = SitePolicy.hostOf(address);
+        boolean yt = h != null && (SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h) || "consent.youtube.com".equals(h));
+        return yt || SitePolicy.isYoutubeSignIn(address) ? YOUTUBE_NOT_ALLOWED : NOT_ALLOWED;
+    }
 
     private static final String SHIELD = "M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z";
 

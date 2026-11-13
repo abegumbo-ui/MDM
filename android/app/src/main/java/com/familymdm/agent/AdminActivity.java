@@ -662,12 +662,12 @@ public class AdminActivity extends Activity {
         if (ytOn) action(yt, "Open YouTube", Ui.TONAL, v -> startActivity(new Intent(this, YoutubeAddonActivity.class)));
 
         LinearLayout addon = Ui.card(this, root);
-        addon.addView(Ui.titleText(this, "Browser add-on"));
+        addon.addView(Ui.titleText(this, "Browser"));
         boolean addonOn = BrowserAddon.isEnabled(this);
         addon.addView(Ui.body(this, addonOn
-                ? "On: its own icon on this phone, right in this app -- nothing extra installed. Opens only the sites you've allowed, same rules as everywhere else here."
-                : "A lighter Browser, built into this app instead of a separate install. Turning it on adds its own icon to this phone.", true));
-        action(addon, addonOn ? "Turn off Browser add-on" : "Turn on Browser add-on", addonOn ? Ui.OUTLINED : Ui.TONAL, v -> {
+                ? "On: the Browser has its own icon on this phone, built into this app (tabs, favorites, history). It follows every rule set here and on the dashboard."
+                : "The full Browser, built into this app (no separate install). Turning it on adds its own icon to this phone.", true));
+        action(addon, addonOn ? "Take out the Browser" : "Put in the Browser", addonOn ? Ui.OUTLINED : Ui.TONAL, v -> {
             if (!unlocked()) return;
             try {
                 boolean newValue = !addonOn;
@@ -687,42 +687,10 @@ public class AdminActivity extends Activity {
                 toast("Could not change it: " + e.getMessage());
             }
             build();
-            toast(addonOn ? "Browser add-on off." : "Browser add-on on. Its icon is on this phone now.");
+            toast(addonOn ? "The Browser is taken out." : "The Browser is on this phone now.");
         });
         if (addonOn) {
-            action(addon, "Open Browser add-on", Ui.TONAL, v -> startActivity(new Intent(this, BrowserAddonActivity.class)));
-        }
-
-        LinearLayout browser = Ui.card(this, root);
-        browser.addView(Ui.titleText(this, "Standalone Browser app"));
-        boolean browserInstalled = isPackageInstalled("com.familymdm.browser");
-        browser.addView(Ui.body(this, browserInstalled
-                ? "Installed. Only opens sites you've allowed; hooks into this phone's site rules on its own."
-                : "A separate, full-featured app (tabs, desktop mode) with its own whitelist, so other apps don't need a browser inside them.", true));
-        action(browser, browserInstalled ? "Reinstall Browser app" : "Install Browser app", Ui.TONAL, v -> {
-            toast("Downloading the Browser app...");
-            new Thread(() -> {
-                String msg;
-                try {
-                    Installer.installFromUrl(this,
-                            "https://github.com/abegumbo-ui/MDM/releases/download/latest/mdm-browser.apk", null);
-                    PolicyApplier.applyStored(this);
-                    msg = "Installing the Browser app now.";
-                } catch (Exception e) {
-                    msg = "Could not install the Browser app: " + (e.getMessage() == null ? e.toString() : e.getMessage());
-                }
-                final String text = msg;
-                runOnUiThread(() -> toast(text));
-            }).start();
-        });
-        if (browserInstalled) {
-            action(browser, "Open Browser", Ui.TONAL, v -> {
-                Intent launch = getPackageManager().getLaunchIntentForPackage("com.familymdm.browser");
-                if (launch != null) startActivity(launch);
-                else toast("The Browser app isn't installed on this phone yet.");
-            });
-            action(browser, "Browse freely for a while…", Ui.OUTLINED, v -> askFreebrowse());
-            action(browser, "Take out the Browser app", Ui.OUTLINED, v -> confirmUninstall(null, "com.familymdm.browser", "Browser"));
+            action(addon, "Open the Browser", Ui.TONAL, v -> startActivity(new Intent(this, org.lineageos.jelly.MainActivity.class)));
         }
     }
 

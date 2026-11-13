@@ -146,7 +146,7 @@ final class PhoneRules {
         try {
             JSONObject x = new JSONObject(Agent.prefs(c).getString("localExtras", "{}"));
             String[] pass = {"safeSearch", "youtubeDns", "blockImages", "pictureGuard", "blockImageSearch", "blockedWords", "inAppBrowsers", "blockWaStatus",
-                    "blockWaChannels", "screenTime", "callsIn", "callsOut", "pauseUntil", "freezeUpdates", "disableBiometricUnlock", "blockedParts", "internetOffUntil"};
+                    "blockWaChannels", "screenTime", "callsIn", "callsOut", "pauseUntil", "freezeUpdates", "disableBiometricUnlock", "blockedParts", "blockedScreens", "youtubeSignIn", "protectScreens", "internetOffUntil"};
             for (String k : pass) if (x.has(k)) policy.put(k, x.get(k));
             if (x.has("browserFilter")) {
                 policy.put("browserFilter", x.getString("browserFilter"));
@@ -598,7 +598,7 @@ final class PhoneRules {
             Ui.add(row, Ui.button(a, "Remove", Ui.OUTLINED, v -> {
                 java.util.Set<String> s = PartBlocker.blockedScreens(a);
                 s.remove(sg);
-                Agent.putSet(a, "blockedScreens", s);
+                PartBlocker.setBlockedScreens(a, s, "unblocked the screen " + PartBlocker.signatureLabel(sg));
                 rebuild.run();
             }), 4);
             Ui.add(card, row, 10);

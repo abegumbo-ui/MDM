@@ -16,4 +16,5 @@ rootProject.name = "mdm-agent"
 include ':app'
 include ':browser'
 include ':sitepolicy'
+include ':browserlib'
 include ':lockdown'

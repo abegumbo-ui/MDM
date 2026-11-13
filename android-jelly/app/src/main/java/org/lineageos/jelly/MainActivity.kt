@@ -398,6 +398,11 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
                         onHideCustomView()
                     }
 
+                    // A page that did not open: back goes to the last page that did, not to another copy of it.
+                    webView.showingBlockedPage() && webView.lastAllowed != null -> {
+                        webView.followUrl(webView.lastAllowed!!)
+                    }
+
                     webView.canGoBack() -> {
                         webView.goBack()
                     }

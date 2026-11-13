@@ -357,6 +357,15 @@ final class FilterStore {
         prefs(c).edit().putBoolean("youtubeSearch", on).apply();
     }
 
+    /** Signing in to YouTube / Google's sign-in page opens only when the parent allowed it. */
+    static void setYoutubeSignIn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("youtubeSignIn", on).apply();
+    }
+
+    static boolean youtubeSignIn(Context c) {
+        return prefs(c).getBoolean("youtubeSignIn", false);
+    }
+
     static boolean youtubeSearch(Context c) {
         return prefs(c).getBoolean("youtubeSearch", true);
     }

@@ -255,9 +255,41 @@ final class PartBlocker {
 
     static final String SEP = "\u001f";
 
-    /** Screens blocked by what is written at the top of them (works when the title cannot be read). */
+    private static volatile long screensAt;
+    private static volatile java.util.Set<String> screensCache = new java.util.TreeSet<>();
+
+    /**
+     * Screens blocked by what is written at the top of them (works when the title cannot be read). They live in the
+     * phone's settings ("blockedScreens"), so the dashboard lists and removes them too.
+     */
     static java.util.Set<String> blockedScreens(Context c) {
-        return Agent.getSet(c, "blockedScreens");
+        long now = System.currentTimeMillis();
+        if (now - screensAt < 1500) return new java.util.TreeSet<>(screensCache);
+        java.util.Set<String> out = new java.util.TreeSet<>();
+        JSONArray a = PhoneRules.current(c).optJSONArray("blockedScreens");
+        for (int i = 0; a != null && i < a.length(); i++) {
+            String s = a.optString(i, "");
+            if (!s.isEmpty()) out.add(s);
+        }
+        // Screens blocked before they were kept in the settings (local to the phone): moved over once.
+        java.util.Set<String> legacy = Agent.getSet(c, "blockedScreens");
+        if (!legacy.isEmpty()) {
+            out.addAll(legacy);
+            Agent.putSet(c, "blockedScreens", new java.util.HashSet<String>());
+            setBlockedScreens(c, out, "kept the screens blocked before");
+        }
+        screensCache = out;
+        screensAt = now;
+        return new java.util.TreeSet<>(out);
+    }
+
+    static void setBlockedScreens(Context c, java.util.Set<String> screens, String what) {
+        screensCache = new java.util.TreeSet<>(screens);
+        screensAt = System.currentTimeMillis();
+        try {
+            PhoneRules.set(c, new JSONObject().put("blockedScreens", new JSONArray(new ArrayList<>(screens))), what);
+        } catch (Exception ignored) {
+        }
     }
 
     /** The first words on screen, top to bottom (the title, then the headings), at most max of them. */
@@ -310,19 +342,59 @@ final class PartBlocker {
     private static long lastSigScan;
     private static long lastSigBack;
 
-    /** Is the screen open now one that was blocked by its fingerprint? Backs out of it if so. */
+    // ---------- built-in protection: the MDM app's own Settings pages and the certificate pages ----------
+
+    /** The Settings pages where the certificate is listed or removed (their titles, as shown at the top of the page). */
+    private static final String[] CERTIFICATE_PAGES = {"user credentials", "trusted credentials", "view security certificates",
+            "user certificates", "install a certificate", "install from device storage", "ca certificate", "credential storage",
+            "security certificates", "certificates"};
+
+    private static boolean protectOn(Context c) {
+        return PhoneRules.current(c).optBoolean("protectScreens", true);
+    }
+
+    private static boolean isSettingsApp(String pkg) {
+        return pkg != null && pkg.contains("settings") && !pkg.equals("com.familymdm.agent");
+    }
+
+    /**
+     * "Protect the MDM app": in Settings, the page of this app (its accessibility switch, App info, notifications...)
+     * and the pages that list or remove the phone's certificate close the moment they open. Off from the dashboard,
+     * and not applied during an emergency unlock.
+     */
+    private static boolean protectedPage(Context c, List<String> top) {
+        String label = appLabel(c, c.getPackageName());
+        for (int i = 0; i < top.size() && i < 4; i++) {
+            String t = top.get(i);
+            if (label != null && t.equalsIgnoreCase(label)) return true;
+            if (i < 3) for (String p : CERTIFICATE_PAGES) if (t.equalsIgnoreCase(p)) return true;
+        }
+        return false;
+    }
+
+    /** Is the screen open now one that was blocked by its fingerprint (or a protected Settings page)? Backs out of it if so. */
     private static boolean screenBlockedNow(AccessibilityService s, String pkg) {
         java.util.Set<String> all = blockedScreens(s);
-        if (all.isEmpty()) return false;
+        boolean guard = isSettingsApp(pkg) && protectOn(s);
         List<String> mine = new ArrayList<>();
         for (String sig : all) if (sig.startsWith(pkg + SEP)) mine.add(sig);
-        if (mine.isEmpty()) return false;
+        if (mine.isEmpty() && !guard) return false;
         long now = System.currentTimeMillis();
         if (now - lastSigScan < 250) return false;
         lastSigScan = now;
         AccessibilityNodeInfo root = s.getRootInActiveWindow();
         if (root == null || root.getPackageName() == null || !pkg.contentEquals(root.getPackageName())) return false;
         List<String> here = topTexts(root, 14);
+        if (guard && protectedPage(s, here)) {
+            if (now - lastSigBack > 700) {
+                lastSigBack = now;
+                s.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
+                Agent.addEvent(s, "restriction", "A protected Settings page opened (" + String.join(" › ", here.subList(0, Math.min(3, here.size()))) + ") -- closed instantly");
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                        android.widget.Toast.makeText(s.getApplicationContext(), "This setting is protected on this phone.", android.widget.Toast.LENGTH_SHORT).show());
+            }
+            return true;
+        }
         for (String sig : mine) {
             String[] p = sig.split(SEP);
             boolean all3 = p.length > 1;
@@ -416,9 +488,9 @@ final class PartBlocker {
         LinearLayout row = new LinearLayout(s);
         addBtn(s, row, "Block it", v -> {
             if (comp.startsWith("sig:")) {
-                java.util.Set<String> sigs = Agent.getSet(s, "blockedScreens");
+                java.util.Set<String> sigs = blockedScreens(s);
                 sigs.add(comp.substring(4));
-                Agent.putSet(s, "blockedScreens", sigs);
+                setBlockedScreens(s, sigs, "blocked the screen " + label);
             } else if (comp.startsWith("title:")) {
                 java.util.Set<String> titles = Agent.getSet(s, "blockedTitles");
                 titles.add(comp.substring(6));

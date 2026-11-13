@@ -98,6 +98,7 @@ public final class Guard {
             FilterStore.setAdsAutoCover(c, b.getBoolean("adsAutoCover", true));
             FilterStore.setYoutubeSearch(c, b.getBoolean("youtubeSearch", true));
             FilterStore.setYoutubeSearchPictures(c, b.getString("youtubeSearchPictures", "hide"));
+            FilterStore.setYoutubeSignIn(c, b.getBoolean("youtubeSignIn", false));
             FilterStore.setYoutubeOffMessage(c, b.getString("youtubeOffMessage", ""));
         } else if (m == Mode.ONLINE) {
             sync(c, false);
@@ -187,6 +188,7 @@ public final class Guard {
                 FilterStore.setAdsAutoCover(c, f == null || f.optBoolean("adsAutoCover", true));
                 FilterStore.setYoutubeSearch(c, f == null || f.optBoolean("youtubeSearch", true));
                 FilterStore.setYoutubeSearchPictures(c, f == null ? "hide" : f.optString("youtubeSearchPictures", "hide"));
+                FilterStore.setYoutubeSignIn(c, f != null && f.optBoolean("youtubeSignIn", false));
                 FilterStore.setYoutubeOffMessage(c, f == null ? "" : f.optString("youtubeOffMessage", ""));
                 FilterStore.refreshAsync(c, false);
             } catch (Exception ignored) {
@@ -302,6 +304,11 @@ public final class Guard {
             return Decision.no(notAllowed(url, "It has a blocked word in it.", homeButton()));
         if (FilterStore.blockImageSearch(c) && ProtectionRules.isImageSearch(url))
             return Decision.no(notAllowed(url, "Image search is turned off.", homeButton()));
+        // Signing in (YouTube's Sign in button, Google's sign-in page): only when the parent allowed it.
+        if (SitePolicy.isYoutubeSignIn(url)) {
+            if (FilterStore.youtubeSignIn(c)) return Decision.yes(noPics);
+            return Decision.no(notAllowed(url, "Signing in to YouTube is turned off.", homeButton()));
+        }
         String ytMode = FilterStore.youtubeMode(c);
         if ("blocked".equals(ytMode) && SitePolicy.isYoutubeHost(SitePolicy.hostOf(url)))
             return Decision.no(page("YouTube is off", esc(FilterStore.youtubeOffMessage(c)), askButton("https://www.youtube.com/", "Ask to open YouTube") + homeButton()));
@@ -711,8 +718,9 @@ public final class Guard {
                 showPage(v, null, startPage(c));
                 return true;
             case "back":
-                // Back to the page before the one that did not open.
-                if (v.canGoBack()) v.goBack();
+                // Back to the last page that did open (the history fills with copies of the blocked page).
+                if (v instanceof PageHost && ((PageHost) v).lastAllowedPage() != null) v.loadUrl(((PageHost) v).lastAllowedPage());
+                else if (v.canGoBack()) v.goBack();
                 else showPage(v, null, startPage(c));
                 return true;
             default:
@@ -778,7 +786,7 @@ public final class Guard {
         String body = "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>"
                 + (reason != null ? "<p>" + esc(reason) + "</p>" : "")
                 + (url != null && url.startsWith("http") ? "<p style='font-size:13px'>" + esc(url) + "</p>" : "");
-        return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.NOT_ALLOWED, body, extraHtml);
+        return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.titleFor(url), body, extraHtml);
     }
 
     static String page(String title, String body, String buttons) {

@@ -42,6 +42,14 @@ class WebViewExt @JvmOverloads constructor(
         shownFor = url
     }
 
+    /** The last address that opened (not a blocked page): where back returns to. */
+    @Volatile
+    var lastAllowed: String? = null
+
+    override fun lastAllowedPage(): String? = lastAllowed
+
+    override fun showingBlockedPage(): Boolean = shownFor != null
+
     private lateinit var activity: WebViewExtActivity
     val requestHeaders = mutableMapOf<String?, String?>()
     private var mobileUserAgent: String? = null
@@ -133,6 +141,8 @@ class WebViewExt @JvmOverloads constructor(
         settings.loadsImagesAutomatically = !decision.blockImages
         trustedPage = decision.trusted
         pageHost = android.net.Uri.parse(url).host
+        lastAllowed = url
+        shownFor = null
         super.loadUrl(url, this.requestHeaders)
     }
 

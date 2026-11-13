@@ -157,9 +157,8 @@ final class Kiosk {
                 browse.addCategory(Intent.CATEGORY_BROWSABLE);
                 browse.addDataScheme("http");
                 browse.addDataScheme("https");
-                dpm.addPersistentPreferredActivity(admin, browse,
-                        new ComponentName("com.familymdm.browser", "com.familymdm.browser.BrowserActivity"));
-                Agent.addEvent(c, "restriction", "The Browser app is now the only browser for web links");
+                dpm.addPersistentPreferredActivity(admin, browse, new ComponentName(c, "org.lineageos.jelly.MainActivity"));
+                Agent.addEvent(c, "restriction", "The Browser is now the only browser for web links");
             }
             if (hadBrowser && !wantBrowser) Agent.addEvent(c, "restriction", "Other browsers can be used again");
             Agent.prefs(c).edit().putBoolean("prefHome", wantHome).putBoolean("prefBrowser", wantBrowser).apply();
