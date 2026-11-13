@@ -191,6 +191,8 @@ public class YoutubeAddonActivity extends Activity {
             if (SitePolicy.youtubeRestrictedAllows(url)) return null;
             return notAllowed(url, "This part of YouTube is not available.", homeButton());
         }
+        // Searching, to find videos to ask for: the ones not allowed show covered, with "Ask for access".
+        if (kind == SitePolicy.YT_SEARCH && policy().optBoolean("youtubeSearch", true)) return null;
         return notAllowed(url, "Only the YouTube channels and videos that were allowed open here.", askButton(url, "Ask for access") + homeButton());
     }
 
@@ -239,6 +241,9 @@ public class YoutubeAddonActivity extends Activity {
                 JSONObject p = policy();
                 if (p.optBoolean("blockAds", false) && YoutubeScripts.isAdRequest(url)) return empty(204);
                 String guard = p.optString("pictureGuard", "off");
+                // Search results shown with skin covered: YouTube's video pictures get the skin covering.
+                if ("off".equals(guard) && "skin".equals(p.optString("youtubeSearchPictures", "hide")) && "channels".equals(mode())
+                        && url.matches("^https://i[0-9]?\\.ytimg\\.com/vi(_webp)?/.*")) guard = "skin";
                 if (!trusted && ("nudity".equals(guard) || "skin".equals(guard)) && isPicture(request) && !allowedThumb(url))
                     return filteredPicture(request, guard, p.optString("skinWho", "all"));
             } catch (Exception ignored) {
@@ -271,7 +276,9 @@ public class YoutubeAddonActivity extends Activity {
             JSONArray ch = new JSONArray(), vids = new JSONArray();
             for (SitePolicy.Site s : sites()) if ("youtube".equals(s.type) && s.live()) ch.put(new JSONObject().put("h", s.id));
             for (String id : allowedVideoIds()) vids.put(new JSONObject().put("v", id));
-            return YoutubeScripts.cover(new JSONObject().put("cover", mode).put("channels", ch).put("videos", vids).toString());
+            return YoutubeScripts.cover(new JSONObject().put("cover", mode).put("channels", ch).put("videos", vids)
+                    .put("askSearch", "channels".equals(mode) && policy().optBoolean("youtubeSearch", true))
+                    .put("askPictures", policy().optString("youtubeSearchPictures", "hide")).toString());
         } catch (Exception e) {
             return null;
         }

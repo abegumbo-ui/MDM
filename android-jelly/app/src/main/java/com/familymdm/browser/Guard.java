@@ -96,6 +96,8 @@ public final class Guard {
             FilterStore.setBlockAds(c, b.getBoolean("blockAds", false));
             FilterStore.setCoveredFromDashboard(c, b.getStringArray("adsCoveredSites"));
             FilterStore.setAdsAutoCover(c, b.getBoolean("adsAutoCover", true));
+            FilterStore.setYoutubeSearch(c, b.getBoolean("youtubeSearch", true));
+            FilterStore.setYoutubeSearchPictures(c, b.getString("youtubeSearchPictures", "hide"));
             FilterStore.setYoutubeOffMessage(c, b.getString("youtubeOffMessage", ""));
         } else if (m == Mode.ONLINE) {
             sync(c, false);
@@ -183,6 +185,8 @@ public final class Guard {
                 for (int i = 0; i < acSites.length; i++) acSites[i] = ac.optString(i);
                 FilterStore.setCoveredFromDashboard(c, acSites);
                 FilterStore.setAdsAutoCover(c, f == null || f.optBoolean("adsAutoCover", true));
+                FilterStore.setYoutubeSearch(c, f == null || f.optBoolean("youtubeSearch", true));
+                FilterStore.setYoutubeSearchPictures(c, f == null ? "hide" : f.optString("youtubeSearchPictures", "hide"));
                 FilterStore.setYoutubeOffMessage(c, f == null ? "" : f.optString("youtubeOffMessage", ""));
                 FilterStore.refreshAsync(c, false);
             } catch (Exception ignored) {
@@ -337,6 +341,9 @@ public final class Guard {
         // (afterLoadScript); the rest of YouTube is blocked whatever the web level is.
         if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host) && SitePolicy.youtubeKind(url) == SitePolicy.YT_HOME)
             return Decision.yes(noPics);
+        // Searching YouTube to find videos to ask for (they show covered, with "Ask for access").
+        if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host) && SitePolicy.youtubeKind(url) == SitePolicy.YT_SEARCH && FilterStore.youtubeSearch(c))
+            return Decision.yes(noPics);
         if ("channels".equals(ytMode) && SitePolicy.isYoutubeHost(host))
             return Decision.no(notAllowed(url, "Only the YouTube channels and videos that were allowed open here.",
                     askButton(url, "Ask for access") + homeButton()));
@@ -481,6 +488,9 @@ public final class Guard {
             if (filterBlocks) return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
             if (!covered && FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
             String guard = FilterStore.pictureGuard(c);
+            // Search results shown with skin covered: YouTube's video pictures get the skin covering.
+            if ("off".equals(guard) && "skin".equals(FilterStore.youtubeSearchPictures(c)) && "channels".equals(FilterStore.youtubeMode(c))
+                    && url.matches("^https://i[0-9]?\\.ytimg\\.com/vi(_webp)?/.*")) guard = "skin";
             if (!"off".equals(guard) && !FilterStore.blockImages(c) && PictureGuard.isPicture(request) && !isAllowedVideoThumb(c, url))
                 return PictureGuard.handle(c, request, guard);
         } catch (Exception ignored) {
@@ -508,7 +518,9 @@ public final class Guard {
             JSONArray ch = new JSONArray(), vids = new JSONArray();
             for (SitePolicy.Site s : sites(c)) if ("youtube".equals(s.type) && s.live()) ch.put(new JSONObject().put("h", s.id));
             for (String id : allowedVideoIds(c)) vids.put(new JSONObject().put("v", id));
-            return com.familymdm.agent.sitepolicy.YoutubeScripts.cover(new JSONObject().put("cover", mode).put("channels", ch).put("videos", vids).toString());
+            return com.familymdm.agent.sitepolicy.YoutubeScripts.cover(new JSONObject().put("cover", mode).put("channels", ch).put("videos", vids)
+                    .put("askSearch", "channels".equals(mode) && FilterStore.youtubeSearch(c) && mode(c) != Mode.UNCONFIGURED)
+                    .put("askPictures", FilterStore.youtubeSearchPictures(c)).toString());
         } catch (Exception e) {
             return null;
         }

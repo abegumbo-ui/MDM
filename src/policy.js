@@ -590,6 +590,10 @@ export function normalizeConfig(input) {
     blockAds: c.blockAds === true,
     // The YouTube add-on (its own icon in the MDM app) and what YouTube shows when it is turned off.
     youtubeAddon: c.youtubeAddon === true,
+    // "Only what I allow": the child may search YouTube and ask for videos (on unless switched off).
+    youtubeSearchOff: c.youtubeSearchOff === true,
+    // Search results that are not allowed: "hide" their pictures, or show them with "skin" covered.
+    youtubeSearchPictures: c.youtubeSearchPictures === "skin" ? "skin" : "hide",
     // Sites that will not open with ads blocked: their ads load but are covered (our Browser).
     adsCoveredSites: [...new Set(normalizeDnsAllowlist(c.adsCoveredSites).map((h) => h.replace(/^www\./, "")))],
     // Our Browser notices such sites by itself (on unless switched off).
@@ -859,6 +863,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.browserLook = cfg.browserLook;
   out.blockAds = cfg.blockAds;
   out.youtubeAddon = cfg.youtubeAddon;
+  out.youtubeSearch = !cfg.youtubeSearchOff;
+  out.youtubeSearchPictures = cfg.youtubeSearchPictures;
   out.adsCoveredSites = cfg.adsCoveredSites;
   out.adsAutoCover = !cfg.adsAutoCoverOff;
   out.youtubeOffMessage = cfg.youtubeOffMessage;

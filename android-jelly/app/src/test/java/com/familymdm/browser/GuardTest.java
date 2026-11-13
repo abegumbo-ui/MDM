@@ -198,9 +198,13 @@ public class GuardTest {
         assertTrue(Guard.check(c, "https://m.youtube.com/", null).allow);
         FilterStore.setYoutubeMode(c, "channels");
         assertTrue("its home page opens (it lists what is allowed)", Guard.check(c, "https://m.youtube.com/", null).allow);
-        Guard.Decision d = Guard.check(c, "https://m.youtube.com/results?search_query=games", null);
-        assertFalse("only allowed channels, even though the web is open", d.allow);
+        assertTrue("searching opens, to find videos to ask for (they show covered, with Ask for access)", Guard.check(c, "https://m.youtube.com/results?search_query=games", null).allow);
+        Guard.Decision d = Guard.check(c, "https://m.youtube.com/watch?v=abcdefghijk", null);
+        assertFalse("a video that is not allowed stays closed, even though the web is open", d.allow);
         assertTrue(d.html.contains("Ask for access"));
+        FilterStore.setYoutubeSearch(c, false);
+        assertFalse("search switched off on the dashboard: blocked", Guard.check(c, "https://m.youtube.com/results?search_query=games", null).allow);
+        FilterStore.setYoutubeSearch(c, true);
         assertTrue("other sites still open", Guard.check(c, "https://example.com/", null).allow);
         FilterStore.setYoutubeMode(c, "blocked");
         assertFalse(Guard.check(c, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", null).allow);
