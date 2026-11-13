@@ -555,7 +555,7 @@ final class PartBlocker {
         TextView t = new TextView(s);
         t.setText("Block this whole screen?\n" + label + "\n\nIf this app shows almost everything on one screen, this blocks most of the app: use \"Pick a part\" instead.");
         t.setTextColor(0xFF111111);
-        box.addView(t);
+        box.addView(withClose(s, t));
         LinearLayout row = new LinearLayout(s);
         addBtn(s, row, "Block it", v -> {
             if (comp.startsWith("sig:")) {
@@ -684,6 +684,22 @@ final class PartBlocker {
         showPanel(s, "Block this in " + appLabel(s, chainPkg) + "?\n" + describe(n), true);
     }
 
+    /** The panel's text with a ✕ at its right that closes everything (every panel has a way out). */
+    private static LinearLayout withClose(AccessibilityService s, TextView text) {
+        LinearLayout row = new LinearLayout(s);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        Button x = new Button(s);
+        x.setText("✕");
+        x.setTextSize(20);
+        x.setAllCaps(false);
+        x.setContentDescription("Close");
+        x.setOnClickListener(v -> stopPicking(s));
+        row.addView(x, new LinearLayout.LayoutParams(Ui.dp(s, 56), Ui.dp(s, 48)));
+        return row;
+    }
+
     private static void showPanel(AccessibilityService s, String text, boolean choice) {
         WindowManager wm = s.getSystemService(WindowManager.class);
         removeView(wm, panel);
@@ -694,7 +710,7 @@ final class PartBlocker {
         TextView t = new TextView(s);
         t.setText(text);
         t.setTextColor(0xFF111111);
-        box.addView(t);
+        box.addView(withClose(s, t));
         LinearLayout row1 = new LinearLayout(s), row2 = new LinearLayout(s);
         if (choice) {
             addBtn(s, row1, "Bigger", v -> { if (chainAt < chain.size() - 1) { chainAt++; showChoice(s); } });
@@ -741,7 +757,7 @@ final class PartBlocker {
             JSONObject v = new JSONObject();
             v.put("blockedParts", next);
             PhoneRules.set(s, v, "blocked " + part.optString("label") + " (" + ("close".equals(mode) ? "screen closed" : "covered") + ")");
-            showPanel(s, "Blocked: " + part.optString("label") + ".\nPick another, or tap Done.", false);
+            showPanel(s, "Blocked: " + part.optString("label") + ".\nPick another, or tap the ✕.", false);
         } catch (Exception e) {
             showPanel(s, "Could not save: " + e.getMessage(), false);
         }
