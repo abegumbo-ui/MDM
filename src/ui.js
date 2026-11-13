@@ -214,6 +214,7 @@ const GROUPS=[
  {key:'overview',label:'Overview',icon:'home',subs:[['status','Status'],['messages','Messages'],['log','Activity log']]},
  {key:'safety',label:'Safety',icon:'message',subs:[['health','Health check'],['msgalerts','Message alerts'],['screenshots','Screenshots']]},
  {key:'apps',label:'Apps',icon:'apps',subs:[['regular','Apps'],['addons','Add-ons'],['kiosk','Home screen'],['blocking','Blocked'],['system','System apps'],['store','Play Store']]},
+ {key:'youtube',label:'YouTube',icon:'apps',subs:[['yt','YouTube'],['music','YouTube Music']]},
  {key:'time',label:'Screen time',icon:'clock',subs:[['report','Usage'],['limits','Limits']]},
  {key:'browser',label:'Browser',icon:'globe',subs:[['summary','At a glance'],['access','Filter level'],['youtube','YouTube'],['history','Sites visited'],['sites','Allowed sites'],['apps','Browser apps'],['inspect','Inspection (advanced)']]},
  {key:'calls',label:'Calls & texts',icon:'phone',subs:[['rules','Who can call'],['contacts','Contacts'],['calllog','Call log'],['texts','Texts']]},
@@ -778,15 +779,16 @@ function renderDeviceDetail(m,d){
  const internet=h('section');buildInternetGroup(internet,d);
  const callsg=h('section');buildCallsGroup(callsg,d);
  const brg=h('section');buildBrowserGroup(brg,d);
+ const ytg={yt:h('section'),music:h('section')};renderYoutube(ytg.yt,d);renderYoutubeMusic(ytg.music,d);
  const tmg=h('section');buildTimeGroup(tmg,d);
  const devg=h('section');buildDeviceGroup(devg,d);
  const safety={health:h('section'),msgalerts:h('section'),screenshots:h('section')};
  renderHealth(safety.health,d);renderMsgAlerts(safety.msgalerts,d);renderNudityAlerts(safety.msgalerts,d);renderScreenshots(safety.screenshots,d);
- const body={overview:{status:ov,messages:msgs,log:lg},safety:safety,apps:ap,time:tmg,browser:brg,calls:callsg,internet:internet,security:lk,device:devg};
+ const body={overview:{status:ov,messages:msgs,log:lg},safety:safety,apps:ap,youtube:ytg,time:tmg,browser:brg,calls:callsg,internet:internet,security:lk,device:devg};
 
  // ----- search: every group and tab -----
  const searchIndex=[
-  ['Status, location and activity','overview','status'],['Health check: is everything working on the phone?','safety','health'],['Message alerts: worrying words in chats (WhatsApp, Instagram, texts...)','safety','msgalerts'],['Screenshot: see what is on the phone\'s screen','safety','screenshots'],['Ready-made setups: young child, teen, kosher phone','overview','status'],['Messages from the phone','overview','messages'],['Activity log','overview','log'],
+  ['YouTube Music: allow songs, find a song, the YouTube Music icon','youtube','music'],['Allow YouTube channels and videos (YouTube tab)','youtube','yt'],['Let them download songs','youtube','music'],['Status, location and activity','overview','status'],['Health check: is everything working on the phone?','safety','health'],['Message alerts: worrying words in chats (WhatsApp, Instagram, texts...)','safety','msgalerts'],['Screenshot: see what is on the phone\'s screen','safety','screenshots'],['Ready-made setups: young child, teen, kosher phone','overview','status'],['Messages from the phone','overview','messages'],['Activity log','overview','log'],
   ['Screen lock: lock, unlock, set PIN','security','screen'],['App lock','security','applock'],['Administrator code (master code)','security','admincode'],
   ['Restrictions (permissions)','security','restrictions'],
   ['Apps: allow, block, schedule','apps','regular'],['Home screen mode','apps','kiosk'],['Hide the Administrator button','apps','kiosk'],
@@ -1056,6 +1058,7 @@ function appRow(a,dv,opts){
 /* ---------- sites (browser allowlist) ---------- */
 function ytHostOf(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.toLowerCase().replace(/^www\./,'')}catch(e){return null}}
 function isYoutubeUrl(u){const h=ytHostOf(u);return h==='youtube.com'||h==='m.youtube.com'||h==='music.youtube.com'||h==='youtu.be'||h==='youtube-nocookie.com'}
+function isMusicUrl(u){return ytHostOf(u)==='music.youtube.com'}
 function ytVideoIdOf(u){try{const x=new URL(u.includes('://')?u:'https://'+u);const h=x.hostname.toLowerCase().replace(/^www\./,'');let id=null;if(h==='youtu.be')id=x.pathname.split('/')[1]||null;else if(h==='youtube.com'||h==='m.youtube.com'||h==='music.youtube.com'||h==='youtube-nocookie.com'){if(x.pathname==='/watch')id=x.searchParams.get('v');else{const m=/^\/(?:shorts|embed|live|v)\/([^/?#]+)/.exec(x.pathname);if(m)id=m[1]}}return id&&/^[A-Za-z0-9_-]{11}$/.test(id)?id:null}catch(e){return null}}
 function ytChannelOf(u){try{const x=new URL(u.includes('://')?u:'https://'+u);const h=x.hostname.toLowerCase().replace(/^www\./,'');if(h!=='youtube.com'&&h!=='m.youtube.com')return null;const m=/^\/(@[A-Za-z0-9._-]{3,30})(?:\/|$)/.exec(x.pathname);return m?m[1].toLowerCase():null}catch(e){return null}}
 function hostOfUrl(u){try{return new URL(u.includes('://')?u:'https://'+u).hostname.replace(/^www\./,'')}catch(e){return u}}
@@ -1073,6 +1076,11 @@ function renderRequestsCard(m,reqs,dv){
    if(ytFind!==undefined){
     buttons.append(btn('Find it','',function(){findOnYoutube(dv,decodeURIComponent(ytFind.replace(/\+/g,' ')))}),btn('Dismiss','outline',dismiss));
     rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    continue}
+   const musicFind=(/^https:\/\/music\.youtube\.com\/search\?q=([^&]*)/.exec(r.url)||[])[1];
+   if(musicFind!==undefined){const qtext=decodeURIComponent(musicFind.replace(/\+/g,' '));
+    buttons.append(btn('Find it','',function(){findOnMusic(dv,qtext)}),btn('Dismiss','outline',dismiss));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music: "'+qtext+'"'),r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
     continue}
    if(ytCh){
     buttons.append(btn('Allow this channel','',async function(){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+ytCh,id:ytCh,label:ytCh});await dismiss()}),btn('Dismiss','outline',dismiss));
@@ -1561,10 +1569,10 @@ function renderAddons(m,dv){const c=dv.config;
  const cmd=async function(type,args,msg){try{await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:args});snack(msg)}catch(e){snack(e.message,1)}load()};
  m.append(h('div',{class:'card'},h('h2',null,'Add-ons'),h('div',{class:'mute'},'Put in or take out the extras on this phone. Each works with the same rules as everything else here.')));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube'),
-  h('div',{class:'mute small'},'A YouTube icon on the phone, built into the MDM app. It follows Browser → YouTube (only what you allow, restricted, or off).')),
+  h('div',{class:'mute small'},'A YouTube icon on the phone, built into the MDM app. Choose what is allowed in the YouTube tab (left menu): only what you allow, restricted, or off.')),
   sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'YouTube goes on the phone at its next check-in.':'YouTube comes off the phone at its next check-in.')}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music'),
-  h('div',{class:'mute small'},'A YouTube Music icon on the phone, built into the MDM app, under the same rules as YouTube (only what you allow, restricted, or off).')),
+  h('div',{class:'mute small'},'A YouTube Music icon on the phone, built into the MDM app, under the same rules as YouTube (only what you allow, restricted, or off). Allow songs in the YouTube tab → YouTube Music.')),
   sw(c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'YouTube Music goes on the phone at its next check-in.':'YouTube Music comes off the phone at its next check-in.')}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser'),
   h('div',{class:'mute small'},'The full Browser (tabs, favorites, history, the Allow list), built into the MDM app with its own icon: not a second app, nothing to connect, nothing separate to uninstall. It follows every rule on this dashboard.')),
@@ -1941,7 +1949,7 @@ function renderYoutube(m,dv){
  m.append(h('div',{class:'card'},h('h2',null,'When YouTube is off'),h('div',{class:'mute'},'What the child sees instead of YouTube. Leave empty for the standard message.'),
   h('div',{class:'row',style:'margin-top:8px'},msg,btn('Save','tonal',function(){c.youtubeOffMessage=msg.value.trim();save('Saved.')}))));
  renderYoutubeSearch(m,dv);
- const sites=c.sites||{},keys=Object.keys(sites).filter(function(k){const s=sites[k];return s.type==='youtube'||isYoutubeUrl(s.url||'')});
+ const sites=c.sites||{},keys=Object.keys(sites).filter(function(k){const s=sites[k];return s.type==='youtube'||(isYoutubeUrl(s.url||'')&&!isMusicUrl(s.url||''))});
  const lc=h('div',{class:'card'},h('h2',null,'Allowed channels and videos ('+keys.length+')'));
  lc.append(h('div',{class:'mute'},'Paste a channel link (youtube.com/@name), type @name, or paste a video link. Used when YouTube is on "Only what I allow" (or follows the level on Strict or Approved sites only).'));
  const inp=h('input',{type:'text',placeholder:'youtube.com/@channel, @channel or a video link',class:'grow'});
@@ -1956,6 +1964,58 @@ function renderYoutube(m,dv){
    h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.type==='youtube'?((s.label||'').replace(/^YouTube channel /,'')||s.id):(s.label&&s.label!=='YouTube video'?s.label:'Video')),h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='youtube'?s.id:s.url)+(s.until?' · '+untilText(s.until):''))),
    btn('Remove','outline',async function(){delete c.sites[k];await save('Removed.')})))}
  if(!keys.length)lc.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
+ m.append(lc)}
+/** YouTube Music: the icon, what it follows, and the songs that are allowed (find one by name, or paste a link). */
+let musicResults=null,musicQuery='';
+function musicUrlFor(id){return 'https://music.youtube.com/watch?v='+id}
+/** From a request: open this phone's YouTube Music page and search for what the child asked for. */
+async function findOnMusic(dv,text){
+ musicQuery=text;musicResults='loading';goTo('youtube','music');
+ try{musicResults=(await call('GET','/api/youtube/search?type=video&q='+encodeURIComponent(text+' official audio'))).results}catch(e){musicResults=[]}render()}
+function renderYoutubeMusic(m,dv){
+ if(dv.isWindows||dv.isBrowser)return;
+ const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const choice=(YT_CHOICES.find(function(x){return x[0]===(c.youtubeMode||'auto')})||YT_CHOICES[0]);
+ m.append(h('div',{class:'card'},h('h2',null,'YouTube Music'),
+  h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music icon on the phone'),
+   h('div',{class:'mute'},'Its own icon, music only: no YouTube videos or channels in it. It follows the same choice as YouTube (now: '+choice[1]+'). With "Only what I allow", only the songs below play; anything else shows "Ask for this song" and sends you a request.')),
+   sw(c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'The YouTube Music icon goes on the phone at its next check-in.':'The YouTube Music icon is removed at the next check-in.')})),
+  h('div',{class:'row',style:'margin-top:8px'},btn('Change the YouTube choice','outline',function(){goTo('youtube','yt')}))));
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Let them download songs'),
+  h('div',{class:'mute'},'A Download song button on every allowed song and a Downloads button on the Music home screen (progress, Cancel). A song is saved on the phone as sound only and plays with no internet.')),
+  sw(c.downloadsOff!==true,function(on){c.downloadsOff=!on;save(on?'They can download songs.':'Downloads are off.')}))));
+ const card=h('div',{class:'card'},h('h2',null,'Find a song'));
+ const inp=h('input',{type:'text',placeholder:'A song title, artist or album',class:'grow',value:musicQuery});
+ const go=async function(){const q=inp.value.trim();if(!q)return;musicQuery=q;musicResults='loading';render();
+  try{musicResults=(await call('GET','/api/youtube/search?type=video&q='+encodeURIComponent(q+' official audio'))).results}catch(e){musicResults=[]}render()};
+ inp.onkeydown=function(e){if(e.key==='Enter')go()};
+ card.append(h('div',{class:'row',style:'margin-top:8px;flex-wrap:wrap'},inp,btn('Search','tonal',go)),allowForPicker());
+ const sites=c.sites||{};
+ const keys=Object.keys(sites).filter(function(k){return isMusicUrl(sites[k].url||'')});
+ const have=new Set(keys.map(function(k){return ytVideoIdOf(sites[k].url||'')}));
+ if(musicResults==='loading')card.append(h('div',{class:'mute',style:'margin-top:10px'},'Searching…'));
+ else if(Array.isArray(musicResults)){
+  const songs=musicResults.filter(function(r){return r.type!=='channel'&&r.id});
+  if(!songs.length)card.append(h('div',{class:'mute',style:'margin-top:10px'},'Nothing found. You can also paste a link below.'));
+  for(const r of songs){
+   card.append(h('div',{class:'row',style:'margin:10px 0;align-items:flex-start'},h('img',{src:r.thumb,alt:'',loading:'lazy',style:'width:120px;height:68px;border-radius:8px;object-fit:cover'}),
+    h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.title),h('div',{class:'mute small'},[r.channel,r.length].filter(Boolean).join(' · ')),
+     h('div',{class:'row',style:'margin-top:6px'},have.has(r.id)?h('span',{class:'chip'},'Allowed'):btn('Allow this song','',async function(){if(!confirm('Allow the song "'+r.title+'"?'))return;
+      await addSite(dv,{type:'exact',url:musicUrlFor(r.id),label:r.title,thumb:r.thumb})})))))}}
+ m.append(card);
+ const lc=h('div',{class:'card'},h('h2',null,'Allowed songs ('+keys.length+')'));
+ lc.append(h('div',{class:'mute'},'Paste a link from YouTube Music or YouTube (a song or video page). Used when YouTube is on "Only what I allow".'));
+ const link=h('input',{type:'text',placeholder:'music.youtube.com/watch?v=… or a YouTube link',class:'grow'});
+ const addLink=async function(){const v=link.value.trim();if(!v)return;const id=ytVideoIdOf(v);
+  if(!id||!isYoutubeUrl(v)){snack('That is not a song or video link.',1);return}
+  await addSite(dv,{type:'exact',url:musicUrlFor(id),label:'YouTube Music song'})};
+ lc.append(h('div',{class:'row',style:'margin-top:8px'},link,btn('Add','tonal',addLink)));
+ for(const k of keys){const s=sites[k];
+  lc.append(h('div',{class:'row',style:'margin:8px 0'},s.thumb?h('img',{src:s.thumb,alt:'',loading:'lazy',style:'width:72px;height:40px;border-radius:6px;object-fit:cover'}):null,
+   h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.label&&s.label!=='YouTube Music song'?s.label:'Song'),h('div',{class:'mute small',style:'word-break:break-all'},s.url+(s.until?' · '+untilText(s.until):''))),
+   btn('Remove','outline',async function(){delete c.sites[k];await save('Removed.')})))}
+ if(!keys.length)lc.append(h('div',{class:'mute small',style:'margin-top:8px'},'No songs yet. Search above, or approve a request from the phone.'));
  m.append(lc)}
 /** Find a YouTube channel or video by name and allow it with one tap. */
 let ytResults=null,ytQuery='',ytKind='channel';

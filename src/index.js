@@ -1,4 +1,5 @@
 import { endSitesEarly, MESSAGE_WORD_GROUPS, effectiveFilter, placesAt, messageWordList, matchMessageWord, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { handleInternal, serversFor, noteBackupUse } from "./replicate.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { maybeSendDaily, maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY, alertsOn, validPushEndpoint, vapidKeys, latestForPush, SERVICE_WORKER } from "./alerts.js";
@@ -1370,6 +1371,8 @@ async function agentApi(request, env, url, ctx) {
     const auth = await authDevice(request, env);
     if (!auth) return json({ error: "Unauthorized" }, 401);
     const { key, d } = auth;
+    // A phone that could not reach the Raspberry Pi says so: from now on this server is the one saving changes.
+    if (url.pathname === "/agent/sync") await noteBackupUse(env, body);
 
     if (url.pathname === "/agent/update") return json({ latest: await latestAgent(env) });
     if (url.pathname === "/agent/screenshot") {
@@ -1834,7 +1837,7 @@ async function agentApi(request, env, url, ctx) {
     if (config.homeScreen) policy.customIcons = (await env.STATE.get("iconIndex", "json")) || {};
     const master = d.master || null;
     const logoRev = await cachedLogoRev(env);
-    return json({ policy, config, configPatchRev: d.configPatchRev || 0, commands, pollSeconds: await pollFor(env, now), overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, restrictionOverrides: d.restrictionOverrides || {}, restrictionOverridesRev: d.restrictionOverridesRev || 0, master, logoRev });
+    return json({ policy, config, configPatchRev: d.configPatchRev || 0, commands, pollSeconds: await pollFor(env, now), overrides: d.overrides || {}, overridesRev: d.overridesRev || 0, restrictionOverrides: d.restrictionOverrides || {}, restrictionOverridesRev: d.restrictionOverridesRev || 0, master, logoRev, servers: serversFor(env) });
   }
   return json({ error: "Not found" }, 404);
 }
@@ -2042,6 +2045,8 @@ export default {
     }
 
     try {
+      // The Raspberry Pi and Cloudflare keep each other up to date here (only when REPLICA_SECRET is set; see pi/README.md).
+      if (url.pathname.startsWith("/internal/")) return await handleInternal(request, env, url);
       if (url.pathname.startsWith("/agent/")) return await agentApi(request, env, url, ctx);
       if (url.pathname.startsWith("/browser/")) return await browserApi(request, env, url, ctx);
       if (url.pathname.startsWith("/windows/")) return await windowsApi(request, env, url, ctx);

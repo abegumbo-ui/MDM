@@ -24,7 +24,56 @@ final class Api {
         }
     }
 
+    // ---- two servers: the Raspberry Pi first, Cloudflare as the backup ----
+    // The dashboard tells each phone both addresses in its check-in reply. From then on every call goes to the Pi first
+    // (the address the phone was enrolled with, Cloudflare, counts as the backup), and to the backup only while the Pi
+    // does not answer; the next call tries the Pi again, so the phone is back on it as soon as it is.
+    private static volatile String primary, backup;
+    static volatile boolean onBackup; // the last answer came from the backup
+
+    static void setServers(String p, String b) {
+        p = cleanOrigin(p);
+        b = cleanOrigin(b);
+        if (p == null || b == null) { primary = null; backup = null; }
+        else { primary = p; backup = b; }
+    }
+
+    private static String cleanOrigin(String u) {
+        if (u == null) return null;
+        u = u.trim();
+        while (u.endsWith("/")) u = u.substring(0, u.length() - 1);
+        return u.startsWith("https://") && u.length() > 9 ? u : null;
+    }
+
+    private static String originOf(String url) {
+        int i = url.indexOf("://");
+        if (i < 0) return url;
+        int j = url.indexOf('/', i + 3);
+        return j < 0 ? url : url.substring(0, j);
+    }
+
     static JSONObject post(String url, JSONObject body, String bearer) throws IOException, JSONException {
+        String p = primary, b = backup, o = originOf(url);
+        if (p == null || b == null || !(o.equals(p) || o.equals(b))) return postOnce(url, body, bearer);
+        String path = url.substring(o.length());
+        boolean down = false; // the Pi did not answer at all (not: it answered with an error about this request)
+        try {
+            JSONObject r = postOnce(p + path, body, bearer);
+            onBackup = false;
+            return r;
+        } catch (HttpException e) {
+            down = e.code >= 500;
+        } catch (IOException e) {
+            down = true;
+        }
+        JSONObject copy = new JSONObject(body.toString());
+        if (down && path.endsWith("/agent/sync")) copy.put("viaBackup", true); // the backup then notes that the Pi was off
+        JSONObject r = postOnce(b + path, copy, bearer);
+        onBackup = true;
+        return r;
+    }
+
+    private static JSONObject postOnce(String url, JSONObject body, String bearer) throws IOException, JSONException {
         if (!url.startsWith("https://")) throw new IOException("server must be an https:// address");
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         try {
@@ -49,6 +98,19 @@ final class Api {
 
     /** GET a small file (for example the logo) from the dashboard. */
     static byte[] getBytes(String url, String bearer) throws IOException {
+        String p = primary, b = backup, o = originOf(url);
+        if (p != null && b != null && (o.equals(p) || o.equals(b))) {
+            String path = url.substring(o.length());
+            try {
+                return getBytesOnce(p + path, bearer);
+            } catch (IOException e) {
+                return getBytesOnce(b + path, bearer);
+            }
+        }
+        return getBytesOnce(url, bearer);
+    }
+
+    private static byte[] getBytesOnce(String url, String bearer) throws IOException {
         if (!url.startsWith("https://")) throw new IOException("server must be an https:// address");
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         try {

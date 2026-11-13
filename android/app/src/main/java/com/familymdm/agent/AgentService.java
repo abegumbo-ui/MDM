@@ -344,7 +344,14 @@ public class AgentService extends Service {
         JSONObject icons = PolicyApplier.collectIcons(this, packages, 8, iconsSent);
         if (icons.length() > 0) body.put("icons", icons);
 
+        // The Raspberry Pi and its backup (set up under "Server" in the dashboard); empty = one server only.
+        Api.setServers(Agent.prefs(this).getString("serverPrimary", null), Agent.prefs(this).getString("serverBackup", null));
         JSONObject reply = Api.post(server + "/agent/sync", body, token);
+        JSONObject servers = reply.optJSONObject("servers");
+        Agent.prefs(this).edit()
+                .putString("serverPrimary", servers == null ? null : servers.optString("primary", null))
+                .putString("serverBackup", servers == null ? null : servers.optString("backup", null)).apply();
+        Api.setServers(servers == null ? null : servers.optString("primary", null), servers == null ? null : servers.optString("backup", null));
         Agent.dropResults(this, results.length());
         Agent.dropEvents(this, events.length());
         Agent.dropSiteRequests(this, siteRequests.length());
