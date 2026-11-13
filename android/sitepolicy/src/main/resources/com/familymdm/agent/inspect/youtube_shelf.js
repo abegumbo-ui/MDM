@@ -7,7 +7,7 @@
   if (window.__mdmShelf) return;
   window.__mdmShelf = true;
   if (data) { data.downloads = data.downloads || []; data.channels = data.channels || []; data.videos = data.videos || []; }
-  if (!data || (!data.channels.length && !data.videos.length && !data.ask && !data.downloads.length)) return;
+  if (!data || (!data.channels.length && !data.videos.length && !data.ask && !data.downloads.length && !data.dl)) return;
   var music = !!data.music;
   var dlOn = !!data.dl;
   var have = {};
@@ -24,7 +24,7 @@
     rules([
       [' *', 'opacity:1'],
       [' h3', 'font-size:18px;font-weight:700;margin:8px 0 12px'],
-      [' .ask', 'display:inline-flex;align-items:center;gap:8px;margin:4px 0 8px;padding:10px 18px;border-radius:20px;background:#f2f2f2;color:#0f0f0f;text-decoration:none;font-size:15px;font-weight:500;border:1px solid #d9d9d9'],
+      [' .ask', 'display:inline-flex;align-items:center;gap:8px;margin:4px 8px 8px 0;padding:10px 18px;border-radius:20px;background:#f2f2f2;color:#0f0f0f;text-decoration:none;font-size:15px;font-weight:500;border:1px solid #d9d9d9'],
       ['.dark .ask', 'background:#272727;color:#f1f1f1;border-color:#3f3f3f'],
       [' .row', 'display:flex;gap:14px;overflow-x:auto;padding-bottom:8px'],
       [' .ch', 'flex:0 0 auto;width:76px;text-align:center;color:inherit;text-decoration:none;font-size:12px'],
@@ -140,6 +140,10 @@
     if (data.ask) {
       var ask = el('a', 'ask', music ? '＋  Ask for a song, album or artist' : '＋  Ask for a channel or video'); ask.href = 'mdmguard://ask';
       box.appendChild(ask);
+    }
+    if (dlOn) { // the Downloads screen: what is downloading (progress, Cancel) and what is downloaded
+      var dlb = el('a', 'ask', '⬇  Downloads'); dlb.href = 'mdmguard://downloads';
+      box.appendChild(dlb);
     }
     if (data.downloads.length) {
       box.appendChild(el('h3', null, 'Downloaded'));

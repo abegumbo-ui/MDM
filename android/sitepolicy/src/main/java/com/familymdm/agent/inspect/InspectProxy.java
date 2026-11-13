@@ -152,18 +152,35 @@ public final class InspectProxy implements Closeable {
         this.upstream = upstream;
     }
 
+    private static volatile java.util.function.Function<String, String> hostMap = h -> null;
+
+    /**
+     * Sites to connect to instead of the one a browser asked for: SafeSearch (www.google.com becomes
+     * forcesafesearch.google.com, Bing and DuckDuckGo likewise) and YouTube Restricted Mode. The phone's DNS filter does
+     * this for lookups, but a browser that goes through this proxy never does its own lookup: the proxy does, so it has to
+     * do it here too. The certificate is still checked for the name the browser asked for.
+     */
+    public static void setHostMap(java.util.function.Function<String, String> f) {
+        hostMap = f == null ? h -> null : f;
+    }
+
+    static String connectTo(String host) {
+        String t = hostMap.apply(host);
+        return t == null ? host : t;
+    }
+
     /** Connects to real sites with the system's trust store and checks the site's name, the way a browser does. */
     public static Upstream verifyingUpstream() {
         final SSLSocketFactory f = (SSLSocketFactory) SSLSocketFactory.getDefault();
         return (host, port, tls) -> {
             if (!tls) {
                 Socket s = new Socket();
-                s.connect(new java.net.InetSocketAddress(host, port), 15000);
+                s.connect(new java.net.InetSocketAddress(connectTo(host), port), 15000);
                 s.setSoTimeout(60000);
                 return s;
             }
             Socket raw = new Socket();
-            raw.connect(new java.net.InetSocketAddress(host, port), 15000);
+            raw.connect(new java.net.InetSocketAddress(connectTo(host), port), 15000);
             raw.setSoTimeout(60000);
             SSLSocket s = (SSLSocket) f.createSocket(raw, host, port, true);
             SSLParameters p = s.getSSLParameters();

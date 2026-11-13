@@ -63,6 +63,7 @@ final class Downloads {
         if (why != null) return why;
         String id = SitePolicy.youtubeVideoId(url);
         if (find(c, id) != null) return music ? "That song is already downloaded." : "That video is already downloaded.";
+        if (DownloadService.isActive(id)) return "That is already downloading. See Downloads.";
         Intent i = new Intent(c, DownloadService.class).putExtra("url", "https://www.youtube.com/watch?v=" + id).putExtra("music", music);
         try {
             c.startForegroundService(i);
