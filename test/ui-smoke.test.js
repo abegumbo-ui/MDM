@@ -254,6 +254,11 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(legacyBrowser, /Strict/);
   assert.doesNotMatch(legacyBrowser, /Web access/, "the old pile of cards is folded into one page");
   assert.match(legacyApps, /Internet for this app/, "per-app internet switch right on the Apps list");
+  assert.match(seen["youtube/music"], /Approve music/, "YouTube Music: search and approve songs, artists and albums");
+  assert.match(seen["youtube/music"], /Albums and playlists/);
+  assert.match(seen["youtube/music"], /Show song pictures/);
+  assert.match(seen["youtube/music"], /Allowed music/);
+  assert.match(seen["youtube/yt"], /Find on YouTube/);
   assert.match(legacy, /Ready-made setups/);
   assert.match(legacy, /Status/);
   assert.match(seen["overview/status"], /Ready-made setups/);

@@ -4,7 +4,7 @@ import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { maybeSendDaily, maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY, alertsOn, validPushEndpoint, vapidKeys, latestForPush, SERVICE_WORKER } from "./alerts.js";
 import { ICON_192, ICON_512 } from "./icons.js";
-import { youtubeSearch } from "./youtube.js";
+import { youtubeSearch, youtubeChannelVideos, youtubePlaylistVideos } from "./youtube.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
 // How often an online phone checks in on its own. A command queued from the dashboard only
@@ -1288,6 +1288,12 @@ async function adminApiInner(request, env, url, session) {
     // Find a YouTube channel or video to allow (any signed-in parent).
     const results = await youtubeSearch(url.searchParams.get("q"), url.searchParams.get("type")).catch(() => []);
     return json({ results });
+  }
+  if (path === "/api/youtube/videos" && method === "GET") {
+    // The songs of one artist (?channel=@name or UC...) or one album / playlist (?playlist=PL...), to approve them in one go.
+    const ch = url.searchParams.get("channel");
+    const found = await (ch ? youtubeChannelVideos(ch) : youtubePlaylistVideos(url.searchParams.get("playlist"))).catch(() => ({ title: "", videos: [], albums: [] }));
+    return json(found);
   }
   const wshot = /^\/api\/windevices\/([0-9a-f]+)\/shots\/([0-9a-f]{12})$/.exec(path);
   if (wshot && method === "GET") {

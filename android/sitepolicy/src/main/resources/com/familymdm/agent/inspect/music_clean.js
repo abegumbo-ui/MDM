@@ -29,6 +29,13 @@
       for (var s = 0; s < si.length; s++) hide(si[s]);
     }
   }
+  // "Show song pictures" is off: album art, thumbnails and the frames of music videos are hidden (the sound keeps playing).
+  if (window.__mdmHidePics) {
+    var st = document.createElement('style');
+    st.textContent = 'img[src*="ytimg.com"],img[src*="ggpht.com"],img[src*="googleusercontent.com"],ytmusic-thumbnail-renderer img,#song-image img,#thumbnail img,video{visibility:hidden !important}'
+      + 'ytmusic-thumbnail-renderer,#song-image{background:#2a2a2a !important}';
+    (document.head || document.documentElement).appendChild(st);
+  }
   sweep();
   setInterval(sweep, 800);
 })();
