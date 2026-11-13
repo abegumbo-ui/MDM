@@ -357,6 +357,19 @@ public class ProxyCheck {
         check(pics.onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a", sh)) == null, "pictures show on a page from the 'show pictures' list");
         check(pics.onRequest(new InspectProxy.Request("GET", "img.school.test", 443, true, "/a", ih)) == null, "pictures from a listed site show anywhere");
         check(new YoutubeInspector(false, Collections.<String>emptySet()).onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a", ih)) == null, "with the setting off, pictures are untouched");
+        // the dashboard's Restricted Mode: the header goes on every YouTube and YouTube Music request, and only those
+        YoutubeInspector rm = new YoutubeInspector(false, Collections.<String>emptySet());
+        rm.setRestrictLevel("Moderate");
+        InspectProxy.Headers mh = new InspectProxy.Headers();
+        rm.onRequest(new InspectProxy.Request("POST", "music.youtube.com", 443, true, "/youtubei/v1/search", mh));
+        check("Moderate".equals(mh.get("YouTube-Restrict")), "YouTube Music requests carry the Restricted Mode header from the dashboard setting");
+        InspectProxy.Headers mh2 = new InspectProxy.Headers();
+        rm.onRequest(new InspectProxy.Request("GET", "example.com", 443, true, "/", mh2));
+        check(mh2.get("YouTube-Restrict") == null, "other sites are left alone");
+        rm.setRestrictLevel(null);
+        InspectProxy.Headers mh3 = new InspectProxy.Headers();
+        rm.onRequest(new InspectProxy.Request("POST", "music.youtube.com", 443, true, "/youtubei/v1/search", mh3));
+        check(mh3.get("YouTube-Restrict") == null, "with the setting off nothing is added");
         // approved songs keep their art with "No pictures" on; YouTube Music's own art too unless pictures are off for it
         YoutubeInspector art = new YoutubeInspector(false, Collections.<String>emptySet(), true, Collections.<String>emptySet());
         art.setYoutubeChannels(new HashSet<String>(), new HashSet<>(Collections.singleton("abcdefghijk")), "");
