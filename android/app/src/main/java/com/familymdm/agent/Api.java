@@ -35,6 +35,37 @@ final class Api {
     private static volatile long primaryDownUntil;
     private static final long PRIMARY_RETRY_MS = 60_000;
 
+    /** The Raspberry Pi's address when the phone knows both servers, otherwise null. */
+    static String primaryOrigin() {
+        return primary;
+    }
+
+    /**
+     * Raspberry Pi only: holds the request open for up to about 40 seconds and answers {"wake":true} the moment a dashboard is opened or
+     * something is queued for the phones, so the phone checks in at once instead of at its next timer. Cloudflare answers {"unsupported":true}.
+     */
+    static JSONObject waitForWake(String origin, String bearer) throws IOException, JSONException {
+        HttpURLConnection c = (HttpURLConnection) new URL(origin + "/agent/wait").openConnection(java.net.Proxy.NO_PROXY);
+        try {
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(65000);
+            c.setDoOutput(true);
+            c.setRequestProperty("content-type", "application/json");
+            c.setRequestProperty("authorization", "Bearer " + bearer);
+            try (OutputStream os = c.getOutputStream()) {
+                os.write("{}".getBytes(StandardCharsets.UTF_8));
+            }
+            int code = c.getResponseCode();
+            InputStream is = code < 400 ? c.getInputStream() : c.getErrorStream();
+            String text = read(is);
+            if (code >= 400) throw new HttpException(code, text);
+            return new JSONObject(text);
+        } finally {
+            c.disconnect();
+        }
+    }
+
     /** In words, for the app's front screen: which server the phone is talking to ("" when only one server is set up). */
     static String where() {
         if (primary == null || backup == null) return "";

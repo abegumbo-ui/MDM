@@ -57,7 +57,53 @@ public class AgentService extends Service {
             thread.start();
             Kiosk.ensureHome(this); // after a reboot or restart, bring the home screen back
         }
+        startWaker();
         return START_STICKY;
+    }
+
+    // ---- instant wake-up (Raspberry Pi): see Api.waitForWake ----
+    private Thread waker;
+    private volatile long lastSleepSeconds = 300;
+
+    /**
+     * While the phone is on its slow timer and talks to the Raspberry Pi, one request is kept waiting there. The Pi answers it the moment a
+     * dashboard is opened or something is queued, and the phone checks in at once. Quiet when the phone already checks in every few seconds,
+     * when it is using the backup, and against Cloudflare (which says it does not do this).
+     */
+    private void startWaker() {
+        if (waker != null && waker.isAlive()) return;
+        waker = new Thread(() -> {
+            String unsupportedFor = null;
+            while (running) {
+                try {
+                    String origin = Api.primaryOrigin();
+                    String token = Agent.prefs(this).getString("token", null);
+                    boolean idle = origin == null || token == null || origin.equals(unsupportedFor) || Api.onBackup
+                            || Agent.syncPaused(this) || Agent.standalone(this) || lastSleepSeconds < 30;
+                    if (idle) {
+                        Thread.sleep(10000);
+                        continue;
+                    }
+                    JSONObject r = Api.waitForWake(origin, token);
+                    if (r.optBoolean("unsupported")) {
+                        unsupportedFor = origin;
+                    } else if (r.optBoolean("wake")) {
+                        requestSync();
+                        Thread.sleep(3000);
+                    }
+                } catch (InterruptedException e) {
+                    return;
+                } catch (Exception e) {
+                    try {
+                        Thread.sleep(30000);
+                    } catch (InterruptedException ie) {
+                        return;
+                    }
+                }
+            }
+        }, "mdm-waker");
+        waker.setDaemon(true);
+        waker.start();
     }
 
     @Override
@@ -74,6 +120,7 @@ public class AgentService extends Service {
             packageReceiver = null;
         }
         if (thread != null) thread.interrupt();
+        if (waker != null) waker.interrupt();
         super.onDestroy();
     }
 
@@ -151,6 +198,7 @@ public class AgentService extends Service {
                 // Wake up in time to close a Play Store window on the minute, not at the next check-in.
                 int storeLeft = StoreAccess.minutesLeft(this);
                 if (StoreAccess.open(this) && storeLeft >= 0) sleepSeconds = Math.min(sleepSeconds, storeLeft * 60L + 2);
+                lastSleepSeconds = Math.max(3, sleepSeconds);
                 Thread.sleep(Math.max(3, sleepSeconds) * 1000L);
             } catch (InterruptedException e) {
                 if (!running) return; // otherwise this was a wake-up call: check in now

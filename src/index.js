@@ -65,8 +65,30 @@ const FAST_WINDOW_MS = 10 * 60 * 1000;
 // Right after the dashboard changes something: every 15 s for 3 minutes, so a change shows up on the phone fast.
 const BURST_POLL_SECONDS = 15;
 const BURST_WINDOW_MS = 3 * 60 * 1000;
+// Instant wake-up (Raspberry Pi only): a phone holds one request open (/agent/wait); it is answered the moment a dashboard is opened after a
+// quiet time, or an administrator changes something or queues a command. Phones then check in at once instead of at their next timer.
+// On Cloudflare there are never any waiting phones (it answers "unsupported"), so this costs nothing there.
+const wakers = new Set();
+function wakePhones() {
+  for (const f of [...wakers]) f();
+}
+function waitForWake(ms) {
+  return new Promise((resolve) => {
+    const done = (v) => {
+      clearTimeout(timer);
+      wakers.delete(wake);
+      resolve(v);
+    };
+    const wake = () => done(true);
+    const timer = setTimeout(() => done(false), ms);
+    wakers.add(wake);
+  });
+}
+const WAIT_MS = 40 * 1000;
+
 let adminActionMarked = 0;
 async function markAdminAction(env, now = Date.now()) {
+  wakePhones(); // every change wakes the waiting phones, whatever the write limit below says
   if (now - adminActionMarked < 20 * 1000) return; // at most one write per 20 s
   adminActionMarked = now;
   await env.STATE.put("adminAction", String(now));
@@ -77,6 +99,7 @@ async function markAdminActive(env, now = Date.now()) {
   adminActiveMarked = now;
   const last = Number(await env.STATE.get("adminActive")) || 0;
   if (now - last > 60 * 1000) await env.STATE.put("adminActive", String(now)); // at most one write a minute
+  if (now - last >= FAST_WINDOW_MS) wakePhones(); // the dashboard was just opened after a quiet time
 }
 // The three speeds can be set per server (POLL_SECONDS, FAST_POLL_SECONDS, BURST_POLL_SECONDS): Cloudflare's free plan needs
 // the slow numbers above, the Raspberry Pi has no limit and runs at 3 seconds while the dashboard is open.
@@ -1377,6 +1400,14 @@ async function agentApi(request, env, url, ctx) {
       ownerId: codeRec.ownerId || null,
     });
     return json({ token: `${id}.${secret}`, pollSeconds: POLL_SECONDS });
+  }
+
+  // A phone waiting to be told "something is waiting for you" (Raspberry Pi only; see wakePhones).
+  if (url.pathname === "/agent/wait") {
+    if (env.RUNTIME !== "pi") return json({ wake: false, unsupported: true });
+    const waiter = await authDevice(request, env);
+    if (!waiter) return json({ error: "Unauthorized" }, 401);
+    return json({ wake: await waitForWake(WAIT_MS) });
   }
 
   if (
