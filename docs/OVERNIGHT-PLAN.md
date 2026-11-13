@@ -104,12 +104,18 @@ Nothing of this is tested on a real phone/PC yet: checklist 7s, 7t and 8.
 ## Night of 2026-11-13 → 14 (user's orders at ~2 AM: "go a whole night")
 The Pi is the main server now (public https://mdmpi.tail67992b.ts.net, Tailscale Funnel; Cloudflare = backup, 4 variables set, all data copied: 350 entries).
 Rules unchanged: branch → PR → build check → merge; never change the PC's Wi-Fi; no PC system changes (Tailscale + the RNDIS driver were done with the user's yes).
-1. [ ] Dashboard header badge: Raspberry Pi / Cloudflare (backup) + each phone's chip "via Pi / via Cloudflare" (Worker: /api/server-status, device.lastVia).
-2. [ ] Server page (Pi only): health, memory, temperature, power, Wi-Fi now + remembered networks (add with password, prefer, forget), restart, reboot, log, copy now. Backend done (pi/admin.mjs, system.mjs) but NOT committed/tested yet; UI not written.
+1. [x] Dashboard header badge: Raspberry Pi / Cloudflare (backup) + each phone chip "via Raspberry Pi / via Cloudflare" (shipped, PR #292).
+2. [x] Server page (Pi only): health, power, temperature, Wi-Fi (add / prefer / forget / connect), Cloudflare copy status, restart, log (shipped PR #292; read from the real Pi and correct).
 3. [ ] 3-second check-ins on the Pi (code done: env FAST/BURST_POLL_SECONDS; Cloudflare keeps 30/15): verify live with the A16.
-4. [ ] Dashboard redo, Family Link style: per-device Home with big switches + "More settings" for the old pages; simpler top level; keep search.
+4. [x] Dashboard redo, Family Link style, with a New / Legacy switch: phone home, Browser, Apps, Screen time, YouTube pages, device cards (shipped PR #292 and #293). Still plain legacy under "More settings": Safety, Calls, Internet, Security, Device.
 5. [ ] Phone app UI polish (Administrator screen, tiles, spacing, consistent look).
 6. [ ] Re-test EVERY feature on the A16 (old + new) and record in docs/PHONE-TEST-CHECKLIST.md; fix what fails.
-7. [ ] Leftovers: lock-screen PIN/type (setPin/clearPin exist; add lock type hint), SafeSearch in Chrome (build 667 proxy host map), Software update block, Downloads cancel test (interrupted), Music icon.
+7. [~] Leftovers: SafeSearch in Chrome VERIFIED on the A16; Music icon VERIFIED; lock / unlock from the dashboard VERIFIED; app block VERIFIED; lock strength + PIN control prepared by the agent and the unblock fix are in the next phone build (branch night-phone-changes). Not yet tested: Software update block, Cancel download.
 8. [ ] Pi hardening: stop using USB+wall together (rebooted twice); Server page "update" (self-update from GitHub) later.
 9. [ ] Morning summary for the user (plain words: what works, what to check, what is still open).
+
+### Night log 2026-11-13 (A16, build 667, over Cloudflare because the Pi was down)
+- Pi went offline about 02:43 (reboot loop, then silent): likely power or the SD card. Phones failed over to Cloudflare by themselves at 02:46 (verified). Persistent journal turned on after that, so the next reboot leaves a log.
+- Verified: SafeSearch forced (google.com resolves to the forced-safe address; Google SafeSearch page says "Filtering on"); YouTube Music icon screen opens with Ask and Downloads buttons; Downloads screen lists downloaded videos; block an app from the dashboard hides it in about 22 s; timed lock shows the message and countdown, unlock clears it in about 27 s.
+- Bug found and fixed in the phone code (next build): after a block was removed the app stayed hidden (the phone only un-hid apps the server listed as installed; Android answers "false" when an app is already hidden, so it was not remembered as hidden by us). Phone now un-hides anything it hid that the dashboard no longer hides.
+- Test-script note: never name a PowerShell function parameter `$args`.
