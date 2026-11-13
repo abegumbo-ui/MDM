@@ -145,14 +145,16 @@ final class Downloads {
         }
         String s = out.toString();
         String hash = s.length() + ":" + s.hashCode();
-        if (hash.equals(Agent.prefs(c).getString("downloadsSentHash", ""))) return null;
+        // Sent when it changes, and again at least every 6 hours, so the dashboard never stays without it.
+        long sentAt = Agent.prefs(c).getLong("downloadsSentAt", 0);
+        if (hash.equals(Agent.prefs(c).getString("downloadsSentHash", "")) && System.currentTimeMillis() - sentAt < 6 * 3600 * 1000L) return null;
         pendingHash = hash;
         return out;
     }
 
     /** After a check-in that carried the list. */
     static void sent(Context c) {
-        if (pendingHash != null) Agent.prefs(c).edit().putString("downloadsSentHash", pendingHash).apply();
+        if (pendingHash != null) Agent.prefs(c).edit().putString("downloadsSentHash", pendingHash).putLong("downloadsSentAt", System.currentTimeMillis()).apply();
         pendingHash = null;
     }
 
