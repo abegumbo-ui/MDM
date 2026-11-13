@@ -43,6 +43,7 @@ final class WebFilter {
     private static List<BlockList> loaded;
     private static List<String> loadedCats = new ArrayList<>(); // the category of each list above, same order
     private static String loadedFor = "";
+    private static java.util.Set<String> loadedBrowserOnly = new java.util.HashSet<>(); // the kinds closed only inside browsers (social media, news, shopping...)
 
     private static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences("webfilter", Context.MODE_PRIVATE);
@@ -57,6 +58,60 @@ final class WebFilter {
         if (changed) p.edit().putString("filterTier", t).putString("filterBase", b).apply();
         if (changed) synchronized (LOCK) { loaded = null; loadedFor = ""; }
         if (!"off".equals(t) && !b.isEmpty()) refreshAsync(c, changed);
+    }
+
+    /** Kinds of site closed on top of the level (news, shopping...), from the dashboard. Only used together with Medium or Strict. */
+    static void setExtras(Context c, JSONArray a) {
+        java.util.TreeSet<String> set = new java.util.TreeSet<>();
+        if (a != null) {
+            for (int i = 0; i < a.length(); i++) {
+                String x = a.optString(i, "");
+                if (x.matches("[a-z0-9_-]{1,40}")) set.add(x);
+            }
+        }
+        String csv = String.join(",", set);
+        SharedPreferences p = prefs(c);
+        if (csv.equals(p.getString("filterExtras", ""))) return;
+        p.edit().putString("filterExtras", csv).apply();
+        synchronized (LOCK) { loaded = null; loadedFor = ""; }
+        if (wanted(c)) refreshAsync(c, true);
+    }
+
+    private static List<String> extras(Context c) {
+        String t = tier(c);
+        List<String> out = new ArrayList<>();
+        if (!(t.startsWith("moderate") || t.startsWith("strict"))) return out; // only on top of a level
+        String csv = prefs(c).getString("filterExtras", "");
+        if (!csv.isEmpty()) for (String x : csv.split(",")) out.add(x);
+        return out;
+    }
+
+    /** The lists the level needs: its own (all of them must be published) plus the extras the manifest already has (a missing extra is skipped, never fatal). */
+    private static java.util.LinkedHashMap<String, JSONObject> wantedCats(Context c, JSONObject man) throws Exception {
+        JSONArray cats = tierCats(man, tier(c));
+        if (cats == null || cats.length() == 0) return null;
+        JSONObject all = man.getJSONObject("categories");
+        java.util.LinkedHashMap<String, JSONObject> out = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < cats.length(); i++) {
+            JSONObject cat = all.optJSONObject(cats.getString(i));
+            if (cat == null) return null; // the level names a category that is not published: do not guess
+            out.put(cats.getString(i), cat);
+        }
+        for (String x : extras(c)) {
+            JSONObject cat = all.optJSONObject(x);
+            if (cat != null && !out.containsKey(x)) out.put(x, cat);
+        }
+        return out;
+    }
+
+    /** True when a kind that is closed only inside browsers (social media, news, shopping...) is in the active lists. */
+    static boolean hasBrowserOnly(Context c) {
+        synchronized (LOCK) {
+            ensureLoaded(c);
+            if (loaded == null) return false;
+            for (String n : loadedCats) if (loadedBrowserOnly.contains(n)) return true;
+            return false;
+        }
     }
 
     /** The level's lists; "x+ads" falls back to plain "x" while the published lists do not have it yet. */
@@ -117,22 +172,24 @@ final class WebFilter {
         return blocksIn(c, host, false);
     }
 
-    /** In the social-media list (only part of the Strict level)? False if the filter is not active. */
+    /** In a list that is closed only inside browsers (social media on Strict, plus anything ticked: news, shopping...)? False if the filter is not active. */
     static boolean blocksSocial(Context c, String host) {
         return blocksIn(c, host, true);
     }
 
-    private static boolean blocksIn(Context c, String host, boolean social) {
+    private static boolean blocksIn(Context c, String host, boolean browserOnly) {
         List<BlockList> l;
         List<String> names;
+        java.util.Set<String> bo;
         synchronized (LOCK) {
             ensureLoaded(c);
             l = loaded;
             names = loadedCats;
+            bo = loadedBrowserOnly;
         }
         if (l == null) return false;
         for (int i = 0; i < l.size() && i < names.size(); i++) {
-            if ("social".equals(names.get(i)) == social && l.get(i).blocks(host)) return true;
+            if (bo.contains(names.get(i)) == browserOnly && l.get(i).blocks(host)) return true;
         }
         return false;
     }
@@ -150,23 +207,14 @@ final class WebFilter {
         try {
             String m = prefs(c).getString("filterManifest", null);
             if (m == null) return null;
-            JSONObject man = new JSONObject(m);
-            JSONArray cats = tierCats(man, tier(c));
-            if (cats == null || cats.length() == 0) return null;
-            Map<String, JSONObject> out = new HashMap<>();
-            for (int i = 0; i < cats.length(); i++) {
-                JSONObject cat = man.getJSONObject("categories").optJSONObject(cats.getString(i));
-                if (cat == null) return null; // the level names a category that is not published: do not guess
-                out.put(cats.getString(i), cat);
-            }
-            return out;
+            return wantedCats(c, new JSONObject(m));
         } catch (Exception e) {
             return null;
         }
     }
 
     private static void ensureLoaded(Context c) {
-        String key = tier(c) + "|" + prefs(c).getString("filterManifest", "");
+        String key = tier(c) + "|" + prefs(c).getString("filterExtras", "") + "|" + prefs(c).getString("filterManifest", "");
         if (loaded != null && key.equals(loadedFor)) return;
         loaded = null;
         loadedFor = key;
@@ -189,6 +237,15 @@ final class WebFilter {
         } catch (Exception e) {
             return;
         }
+        java.util.Set<String> bo = new java.util.HashSet<>();
+        try {
+            JSONArray a = new JSONObject(prefs(c).getString("filterManifest", "{}")).optJSONArray("browserOnly");
+            if (a == null) bo.add("social");
+            else for (int i = 0; i < a.length(); i++) bo.add(a.getString(i));
+        } catch (Exception e) {
+            bo.add("social");
+        }
+        loadedBrowserOnly = bo;
         loaded = out;
         loadedCats = names;
     }
@@ -221,10 +278,10 @@ final class WebFilter {
         String base = prefs(c).getString("filterBase", "");
         String manifestText = new String(fetch(base + "/manifest.json", 256 * 1024), "UTF-8");
         JSONObject man = new JSONObject(manifestText);
-        JSONArray cats = tierCats(man, tier(c));
-        if (cats == null || cats.length() == 0) throw new Exception("unknown level");
-        for (int i = 0; i < cats.length(); i++) {
-            JSONObject cat = man.getJSONObject("categories").getJSONObject(cats.getString(i));
+        java.util.LinkedHashMap<String, JSONObject> need = wantedCats(c, man);
+        if (need == null || need.isEmpty()) throw new Exception("unknown level");
+        for (Map.Entry<String, JSONObject> entry : need.entrySet()) {
+            JSONObject cat = entry.getValue();
             String file = cat.getString("file");
             if (!file.matches("[a-z0-9_-]{1,40}\\.bin")) throw new Exception("bad file name");
             String sha = cat.getString("sha256");

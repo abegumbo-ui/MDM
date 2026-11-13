@@ -194,7 +194,14 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen.home, /3 h a day|3 h/);
   assert.doesNotMatch(seen.home, /Ready-made setups/, "the long overview page is not on the home");
   assert.match(seen["browser/summary"], /What can they open on the web\?/);
-  assert.match(seen["browser/summary"], /Only sites I approve/);
+  assert.match(seen["browser/summary"], /Approved sites only/);
+  assert.match(seen["browser/summary"], /Strict/);
+  assert.match(seen["browser/summary"], /Medium/);
+  assert.match(seen["browser/summary"], /Closed in every browser: adult sites, gambling/);
+  assert.match(seen["browser/summary"], /Also close these in every browser/);
+  assert.match(seen["browser/summary"], /Social media/);
+  assert.match(seen["browser/summary"], /Wall Street Journal/);
+  assert.match(seen["browser/summary"], /Temu/);
   assert.match(seen["browser/summary"], /Safe browsing/);
   assert.match(seen["browser/summary"], /Approved sites \(1\)/);
   assert.match(seen["browser/summary"], /More settings/);

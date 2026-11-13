@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { endSitesEarly, normalizeTimedHosts, normalizeBlockedScreens, buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
+import { endSitesEarly, normalizeTimedHosts, normalizeBlockedScreens, buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange, FILTER_EXTRAS, normalizeFilterExtras } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -350,4 +350,17 @@ test("per-site pictures and videos: the boxes on each approved site become the p
   assert.equal(normalizeSite({ type: "domain", url: "https://x.test", pictures: "block" }).blockImages, true, "Block pictures also sets the older flag");
   assert.equal(buildAgentPolicy({}, []).blockVideos, false, "videos are shown unless switched off");
   assert.deepEqual(buildAgentPolicy({}, []).noVideoSites, []);
+});
+
+test("extra categories (news, shopping...) reach the phone only with a level on, and never twice", () => {
+  assert.deepEqual(FILTER_EXTRAS, ["social", "news", "shopping", "games", "video", "dating"]);
+  assert.deepEqual(normalizeFilterExtras(["news", "bogus", "news", 5, "shopping"]), ["news", "shopping"], "unknown and repeated ids are dropped");
+  assert.deepEqual(normalizeFilterExtras("news"), []);
+  const pol = (cfg) => buildAgentPolicy(cfg, []).filterExtras;
+  assert.deepEqual(pol({ browserFilter: "strict", filterExtras: ["news", "shopping", "social"] }), ["news", "shopping"], "Strict already closes social media");
+  assert.deepEqual(pol({ browserFilter: "moderate", filterExtras: ["social", "news"] }), ["social", "news"], "Medium plus social media and news");
+  assert.deepEqual(pol({ browserFilter: "off", filterExtras: ["news"] }), [], "Approved sites only: nothing else to close");
+  assert.deepEqual(pol({ filterExtras: ["games"] }), [], "no level, no extras");
+  const lines = summarizeConfigChange(normalizeConfig({}), normalizeConfig({ filterExtras: ["news", "games"] }));
+  assert.ok(lines.some((l) => /Also closed in every browser: news, games/.test(l)), "the change is written to the dashboard log");
 });
