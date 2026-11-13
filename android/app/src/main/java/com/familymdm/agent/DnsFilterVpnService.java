@@ -281,6 +281,9 @@ public class DnsFilterVpnService extends VpnService {
             socket.receive(resp);
             byte[] answer = new byte[resp.getLength()];
             System.arraycopy(respBuf, 0, answer, 0, resp.getLength());
+            // Keep answers short-lived, so a rule that changes (a pause that ends, another filter level) applies within a minute
+            // instead of whenever the phone's own DNS memory lets go of the old answer.
+            answer = com.familymdm.agent.sitepolicy.SafeSearchDns.capTtl(answer, 60);
             writeDnsReply(origDstIp, origSrcIp, origDstPort, origSrcPort, answer);
         } catch (Exception e) {
             // An unanswered lookup here behaves exactly like one dropped on any flaky network --
@@ -309,10 +312,10 @@ public class DnsFilterVpnService extends VpnService {
     private void answerSafely(byte[] origSrcIp, byte[] origDstIp, int origSrcPort, int origDstPort, byte[] query, String target, int qtype) {
         byte[] reply;
         if (qtype != com.familymdm.agent.sitepolicy.SafeSearchDns.TYPE_A) {
-            reply = com.familymdm.agent.sitepolicy.SafeSearchDns.answer(query, new java.util.ArrayList<byte[]>(), 300);
+            reply = com.familymdm.agent.sitepolicy.SafeSearchDns.answer(query, new java.util.ArrayList<byte[]>(), 60);
         } else {
             java.util.List<byte[]> ips = safeAddresses(target);
-            reply = ips.isEmpty() ? null : com.familymdm.agent.sitepolicy.SafeSearchDns.answer(query, ips, 300);
+            reply = ips.isEmpty() ? null : com.familymdm.agent.sitepolicy.SafeSearchDns.answer(query, ips, 60);
         }
         if (reply == null) {
             forward(origSrcIp, origDstIp, origSrcPort, origDstPort, query);

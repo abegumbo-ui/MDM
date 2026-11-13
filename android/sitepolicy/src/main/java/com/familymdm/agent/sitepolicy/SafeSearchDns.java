@@ -108,6 +108,46 @@ public final class SafeSearchDns {
         return -1;
     }
 
+    /**
+     * A copy of a DNS reply in which no record may be kept longer than maxTtl seconds. Android keeps every answer it gets for as
+     * long as its time-to-live says (often minutes to hours), so after a rule changes (a pause that ends, another filter level, SafeSearch
+     * switched) a site that was let through stayed reachable until its old answer expired. With the lifetime cut short the new rule
+     * applies within about a minute. Anything that is not a plain reply is returned as it came (never damaged).
+     */
+    public static byte[] capTtl(byte[] m, int maxTtl) {
+        try {
+            if (m == null || m.length < 12 || maxTtl < 0) return m;
+            int qd = ((m[4] & 0xff) << 8) | (m[5] & 0xff);
+            int records = (((m[6] & 0xff) << 8) | (m[7] & 0xff)) + (((m[8] & 0xff) << 8) | (m[9] & 0xff)) + (((m[10] & 0xff) << 8) | (m[11] & 0xff));
+            int pos = 12;
+            for (int i = 0; i < qd; i++) {
+                pos = skipName(m, pos);
+                if (pos < 0) return m;
+                pos += 4;
+                if (pos > m.length) return m;
+            }
+            byte[] out = m.clone();
+            for (int i = 0; i < records; i++) {
+                pos = skipName(m, pos);
+                if (pos < 0 || pos + 10 > m.length) return m;
+                int type = ((m[pos] & 0xff) << 8) | (m[pos + 1] & 0xff);
+                long ttl = ((m[pos + 4] & 0xffL) << 24) | ((m[pos + 5] & 0xffL) << 16) | ((m[pos + 6] & 0xffL) << 8) | (m[pos + 7] & 0xffL);
+                int len = ((m[pos + 8] & 0xff) << 8) | (m[pos + 9] & 0xff);
+                if (type != 41 && ttl > maxTtl) { // type 41 (EDNS) uses these four bytes for flags, not a lifetime
+                    out[pos + 4] = (byte) (maxTtl >>> 24);
+                    out[pos + 5] = (byte) (maxTtl >>> 16);
+                    out[pos + 6] = (byte) (maxTtl >>> 8);
+                    out[pos + 7] = (byte) maxTtl;
+                }
+                pos += 10 + len;
+                if (pos > m.length) return m;
+            }
+            return out;
+        } catch (RuntimeException e) {
+            return m;
+        }
+    }
+
     /** Every IPv4 address in a reply's answer section. */
     public static List<byte[]> parseA(byte[] reply) {
         List<byte[]> out = new ArrayList<>();
