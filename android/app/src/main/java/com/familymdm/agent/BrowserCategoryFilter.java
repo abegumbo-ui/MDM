@@ -56,6 +56,24 @@ final class BrowserCategoryFilter {
         return CategoryFilterRules.blocks(approvedSite(c, host), core, social, isBrowser(c, pkg));
     }
 
+    /**
+     * A request that came through the Agent's inspection proxy. Only browsers (and web views) send their traffic there, and the proxy looks the
+     * site up itself (as the Agent), so the DNS filter never sees which browser asked: everything a browser may not open is refused here too.
+     */
+    static boolean blocksViaProxy(Context c, String host) {
+        if (host == null || Protection.paused(c)) return false;
+        String h = host.toLowerCase(java.util.Locale.ROOT);
+        if (approvedOnly(c)) {
+            for (String p : PAGE_PARTS) if (h.equals(p) || h.endsWith("." + p)) return false;
+            return !approvedSite(c, h) && !DnsAllowlist.allows(c, h);
+        }
+        if ("off".equals(WebFilter.tier(c)) || !WebFilter.active(c)) return false;
+        boolean core = WebFilter.blocksCore(c, h);
+        boolean browserOnly = !core && WebFilter.blocksSocial(c, h);
+        if (!core && !browserOnly) return false;
+        return !approvedSite(c, h) && !DnsAllowlist.allows(c, h);
+    }
+
     /** True when the app's connections need identifying (only Strict's social rule depends on which app it is). */
     static boolean needsUid(Context c) {
         if (approvedOnly(c)) return true;
