@@ -52,3 +52,25 @@ SafeSearch is forced in Chrome. The adult, gambling and piracy filter works. The
 - **Music pictures, corrected:** you wanted album art for the songs you approved and nothing for the rest. "Song pictures" now has three choices: "Only for songs you approved" (default), "Always show", "Never show". Approved songs are drawn as square album-art cards like the real app; the Agent's picture filter lets the art of approved songs through even when "No pictures on web pages" is on. NOT YET SEEN ON A PHONE: the first test run was on a phone whose settings still said "Never" (my own earlier tests had saved the old default), and the A16 then disconnected. If the Music icon still shows titles only after the next check-in, tell me.
 - **Requests** for YouTube and YouTube Music are on their own tabs with the child's message, with counts on the menu, the tabs and the Overview.
 - **Raspberry Pi:** after you moved it to its own wall adapter it stayed up (about 20 minutes at the last look) and took back what happened on the backup while it was away.
+
+## Evening and Sabbath additions (2026-11-13)
+
+### Netspark and Knox, what I found (analysis only, nothing of theirs was copied or used)
+- Their Android app is 169 MB because the universal APK carries four CPU variants of the ONNX Runtime and ML Kit libraries. Their Windows "owner installer" is a PyInstaller program that drives `adb`: it switches off the account-service packages, runs `dpm set-device-owner`, switches them back on, then grants accessibility / device admin / app-ops by `settings put` and `appops`.
+- Without owner rights they work through accessibility (it watches Settings screens such as the device-admin and VPN dialogs and backs out), a device admin, a VPN, overlays, and password protection of uninstall.
+- Samsung: the Knox licence is free (since 2021) but is issued per app through the Knox Partner Program (partner.samsungknox.com), which wants a company-style email and a use case. Their own guide says Knox phones do not need owner mode. Xiaomi: Enterprise Mode needs an agency id and licence issued by Xiaomi; not available to us without Xiaomi.
+- Their word lists are a closed binary format (four strictness levels); the website categories live on their servers. Not copyable, not copied. Option for later: more open list sources (UT1 and Block List Project are already used).
+
+### New, built, not yet tried on the test phone
+- **Open web level** ("close only what I choose"): the whole web is open, only the kinds you tick are closed (adult sites ticked at first; gambling, drugs, scams, piracy, social, news, shopping, games, video, dating are separate switches). YouTube is open in this level. Dashboard: Browser > Access. Phone: Administrator > Rules > Websites. Old phones that do not know the level stay on "approved sites only" (safe).
+- **Daily time per site** ("YouTube for 2 hours every day"): resets each morning, counted on the phone while the site is on screen in the YouTube and YouTube Music icons and in the Browser add-on. Time is up: the site shows "Time is up for today" with "Ask for more time", which arrives as a "More screen time" request. Apps already had daily limits. NOT counted: other browsers (no way to read their address), music playing with the screen off.
+- **Block a screen by its name** (Apps > Blocking): type "Software update"; the phone looks the name up in its apps and in the screens it has shown; a wrong name answers "There is no screen or app with that name on this phone."
+- **Blocks made on the phone now reach the dashboard** (screens blocked with the ✓ picker, by screen name or title): listed under Blocked screens with Remove. The picture checker and photo alerts are now also on the phone's own Administrator screens.
+- **YouTube Music**: Back from a blocked song keeps the search and home pages in the history; Restricted Mode header for Music.
+- **Windows installer `FamilyMdmSetup.exe`** (windows/FamilyMdmSetup; also on the Latest agent build release): installs the app, switches off the account services of existing accounts for a moment, sets device owner, switches them back on (always, also on failure; "Put things back" button). Tested: parsing against real phone output (self-test), a read-only run on the A16, and switch-off then put-back of one account service on the A16. NOT tested: the actual hand-over on a phone that is not managed yet. Not code-signed, so Windows SmartScreen asks once.
+- **Phone-to-phone installer `mdm-otg-setup.apk`** (android/otgsetup): the same steps with a phone in place of the computer, over a USB OTG cable, using the open ADB library by Cameron Gutman (BSD-3). It compiles; it has NEVER been tried on two phones, and the cable framing is the most likely thing to need a fix.
+
+### Still to do / needs you
+- Samsung Knox licence and Xiaomi: you sign up (company-style email needed).
+- Pi: open the Tailscale SSH sign-in link so I can deploy the newest server.
+- Check on the A16 after this build: Open level, a 1-minute YouTube allowance, screen lookup by name, Back in Music, Restricted Mode in Music.
