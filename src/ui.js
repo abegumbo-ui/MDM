@@ -198,8 +198,14 @@ button.choice.on .rb{border-color:var(--primary);background:radial-gradient(var(
 details.more{margin-top:8px}
 details.more>summary{cursor:pointer;font-weight:500;padding:12px 4px;list-style:none;color:var(--primary)}
 details.more>summary::-webkit-details-marker{display:none}
-details.more>summary::before{content:'\u25B8  '}
-details.more[open]>summary::before{content:'\u25BE  '}
+details.more>summary::before{content:'▸  '}
+details.more[open]>summary::before{content:'▾  '}
+.dcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+button.dcard{display:block;width:100%;text-align:left;background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:14px;padding:16px;color:inherit;font:inherit;cursor:pointer;box-shadow:var(--shadow)}
+button.dcard:hover{background:var(--surface-2)}
+.quietlinks{display:flex;gap:18px;flex-wrap:wrap;margin-top:22px}
+.quietlinks a{color:var(--on-surface-variant);text-decoration:none;font-size:13px}
+.quietlinks a:hover{color:var(--on-surface);text-decoration:underline}
 `;
 
 export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -427,6 +433,7 @@ function trow(icon,name,subtitle,statusEl,batt,seen,hash,checkId){
   statusEl,h('div',{class:'c-batt mute'},batt),h('div',{class:'c-seen mute'},seen),h('div',{class:'mute'},'›'));
  return r}
 function renderDevices(m){
+ if(uiMode==='new'){renderDevicesNew(m);return}
  const total=devices.length+browsers.length+windevices.length;
  const head=h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,'Devices'),h('div',{class:'sub',id:'devcount'},total+(total===1?' device':' devices'))));
  const bar=h('div',{class:'toolbar'});
@@ -3070,7 +3077,7 @@ function renderGroupNew(m,d,sec,body){
  const G=GROUPS.find(function(g){return g.key===sec});
  const back=h('button',{type:'button',class:'btn tonal'},'‹ Home');back.onclick=backHome;
  m.append(h('div',{class:'row',style:'margin-bottom:14px'},back,h('h1',{class:'ptitle'},NEW_TITLES[sec]||G.label)));
- const ess={browser:essBrowser}[sec];
+ const ess={browser:essBrowser,apps:essApps,time:essTime,youtube:essYoutube}[sec];
  const cur=getSub(sec);
  const content=h('div',{class:'content'});
  const old=h('div');
@@ -3156,6 +3163,143 @@ function essBrowser(box,dv){
  for(const r of [['YouTube settings','Channels, videos, YouTube Music, downloads',function(){goTo('youtube')}],['Sites visited','What they opened and searched',function(){goMore('browser','history')}],['Filter schedule and blocked words','A different level at set times; words that are refused',function(){goMore('browser','access')}]]){
   const b=h('button',{type:'button',class:'ctl slim'},h('span',{class:'grow'},h('span',{class:'ct'},r[0]),h('span',{class:'mute'},r[1])),h('span',{class:'mute'},'›'));b.onclick=r[2];more.append(b)}
  box.append(more)}
+
+/* ----- Apps, in the new look ----- */
+function essApps(box,dv){
+ const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ // New apps waiting for you.
+ const pend=new Map();
+ for(const p of ((dv.applied&&dv.applied.pending)||[])){const a=dv.packages.find(function(x){return x.p===p});pend.set(p,(a&&a.l)||p)}
+ if(pend.size){
+  const pc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Waiting for your approval ('+pend.size+')'),h('div',{class:'mute'},'New apps stay hidden on the phone until you decide.'));
+  for(const [pkg,label] of pend){
+   pc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},label),h('div',{class:'mute small mono'},pkg),
+    h('div',{class:'row',style:'margin-top:8px'},
+     btn('Allow','',async function(){c.apps[pkg]={mode:'allow',label:label};await save('Allowed '+label+'. It appears on the phone within about 5 minutes.')}),
+     btn('Block','danger',async function(){c.apps[pkg]={mode:'block',label:label};await save('Blocked '+label+'.')})))))}
+  box.append(pc)}
+ // The rules.
+ const rules=h('div',{class:'card'},h('h2',null,'Rules'));
+ rules.append(simpleSwitch('New apps wait for my approval','A new app stays hidden until you allow it.',!!c.approveNew,function(on){c.approveNew=on;save(on?'New apps will wait for you.':'New apps appear by themselves.')}));
+ box.append(rules);
+ renderAppGroups(box,dv);
+ // Every app, with a switch and a time limit.
+ const st=c.screenTime=c.screenTime||{dailyLimit:0,bedtime:null,appLimits:{},exempt:[]};st.appLimits=st.appLimits||{};
+ const card=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Allowed or Blocked, and how long each may be used a day. Tap the chosen one again to go back to the default.'));
+ const q=h('input',{type:'text',placeholder:'Search this phone\'s apps',value:search,style:'width:100%;margin-top:8px'});
+ q.oninput=function(){search=q.value;const pos=q.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search this phone\'s apps"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
+ card.append(q);
+ const s=search.toLowerCase();
+ const apps=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE&&!a.s&&(!s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s))}).sort(function(a,b){
+  const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;return aa!==ab?aa-ab:(a.l||a.p).localeCompare(b.l||b.p)});
+ if(!apps.length)card.append(h('div',{class:'mute',style:'margin-top:10px'},dv.packages.length?'No apps match.':'The phone has not reported its apps yet.'));
+ for(const a of apps){
+  const mode=cur(dv,a.p).mode;
+  const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy'});img.onerror=function(){img.replaceWith(h('div',{class:'ph'}))};
+  const setMode=function(v){
+   const old=c.apps[a.p]||{};
+   if(mode===v){delete c.apps[a.p]}else c.apps[a.p]=v==='allow'?{mode:'allow',label:a.l,schedule:old.schedule||undefined}:{mode:'block',label:a.l};
+   save((a.l||a.p)+(mode===v?': back to the default.':v==='allow'?': allowed.':': blocked.'))};
+  const seg=h('div',{class:'seg',style:'margin-top:0'});
+  for(const o of [['allow','Allowed',''],['block','Blocked','block']]){const b=h('button',{type:'button',class:(mode===o[0]?'on ':'')+o[2]},o[1]);b.onclick=function(){setMode(o[0])};seg.append(b)}
+  const lim=h('select');for(const o of [[0,'No limit'],[15,'15 min a day'],[30,'30 min a day'],[45,'45 min a day'],[60,'1 h a day'],[90,'1.5 h a day'],[120,'2 h a day']])lim.append(new Option(o[1],String(o[0])));
+  lim.value=String(st.appLimits[a.p]||0);if(lim.value!==String(st.appLimits[a.p]||0)){lim.append(new Option(fmtMin(st.appLimits[a.p])+' a day',String(st.appLimits[a.p])));lim.value=String(st.appLimits[a.p])}
+  lim.onchange=function(){const v=parseInt(lim.value,10);if(v)st.appLimits[a.p]=v;else delete st.appLimits[a.p];save('Time limit for '+(a.l||a.p)+' saved.')};
+  card.append(h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),
+   a.h?h('div',null,h('span',{class:'chip warn'},'hidden on the phone now')):null,
+   h('div',{class:'row',style:'margin-top:8px'},seg,mode==='block'?null:lim))))}
+ card.append(h('div',{class:'row',style:'margin-top:10px'},btn('System apps and everything else','outline',function(){goMore('apps','system')})));
+ box.append(card)}
+
+/* ----- Screen time, in the new look ----- */
+function essTime(box,dv){
+ renderUsage(box,dv);
+ const st=dv.config.screenTime=dv.config.screenTime||{dailyLimit:0,bedtime:null,appLimits:{},exempt:[]};
+ const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'Limits'));
+ const dl=h('select');for(const o of [[0,'No limit'],[30,'30 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours'],[300,'5 hours'],[360,'6 hours'],[480,'8 hours']])dl.append(new Option(o[1],String(o[0])));
+ dl.value=String(st.dailyLimit||0);if(dl.value!==String(st.dailyLimit||0)){dl.append(new Option(fmtMin(st.dailyLimit),String(st.dailyLimit)));dl.value=String(st.dailyLimit)}
+ dl.onchange=function(){st.dailyLimit=parseInt(dl.value,10);save()};
+ card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Screen time per day'),h('div',{class:'mute'},'When it is used up the phone locks until midnight. Emergency calls still work.')),dl));
+ const bt=st.bedtime;
+ card.append(simpleSwitch('Bedtime','The phone locks at night.',!!bt,function(on){st.bedtime=on?{days:[0,1,2,3,4,5,6],from:'21:00',to:'07:00'}:null;save(on?'Bedtime 21:00 to 07:00. Change the times below.':'Bedtime is off.')}));
+ if(bt){
+  const from=h('input',{type:'time',value:bt.from||'21:00'}),to=h('input',{type:'time',value:bt.to||'07:00'});
+  from.onchange=function(){bt.from=from.value||'21:00';save()};to.onchange=function(){bt.to=to.value||'07:00';save()};
+  card.append(h('div',{class:'row',style:'margin:4px 0 8px'},h('span',{class:'mute'},'Locked from'),from,h('span',{class:'mute'},'until'),to));
+  const days=h('div',{class:'days'});
+  ['S','M','T','W','T','F','S'].forEach(function(l,i){const on=(bt.days||[]).includes(i);const b=h('button',{type:'button',class:on?'on':''},l);
+   b.onclick=function(){const set=new Set(bt.days||[]);on?set.delete(i):set.add(i);bt.days=[...set].sort();save()};days.append(b)});
+  card.append(days)}
+ box.append(card);
+ const ml=h('button',{type:'button',class:'ctl slim'},h('span',{class:'grow'},h('span',{class:'ct'},'More limits'),h('span',{class:'mute'},'A different limit on some days, school time, apps that do not count')),h('span',{class:'mute'},'›'));
+ ml.onclick=function(){goMore('time','limits')};
+ box.append(h('div',{class:'card'},ml))}
+
+/* ----- YouTube, in the new look ----- */
+function essYoutube(box,dv){
+ const c=dv.config,cur=c.youtubeMode||'auto';
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'What can they watch on YouTube?'));
+ card.append(choiceList([
+  ['channels','Only what I allow','Only the channels and videos you pick. Everything else is blocked.'],
+  ['restricted','Search and watch, restricted','No home feed, Shorts, suggestions or comments.'],
+  ['auto','Follow the web level','Restricted on Moderate; only what you allow on the other levels.'],
+  ['open','Open','YouTube as it is.'],
+  ['blocked','Off','YouTube does not open at all.']],cur,function(v){c.youtubeMode=v;save('YouTube: '+(YT_CHOICES.find(function(x){return x[0]===v})||[0,v])[1]+'.')}));
+ box.append(card);
+ const sw2=h('div',{class:'card'},h('h2',null,'On the phone'));
+ sw2.append(simpleSwitch('YouTube icon','A YouTube built into the MDM app. It follows the choice above.',!!c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears at the next check-in.':'The YouTube icon is removed at the next check-in.')}));
+ sw2.append(simpleSwitch('YouTube Music icon','Its own music-only icon.',c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'The YouTube Music icon appears at the next check-in.':'The YouTube Music icon is removed at the next check-in.')}));
+ sw2.append(simpleSwitch('Let them search and ask','With "Only what I allow", search works and they can ask for a video or song.',!c.youtubeSearchOff,function(on){c.youtubeSearchOff=!on;save(on?'They can search and ask.':'Search is blocked.')}));
+ sw2.append(simpleSwitch('Let them download','Videos and songs are saved on the phone and play with no internet.',c.downloadsOff!==true,function(on){c.downloadsOff=!on;save(on?'Downloads are on.':'Downloads are off.')}));
+ sw2.append(simpleSwitch('Allow signing in to YouTube','Only if the child may use their own account.',c.youtubeSignIn===true,function(on){c.youtubeSignIn=on;save(on?'Signing in is allowed.':'Signing in is not allowed.')}));
+ box.append(sw2);
+ const sites=c.sites||{},nCh=Object.values(sites).filter(function(x){return x.type==='youtube'}).length;
+ const more=h('div',{class:'card'});
+ for(const r of [['Allowed channels and videos',nCh+(nCh===1?' channel':' channels')+' · find one and allow it',function(){goMore('youtube','yt')}],['Allowed songs','YouTube Music: find a song and allow it',function(){goMore('youtube','music')}]]){
+  const b=h('button',{type:'button',class:'ctl slim'},h('span',{class:'grow'},h('span',{class:'ct'},r[0]),h('span',{class:'mute'},r[1])),h('span',{class:'mute'},'›'));b.onclick=r[2];more.append(b)}
+ box.append(more)}
+
+/* ----- The front page, in the new look: one card for each device ----- */
+function deviceCardNew(icon,name,sub,hash,chips,lines){
+ const c=h('button',{type:'button',class:'dcard'},h('div',{class:'row',style:'flex-wrap:nowrap'},h('div',{class:'avatar'},svgIcon(icon,'currentColor')),h('div',{class:'grow'},h('div',{class:'ct'},name),h('div',{class:'mute small'},sub)),h('div',{class:'mute'},'›')));
+ const ch=h('div',{style:'margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 0'});for(const x of chips)if(x)ch.append(x);c.append(ch);
+ for(const l of lines)if(l)c.append(h('div',{class:'mute small',style:'margin-top:8px'},l));
+ c.onclick=function(){location.hash=hash};return c}
+function renderDevicesNew(m){
+ const total=devices.length+browsers.length+windevices.length;
+ const head=h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,'Devices'),h('div',{class:'sub'},total+(total===1?' device':' devices'))));
+ const bar=h('div',{class:'toolbar'});
+ const add=h('button',{class:'btn'},'Add device');add.onclick=function(){location.hash='codes'};
+ bar.append(add,btn('Refresh','tonal',load));head.append(bar);m.append(head);
+ if(!total){m.append(h('div',{class:'card empty'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Press "Add device" to get a code for a phone or a Browser.')));return}
+ const grid=h('div',{class:'dcards'});
+ for(const d of devices){
+  const reqs=(d.appRequests||[]).length+(d.siteRequests||[]).length;
+  const bad=healthProblems(d).filter(function(x){return x.level==='bad'}).length;
+  const bat=d.info&&d.info.battery;
+  const st=(d.config||{}).screenTime||{},usage=d.usage||{},days=Object.keys(usage).sort().reverse();
+  const today=days.length?usage[days[0]].total:null;
+  grid.append(deviceCardNew('device',d.name,(state.session.role==='admin'&&d.ownerId)?d.ownerId:'Android phone','device/'+d.id,[
+   d.syncPaused?h('span',{class:'chip warn'},'Paused'):h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},h('span',{class:'dot'}),isOnline(d)?'Online':'Offline'),
+   bat?h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},bat.pct+'%'+(bat.charging?' · charging':'')):null,
+   lockedNow(d)?h('span',{class:'chip warn'},'Locked'):null,
+   reqs?h('span',{class:'chip warn'},reqs+(reqs===1?' request':' requests')):null,
+   bad?h('span',{class:'chip bad'},bad+(bad===1?' problem':' problems')):null,
+   needsUpdate(d)?h('span',{class:'chip warn'},'Update'):null,
+   viaChip(d)],[
+   today!=null?'Screen time today: '+fmtMin(today)+(st.dailyLimit?' of '+fmtMin(st.dailyLimit):''):null,
+   'Last seen '+ago(d.lastSeen)]))}
+ for(const b of browsers)grid.append(deviceCardNew('globe','Browser',b.name+' · no MDM on this phone','browser/'+b.id,[h('span',{class:'chip'},'Browser')],[b.lastSeen?'Last seen '+ago(b.lastSeen):null]));
+ for(const w of windevices)grid.append(deviceCardNew('device',w.name,(w.info.hostname||'LockGuard')+' · Windows','win/'+w.id,[h('span',{class:'chip '+(w.filterOn||w.enabled?'ok':'')},w.filterOn?'Filter on':w.enabled?'Locked down':'No filter')],[w.lastSeen?'Last seen '+ago(w.lastSeen):null]));
+ m.append(grid);
+ // Less used pages: quiet links, not buttons.
+ const links=h('div',{class:'quietlinks'});
+ const link=function(label,hash){const a=h('a',{href:'#'+hash},label);links.append(a)};
+ if(state.session.role==='admin'){link('Server','server');link('Templates','templates');link('Activity','audit');link('Clients','clients');link('Settings','settings')}
+ m.append(links)}
 
 /* ---------- Server: the computer that runs this dashboard (the Raspberry Pi), and the Cloudflare backup ---------- */
 let piInfo=null,piWifi=null,piLog='',piLoading=false;
