@@ -51,7 +51,9 @@ final class WebFilter {
 
     /** Remembers what the dashboard (or the agent) says the level is, and starts getting the lists if it needs them. */
     static void setPolicy(Context c, String tier, String base) {
-        String t = "moderate".equals(tier) || "strict".equals(tier) || "moderate+ads".equals(tier) || "strict+ads".equals(tier) || "ads".equals(tier) ? tier : "off";
+        // "custom" = Open: the whole web, with only the ticked kinds (the "extras") closed.
+        String t = "moderate".equals(tier) || "strict".equals(tier) || "moderate+ads".equals(tier) || "strict+ads".equals(tier) || "ads".equals(tier)
+                || "custom".equals(tier) || "custom+ads".equals(tier) ? tier : "off";
         String b = base != null && base.startsWith(GITHUB) && base.length() < 300 ? base : "";
         SharedPreferences p = prefs(c);
         boolean changed = !t.equals(p.getString("filterTier", "off")) || !b.equals(p.getString("filterBase", ""));
@@ -80,7 +82,7 @@ final class WebFilter {
     private static List<String> extras(Context c) {
         String t = tier(c);
         List<String> out = new ArrayList<>();
-        if (!(t.startsWith("moderate") || t.startsWith("strict"))) return out; // only on top of a level
+        if (!(t.startsWith("moderate") || t.startsWith("strict") || t.startsWith("custom"))) return out; // only on top of a level (or, for "Open", all there is)
         String csv = prefs(c).getString("filterExtras", "");
         if (!csv.isEmpty()) for (String x : csv.split(",")) out.add(x);
         return out;
@@ -88,9 +90,13 @@ final class WebFilter {
 
     /** The lists the level needs: its own (all of them must be published) plus the extras the manifest already has (a missing extra is skipped, never fatal). */
     private static java.util.LinkedHashMap<String, JSONObject> wantedCats(Context c, JSONObject man) throws Exception {
-        JSONArray cats = tierCats(man, tier(c));
-        if (cats == null || cats.length() == 0) return null;
-        JSONObject all = man.getJSONObject("categories");
+        String t = tier(c);
+        boolean custom = t.startsWith("custom");
+        // "Open" has no lists of its own: only the ticked kinds (and the ad servers with "Block ads").
+        JSONArray cats = custom ? (t.endsWith("+ads") ? new JSONArray().put("ads") : new JSONArray()) : tierCats(man, t);
+        if (cats == null || (cats.length() == 0 && !custom)) return null;
+        JSONObject all = man.optJSONObject("categories");
+        if (all == null) all = new JSONObject();
         java.util.LinkedHashMap<String, JSONObject> out = new java.util.LinkedHashMap<>();
         for (int i = 0; i < cats.length(); i++) {
             JSONObject cat = all.optJSONObject(cats.getString(i));
@@ -128,7 +134,7 @@ final class WebFilter {
      */
     static boolean levelActive(Context c) {
         String t = tier(c);
-        return (t.startsWith("moderate") || t.startsWith("strict")) && active(c);
+        return (t.startsWith("moderate") || t.startsWith("strict") || t.startsWith("custom")) && active(c);
     }
 
     static String tier(Context c) {
@@ -206,7 +212,11 @@ final class WebFilter {
     private static Map<String, JSONObject> needed(Context c) {
         try {
             String m = prefs(c).getString("filterManifest", null);
-            if (m == null) return null;
+            if (m == null) {
+                // "Open" with nothing ticked needs no list at all: it is ready at once (the whole web is open).
+                if (tier(c).equals("custom") && extras(c).isEmpty()) return new java.util.LinkedHashMap<String, JSONObject>();
+                return null;
+            }
             return wantedCats(c, new JSONObject(m));
         } catch (Exception e) {
             return null;
@@ -279,7 +289,7 @@ final class WebFilter {
         String manifestText = new String(fetch(base + "/manifest.json", 256 * 1024), "UTF-8");
         JSONObject man = new JSONObject(manifestText);
         java.util.LinkedHashMap<String, JSONObject> need = wantedCats(c, man);
-        if (need == null || need.isEmpty()) throw new Exception("unknown level");
+        if (need == null || (need.isEmpty() && !tier(c).startsWith("custom"))) throw new Exception("unknown level");
         for (Map.Entry<String, JSONObject> entry : need.entrySet()) {
             JSONObject cat = entry.getValue();
             String file = cat.getString("file");

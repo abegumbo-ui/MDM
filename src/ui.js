@@ -729,7 +729,7 @@ function renderDeviceDetail(m,d){
  const acts=h('div',{class:'card'},h('h2',null,'Activity'));
  if(d.pending)acts.append(h('div',{class:'act'},'⏳ '+d.pending+' command(s) waiting for the phone\'s next check-in'));
  for(const c of d.inflight)acts.append(h('div',{class:'act'},'⏳ '+(NAMES[c.type]||c.type)+' — sent '+ago(c.at)+', waiting for the phone to confirm'));
- for(const r of d.results.slice().reverse().slice(0,6).filter(function(r){return r.type!=='listSystemApps'&&r.type!=='locate'&&r.type!=='checkUpdates'}))acts.append(h('div',{class:'act'},(r.ok?'✅ ':'❌ ')+(NAMES[r.type]||r.type)+(r.msg?' — '+r.msg:'')+' · '+ago(r.at)));
+ for(const r of d.results.slice().reverse().slice(0,6).filter(function(r){return r.type!=='listSystemApps'&&r.type!=='locate'&&r.type!=='checkUpdates'&&r.type!=='findScreen'}))acts.append(h('div',{class:'act'},(r.ok?'✅ ':'❌ ')+(NAMES[r.type]||r.type)+(r.msg?' — '+r.msg:'')+' · '+ago(r.at)));
  if(acts.children.length===1)acts.append(h('div',{class:'mute'},'No activity yet.'));
  ov.append(acts);
 
@@ -1816,7 +1816,39 @@ function renderTimeLimits(m,dv){
   ac.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),h('label',{class:'row small mute',style:'margin-top:2px;cursor:pointer'},cb,'Does not count toward the daily limit')),
    pick(st.appLimits[a.p]||0,[[0,'No limit'],[15,'15 min a day'],[30,'30 min a day'],[45,'45 min a day'],[60,'1 hour a day'],[90,'1.5 hours a day'],[120,'2 hours a day'],[180,'3 hours a day']],function(v){if(v)st.appLimits[a.p]=v;else delete st.appLimits[a.p];save()})))}
  m.append(ac);
+ renderSiteLimits(m,dv,st,function(msg){return save(msg).then(render)});
  m.append(h('div',{class:'card'},h('h2',null,'Good to know'),h('div',{class:'mute'},'Time is counted on the phone itself, so limits keep working with no internet. The count needs Android\'s "usage access" for the Agent: it asks for it by itself, and the Usage tab tells you if a phone refused. A lock you send yourself from Security always wins over these.')))}
+
+/** "YouTube for 2 hours EVERY day": a daily time allowance per site. It starts again each morning; it is not 2 hours from when it was approved. */
+function renderSiteLimits(m,dv,st,save){
+ st.siteLimits=st.siteLimits||{};
+ const used={};
+ const today=Object.keys(dv.usage||{}).sort().pop();
+ for(const s of ((dv.usage||{})[today]||{}).sites||[])used[s.h]=s.m;
+ const card=h('div',{class:'card'},h('h2',null,'Time on a site, every day'),
+  h('div',{class:'mute'},'Give a site an allowance that starts again every morning: for example YouTube for 2 hours every day (not 2 hours from when you approved it). When it is used up the site shows "Time is up for today" until midnight, with a button to ask you for more. Counted on the phone while the site is on screen in the YouTube and YouTube Music icons and in our Browser. In other browsers the time cannot be counted, so a site with an allowance should be closed there.'));
+ const times=[[15,'15 minutes'],[30,'30 minutes'],[45,'45 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours']];
+ const words=function(mins){const t=times.find(function(x){return x[0]===mins});return t?t[1]:mins+' minutes'};
+ const hosts=Object.keys(st.siteLimits).sort();
+ if(!hosts.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No site has an allowance yet.'));
+ for(const host of hosts){
+  const sel=h('select');for(const t of times)sel.append(new Option(t[1]+' a day',String(t[0])));
+  if(!times.some(function(t){return t[0]===st.siteLimits[host]}))sel.append(new Option(words(st.siteLimits[host])+' a day',String(st.siteLimits[host])));
+  sel.value=String(st.siteLimits[host]);
+  sel.onchange=function(){st.siteLimits[host]=parseInt(sel.value,10);save('Saved. The phone applies it within about 5 minutes.')};
+  const u=used[host];
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},host),
+   h('div',{class:'mute small'},u==null?'Not used yet today, or the phone has not reported yet.':'Used today: '+words(u).replace(/^0 minutes$/,'0 minutes')+(u>=st.siteLimits[host]?' · time is up':''))),
+   sel,btn('Remove','outline',function(){delete st.siteLimits[host];save('Removed. That site has no daily allowance now.')})));
+ }
+ const inp=h('input',{type:'text',placeholder:'youtube.com  or  music.youtube.com',style:'width:100%;margin-top:10px'});
+ const amount=h('select');for(const t of times)amount.append(new Option(t[1]+' a day',String(t[0])));amount.value='120';
+ card.append(inp,h('div',{class:'row',style:'margin-top:8px'},amount,btn('Add','',async function(){
+  const host=inp.value.trim().toLowerCase().replace(/^[a-z]+:\/\//,'').replace(/^www\./,'').replace(/[\/?#:].*$/,'');
+  if(!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host)){snack('Type a site name like youtube.com.',1);return}
+  st.siteLimits[host]=parseInt(amount.value,10);inp.value='';await save('Saved. '+host+' has '+words(st.siteLimits[host])+' every day.')})));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'YouTube Music is its own site: a limit on youtube.com does not count it, so give music.youtube.com its own. Extra time you give from the dashboard (or "turn off all restrictions") lifts the limit while it lasts.'));
+ m.append(card)}
 
 /* ---------- Browser group: everything about what this phone can open on the web, in one place ---------- */
 function buildBrowserGroup(m,dv){
@@ -1840,7 +1872,7 @@ function renderWebProtection(m,dv){
  more.append(h('summary',null,'More: filter schedule, pictures, ads on chosen sites, blocked words'));
  renderFilterSchedule(more,dv);renderSearchPictures(more,dv);renderNoPictureSites(more,dv);renderAdsCovered(more,dv);renderBlockedWords(more,dv);
  m.append(more)}
-function ytModeOf(dv){const y=dv.config.youtubeMode||'auto';return y==='channels'||y==='restricted'?y:((dv.config.browserFilter||'off')==='moderate'?'restricted':'channels')}
+function ytModeOf(dv){const y=dv.config.youtubeMode||'auto';if(y==='channels'||y==='restricted'||y==='open'||y==='blocked')return y;const f=dv.config.browserFilter||'off';return f==='custom'?'open':f==='moderate'?'restricted':'channels'}
 /** A plain-English picture of this phone's browsing, with a button to the tab that changes each line. */
 function renderBrowserSummary(m,dv){
  const c=dv.config,level=c.browserFilter||'off',sites=Object.values(c.sites||{});
@@ -1849,10 +1881,10 @@ function renderBrowserSummary(m,dv){
  const line=function(title,text,chipText,chipCls,sub){
   const go=h('button',{class:'btn outline'},'Change');go.onclick=function(){goTo('browser',sub)};
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title,' ',chipText?h('span',{class:'chip '+(chipCls||'')},chipText):null),h('div',{class:'mute'},text)),go))};
- line('Filter level',level==='off'?'Nothing opens in our browsers unless it is on the allowed list.':level==='moderate'?'The web is open, except adult, gambling, drugs, scam and piracy sites.':'The web is open, except adult, gambling, drugs, scam, piracy and social media sites.',
-  level==='off'?'Approved sites only':level==='moderate'?'Moderate':'Strict',level==='off'?'ok':'warn','access');
- line('YouTube',ytModeOf(dv)==='restricted'?'He can search YouTube and watch. No home feed, Shorts, trending, suggestions or comments.':'Only the channels and videos on the allowed list open. No YouTube home page or search.',
-  ytModeOf(dv)==='restricted'?'Restricted':'Allowed channels only','','access');
+ line('Filter level',level==='off'?'Nothing opens in our browsers unless it is on the allowed list.':level==='custom'?('The whole web is open. Closed: '+((c.filterKinds||['adult']).join(', ')||'nothing')+'.'):level==='moderate'?'The web is open, except adult, gambling, drugs, scam and piracy sites.':'The web is open, except adult, gambling, drugs, scam, piracy and social media sites.',
+  level==='off'?'Approved sites only':level==='custom'?'Open':level==='moderate'?'Moderate':'Strict',level==='off'?'ok':'warn','access');
+ line('YouTube',ytModeOf(dv)==='open'?'YouTube opens as normal.':ytModeOf(dv)==='blocked'?'YouTube does not open.':ytModeOf(dv)==='restricted'?'He can search YouTube and watch. No home feed, Shorts, trending, suggestions or comments.':'Only the channels and videos on the allowed list open. No YouTube home page or search.',
+  ytModeOf(dv)==='open'?'Open':ytModeOf(dv)==='blocked'?'Off':ytModeOf(dv)==='restricted'?'Restricted':'Allowed channels only','','access');
  line('Allowed sites',nSites+(nSites===1?' site':' sites')+' and '+nCh+(nCh===1?' YouTube channel':' YouTube channels')+' are always allowed.'+(nReq?' '+nReq+(nReq===1?' request is':' requests are')+' waiting for you.':''),
   nReq?nReq+' waiting':'',nReq?'warn':'','sites');
  line('Safe search',(c.safeSearch?'SafeSearch is forced on Google, Bing and DuckDuckGo in every browser and app.':'Not forced in Chrome and other browsers. Our own browser always forces it on Google.')+(c.youtubeDns&&c.youtubeDns!=='off'?' YouTube Restricted Mode ('+c.youtubeDns+') is forced everywhere, the YouTube app included.':''),
@@ -2324,7 +2356,7 @@ let browserSection=(function(){try{return sessionStorage.getItem('browserSection
 /** "At a glance": every rule in force on this Browser, one plain line each. */
 function renderBrowserGlance(m,b){
  const c=b.config||{},fs=(b.info&&b.info.filter)||null,rows=[];
- const level=c.openWeb?'Open: no filter':{off:'Approved sites only',moderate:'Moderate filter',strict:'Strict filter'}[c.browserFilter||'off'];
+ const level=c.openWeb?'Open: no filter':{off:'Approved sites only',moderate:'Moderate filter',strict:'Strict filter',custom:'Open: only chosen kinds closed'}[c.browserFilter||'off'];
  rows.push(['Web',level+(fs&&(fs.tier==='moderate'||fs.tier==='strict')?(fs.ready?' · lists ready':' · lists not ready yet'):'')]);
  rows.push(['Search',c.searchOff?'Off':'Google'+(c.safeSearchOff?'':', SafeSearch on')]);
  rows.push(['Adult sites',c.adultListOff?'Built-in list off':'Built-in list blocks them']);
@@ -2432,7 +2464,7 @@ function renderWinScreenTime(m,w){
 function renderWinWhatsOn(m,w){
  const c=w.config||{},win=w.win||{},now=Date.now(),rows=[];
  if(!w.filterOn)rows.push('🌐  Web filter: off');
- else rows.push('🌐  Web filter: '+({off:'approved sites only',moderate:'Moderate',strict:'Strict'}[c.browserFilter||'off'])+(c.safeSearch?', SafeSearch forced':'')+(c.youtubeDns&&c.youtubeDns!=='off'?', YouTube restricted':''));
+ else rows.push('🌐  Web filter: '+({off:'approved sites only',moderate:'Moderate',strict:'Strict',custom:'open web, chosen kinds closed'}[c.browserFilter||'off'])+(c.safeSearch?', SafeSearch forced':'')+(c.youtubeDns&&c.youtubeDns!=='off'?', YouTube restricted':''));
  if((c.pauseUntil||0)>now)rows.push('⏸  Paused until '+hhmm(c.pauseUntil));
  if((c.internetOffUntil||0)>now)rows.push('📵  Internet off until '+hhmm(c.internetOffUntil));
  const fs2=c.filterSchedule;if(fs2&&fs2.on)rows.push('🕘  '+fs2.level+' from '+fs2.from+' to '+fs2.to);
@@ -2740,15 +2772,62 @@ function renderAlerts(m){
 
 
 /* ---------- tap to block: parts of apps picked on the phone ---------- */
+/** "Block a screen by its name": the phone looks the name up in its apps and screens; only a name that exists can be blocked. */
+function renderScreenByName(m,dv){
+ const c=dv.config;
+ const card=h('div',{class:'card'},h('h2',null,'Block a screen by its name'),
+  h('div',{class:'mute'},'Type the name of a screen as it is written on the phone, for example Software update or Developer options. The phone looks the name up in its apps and in the screens it has shown. A name that does not exist cannot be blocked.'));
+ const inp=h('input',{type:'text',placeholder:'Name of the screen',maxlength:60,style:'width:100%;margin-top:8px'});
+ const out=h('div',{style:'margin-top:8px'});
+ card.append(inp,h('div',{style:'margin-top:8px'},btn('Look it up','tonal',async function(){
+  const name=inp.value.replace(/\s+/g,' ').trim();
+  if(name.length<2){snack('Type the name of the screen first.',1);return}
+  out.textContent='Asking the phone... this takes a few seconds.';
+  const sent=await call('POST','/api/devices/'+dv.id+'/command',{type:'findScreen',args:{name:name}});
+  let res=null;
+  for(let i=0;i<30&&!res;i++){
+   await new Promise(function(done){setTimeout(done,i<3?1500:3000)});
+   const all=await call('GET','/api/devices');
+   const now=all.find(function(x){return x.id===dv.id});
+   res=(now&&(now.results||[]).find(function(r){return r.id===sent.id}))||null}
+  out.textContent='';
+  if(!res){out.append(h('div',{class:'mute'},'The phone has not answered yet (it may be off or have no internet). Try again in a moment.'));return}
+  if(!res.ok){out.append(h('div',{class:'mute'},'The phone could not look it up: '+res.msg));return}
+  let ans={};try{ans=JSON.parse(res.msg)}catch(e){}
+  const found=ans.found||[];
+  if(!found.length){
+   out.append(h('div',{style:'font-weight:500'},'There is no screen or app with that name on this phone.'));
+   const sim=(ans.similar||[]).map(function(s){return s.t}).filter(function(t,i,a){return a.indexOf(t)===i});
+   if(sim.length)out.append(h('div',{class:'mute small'},'Names that are close: '+sim.join(', ')));
+   return}
+  for(const f of found){
+   const sig=f.p+'\u001f'+f.t;
+   const row=h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},f.t),h('div',{class:'mute small'},f.k==='app'?'This is an app. To block the whole app, use Block Whole Apps below.':'A screen of '+f.a)));
+   if(f.k!=='app')row.append(btn('Block this screen','',async function(){
+    const cur=c.blockedScreens||[];
+    if(cur.indexOf(sig)>=0){snack('That screen is already blocked.');return}
+    c.blockedScreens=cur.concat([sig]);
+    await saveConfigFor(dv,'Blocked. It closes the moment it opens on the phone.');render()}));
+   out.append(row)}
+ })));
+ card.append(out);
+ m.append(card)}
 /** Whole screens blocked with ✓ Block this screen: listed here, and removed here or on the phone. */
 function renderBlockedScreens(m,dv){
+ renderScreenByName(m,dv);
  const c=dv.config,list=c.blockedScreens||[];
  const card=h('div',{class:'card'},h('h2',null,'Blocked screens ('+list.length+')'),
-  h('div',{class:'mute'},'Screens picked on the phone with ✓ Block this screen (a Settings page, a screen of an app). Each closes the moment it opens. Remove one here and the phone opens it again at its next check-in.'));
+  h('div',{class:'mute'},'Screens picked on the phone with ✓ Block this screen (a Settings page, a screen of an app), or added here by name. Each closes the moment it opens. Everything blocked on the phone shows up here, and removing one here (or on the phone) opens it again at the next check-in.'));
  card.append(h('div',{class:'setting',style:'margin-top:10px'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect the MDM app and the certificate'),
   h('div',{class:'mute small'},'Closes, the moment they open: the MDM app\'s own Settings pages (its accessibility switch, App info) and the pages that show or remove the phone\'s certificate. So neither can be turned off. Needs the accessibility switch on; not applied during an emergency unlock.')),
   sw(c.protectScreens!==false,async function(on){c.protectScreens=on;try{await saveConfigFor(dv,on?'Those Settings pages are protected.':'Those Settings pages open normally.')}catch(e){snack(e.message,1)}render()})));
- if(!list.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
+ const comps=c.blockedComponents||[];
+ if(!list.length&&!comps.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
+ // Whole screens of apps blocked on the phone with the picker, by the name of the screen itself (package/ClassName).
+ for(const comp of comps){const at=comp.indexOf('/'),pk=comp.slice(0,at),cls=comp.slice(at+1);
+  const nice=cls.slice(cls.lastIndexOf('.')+1).replace(/(Activity|Fragment)$/,'').replace(/([a-z])([A-Z])/g,'$1 $2')||cls;
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},nice),h('div',{class:'mute small'},appLabelOf(dv,pk)+' \u00b7 '+cls)),
+   btn('Remove','outline',async function(){c.blockedComponents=comps.filter(function(x){return x!==comp});try{await saveConfigFor(dv,'Removed. The phone opens it again at its next check-in.')}catch(e){snack(e.message,1)}render()})))}
  for(const s of list){const p=s.split('\u001f');
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},p.slice(1).join(' › ')),h('div',{class:'mute small'},appLabelOf(dv,p[0]))),
    btn('Remove','outline',async function(){c.blockedScreens=list.filter(function(x){return x!==s});try{await saveConfigFor(dv,'Removed. The phone opens it again at its next check-in.')}catch(e){snack(e.message,1)}render()})))}
@@ -2817,7 +2896,7 @@ function healthProblems(d){
 function renderWhatsOn(box,d){
  const c=d.config||{},st=c.screenTime||{},now=Date.now(),rows=[];
  const add=function(icon,text,g,s){rows.push([icon,text,g,s])};
- const lvl={off:'Approved sites only',moderate:'Moderate filter (adult, gambling, drugs, scams, piracy blocked)',strict:'Strict filter (Moderate plus social media)'}[c.browserFilter||'off'];
+ const lvl={off:'Approved sites only',moderate:'Moderate filter (adult, gambling, drugs, scams, piracy blocked)',strict:'Strict filter (Moderate plus social media)',custom:'Open web (only the chosen kinds of site are closed)'}[c.browserFilter||'off'];
  add('🌐','Websites: '+lvl+(c.safeSearch?', SafeSearch forced':'')+(c.youtubeDns&&c.youtubeDns!=='off'?', YouTube restricted':''),'browser','access');
  if((c.pauseUntil||0)>now)add('⏸','Web filtering paused until '+hhmm(c.pauseUntil),'overview','status');
  if((c.internetOffUntil||0)>now)add('📵','Internet off until '+hhmm(c.internetOffUntil),'overview','status');
@@ -3157,7 +3236,7 @@ function homeSummary(d){
  const c=d.config||{},st=c.screenTime||{},i=d.info||{},now=Date.now(),out={};
  const sites=Object.values(c.sites||{});
  const nCh=sites.filter(function(x){return x.type==='youtube'}).length,nSites=sites.length-nCh;
- const lvl={off:'Approved sites only',moderate:'Moderate filter',strict:'Strict filter'}[c.browserFilter||'off']||'Approved sites only';
+ const lvl={off:'Approved sites only',moderate:'Moderate filter',strict:'Strict filter',custom:'Open: only chosen kinds closed'}[c.browserFilter||'off']||'Approved sites only';
  const blocked=Object.values(c.apps||{}).filter(function(a){return a.mode==='block'}).length,grp=(c.blockAppGroups||[]).length;
  out.time=st.dailyLimit?fmtMin(st.dailyLimit)+' a day'+(st.bedtime?' · bedtime '+st.bedtime.from:''):(st.bedtime?'Bedtime '+st.bedtime.from+' to '+st.bedtime.to:'No limits set');
  out.apps=([blocked?blocked+(blocked===1?' app':' apps')+' blocked':'',grp?grp+(grp===1?' group':' groups')+' blocked':''].filter(Boolean).join(' · ')||'No apps blocked')+(c.approveNew?' · new apps wait for you':'');
@@ -3294,14 +3373,16 @@ function essWebLevel(box,dv){
  const cur=c.browserFilter||'off';
  const lvl=h('div',{class:'card'},h('h2',null,'What can they open on the web?'));
  lvl.append(choiceList([
+  ['custom','Open: close only what I choose','The whole web is open in every browser, YouTube included. Only the kinds of site you tick below are closed (adult sites are ticked to begin with). Nothing else is filtered.'],
   ['strict','Strict','Closed in every browser: adult sites, gambling, drugs and vaping, scams and malware, piracy and torrents, social media.'],
   ['moderate','Medium','Closed in every browser: adult sites, gambling, drugs and vaping, scams and malware, piracy and torrents. Social media stays open.'],
   ['off','Approved sites only','Nothing opens unless it is on your list below. The safest choice.']],cur,function(v){
-  if(v!=='off'&&cur==='off'&&!confirm('This opens the whole web, except the closed kinds of sites. Filters only know sites that are already on public lists, so they cannot catch everything. Continue?'))return;
-  c.browserFilter=v;save(v==='off'?'Approved sites only.':'Saved. The phone downloads the lists at its next check-in and stays on approved sites only until it has them.')}));
+  if(v!=='off'&&cur==='off'&&!confirm((v==='custom'?'This opens the whole web. Only the kinds you tick are closed. ':'This opens the whole web, except the closed kinds of sites. ')+'Filters only know sites that are already on public lists, so they cannot catch everything. Continue?'))return;
+  c.browserFilter=v;if(v==='custom'&&!Array.isArray(c.filterKinds))c.filterKinds=['adult'];save(v==='off'?'Approved sites only.':'Saved. The phone downloads the lists at its next check-in and stays on approved sites only until it has them.')}));
  lvl.append(h('div',{class:'mute small',style:'margin-top:8px'},'The same in Chrome, Samsung Internet, Firefox, Edge and our own Browser. The lists are rebuilt every week from public lists, so new sites are added by themselves. Sites on your approved list below always open.'));
  box.append(lvl);
- if(cur!=='off'){
+ if(cur==='custom')renderOpenKinds(box,dv);
+ else if(cur!=='off'){
   const ex=h('div',{class:'card'},h('h2',null,'Also close these in every browser'),h('div',{class:'mute'},'Tick what you want closed on top of '+(cur==='strict'?'Strict':'Medium')+'. These lists are kept up to date by themselves too.'));
   const have=new Set(c.filterExtras||[]);
   const kinds=[['social','Social media','Facebook, Instagram, TikTok, X'],['news','News','Wall Street Journal, CNN, BBC, Fox News and thousands more'],['shopping','Shopping','Temu, Amazon, eBay, Shein, Walmart and thousands more'],['games','Games','Roblox, Steam, Fortnite, Minecraft and thousands more'],['video','Video and streaming','Netflix, Hulu, Disney+, Twitch and more'],['dating','Dating','Dating sites']];
@@ -3310,6 +3391,19 @@ function essWebLevel(box,dv){
    ex.append(simpleSwitch(k[1],k[2],have.has(k[0]),function(on){const set=new Set(c.filterExtras||[]);if(on)set.add(k[0]);else set.delete(k[0]);c.filterExtras=[...set];save((on?'Closing ':'Opening ')+k[1].toLowerCase()+' in every browser. Phones download the list at their next check-in.')}))}
   box.append(ex)}
 }
+/** "Open: close only what I choose": one switch per kind of site. Everything not ticked stays open. */
+function renderOpenKinds(box,dv){
+ const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ if(!Array.isArray(c.filterKinds))c.filterKinds=['adult'];
+ const have=new Set(c.filterKinds);
+ const card=h('div',{class:'card'},h('h2',null,'Close only these kinds of site'),
+  h('div',{class:'mute'},'Everything that is not ticked stays open: Facebook, YouTube, WhatsApp Web, news, shopping, all of it. The lists are kept up to date by themselves every week. A site you put on the approved list always opens.'));
+ const kinds=[['adult','Adult sites','Porn and other adult sites'],['gambling','Gambling','Casinos, betting, lotteries'],['drugs','Drugs and vaping','Selling or promoting them'],['scams','Scams and malware','Phishing, fraud, ransomware'],['piracy','Piracy and torrents','Illegal downloads'],['social','Social media','Facebook, Instagram, TikTok, X'],['news','News','CNN, BBC, Wall Street Journal and thousands more'],['shopping','Shopping','Amazon, Temu, eBay and thousands more'],['games','Games','Roblox, Steam, Fortnite and thousands more'],['video','Video and streaming','Netflix, Hulu, Disney+, Twitch and more'],['dating','Dating','Dating sites']];
+ for(const k of kinds){
+  card.append(simpleSwitch(k[1],k[2],have.has(k[0]),function(on){const set=new Set(c.filterKinds);if(on)set.add(k[0]);else set.delete(k[0]);c.filterKinds=[...set];save((on?'Closing ':'Opening ')+k[1].toLowerCase()+' in every browser. The phone downloads the list at its next check-in.')}))}
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Adult, gambling, drugs and scam sites are closed on the whole phone, in every app. Social media, news, shopping, games, video and dating are closed only in browsers, so the apps for them keep working.'));
+ box.append(card)}
 function essSafeBrowsing(box,dv){
  const c=dv.config;
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
@@ -3438,6 +3532,7 @@ function essTime(box,dv){
    b.onclick=function(){const set=new Set(bt.days||[]);on?set.delete(i):set.add(i);bt.days=[...set].sort();save()};days.append(b)});
   card.append(days)}
  box.append(card);
+ renderSiteLimits(box,dv,st,save);
  const ml=h('button',{type:'button',class:'ctl slim'},h('span',{class:'grow'},h('span',{class:'ct'},'More limits'),h('span',{class:'mute'},'A different limit on some days, school time, apps that do not count')),h('span',{class:'mute'},'›'));
  ml.onclick=function(){goMore('time','limits')};
  box.append(h('div',{class:'card'},ml))}

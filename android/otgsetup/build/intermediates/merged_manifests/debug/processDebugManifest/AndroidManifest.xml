@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.familymdm.otgsetup"
+    android:versionCode="1"
+    android:versionName="0.1.1" >
+
+    <uses-sdk
+        android:minSdkVersion="24"
+        android:targetSdkVersion="30" />
+
+    <!-- Downloads the newest Family MDM app (from this project's GitHub release) to put on the other phone. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- This phone has to be able to act as the USB "computer" (host): that is what the cable adapter (OTG) needs. -->
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="true" />
+
+    <application
+        android:allowBackup="false"
+        android:debuggable="true"
+        android:extractNativeLibs="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Family MDM Phone Setup"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar" >
+        <activity
+            android:name="com.familymdm.otgsetup.MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="true" >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

@@ -187,6 +187,8 @@ final class TlsInspection {
                 policy.optBoolean("blockImages", false), imagesAllow, words);
         rules.setBlockImageSearch(policy.optBoolean("blockImageSearch", false));
         rules.setMusicPictures(!"hide".equals(policy.optString("musicPictures", "allowed")));
+        String restrictDns = policy.optString("youtubeDns", "off"); // YouTube's Restricted Mode, forced from the dashboard: also for YouTube Music
+        rules.setRestrictLevel("strict".equals(restrictDns) ? "Strict" : "moderate".equals(restrictDns) ? "Moderate" : null);
         rules.setYoutubeOff("blocked".equals(policy.optString("youtubeMode", "")));
         youtubeChannels(policy);
         rules.setStrictSearch("strict".equals(policy.optString("browserFilter", "off")));

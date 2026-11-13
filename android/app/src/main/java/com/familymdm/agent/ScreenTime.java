@@ -339,6 +339,7 @@ final class ScreenTime {
         r.put("total", (int) (total / 60_000L));
         r.put("apps", apps);
         r.put("ok", canCount); // false: the Agent has no usage access, so nothing can be counted
+        r.put("sites", SiteTime.report(c)); // the day's allowance used per site (YouTube icons and the Browser)
         long free = Agent.prefs(c).getLong("timeFreeUntil", 0);
         if (free > System.currentTimeMillis()) r.put("extraUntil", free);
         Agent.prefs(c).edit().putString("usageToday", r.toString()).apply();

@@ -17,7 +17,7 @@ const req = (path, init) => worker.fetch(new Request("https://x.test" + path, in
 const J = { "content-type": "application/json" };
 
 test("screen time settings are off by default and cleaned up", () => {
-  assert.deepEqual(normalizeConfig({}).screenTime, { dailyLimit: 0, weekendLimit: 0, weekendDays: [0, 6], bedtime: null, schoolTime: null, schoolBreak: null, appLimits: {}, exempt: [] });
+  assert.deepEqual(normalizeConfig({}).screenTime, { dailyLimit: 0, weekendLimit: 0, weekendDays: [0, 6], bedtime: null, schoolTime: null, schoolBreak: null, appLimits: {}, siteLimits: {}, exempt: [] });
   const st = normalizeScreenTime({
     dailyLimit: 99999,
     bedtime: { days: [0, 1, 9, 1], from: "22:00", to: "07:00" },
@@ -30,7 +30,7 @@ test("screen time settings are off by default and cleaned up", () => {
   assert.deepEqual(st.exempt, ["com.android.dialer"]);
   assert.equal(normalizeScreenTime({ bedtime: { days: [1], from: "22:00", to: "22:00" } }).bedtime, null, "an empty window is no bedtime");
   assert.equal(normalizeScreenTime({ dailyLimit: -5 }).dailyLimit, 0);
-  assert.deepEqual(buildAgentPolicy({ screenTime: { dailyLimit: 120 } }, []).screenTime, { dailyLimit: 120, weekendLimit: 0, weekendDays: [0, 6], bedtime: null, schoolTime: null, schoolBreak: null, appLimits: {}, exempt: [] });
+  assert.deepEqual(buildAgentPolicy({ screenTime: { dailyLimit: 120 } }, []).screenTime, { dailyLimit: 120, weekendLimit: 0, weekendDays: [0, 6], bedtime: null, schoolTime: null, schoolBreak: null, appLimits: {}, siteLimits: {}, exempt: [] });
   const lines = summarizeConfigChange(normalizeConfig({}), normalizeConfig({ screenTime: { dailyLimit: 120, bedtime: { days: [1], from: "21:30", to: "06:30" }, appLimits: { "a.b": 15 } } }));
   assert.ok(lines.includes("Daily screen time: 120 minutes"));
   assert.ok(lines.includes("Bedtime: 21:30 to 06:30"));

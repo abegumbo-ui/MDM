@@ -238,6 +238,20 @@ public class YoutubeAddonActivity extends Activity {
 
     /** Back from a page that did not open: the last page that did. False when there is none that still opens. */
     private boolean backToAllowed() {
+        // First choice: step back through the web view's own history to the nearest earlier page that opens. Everything before it
+        // (the search, the home page) stays in the list, so the next Back keeps working instead of leaving the app.
+        try {
+            android.webkit.WebBackForwardList list = web.copyBackForwardList();
+            int now = list.getCurrentIndex();
+            for (int i = now - 1; i >= 0; i--) {
+                android.webkit.WebHistoryItem item = list.getItemAtIndex(i);
+                String u = item == null ? null : item.getUrl();
+                if (u != null && u.startsWith("http") && decide(u) == null) {
+                    web.goBackOrForward(i - now);
+                    return true;
+                }
+            }
+        } catch (RuntimeException ignored) { }
         String target = lastAllowed == null ? home() : lastAllowed;
         if (decide(target) != null) target = home();
         if (decide(target) != null) return false; // even the home page does not open (YouTube is off): leave
@@ -250,6 +264,38 @@ public class YoutubeAddonActivity extends Activity {
         super.onResume();
         // Turned Off on the dashboard while it was in the background: show the message at once.
         if ("blocked".equals(mode())) show(offPage());
+        tickHandler.removeCallbacks(siteTick);
+        tickHandler.postDelayed(siteTick, 1000);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        tickHandler.removeCallbacks(siteTick);
+    }
+
+    // ---------- a daily time allowance for the site (screenTime.siteLimits): counted while the page is on screen ----------
+
+    private final android.os.Handler tickHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable siteTick = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                String u = web == null ? null : web.getUrl();
+                String h = u != null && u.startsWith("http") ? SitePolicy.hostOf(u) : null;
+                if (h != null && !showingBlock) {
+                    SiteTime.add(YoutubeAddonActivity.this, h, 5000);
+                    if (SiteTime.exhausted(YoutubeAddonActivity.this, h)) show(timeUpPage(h));
+                }
+            } catch (RuntimeException ignored) {
+                // a counting problem must never break the page
+            }
+            tickHandler.postDelayed(this, 5000);
+        }
+    };
+
+    private String timeUpPage(String host) {
+        return page("Time is up for today", esc(SiteTime.message(this, host)), "<a class=b href='" + SCHEME + "://moretime'>Ask for more time</a>");
     }
 
     private void open(String url) {
@@ -295,6 +341,7 @@ public class YoutubeAddonActivity extends Activity {
         boolean musicHost = "music.youtube.com".equals(h);
         if (music() && !musicHost) return notAllowed(url, "Only YouTube Music opens in this app. YouTube has its own icon.", homeButton());
         if (!music() && musicHost) return notAllowed(url, "YouTube Music has its own icon.", homeButton());
+        if (SiteTime.exhausted(this, h)) return timeUpPage(h); // the day's allowance for this site is used up
         String m = mode();
         if ("blocked".equals(m)) return offPage();
         String video = SitePolicy.youtubeVideoId(url);
@@ -494,6 +541,10 @@ public class YoutubeAddonActivity extends Activity {
         String what = u.getHost() == null ? "" : u.getHost();
         if ("ask".equals(what)) {
             show(askPage(u.getQueryParameter("u")));
+        } else if ("moretime".equals(what)) {
+            Agent.addAppRequest(this, "time", null, null); // shows on the dashboard as "More screen time" with 15 / 30 / 60 minute buttons
+            AgentService.requestSync();
+            Toast.makeText(this, "Your parent was asked for more time.", Toast.LENGTH_LONG).show();
         } else if ("request".equals(what)) {
             String target = u.getQueryParameter("u");
             if (target != null && !target.isEmpty()) {

@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Same numbering scheme as the agent app, so "newer build" always means "install over the old one".
+def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
+android {
+    namespace 'com.familymdm.otgsetup'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.familymdm.otgsetup"
+        minSdk 24
+        targetSdk 30
+        versionCode buildNumber
+        versionName "0.1." + buildNumber
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // Same signing key as the other apps of this repo (one key to look after).
+    signingConfigs {
+        release {
+            storeFile file('../app/release.keystore')
+            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "unset"
+            keyAlias 'mdmagentrelease'
+            keyPassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "unset"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+}

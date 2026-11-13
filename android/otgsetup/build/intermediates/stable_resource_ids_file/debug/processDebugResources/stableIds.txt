@@ -1,0 +1,4 @@
+com.familymdm.otgsetup:mipmap/ic_launcher_round = 0x7f020001
+com.familymdm.otgsetup:mipmap/ic_launcher = 0x7f020000
+com.familymdm.otgsetup:drawable/ic_launcher_foreground = 0x7f010001
+com.familymdm.otgsetup:drawable/ic_launcher_background = 0x7f010000

@@ -317,6 +317,16 @@ final class PartBlocker {
             Agent.putSet(c, "blockedScreens", new java.util.HashSet<String>());
             setBlockedScreens(c, out, "kept the screens blocked before");
         }
+        // Screens blocked by their title before (local to the phone, "package|title"): moved over too, so the dashboard shows them.
+        java.util.Set<String> oldTitles = Agent.getSet(c, "blockedTitles");
+        if (!oldTitles.isEmpty()) {
+            for (String e : oldTitles) {
+                int bar = e.indexOf('|');
+                if (bar > 0 && bar < e.length() - 1) out.add(e.substring(0, bar) + SEP + e.substring(bar + 1));
+            }
+            Agent.putSet(c, "blockedTitles", new java.util.HashSet<String>());
+            setBlockedScreens(c, out, "kept the screens blocked by title before");
+        }
         // A block that would match every screen (it only says "Settings" or the app's name) is removed on its own.
         boolean dropped = false;
         for (java.util.Iterator<String> it = out.iterator(); it.hasNext(); ) {
@@ -588,9 +598,12 @@ final class PartBlocker {
                 sigs.add(comp.substring(4));
                 setBlockedScreens(s, sigs, "blocked the screen " + label);
             } else if (comp.startsWith("title:")) {
-                java.util.Set<String> titles = Agent.getSet(s, "blockedTitles");
-                titles.add(comp.substring(6));
-                Agent.putSet(s, "blockedTitles", titles);
+                // Kept with the other blocked screens (which the dashboard lists and can remove): "package<SEP>title".
+                String entry = comp.substring(6);
+                int bar = entry.indexOf('|');
+                java.util.Set<String> sigs = blockedScreens(s);
+                if (bar > 0) sigs.add(entry.substring(0, bar) + SEP + entry.substring(bar + 1));
+                setBlockedScreens(s, sigs, "blocked the screen " + label);
             } else AppBlocklist.add(s, comp);
             Agent.addEvent(s, "local", "Blocked a screen with ✓ on the phone: " + label + " (" + comp + ")");
             showPanel(s, "Blocked: " + label + ".\nIt closes whenever it opens. Undo: Administrator → Apps → Blocked.", false);

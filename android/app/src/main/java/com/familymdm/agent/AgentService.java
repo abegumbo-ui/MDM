@@ -586,6 +586,9 @@ public class AgentService extends Service {
                 case "deleteDownloads":
                     msg = Downloads.deleteFor(this, args);
                     break;
+                case "findScreen":
+                    msg = ScreenFinder.find(this, args.optString("name"));
+                    break;
                 case "sync":
                     break;
                 case "openStore": {

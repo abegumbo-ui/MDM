@@ -331,13 +331,26 @@ export function normalizeFrpAccounts(list) {
   return [...new Set(ids)].slice(0, 3);
 }
 
-export const BROWSER_FILTERS = ["off", "moderate", "strict"];
+// "custom" = Open: the whole web is open and only the kinds in `filterKinds` are closed (default: adult sites).
+export const BROWSER_FILTERS = ["off", "moderate", "strict", "custom"];
 
 /**
  * Screen time: dailyLimit is minutes a day for the whole phone (0 = no limit); bedtime is a
- * {days, from, to} window when the phone is locked; appLimits is minutes a day per app; exempt is
+ * {days, from, to} window when the phone is locked; appLimits is minutes a day per app; siteLimits is minutes a day per
+ * site ("youtube.com": 120 = two hours EVERY day, the budget starts again each morning); exempt is
  * apps that do not count toward the daily limit (Phone, Maps...).
  */
+export function normalizeSiteLimits(v) {
+  const out = {};
+  for (const [raw, m] of Object.entries(v && typeof v === "object" && !Array.isArray(v) ? v : {})) {
+    const host = String(raw).trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/^www\./, "").replace(/[/?#:].*$/, "");
+    const minutes = Number.isInteger(m) ? Math.min(Math.max(m, 0), 24 * 60) : 0;
+    if (minutes > 0 && host.length <= 100 && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host)) out[host] = minutes;
+    if (Object.keys(out).length >= 40) break;
+  }
+  return out;
+}
+
 export function normalizeScreenTime(raw) {
   const c = raw && typeof raw === "object" ? raw : {};
   const clamp = (v) => (Number.isInteger(v) ? Math.min(Math.max(v, 0), 24 * 60) : 0);
@@ -352,7 +365,7 @@ export function normalizeScreenTime(raw) {
   // A break inside school time (lunch): the phone works normally then.
   const hm = /^([01]\d|2[0-3]):[0-5]\d$/;
   const schoolBreak = c.schoolBreak && hm.test(c.schoolBreak.from) && hm.test(c.schoolBreak.to) && c.schoolBreak.from < c.schoolBreak.to ? { from: c.schoolBreak.from, to: c.schoolBreak.to } : null;
-  return { dailyLimit: clamp(c.dailyLimit), weekendLimit: clamp(c.weekendLimit), weekendDays, bedtime: normalizeSchedule(c.bedtime), schoolTime: normalizeSchedule(c.schoolTime), schoolBreak, appLimits, exempt };
+  return { dailyLimit: clamp(c.dailyLimit), weekendLimit: clamp(c.weekendLimit), weekendDays, bedtime: normalizeSchedule(c.bedtime), schoolTime: normalizeSchedule(c.schoolTime), schoolBreak, appLimits, siteLimits: normalizeSiteLimits(c.siteLimits), exempt };
 }
 
 // Whole groups of apps that can be blocked with one switch, like other parental-control apps offer.
@@ -460,6 +473,14 @@ export function normalizeFilterSchedule(s) {
 /** The filter level right now: the schedule's level inside its hours, else the normal one. tz = the phone's offset from UTC in minutes. */
 /** The kinds of site that can be closed on top of Strict or Medium, in every browser (the same ids the phones' lists use). */
 export const FILTER_EXTRAS = ["social", "news", "shopping", "games", "video", "dating"];
+/** What "Open: close only what I choose" can close: the five kinds Medium closes together, one by one, then the extras. */
+export const FILTER_BASE_KINDS = ["adult", "gambling", "drugs", "scams", "piracy"];
+export const FILTER_KINDS = [...FILTER_BASE_KINDS, ...FILTER_EXTRAS];
+export function normalizeFilterKinds(v) {
+  const out = [];
+  for (const x of Array.isArray(v) ? v : []) if (FILTER_KINDS.includes(x) && !out.includes(x)) out.push(x);
+  return out;
+}
 export function normalizeFilterExtras(v) {
   const out = [];
   for (const x of Array.isArray(v) ? v : []) if (FILTER_EXTRAS.includes(x) && !out.includes(x)) out.push(x);
@@ -533,6 +554,7 @@ export function effectiveYoutubeMode(cfg) {
   const m = cfg && cfg.youtubeMode;
   if (m === "channels" || m === "restricted" || m === "open" || m === "blocked") return m;
   if (cfg && cfg.openWeb) return "open"; // a Browser on "Open: no filter": YouTube as it is
+  if (cfg && cfg.browserFilter === "custom") return "open"; // "Open: close only what I choose": YouTube is not one of the closed kinds
   return cfg && cfg.browserFilter === "moderate" ? "restricted" : "channels";
 }
 
@@ -622,6 +644,7 @@ export function normalizeConfig(input) {
     protectScreens: c.protectScreens !== false,
     // Whole screens of apps closed the moment they open (picked on the phone with ✓ Block this screen).
     blockedScreens: normalizeBlockedScreens(c.blockedScreens),
+    blockedComponents: normalizeBlockedComponents(c.blockedComponents),
     // Sites that will not open with ads blocked: their ads load but are covered (our Browser).
     adsCoveredSites: [...new Set(normalizeDnsAllowlist(c.adsCoveredSites).map((h) => h.replace(/^www\./, "")))],
     // Our Browser notices such sites by itself (on unless switched off).
@@ -677,6 +700,8 @@ export function normalizeConfig(input) {
     // A different filter level at set times, in the phone's own time (see effectiveFilter).
     filterSchedule: normalizeFilterSchedule(c.filterSchedule),
     filterExtras: normalizeFilterExtras(c.filterExtras),
+    // Only the "Open" level uses this; nothing saved yet means adult sites are closed, an empty list means nothing is.
+    filterKinds: Array.isArray(c.filterKinds) ? normalizeFilterKinds(c.filterKinds) : ["adult"],
     textLog: c.textLog === true,
     textContent: c.textContent === true,
     imagesAllow: normalizeDnsAllowlist(c.imagesAllow),
@@ -889,9 +914,12 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
   const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectSkipGoogle ? [...new Set([...cfg.inspectBypass, "google.com"])] : cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
-  out.filterExtras = cfg.browserFilter === "moderate" || cfg.browserFilter === "strict"
-    ? cfg.filterExtras.filter((x) => !(cfg.browserFilter === "strict" && x === "social"))
-    : [];
+  // The phone reads the kinds closed on top of (or, for "Open", instead of) a level from this one field.
+  out.filterExtras = cfg.browserFilter === "custom"
+    ? cfg.filterKinds
+    : cfg.browserFilter === "moderate" || cfg.browserFilter === "strict"
+      ? cfg.filterExtras.filter((x) => !(cfg.browserFilter === "strict" && x === "social"))
+      : [];
   if (cfg.approveNew && known) out.known = [...known];
   out.userMenu = cfg.userMenu;
   out.screenTime = cfg.screenTime;
@@ -914,6 +942,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.youtubeSignIn = cfg.youtubeSignIn;
   out.protectScreens = cfg.protectScreens;
   out.blockedScreens = cfg.blockedScreens;
+  out.blockedComponents = cfg.blockedComponents;
   out.adsCoveredSites = cfg.adsCoveredSites;
   out.adsAutoCover = !cfg.adsAutoCoverOff;
   out.youtubeOffMessage = cfg.youtubeOffMessage;
@@ -1009,6 +1038,7 @@ export function summarizeConfigChange(before, after) {
   if (JSON.stringify(before.filterSkipApps || []) !== JSON.stringify(after.filterSkipApps || [])) lines.push("Apps not filtered: " + (after.filterSkipApps || []).length);
   if (!!before.blockWaStatus !== !!after.blockWaStatus) lines.push("WhatsApp Status: " + (after.blockWaStatus ? "closed" : "allowed"));
   if (JSON.stringify(before.blockedParts || []) !== JSON.stringify(after.blockedParts || [])) lines.push("Blocked parts of apps: " + (after.blockedParts || []).length);
+  if (JSON.stringify(before.blockedComponents || []) !== JSON.stringify(after.blockedComponents || [])) lines.push("Blocked app screens (by name of the screen): " + (after.blockedComponents || []).length);
   if (JSON.stringify(before.blockedScreens || []) !== JSON.stringify(after.blockedScreens || [])) lines.push("Blocked whole screens of apps: " + (after.blockedScreens || []).length);
   if (!!before.blockVideos !== !!after.blockVideos) lines.push("Videos on web pages: " + (after.blockVideos ? "blocked" : "shown"));
   if (!!before.protectScreens !== !!after.protectScreens) lines.push("Protected Settings pages (MDM app, certificate): " + (after.protectScreens ? "on" : "off"));
@@ -1025,6 +1055,9 @@ export function summarizeConfigChange(before, after) {
   if (!!before.nudityAlerts !== !!after.nudityAlerts) lines.push("Photo alerts: " + (after.nudityAlerts ? "on" : "off"));
   if (!!before.recordVideos !== !!after.recordVideos) lines.push("YouTube videos list: " + (after.recordVideos ? "on" : "off"));
   if (!!before.recordSites !== !!after.recordSites) lines.push("Sites visited list: " + (after.recordSites ? "on" : "off"));
+  if ((after.browserFilter === "custom" || before.browserFilter === "custom") && JSON.stringify(normalizeFilterKinds(before.filterKinds || ["adult"])) !== JSON.stringify(normalizeFilterKinds(after.filterKinds || ["adult"]))) {
+    lines.push("Open web, closed kinds: " + (normalizeFilterKinds(after.filterKinds || ["adult"]).join(", ") || "none"));
+  }
   if (JSON.stringify(normalizeFilterExtras(before.filterExtras)) !== JSON.stringify(normalizeFilterExtras(after.filterExtras))) {
     lines.push("Also closed in every browser: " + (normalizeFilterExtras(after.filterExtras).join(", ") || "nothing extra"));
   }
@@ -1046,6 +1079,7 @@ export function summarizeConfigChange(before, after) {
   const stB = normalizeScreenTime(before.screenTime), stA = normalizeScreenTime(after.screenTime);
   if (stB.dailyLimit !== stA.dailyLimit) lines.push("Daily screen time: " + (stA.dailyLimit ? stA.dailyLimit + " minutes" : "no limit"));
   if (JSON.stringify(stB.bedtime) !== JSON.stringify(stA.bedtime)) lines.push("Bedtime: " + (stA.bedtime ? stA.bedtime.from + " to " + stA.bedtime.to : "off"));
+  if (JSON.stringify(stB.siteLimits) !== JSON.stringify(stA.siteLimits)) lines.push("Daily time per site: " + (Object.entries(stA.siteLimits).map(([h, m]) => h + " " + m + " min").join(", ") || "none"));
   if (JSON.stringify(stB.appLimits) !== JSON.stringify(stA.appLimits)) lines.push("App time limits changed (" + Object.keys(stA.appLimits).length + " app(s))");
   if (!!before.safeSearch !== !!after.safeSearch) lines.push("Forced SafeSearch: " + (after.safeSearch ? "on" : "off"));
   if (!!before.safeSearchOff !== !!after.safeSearchOff) lines.push("SafeSearch: " + (after.safeSearchOff ? "off" : "on"));
@@ -1129,6 +1163,19 @@ export function normalizeBlockedScreens(v) {
     if (parts.length < 2 || !/^[A-Za-z0-9_.]{1,200}$/.test(parts[0]) || parts.slice(1).some((x) => !x || x.length > 80)) continue;
     const clean = parts.slice(0, 6).join("\u001f");
     if (!out.includes(clean)) out.push(clean);
+    if (out.length >= 100) break;
+  }
+  return out;
+}
+
+/** Whole app screens blocked on the phone with the ✓ picker: "package/ClassName". Shown on the dashboard, removable from either side. */
+export function normalizeBlockedComponents(v) {
+  const out = [];
+  for (const s of Array.isArray(v) ? v : []) {
+    if (typeof s !== "string") continue;
+    const t = s.trim();
+    if (!/^[A-Za-z0-9_.]{1,200}\/[A-Za-z0-9_.$]{1,300}$/.test(t) || out.includes(t)) continue;
+    out.push(t);
     if (out.length >= 100) break;
   }
   return out;

@@ -151,6 +151,8 @@ final class PhoneRules {
             if (x.has("browserFilter")) {
                 policy.put("browserFilter", x.getString("browserFilter"));
                 policy.put("browserFilterBase", BLOCKLISTS);
+                // The "Open" level closes only the kinds chosen on the phone (the policy reads them from filterExtras).
+                if ("custom".equals(x.getString("browserFilter"))) policy.put("filterExtras", x.has("filterKinds") ? x.get("filterKinds") : new org.json.JSONArray().put("adult"));
             }
         } catch (Exception ignored) {
         }
@@ -194,7 +196,7 @@ final class PhoneRules {
         java.util.List<String> rows = new java.util.ArrayList<>();
         long now = System.currentTimeMillis();
         String lvl = c.optString("browserFilter", "off");
-        rows.add("Websites: " + ("strict".equals(lvl) ? "Strict filter" : "moderate".equals(lvl) ? "Moderate filter" : "Approved sites only")
+        rows.add("Websites: " + ("strict".equals(lvl) ? "Strict filter" : "moderate".equals(lvl) ? "Moderate filter" : "custom".equals(lvl) ? "Open (only the chosen kinds of site are closed)" : "Approved sites only")
                 + (c.optBoolean("safeSearch") ? ", SafeSearch" : "") + (!"off".equals(c.optString("youtubeDns", "off")) ? ", YouTube restricted" : "")
                 + (c.optBoolean("blockAds") ? ", ads blocked" : ""));
         if (c.optLong("pauseUntil", 0) > now) rows.add("Web filtering paused for a while");
@@ -304,14 +306,19 @@ final class PhoneRules {
         LinearLayout card = Ui.card(a, root);
         card.addView(Ui.titleText(a, "Websites"));
         choice(a, card, c, "browserFilter", "Filter level", "What browsers and apps may open.",
-                new String[]{"off", "moderate", "strict"},
-                new String[]{"Approved sites only", "Moderate: blocks adult, gambling, drugs, scams, piracy", "Strict: Moderate plus social media"}, "off", rebuild);
+                new String[]{"off", "moderate", "strict", "custom"},
+                new String[]{"Approved sites only", "Moderate: blocks adult, gambling, drugs, scams, piracy", "Strict: Moderate plus social media", "Open: close only the kinds I choose"}, "off", rebuild);
+        if ("custom".equals(c.optString("browserFilter", "off"))) kinds(a, card, c, rebuild);
         toggle(a, card, c, "safeSearch", "Force SafeSearch", "Google, Bing and DuckDuckGo show filtered results only, in every browser and app.", rebuild);
         choice(a, card, c, "youtubeDns", "YouTube Restricted Mode", "YouTube's own filter, everywhere, the YouTube app included.",
                 new String[]{"off", "moderate", "strict"}, new String[]{"Off", "Moderate", "Strict"}, "off", rebuild);
         toggle(a, card, c, "blockAds", "Block ads", "Ad servers are blocked in every app and browser (with Moderate or Strict). A few apps may show empty boxes where ads were.", rebuild);
         toggle(a, card, c, "blockImageSearch", "Block image search", "The \"Images\" tab of Google, Bing and DuckDuckGo is refused.", rebuild);
         toggle(a, card, c, "blockImages", "Block pictures on web pages", "Pages load without pictures in our browsers (in Chrome only with Inspection on, set on the dashboard).", rebuild);
+        // The on-device picture checker: pictures are looked at on THIS phone, before they show. Nothing is sent anywhere.
+        choice(a, card, c, "pictureGuard", "Pictures that may show nudity", "Checked on this phone by a model that lives on the phone, before the picture shows.",
+                new String[]{"off", "nudity", "skin"},
+                new String[]{"Show all pictures", "Hide pictures that may show nudity", "Hide those, and cover skin"}, "off", rebuild);
         choice(a, card, c, "inAppBrowsers", "Web pages inside apps", "Links opened inside Instagram, Gmail and other apps.",
                 new String[]{"off", "tabs", "all"}, new String[]{"Allowed", "Close browser pages that apps open", "Close every web page inside apps"}, "off", rebuild);
         approvedSites(a, card, c, rebuild);
@@ -670,6 +677,10 @@ final class PhoneRules {
     private static void safety(Activity a, LinearLayout root, JSONObject c, Runnable rebuild, boolean off) {
         health(a, root);
         if (off) return;
+        LinearLayout pics = Ui.card(a, root);
+        pics.addView(Ui.titleText(a, "Photos"));
+        toggle(a, pics, c, "nudityAlerts", "Alerts about photos that may show nudity",
+                "Photos taken or saved on this phone are checked on the phone itself; a flagged one is reported to the dashboard (the photo is not sent). The child is told this is on.", rebuild);
         LinearLayout card = Ui.card(a, root);
         card.addView(Ui.titleText(a, "Message alerts"));
         toggle(a, card, c, "messageAlerts", "Alerts about worrying words in chats",
@@ -848,6 +859,30 @@ final class PhoneRules {
         Button b = Ui.button(a, value + "  ▾", Ui.OUTLINED, click);
         Ui.add(box, b, 6);
         Ui.add(card, box, 12);
+    }
+
+    private static final String[] KIND_IDS = {"adult", "gambling", "drugs", "scams", "piracy", "social", "news", "shopping", "games", "video", "dating"};
+    private static final String[] KIND_NAMES = {"Adult sites", "Gambling", "Drugs and vaping", "Scams and malware", "Piracy and torrents", "Social media", "News", "Shopping", "Games", "Video and streaming", "Dating"};
+
+    /** The "Open" level: which kinds of site are closed (nothing saved yet means adult sites). Everything else stays open. */
+    private static void kinds(Activity a, LinearLayout card, JSONObject c, Runnable rebuild) {
+        JSONArray cur = c.has("filterKinds") ? c.optJSONArray("filterKinds") : null;
+        final boolean[] on = new boolean[KIND_IDS.length];
+        if (cur == null) on[0] = true;
+        else for (int i = 0; i < cur.length(); i++) for (int k = 0; k < KIND_IDS.length; k++) if (KIND_IDS[k].equals(cur.optString(i))) on[k] = true;
+        int n = 0;
+        for (boolean b : on) if (b) n++;
+        row(a, card, "Kinds of site that are closed", "Everything not ticked stays open (Facebook, YouTube, news...).", n == 0 ? "None" : n + " closed", v -> {
+            final boolean[] chosen = on.clone();
+            new AlertDialog.Builder(a).setTitle("Close these kinds of site")
+                    .setMultiChoiceItems(KIND_NAMES, chosen, (d, w, ck) -> chosen[w] = ck)
+                    .setPositiveButton("Save", (d, w) -> {
+                        JSONArray out = new JSONArray();
+                        for (int k = 0; k < KIND_IDS.length; k++) if (chosen[k]) out.put(KIND_IDS[k]);
+                        set1(a, "filterKinds", out, "Closed kinds of site (" + out.length() + ")");
+                        rebuild.run();
+                    }).setNegativeButton("Cancel", null).show();
+        });
     }
 
     private static void words(Activity a, LinearLayout card, JSONObject c, String key, String title, String help, Runnable rebuild) {
