@@ -376,20 +376,30 @@ public class MainActivity extends Activity {
         boolean standalone = Agent.standalone(this);
         boolean active = enrolled || standalone;
         StringBuilder sb = new StringBuilder();
-        sb.append(owner ? "Device owner: yes\n" : previewSkip ? "Device owner: NO — previewing without it; nothing is actually enforced\n" : "Device owner: NO (do step 1 below)\n");
+        boolean fresh = false;
         if (enrolled) {
             long last = Agent.prefs(this).getLong("lastSync", 0);
+            fresh = last != 0 && System.currentTimeMillis() - last < 20 * 60 * 1000L;
             String where = Api.where();
-            sb.append("Mode: online (dashboard)\nServer: ").append(where.isEmpty() ? Agent.prefs(this).getString("server", "") : where);
+            if (where.isEmpty()) where = Agent.prefs(this).getString("server", "").replace("https://", "");
+            sb.append(fresh ? "\u25CF Connected" : "\u25CB Not checked in lately");
+            if (!where.isEmpty()) sb.append(" \u00B7 ").append(where);
             sb.append("\nLast check-in: ").append(last == 0 ? "not yet"
                     : DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(last)));
         } else if (standalone) {
-            sb.append("Mode: offline (this phone only)");
+            sb.append("\u25CF Offline mode (this phone only)");
         } else {
-            sb.append("Mode: not set up yet");
+            sb.append("\u25CB Not set up yet");
         }
-        sb.append("\nAgent build: ").append(Updater.currentBuild(this));
-        status.setText(sb.toString());
+        sb.append("\nAgent build ").append(Updater.currentBuild(this));
+        sb.append(owner ? " \u00B7 device owner" : previewSkip ? " \u00B7 preview without device owner (nothing is enforced)" : " \u00B7 NOT device owner (do step 1 below)");
+        android.text.SpannableStringBuilder shown = new android.text.SpannableStringBuilder(sb.toString());
+        int firstLine = sb.indexOf("\n");
+        if (firstLine < 0) firstLine = sb.length();
+        shown.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, firstLine, 0);
+        shown.setSpan(new android.text.style.RelativeSizeSpan(1.2f), 0, firstLine, 0);
+        shown.setSpan(new android.text.style.ForegroundColorSpan(enrolled && !fresh ? 0xFFFDB022 : 0xFF47CD89), 0, 1, 0);
+        status.setText(shown);
         refreshButton.setVisibility(enrolled ? View.VISIBLE : View.GONE);
         logoHolder.removeAllViews();
         android.widget.ImageView logo = Ui.logoView(this);

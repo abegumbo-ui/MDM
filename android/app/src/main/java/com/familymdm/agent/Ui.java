@@ -78,10 +78,10 @@ final class Ui {
     static LinearLayout card(Context c, LinearLayout parent) {
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(c, 16);
+        int pad = dp(c, 18);
         box.setPadding(pad, pad, pad, pad);
-        box.setBackground(shape(color(c, R.color.m3_surface_container), dp(c, 12), color(c, R.color.m3_outline_variant), dp(c, 1)));
-        add(parent, box, 12);
+        box.setBackground(shape(color(c, R.color.m3_surface_container), dp(c, 18), color(c, R.color.m3_outline_variant), dp(c, 1)));
+        add(parent, box, 14);
         return box;
     }
 
@@ -106,6 +106,7 @@ final class Ui {
         TextView t = new TextView(c);
         t.setText(text);
         t.setTextSize(14);
+        t.setLineSpacing(0f, 1.15f); // a little air between lines, easier to read
         t.setTextColor(color(c, secondary ? R.color.m3_on_surface_variant : R.color.m3_on_surface));
         return t;
     }
@@ -115,8 +116,8 @@ final class Ui {
         t.setText(text);
         t.setTextSize(12);
         t.setTextColor(color(c, R.color.m3_on_surface_variant));
-        t.setPadding(dp(c, 10), dp(c, 4), dp(c, 10), dp(c, 4));
-        t.setBackground(shape(color(c, R.color.m3_surface_container_high), dp(c, 8), 0, 0));
+        t.setPadding(dp(c, 12), dp(c, 5), dp(c, 12), dp(c, 5));
+        t.setBackground(shape(color(c, R.color.m3_surface_container_high), dp(c, 14), 0, 0));
         return t;
     }
 
@@ -128,9 +129,9 @@ final class Ui {
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setStateListAnimator(null);
         b.setElevation(0);
-        b.setMinHeight(dp(c, 44));
-        b.setMinimumHeight(dp(c, 44));
-        b.setPadding(dp(c, 20), 0, dp(c, 20), 0);
+        b.setMinHeight(dp(c, 48));
+        b.setMinimumHeight(dp(c, 48));
+        b.setPadding(dp(c, 22), 0, dp(c, 22), 0);
         int fill = Color.TRANSPARENT;
         int stroke = 0;
         int strokeColor = 0;
@@ -155,7 +156,7 @@ final class Ui {
                 textColor = color(c, R.color.m3_primary);
         }
         Drawable bg = new RippleDrawable(ColorStateList.valueOf(0x22000000),
-                shape(fill, dp(c, 10), strokeColor, stroke), null);
+                shape(fill, dp(c, 24), strokeColor, stroke), null);
         b.setBackground(bg);
         b.setTextColor(textColor);
         b.setOnClickListener(l);
@@ -255,31 +256,52 @@ final class Ui {
      * list of distinct actions (different urgency/danger levels) where a uniform grid of same-size
      * tiles would flatten that distinction. */
     static LinearLayout rowTile(Context c, String label, int iconRes, View.OnClickListener l) {
+        return rowTile(c, label, null, iconRes, l);
+    }
+
+    /** The same row with a smaller hint line under the label and an arrow on the right (like a settings list). */
+    static LinearLayout rowTile(Context c, String label, String hint, int iconRes, View.OnClickListener l) {
         LinearLayout t = new LinearLayout(c);
         t.setOrientation(LinearLayout.HORIZONTAL);
         t.setGravity(android.view.Gravity.CENTER_VERTICAL);
         t.setClickable(true);
         t.setFocusable(true);
-        int pad = dp(c, 12);
-        t.setPadding(pad, pad, pad, pad);
-        t.setBackground(shape(color(c, R.color.m3_surface_container), dp(c, 14), 0, 0));
+        int pad = dp(c, 14);
+        t.setPadding(pad, pad, dp(c, 16), pad);
+        Drawable bg = new RippleDrawable(ColorStateList.valueOf(0x22FFFFFF),
+                shape(color(c, R.color.m3_surface_container), dp(c, 18), 0, 0), null);
+        t.setBackground(bg);
 
         LinearLayout square = new LinearLayout(c);
         square.setGravity(android.view.Gravity.CENTER);
-        square.setBackground(shape(color(c, R.color.m3_primary), dp(c, 12), 0, 0));
+        square.setBackground(shape(color(c, R.color.m3_primary), dp(c, 14), 0, 0));
         ImageView icon = new ImageView(c);
         icon.setImageResource(iconRes);
         icon.setColorFilter(0xFFFFFFFF);
         int iconSize = dp(c, 22);
         square.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
-        int squareSize = dp(c, 44);
+        int squareSize = dp(c, 46);
         t.addView(square, new LinearLayout.LayoutParams(squareSize, squareSize));
 
+        LinearLayout words = new LinearLayout(c);
+        words.setOrientation(LinearLayout.VERTICAL);
         TextView name = body(c, label, false);
-        name.setTextSize(15);
+        name.setTextSize(16);
+        words.addView(name);
+        if (hint != null && !hint.isEmpty()) {
+            TextView sub = body(c, hint, true);
+            sub.setTextSize(13);
+            words.addView(sub);
+        }
         LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         nameLp.leftMargin = dp(c, 14);
-        t.addView(name, nameLp);
+        t.addView(words, nameLp);
+
+        TextView arrow = new TextView(c);
+        arrow.setText("›");
+        arrow.setTextSize(24);
+        arrow.setTextColor(color(c, R.color.m3_on_surface_variant));
+        t.addView(arrow);
 
         t.setOnClickListener(l);
         return t;
@@ -352,11 +374,10 @@ final class Ui {
     static TextView banner(Context c, String text) {
         TextView t = new TextView(c);
         t.setText(text);
-        t.setTextSize(22);
+        t.setTextSize(30);
         t.setTypeface(Typeface.DEFAULT_BOLD);
         t.setTextColor(color(c, R.color.m3_on_surface));
-        t.setPadding(dp(c, 16), dp(c, 18), dp(c, 16), dp(c, 18));
-        t.setBackground(shape(color(c, R.color.m3_surface_container), 0, 0, 0));
+        t.setPadding(dp(c, 6), dp(c, 14), dp(c, 6), dp(c, 6));
         return t;
     }
 
