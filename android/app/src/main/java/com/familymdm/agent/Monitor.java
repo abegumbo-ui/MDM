@@ -132,7 +132,7 @@ final class Monitor {
         List<String> words = BlockedWords.list(c);
         if (!strict && (words == null || words.isEmpty())) return;
         long now = System.currentTimeMillis();
-        if (now - lastBadSearchAt < 5000) return;
+        if (now - lastBadSearchAt < 2500) return;
         ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
         q.add(root);
         int seen = 0;
@@ -145,12 +145,16 @@ final class Monitor {
                 else if (!n.isFocused()) searched = t; // the search was sent; the box shows what was searched
                 if (searched != null && com.familymdm.agent.sitepolicy.BadSearch.isBad(searched, strict, words)) {
                     lastBadSearchAt = now;
-                    if (c instanceof android.accessibilityservice.AccessibilityService)
-                        ((android.accessibilityservice.AccessibilityService) c).performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
                     Agent.addEvent(c, "restriction", "Search stopped (" + pkg + "): " + (searched.length() > 60 ? searched.substring(0, 60) + "…" : searched));
+                    // The message covers the screen at once; the browser then goes back underneath it.
                     try {
                         c.startActivity(new android.content.Intent(c, BetterThanThatActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
                     } catch (Exception ignored) {
+                    }
+                    if (c instanceof android.accessibilityservice.AccessibilityService) {
+                        final android.accessibilityservice.AccessibilityService svc = (android.accessibilityservice.AccessibilityService) c;
+                        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                                () -> svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK), 350);
                     }
                     return;
                 }

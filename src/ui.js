@@ -1822,17 +1822,20 @@ function renderUserMenu(m,dv){
 /** Optional: the phone gets its own certificate and a local proxy, so browsers' secure pages can be filtered by their content. */
 function renderInspection(m,dv){
  if(dv.isBrowser){m.append(h('div',{class:'card'},h('div',{class:'mute'},'This only applies to phones managed by the Agent app.')));return}
- const on=!!dv.config.tlsInspection;
+ const on=dv.config.tlsInspectionOff!==true;
  const card=h('div',{class:'card'},h('div',{class:'row'},h('h2',{class:'grow'},'Browser inspection (advanced)'),h('span',{class:'chip '+(on?'warn':'')},on?'On':'Off')),
   h('div',{class:'mute'},'Lets this phone filter what is on a web page, not just which site it is, in Chrome and other browsers (not only our own). Today that means Restricted YouTube everywhere: set it under Browser → Filter level, and it then also applies in Chrome.'));
  const row=h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Look inside browsers\' secure pages on this phone'),
-  h('div',{class:'mute'},'The Agent gives this phone its own certificate and runs a small filter inside the Agent. The phone shows a permanent "network may be monitored" notice while it is on.')),
+  h('div',{class:'mute'},'On by default, so the filter can always look inside browsers\' secure pages (what it does with them is set under Filter level). The Agent gives this phone its own certificate and runs a small filter inside the Agent. While it is on the child cannot remove the certificate (Android then also stops them changing their own screen lock: set it from Security → Screen lock). Android shows a "network may be monitored" notice; apps cannot hide it.')),
   sw(on,async function(v){
    if(v&&!confirm('Turn on browser inspection for this phone?\n\n• The Agent installs a certificate of its own, made on this phone. Its key cannot be copied off the phone.\n• While on, the filter can see everything in browsers on this phone, including passwords typed on web pages, except sites on the skip list below.\n• Some sites and apps may stop working or show certificate warnings. Apps other than browsers are mostly not affected.\n• Turning it off removes the certificate again.\n\nThis is untested on real phones so far: try it on one phone first.')){render();return}
-   dv.config.tlsInspection=v;
+   dv.config.tlsInspection=v;dv.config.tlsInspectionOff=!v;
    try{await saveConfigFor(dv,v?'Saved. The Agent turns it on at its next check-in.':'Saved. The Agent turns it off and removes the certificate at its next check-in.')}catch(e){snack(e.message,1)}
    render()}));
  card.append(row);
+ card.append(h('div',{class:'setting',style:'margin-top:10px'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Do not look inside Google (stops "are you a robot?")'),
+  h('div',{class:'mute small'},'Through the filter Google can think the phone is a robot and keep asking. With this on, Google (search, Gmail, Drive) is left alone. SafeSearch is still forced and a bad search is still caught on the phone\'s screen. Switch it off if you need the Images tab blocked in Chrome.')),
+  sw(dv.config.inspectSkipGoogle!==false,async function(v){dv.config.inspectSkipGoogle=v;try{await saveConfigFor(dv,v?'Google is left alone.':'Google is looked inside again.')}catch(e){snack(e.message,1)}render()})));
  const ta=h('textarea',{rows:4,style:'width:100%;margin-top:8px',placeholder:'one site per line, e.g. mybank.com'});
  ta.value=(dv.config.inspectBypass||[]).join('\n');
  card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Never look inside these sites'),

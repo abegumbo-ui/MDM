@@ -50,6 +50,7 @@ public class AgentService extends Service {
         if (packageReceiver == null) registerPackageReceiver();
         AppBlocklist.start(this);
         ScreenTime.start(this);
+        SelfSetup.watch(this); // the accessibility switch cannot be left off
         if (thread == null || !thread.isAlive()) {
             running = true;
             thread = new Thread(this::loop, "mdm-agent");
@@ -64,6 +65,7 @@ public class AgentService extends Service {
         running = false;
         if (instance == this) instance = null;
         AppBlocklist.stop(this);
+        SelfSetup.stopWatching(this);
         if (packageReceiver != null) {
             try {
                 unregisterReceiver(packageReceiver);
@@ -90,6 +92,8 @@ public class AgentService extends Service {
                 Long touched = Agent.TOUCHED.get(pkg);
                 if (touched != null && System.currentTimeMillis() - touched < 20000) return; // our own hide/show
                 boolean added = Intent.ACTION_PACKAGE_ADDED.equals(intent.getAction());
+                // The Browser app just arrived: hand it the rules right away (it shows "connect" until it has them).
+                if (added && "com.familymdm.browser".equals(pkg)) Agent.prefs(context).edit().remove("browserConfigApplied").apply();
                 Agent.addEvent(context, "app", (added ? "App installed: " : "App removed: ") + pkg);
                 if (added) PolicyApplier.holdIfNew(context, pkg);
                 if (thread != null) thread.interrupt();

@@ -173,6 +173,7 @@ final class PolicyApplier {
             return;
         }
         applyFrp(c, dpm, admin, policy.optJSONArray("frpAccounts"));
+        SelfSetup.run(c, dpm, admin); // grants itself what it needs, switches its accessibility service on, keeps it on
         if (policy.optBoolean("reportWifi", true)) enableWifiName(c, dpm, admin);
         applyUpdateFreeze(c, dpm, admin, policy.optBoolean("freezeUpdates", false));
         applyAccessibilityLock(c, dpm, admin, policy.optBoolean("blockAccessibility", false));
@@ -884,7 +885,15 @@ final class PolicyApplier {
             String[] words = new String[wordsArr == null ? 0 : wordsArr.length()];
             for (int i = 0; i < words.length; i++) words[i] = wordsArr.optString(i);
             String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide");
-            if (cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
+            // Only skip when the Browser really holds these rules now: it loses them when it is removed and
+            // installed again, and then it would look "not connected" (the connect screen) until a rule changed.
+            Bundle held = null;
+            try {
+                held = dpm.getApplicationRestrictions(admin, "com.familymdm.browser");
+            } catch (Exception ignored) {
+            }
+            boolean holdsRules = held != null && held.containsKey("sites");
+            if (holdsRules && cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
             b.putLong("browseUntil", browseUntil);
@@ -989,6 +998,7 @@ final class PolicyApplier {
 
     /** Undo everything this agent changed, then give up device-owner status. */
     static void release(Context c) {
+        SelfSetup.stopWatching(c);
         DevicePolicyManager dpm = Agent.dpm(c);
         if (dpm.isDeviceOwnerApp(c.getPackageName())) {
             releaseManagedState(c, dpm, Agent.admin(c));
