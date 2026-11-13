@@ -112,7 +112,7 @@ object PlayUpdates {
 
     private fun downloadTo(f: PlayFile, dir: File): File {
         val out = File(dir, f.name)
-        val conn = URL(f.url).openConnection() as HttpURLConnection
+        val conn = URL(f.url).openConnection(java.net.Proxy.NO_PROXY) as HttpURLConnection
         conn.connectTimeout = 20000
         conn.readTimeout = 60000
         try {

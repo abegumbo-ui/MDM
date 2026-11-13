@@ -317,7 +317,8 @@ final class WebFilter {
 
     private static HttpURLConnection open(String url) throws Exception {
         if (!url.startsWith(GITHUB)) throw new Exception("lists only come from GitHub");
-        HttpURLConnection h = (HttpURLConnection) new URL(url).openConnection();
+        // NO_PROXY: see Installer.installFromUrl (the filter lists come from GitHub and must not go through the inspection proxy).
+        HttpURLConnection h = (HttpURLConnection) new URL(url).openConnection(java.net.Proxy.NO_PROXY);
         h.setConnectTimeout(20000);
         h.setReadTimeout(60000);
         h.setInstanceFollowRedirects(true);
