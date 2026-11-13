@@ -269,6 +269,20 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         return false;
     }
 
+    private volatile boolean musicPictures;
+
+    /** YouTube Music: with "No pictures" on, let the page's own album art through (the page script then shows it only where the parent allows). */
+    public void setMusicPictures(boolean on) {
+        musicPictures = on;
+    }
+
+    /** The video id in a YouTube picture address (/vi/ID/mqdefault.jpg, /vi_webp/ID/...), or null. */
+    static String thumbnailId(String path) {
+        if (path == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^/vi(?:_webp)?/([A-Za-z0-9_-]{11})/").matcher(path);
+        return m.find() ? m.group(1) : null;
+    }
+
     private boolean imageBlocked(InspectProxy.Request r) {
         if (!r.method.equals("GET")) return false;
         boolean perSite = !noPictureSites.isEmpty() && (inList(noPictureSites, SitePolicy.hostOf(r.headers.get("Referer"))) || inList(noPictureSites, r.host));
@@ -278,6 +292,11 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
                 : r.path.toLowerCase(java.util.Locale.ROOT).matches("[^?]*\\.(jpe?g|png|gif|webp|avif|bmp|svg|ico)(\\?.*)?");
         if (!image) return false;
         if (perSite) return true;
+        // The picture of a song or video the parent approved always shows, even with "No pictures" on.
+        String picId = thumbnailId(r.path);
+        if (picId != null && allowedVideos.contains(picId)) return false;
+        // YouTube Music's own art (which pictures show is decided on the page).
+        if (musicPictures && "music.youtube.com".equals(SitePolicy.hostOf(r.headers.get("Referer")))) return false;
         // Allowed if the page showing it, or the picture's own site, is on the "show pictures" list.
         return !listed(SitePolicy.hostOf(r.headers.get("Referer"))) && !listed(SitePolicy.hostOf(r.host));
     }
