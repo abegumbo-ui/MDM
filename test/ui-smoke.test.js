@@ -52,7 +52,7 @@ async function setUp() {
     info: { deviceOwner: true, android: "14", versionCode: 400, battery: { pct: 80, charging: false }, wifi: { transport: "wifi", ssid: "Home" }, storeUntil: -1 },
     downloads: [{ id: "abcdefghijk", t: "Test song", k: "music", at: 1700000000000, bytes: 5242880 }, { id: "lmnopqrstuv", t: "Test video", k: "video", at: 1700000001000, bytes: 9437184 }],
     downloadsAt: 1700000002000,
-    siteRequests: [{ url: "https://example.com/page" }, { url: "https://music.youtube.com/search?q=Avraham+Fried", note: "can I have his songs please" }, { url: "https://www.youtube.com/@NASA", note: "for my science homework" }],
+    siteRequests: [{ url: "https://example.com/page" }, { url: "https://music.youtube.com/search?q=Avraham+Fried", note: "can I have his songs please" }, { url: "https://www.youtube.com/@NASA", note: "for my science homework" }, { url: "https://music.youtube.com/browse/MPREb_abc123", note: "Asked from YouTube Music: Greatest Album" }],
     appRequests: [{ kind: "store" }, { kind: "app", pkg: "com.instagram.android", label: "Instagram" }, { kind: "time" }],
     usage: { day: "2026-11-10", total: 134, ok: true, apps: [{ p: "com.google.android.apps.maps", l: "Maps", m: 90 }, { p: "com.instagram.android", l: "Instagram", m: 44 }] },
     messages: [{ msg: "hello" }],
@@ -184,7 +184,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["br/youtube"], /Only what I allow/);
   assert.match(seen["br/youtube"], /Allowed channels and videos/);
   assert.doesNotMatch(seen["br/web"], /On unless you switch it off here/, "a standalone Browser has no phone-wide filter to force it with");
-  assert.match(seen["browser/sites"], /Site requests \(3\)/);
+  assert.match(seen["browser/sites"], /Site requests \(4\)/);
   assert.match(seen["browser/sites"], /YouTube channel/);
   assert.match(seen["browser/apps"], /Make this the only browser/);
   assert.match(seen["browser/inspect"], /Never look inside these sites/);
@@ -268,9 +268,10 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["youtube/yt"], /Downloaded on the phone \(1\)/);
   assert.match(seen["youtube/yt"], /Test video/);
   assert.match(seen["youtube/yt"], /Delete from the phone/);
-  assert.match(seen["youtube/music"], /Asked for in YouTube Music \(1\)/, "what the phone asked for in Music is on the Music tab");
+  assert.match(seen["youtube/music"], /Asked for in YouTube Music \(2\)/, "what the phone asked for in Music is on the Music tab");
   assert.match(seen["youtube/music"], /Their message: “can I have his songs please”/, "with the message the child wrote");
   assert.doesNotMatch(seen["youtube/music"], /for my science homework/, "YouTube requests stay on the YouTube tab");
+  assert.match(seen["youtube/music"], /YouTube Music album or playlist: Greatest Album/, "an album the child asked for from a search result, by its title");
   assert.match(seen["youtube/yt"], /Asked for in YouTube \(1\)/);
   assert.match(seen["youtube/yt"], /Their message: “for my science homework”/);
   assert.match(seen["overview/status"], /Asked for in YouTube Music/, "and on the Overview, with the other things waiting");

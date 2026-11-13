@@ -1142,6 +1142,11 @@ function renderRequestsCard(m,reqs,dv,title,help){
     buttons.append(btn('Find it','',function(){findOnMusic(dv,qtext)}),btn('Dismiss','outline',dismiss));
     rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music: "'+qtext+'"'),r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
     continue}
+   const mNote=(String(r.note||'').match(/^Asked from YouTube Music: (.+)$/)||[])[1];
+   if(mNote&&/^https:\/\/music\.youtube\.com\/(browse|playlist)/.test(r.url)){
+    buttons.append(btn('Find it','',function(){findOnMusic(dv,mNote)}),btn('Dismiss','outline',dismiss));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music album or playlist: '+mNote),h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    continue}
    const musicCh=(/^https:\/\/music\.youtube\.com\/channel\/(UC[A-Za-z0-9_-]{22})/.exec(r.url)||[])[1];
    if(musicCh){
     buttons.append(btn('Show their songs and albums','',function(){goTo('youtube','music');openMusicList('channel='+encodeURIComponent(musicCh),'this artist','artist')}),btn('Dismiss','outline',dismiss));

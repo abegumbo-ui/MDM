@@ -319,6 +319,13 @@ public class YoutubeAddonActivity extends Activity {
         }
         // Searching, to find videos to ask for: the ones not allowed show covered, with "Ask for access".
         if (kind == SitePolicy.YT_SEARCH && policy().optBoolean("youtubeSearch", true)) return null;
+        // Music: artist, album, playlist and Library pages open so the child can look through them and ask (pictures of what is not approved stay hidden,
+        // and playing is still limited to the approved songs).
+        if (music() && "channels".equals(m) && policy().optBoolean("youtubeSearch", true)) {
+            String pth = Uri.parse(url).getPath();
+            if (pth == null) pth = "";
+            if (pth.startsWith("/channel/") || pth.startsWith("/browse/") || pth.startsWith("/playlist") || pth.equals("/library") || pth.startsWith("/library/")) return null;
+        }
         return notAllowed(url, music() ? "Only the music that was allowed opens here." : "Only the YouTube channels and videos that were allowed open here.",
                 askButton(url, music() ? "Ask for this song" : "Ask for access") + homeButton());
     }
@@ -417,10 +424,16 @@ public class YoutubeAddonActivity extends Activity {
         }
         if (music()) {
             if (!p.optBoolean("youtubeSignIn", false)) js.append("window.__mdmNoSignIn=true;");
+            if (!"off".equals(p.optString("youtubeDns", "off"))) js.append("window.__mdmRestrict=true;"); // Restricted mode is forced from the dashboard
             String mp = p.optString("musicPictures", "allowed"); // "allowed": art only for approved songs; "hide": none; "show": everything
             if (!"show".equals(mp)) js.append("window.__mdmPics='" + ("hide".equals(mp) ? "hide" : "allowed") + "';");
             String clean = YoutubeScripts.load("music_clean.js");
             if (clean != null) js.append(clean);
+            // Search results and artist / album pages: an "Ask" button under each item (sent without leaving the page).
+            if ("channels".equals(m) && p.optBoolean("youtubeSearch", true)) {
+                String ask = YoutubeScripts.load("music_ask.js");
+                if (ask != null) js.append(ask);
+            }
         }
         if ("skin".equals(p.optString("pictureGuard", "off"))) { String v = YoutubeScripts.load("video_skin.js"); if (v != null) js.append(v); }
         if (Downloads.allowed(this)) { String d = YoutubeScripts.load("youtube_download.js"); if (d != null) js.append(d); }
@@ -487,7 +500,8 @@ public class YoutubeAddonActivity extends Activity {
                 Agent.addSiteRequest(this, target, u.getQueryParameter("note"));
                 AgentService.requestSync();
             }
-            show(page("Sent", "Your parent sees it on the dashboard. Once it is allowed, it opens here.", homeButton()));
+            if ("1".equals(u.getQueryParameter("stay"))) Toast.makeText(this, "Asked. Your parent gets it on the dashboard.", Toast.LENGTH_LONG).show(); // from a search result: stay on the page
+            else show(page("Sent", "Your parent sees it on the dashboard. Once it is allowed, it opens here.", homeButton()));
         } else if ("download".equals(what)) {
             String why = Downloads.request(this, u.getQueryParameter("u"), music() || "music".equals(u.getQueryParameter("k")));
             Toast.makeText(this, why == null ? "Downloading… see it under Downloads." : why, Toast.LENGTH_LONG).show();
