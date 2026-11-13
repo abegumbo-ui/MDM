@@ -75,7 +75,7 @@ final class Api {
                 onBackup = false;
                 return r;
             } catch (HttpException e) {
-                down = e.code >= 500;
+                down = e.code == 502 || e.code == 503 || e.code == 504; // the front door answered for a Pi that is off; any other error means the Pi itself answered
             } catch (IOException e) {
                 down = true;
             }
@@ -90,7 +90,8 @@ final class Api {
 
     private static JSONObject postOnce(String url, JSONObject body, String bearer) throws IOException, JSONException {
         if (!url.startsWith("https://")) throw new IOException("server must be an https:// address");
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        // Straight to the server: the app's own check-ins never go through the phone's inspection proxy (they need no inspection).
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(java.net.Proxy.NO_PROXY);
         try {
             c.setRequestMethod("POST");
             c.setConnectTimeout(15000);
@@ -127,7 +128,7 @@ final class Api {
 
     private static byte[] getBytesOnce(String url, String bearer) throws IOException {
         if (!url.startsWith("https://")) throw new IOException("server must be an https:// address");
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(java.net.Proxy.NO_PROXY);
         try {
             c.setRequestMethod("GET");
             c.setConnectTimeout(15000);

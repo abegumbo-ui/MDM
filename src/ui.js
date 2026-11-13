@@ -2964,8 +2964,10 @@ function renderBar(){
  const srv=document.getElementById('srv');
  if(srv){srv.textContent='';const s=state&&state.server;
   if(s){const pi=s.runtime==='pi';
-   const label=pi?'Raspberry Pi':(s.role==='backup'?'Cloudflare (backup)':'Cloudflare');
-   srv.append(h('a',{class:'srv '+(pi?'ok':s.outage?'warn':''),href:'#server',title:pi?'This page comes from your Raspberry Pi. Tap for details.':'This page comes from Cloudflare'+(s.role==='backup'?', the backup copy of the Raspberry Pi. Tap for details.':'. Tap for details.')},h('span',{class:'dot'}),label))}}
+   // The badge says what is RUNNING: the Raspberry Pi, even when this page is the Cloudflare copy of the dashboard.
+   const piRuns=pi||(s.primary&&s.primaryUp);
+   const label=pi?'Raspberry Pi':s.primary?(s.primaryUp?'Raspberry Pi is running':'Raspberry Pi is off · using Cloudflare'):'Cloudflare';
+   srv.append(h('a',{class:'srv '+(piRuns?'ok':s.outage||s.primary?'warn':''),href:'#server',title:pi?'This page comes from your Raspberry Pi. Tap for details.':s.primary?(s.primaryUp?'The Raspberry Pi is running. This page is the Cloudflare copy of the dashboard. Tap for details.':'The Raspberry Pi does not answer, so phones use Cloudflare. Tap for details.'):'Cloudflare is the only server. Tap for details.'},h('span',{class:'dot'}),label))}}
  const md=document.getElementById('mode');
  if(md){md.textContent='';
   const seg=h('div',{class:'modeseg',title:'New look, or the old look'});
