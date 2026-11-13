@@ -87,10 +87,11 @@ final class PartBlocker {
 
     /** Called for every screen change of any app. */
     static void onScreen(AccessibilityService s, String pkg) {
-        if (picking) return;
         if (EmergencyUnlock.isActive(s)) { if (!covers.isEmpty()) clearCovers(s); return; } // every restriction is off during an emergency unlock
         if (pkg == null || pkg.equals(s.getPackageName()) || pkg.equals("com.android.systemui")) return;
+        // A screen that was blocked closes even while the picker bar is open (only covers of parts wait for it to close).
         if (screenBlockedNow(s, pkg)) return;
+        if (picking) return;
         if (!anyFor(s, pkg)) {
             if (coveredPkg != null && !pkg.equals(coveredPkg)) clearCovers(s);
             return;
@@ -214,30 +215,47 @@ final class PartBlocker {
         picking = true;
         clearCovers(s);
         WindowManager wm = s.getSystemService(WindowManager.class);
+        // Two rows that fit the screen: the hint with a ✕ (always visible, top right), then the two buttons.
         LinearLayout bar = new LinearLayout(s);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setPadding(Ui.dp(s, 8), Ui.dp(s, 6), Ui.dp(s, 8), Ui.dp(s, 6));
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setPadding(Ui.dp(s, 12), Ui.dp(s, 8), Ui.dp(s, 12), Ui.dp(s, 10));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xEE4F46E5);
-        bg.setCornerRadius(Ui.dp(s, 24));
+        bg.setColor(0xF04F46E5);
+        bg.setCornerRadius(Ui.dp(s, 22));
         bar.setBackground(bg);
+        LinearLayout top = new LinearLayout(s);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        TextView hint = new TextView(s);
+        hint.setText("Go to the screen, then press ✓.\nOr Pick a part to block one button.");
+        hint.setTextColor(Color.WHITE);
+        hint.setTextSize(14);
+        top.addView(hint, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        Button done = new Button(s);
+        done.setText("✕");
+        done.setTextSize(20);
+        done.setAllCaps(false);
+        done.setMinWidth(0);
+        done.setMinimumWidth(0);
+        done.setPadding(Ui.dp(s, 14), 0, Ui.dp(s, 14), 0);
+        done.setContentDescription("Close");
+        done.setOnClickListener(v -> stopPicking(s));
+        top.addView(done, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, Ui.dp(s, 46)));
+        LinearLayout buttons = new LinearLayout(s);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
         Button check = new Button(s);
         check.setText("✓ Block this screen");
+        check.setAllCaps(false);
         check.setOnClickListener(v -> blockThisScreen(s));
         Button pick = new Button(s);
         pick.setText("Pick a part");
+        pick.setAllCaps(false);
         pick.setOnClickListener(v -> showCapture(s));
-        Button done = new Button(s);
-        done.setText("Done");
-        done.setOnClickListener(v -> stopPicking(s));
-        TextView hint = new TextView(s);
-        hint.setText("  Go to the screen, then press ✓.\n  Or Pick a part to block just one button.  ");
-        hint.setTextColor(Color.WHITE);
-        bar.addView(hint);
-        bar.addView(check);
-        bar.addView(pick);
-        bar.addView(done);
-        WindowManager.LayoutParams p = lp(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, true);
+        buttons.addView(check, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        buttons.addView(pick, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        bar.addView(top);
+        bar.addView(buttons);
+        WindowManager.LayoutParams p = lp(s.getResources().getDisplayMetrics().widthPixels - Ui.dp(s, 24), WindowManager.LayoutParams.WRAP_CONTENT, true);
         p.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         p.y = Ui.dp(s, 90);
         try {
@@ -527,6 +545,20 @@ final class PartBlocker {
         FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         tl.topMargin = Ui.dp(s, 40);
         layer.addView(t, tl);
+        Button back = new Button(s);
+        back.setText("✕");
+        back.setTextSize(20);
+        back.setAllCaps(false);
+        back.setContentDescription("Cancel");
+        back.setOnClickListener(v -> {
+            removeView(wm, capture);
+            capture = null;
+            backToPickButton(s);
+        });
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(Ui.dp(s, 56), Ui.dp(s, 56), Gravity.TOP | Gravity.END);
+        bl.topMargin = Ui.dp(s, 36);
+        bl.rightMargin = Ui.dp(s, 12);
+        layer.addView(back, bl);
         layer.setOnTouchListener((v, e) -> {
             if (e.getAction() == MotionEvent.ACTION_UP) {
                 int x = (int) e.getRawX(), y = (int) e.getRawY();
