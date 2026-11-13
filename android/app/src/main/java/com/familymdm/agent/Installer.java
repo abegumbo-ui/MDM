@@ -47,7 +47,10 @@ final class Installer {
     static String installFromUrl(Context c, String url, String bearer) throws IOException {
         if (url == null || !url.startsWith("https://")) throw new IOException("APK link must start with https://");
         File f = new File(c.getCacheDir(), "download.apk");
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        // NO_PROXY: with browser inspection on, the phone's system proxy is this app's own inspection proxy, whose certificate this
+        // app's own downloads (GitHub, the dashboard) deliberately do not trust. Without this the update download failed with
+        // 'Trust anchor for certification path not found'.
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection(java.net.Proxy.NO_PROXY);
         conn.setConnectTimeout(20000);
         conn.setReadTimeout(60000);
         if (bearer != null) conn.setRequestProperty("authorization", "Bearer " + bearer);
