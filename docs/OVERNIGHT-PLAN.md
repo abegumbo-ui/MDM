@@ -106,13 +106,13 @@ The Pi is the main server now (public https://mdmpi.tail67992b.ts.net, Tailscale
 Rules unchanged: branch → PR → build check → merge; never change the PC's Wi-Fi; no PC system changes (Tailscale + the RNDIS driver were done with the user's yes).
 1. [x] Dashboard header badge: Raspberry Pi / Cloudflare (backup) + each phone chip "via Raspberry Pi / via Cloudflare" (shipped, PR #292).
 2. [x] Server page (Pi only): health, power, temperature, Wi-Fi (add / prefer / forget / connect), Cloudflare copy status, restart, log (shipped PR #292; read from the real Pi and correct).
-3. [ ] 3-second check-ins on the Pi (code done: env FAST/BURST_POLL_SECONDS; Cloudflare keeps 30/15): verify live with the A16.
+3. [ ] 3-second check-ins on the Pi (code and test done; BLOCKED: the Pi is offline since 02:43, verify live with the A16 when it is back).
 4. [x] Dashboard redo, Family Link style, with a New / Legacy switch: phone home, Browser, Apps, Screen time, YouTube pages, device cards (shipped PR #292 and #293). Still plain legacy under "More settings": Safety, Calls, Internet, Security, Device.
-5. [ ] Phone app UI polish (Administrator screen, tiles, spacing, consistent look).
-6. [ ] Re-test EVERY feature on the A16 (old + new) and record in docs/PHONE-TEST-CHECKLIST.md; fix what fails.
+5. [~] Phone app UI polish: only the front-screen wording (server name) changed; the Administrator screens (AdminActivity, 2374 lines) are untouched. Next: restyle them like the new dashboard home.
+6. [~] Re-test every feature on the A16: done tonight = SafeSearch, website filter, YouTube + Music icons, app block/unblock, lock/unlock, internet off/on, build update. Not done = Software update block, Cancel download (needs a video Restricted Mode allows), calls/texts, location history, screen-time limits, Play Store window, most of sections 5-7 of docs/PHONE-TEST-CHECKLIST.md.
 7. [~] Leftovers: SafeSearch in Chrome VERIFIED on the A16; Music icon VERIFIED; lock / unlock from the dashboard VERIFIED; app block VERIFIED; lock strength + PIN control prepared by the agent and the unblock fix are in the next phone build (branch night-phone-changes). Not yet tested: Software update block, Cancel download.
-8. [ ] Pi hardening: stop using USB+wall together (rebooted twice); Server page "update" (self-update from GitHub) later.
-9. [ ] Morning summary for the user (plain words: what works, what to check, what is still open).
+8. [ ] Pi hardening: BLOCKED, the Pi is offline (power or SD card suspected). Persistent journal is on, so the next reboot leaves a log. Do not use the USB data cable and the wall charger together.
+9. [x] Morning summary: docs/MORNING-SUMMARY-2026-11-13.md.
 
 ### Night log 2026-11-13 (A16, build 667, over Cloudflare because the Pi was down)
 - Pi went offline about 02:43 (reboot loop, then silent): likely power or the SD card. Phones failed over to Cloudflare by themselves at 02:46 (verified). Persistent journal turned on after that, so the next reboot leaves a log.
