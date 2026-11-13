@@ -677,6 +677,7 @@ function renderDeviceDetail(m,d){
  renderHealthSummary(ov,d);
  renderWhatsOn(ov,d);
  renderAppRequests(ov,d);
+ renderAllOff(ov,d);
  renderPause(ov,d);
  renderInternetOff(ov,d);
  renderLevels(ov,d);
@@ -1082,6 +1083,21 @@ function appRow(a,dv,opts){
  if(d.mode!=='block')ctl.append(schedBtn);
  ctl.append(saveBtn);
  body.append(ctl);
+ // Internet for this app, right here: on (filtered), on (not filtered) or off.
+ if(!a.prot&&a.p!==SELF_PACKAGE&&!dv.isWindows&&!dv.isBrowser){
+  const nb0=(dv.config.networkBlocklist||{})[a.p],skip0=(dv.config.filterSkipApps||[]).indexOf(a.p)>=0,curNet=nb0?'nonet':skip0?'skip':'normal';
+  const net=h('div',{class:'row',style:'margin-top:8px'},h('span',{class:'mute small'},'Internet for this app:'));
+  const ns=h('div',{class:'seg'});
+  for(const o of [['normal','On, filtered',''],['skip','On, not filtered',''],['nonet','Off','block']]){
+   const nbtn=h('button',{class:(curNet===o[0]?'on ':'')+o[2]},o[1]);
+   nbtn.onclick=async function(){
+    if(curNet===o[0])return;
+    const s2=new Set(dv.config.filterSkipApps||[]),nb=Object.assign({},dv.config.networkBlocklist||{});
+    s2.delete(a.p);delete nb[a.p];if(o[0]==='skip')s2.add(a.p);if(o[0]==='nonet')nb[a.p]={paused:false};
+    dv.config.filterSkipApps=[...s2];dv.config.networkBlocklist=nb;
+    try{await saveConfigFor(dv,(o[0]==='nonet'?'Internet off for ':'Internet back on for ')+(a.l||a.p)+'. Applies at the next check-in.')}catch(e){snack(e.message,1)}render()};
+   ns.append(nbtn)}
+  net.append(ns);body.append(net)}
 
  if(open[a.p]&&d.mode!=='block'){
   const s=d.schedule||{days:[1,2,3,4,5],from:'08:00',to:'17:00'};
@@ -1231,6 +1247,35 @@ function renderPause(box,d){
   const row=h('div',{class:'row',style:'margin-top:8px'});
   for(const [mins,label] of [[15,'15 minutes'],[60,'1 hour'],[180,'3 hours']])row.append(btn(label,'tonal',function(){c.pauseUntil=Date.now()+mins*60000;save('Paused until '+hhmm(c.pauseUntil)+'.')}));
   card.append(row)}
+ box.append(card)}
+/** "Turn off all restrictions for a while": asks how long, shows what is going on, and turns everything back on from here. */
+function renderAllOff(box,d){
+ if(d.isBrowser||d.isWindows)return;
+ const c=d.config,now=Date.now(),on=(c.restrictionsOffUntil||0)>now;
+ const save=async function(msg){try{await saveConfigFor(d,msg)}catch(e){snack(e.message,1)}render()};
+ const words=function(mins){return mins>=120?Math.round(mins/60)+' hours':mins===60?'1 hour':mins+' minutes'};
+ const card=h('div',{class:'card',style:on?'border:2px solid var(--error)':''},h('h2',null,on?'All restrictions are OFF':'Turn off all restrictions for a while'));
+ if(on){
+  const left=Math.max(1,Math.round((c.restrictionsOffUntil-now)/60000));
+  const heard=(d.events||[]).filter(function(e){return String(e.m).indexOf('All restrictions are OFF')===0&&e.at>=(c.restrictionsOffSince||0)}).pop();
+  card.append(h('div',{class:'mute'},'Until '+hhmm(c.restrictionsOffUntil)+' ('+words(left)+' left). Everything comes back by itself then, even if the phone has no internet.'),
+   h('div',{class:'mute',style:'margin-top:4px'},heard?'The phone confirmed it at '+hhmm(heard.at)+'.':'Waiting for the phone to pick this up. A phone on the Raspberry Pi does it within seconds, one on Cloudflare at its next check-in.'));
+  const row=h('div',{class:'row',style:'margin-top:10px'});
+  row.append(btn('Turn everything back on now','',function(){c.restrictionsOffUntil=0;save('Restrictions come back on right away (at the phone\'s next check-in).')}));
+  row.append(btn('+ 30 minutes','tonal',function(){c.restrictionsOffUntil=Math.min(c.restrictionsOffUntil+30*60000,Date.now()+24*3600000);save('Extended until '+hhmm(c.restrictionsOffUntil)+'.')}));
+  card.append(row)}
+ else{
+  card.append(h('div',{class:'mute'},'Everything on this phone stands down for the time you choose: the website filter, blocked apps, screen time and bedtime, blocked screens, YouTube limits and internet cut-offs. The phone stays managed, protects itself and keeps reporting. Everything comes back by itself when the time is up, even with no internet, or you turn it back on here yourself.'));
+  const sel=h('select');
+  for(const o of [[15,'15 minutes'],[30,'30 minutes'],[60,'1 hour'],[120,'2 hours'],[240,'4 hours'],[480,'8 hours'],[1440,'Until I turn it back on (up to 24 hours)']])sel.append(new Option(o[1],o[0]));
+  sel.value='60';
+  const custom=h('input',{type:'number',min:'1',max:'1440',placeholder:'or minutes',style:'width:110px'});
+  const go=btn('Turn off all restrictions','danger',function(){
+   const mins=custom.value?Math.max(1,Math.min(1440,Math.round(Number(custom.value)))):Number(sel.value);
+   if(!confirm('Turn off ALL restrictions on '+d.name+' for '+words(mins)+'? Nothing is filtered or blocked until then.'))return;
+   c.restrictionsOffUntil=Date.now()+mins*60000;c.restrictionsOffSince=Date.now();
+   save('All restrictions off until '+hhmm(c.restrictionsOffUntil)+'.')});
+  card.append(h('div',{class:'row',style:'margin-top:10px'},h('span',{class:'mute'},'For how long?'),sel,custom,go))}
  box.append(card)}
 function renderInternetOff(box,d){
  if(d.isBrowser)return;
@@ -1766,12 +1811,23 @@ function buildBrowserGroup(m,dv){
  const sub=getSub('browser');
  if(sub==='summary')renderBrowserSummary(m,dv);
  else if(sub==='youtube')renderYoutube(m,dv);
- else if(sub==='access'){renderSafeSearch(m,dv);renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderAdsCovered(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
+ else if(sub==='access'){
+  if(dv.isBrowser||dv.isWindows){renderSafeSearch(m,dv);renderWebAccess(m,dv);renderFilterSchedule(m,dv);renderSearchPictures(m,dv);renderNoPictureSites(m,dv);renderBlockAds(m,dv);renderAdsCovered(m,dv);renderImageSearch(m,dv);renderBlockedWords(m,dv)}
+  else renderWebProtection(m,dv)}
  else if(sub==='history')renderSitesVisited(m,dv);
  else if(sub==='sites')renderSites(m,dv,'sites');
  else if(sub==='apps'){renderInAppBrowsers(m,dv);renderSites(m,dv,'apps')}
  else if(sub==='inspect')renderInspection(m,dv);
 }
+/** One page for web protection on a phone: what is closed (the same in every browser), safe browsing, and the rarely used extras folded away. */
+function renderWebProtection(m,dv){
+ essWebLevel(m,dv);
+ essSafeBrowsing(m,dv);
+ const more=h('details',{class:'more',open:open['wp-more']?'':null});
+ more.ontoggle=function(){open['wp-more']=more.open};
+ more.append(h('summary',null,'More: filter schedule, pictures, ads on chosen sites, blocked words'));
+ renderFilterSchedule(more,dv);renderSearchPictures(more,dv);renderNoPictureSites(more,dv);renderAdsCovered(more,dv);renderBlockedWords(more,dv);
+ m.append(more)}
 function ytModeOf(dv){const y=dv.config.youtubeMode||'auto';return y==='channels'||y==='restricted'?y:((dv.config.browserFilter||'off')==='moderate'?'restricted':'channels')}
 /** A plain-English picture of this phone's browsing, with a button to the tab that changes each line. */
 function renderBrowserSummary(m,dv){
@@ -2937,8 +2993,8 @@ function renderDeviceCard(m,dv){
 
 /* ---------- New look (like Family Link): a simple home, simple pages, and a switch back to the old look ---------- */
 // "New" is the default. "Legacy" is the old screen, unchanged. The choice is kept in this browser.
-let uiMode='new';try{if(localStorage.getItem('uiMode')==='legacy')uiMode='legacy'}catch(e){}
-function setUiMode(v){uiMode=v;try{localStorage.setItem('uiMode',v)}catch(e){}render()}
+let uiMode='legacy';try{if(localStorage.getItem('uiMode2')==='new')uiMode='new'}catch(e){}
+function setUiMode(v){uiMode=v;try{localStorage.setItem('uiMode2',v)}catch(e){}render()}
 Object.assign(ICONS,{
  pin:'M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7zM12,11.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 2.5,-2.5 2.5,1.12 2.5,2.5 -1.12,2.5 -2.5,2.5z',
  play:'M10,16.5l6,-4.5 -6,-4.5v9zM12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,20c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8z',
@@ -3115,7 +3171,7 @@ function renderGroupNew(m,d,sec,body){
  m.append(content)}
 
 /* ----- Browser and web, in the new look ----- */
-function essBrowser(box,dv){
+function essWebLevel(box,dv){
  const c=dv.config;
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
  // 1. What can they open?
@@ -3137,6 +3193,10 @@ function essBrowser(box,dv){
    if(k[0]==='social'&&cur==='strict')continue; // Strict already closes it
    ex.append(simpleSwitch(k[1],k[2],have.has(k[0]),function(on){const set=new Set(c.filterExtras||[]);if(on)set.add(k[0]);else set.delete(k[0]);c.filterExtras=[...set];save((on?'Closing ':'Opening ')+k[1].toLowerCase()+' in every browser. Phones download the list at their next check-in.')}))}
   box.append(ex)}
+}
+function essSafeBrowsing(box,dv){
+ const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
  // 2. Safe browsing.
  const sf=h('div',{class:'card'},h('h2',null,'Safe browsing'));
  sf.append(simpleSwitch('SafeSearch','Google, Bing and DuckDuckGo show filtered results only, in every browser and app.',!c.safeSearchOff,function(on){c.safeSearchOff=!on;c.safeSearch=on;save(on?'SafeSearch on.':'SafeSearch off.')}));
@@ -3149,7 +3209,11 @@ function essBrowser(box,dv){
  pic.onchange=function(){if(pic.value==='none'){c.blockImages=true}else{c.blockImages=false;c.pictureGuard=pic.value}save(pic.value==='off'?'All pictures shown.':pic.value==='none'?'Web pages load without pictures.':'Saved. Pictures are checked on the phone from the next check-in.')};
  sf.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Pictures on web pages'),h('div',{class:'mute'},'Checked on the phone before they show. Each site can be set differently below.')),pic));
  sf.append(simpleSwitch('Block videos on web pages','Videos do not play. Allow one site\'s videos in the list below. YouTube has its own page.',!!c.blockVideos,function(on){c.blockVideos=on;save(on?'Videos on web pages are blocked.':'Videos on web pages are allowed.')}));
- box.append(sf);
+ box.append(sf)}
+function essBrowser(box,dv){
+ const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ essWebLevel(box,dv);essSafeBrowsing(box,dv);
  // 3. Requests waiting.
  siteRequestsCard(box,dv);
  // 4. Approved sites.

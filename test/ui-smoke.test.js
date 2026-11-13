@@ -106,6 +106,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
     return reg.get("main").textContent;
   };
   const seen = {};
+  vm.runInContext("uiMode='new'", ctx); // Legacy is the default look now; the checks below are for the New look, the Legacy look is checked near the end
   seen.list = tryRender("device list", "tab='devices';openId=null;openBrowserId=null;openWinId=null;render()");
   for (const page of ["codes", "settings", "clients", "audit", "templates"]) seen[page] = tryRender(page, `tab='${page}';openId=null;render()`);
   // The first time a phone is opened its page goes back to its start (the home): open it once, then visit every group.
@@ -165,7 +166,9 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/summary"], /Moderate/);
   assert.match(seen["browser/summary"], /He can search YouTube and watch/);
   assert.match(seen["browser/summary"], /browser category filter/, "the phone's own filter log line is shown");
-  assert.match(seen["browser/access"], /Web access/);
+  assert.match(seen["browser/access"], /What can they open on the web/, "one page: the level, with what each closes");
+  assert.match(seen["browser/access"], /Also close these in every browser/, "the News / Shopping / Games ... boxes are on the Legacy page too");
+  assert.match(seen["browser/access"], /Safe browsing/);
   assert.match(seen["browser/access"], /SafeSearch/);
   assert.match(seen["browser/access"], /YouTube Restricted Mode everywhere/);
   assert.match(seen["browser/access"], /Block pictures on web pages/);
@@ -239,7 +242,18 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen.homeOnPi, /via Cloudflare/);
   // The old look is still there, exactly as it was, behind the switch.
   const legacy = tryRender("legacy look", "uiMode='legacy';deviceSection='overview';subs['overview']='status';tab='devices';openId=devices[0].id;render()");
-  tryRender("back to the new look", "uiMode='new'");
+  const legacyBrowser = tryRender("legacy: web protection page", "uiMode='legacy';deviceSection='browser';subs['browser']='access';tab='devices';openId=devices[0].id;render()");
+  const legacyApps = tryRender("legacy: apps", "uiMode='legacy';deviceSection='apps';subs['apps']='regular';tab='devices';openId=devices[0].id;render()");
+  const legacyOff = tryRender("legacy: everything is off", "devices[0].config.restrictionsOffUntil=Date.now()+3600000;devices[0].config.restrictionsOffSince=Date.now();uiMode='legacy';deviceSection='overview';subs['overview']='status';tab='devices';openId=devices[0].id;render()");
+  tryRender("back to the new look", "devices[0].config.restrictionsOffUntil=0;uiMode='new'");
+  assert.match(legacy, /Turn off all restrictions for a while/, "the timed all-off card asks how long");
+  assert.match(legacyOff, /All restrictions are OFF/);
+  assert.match(legacyOff, /Turn everything back on now/);
+  assert.match(legacyBrowser, /What can they open on the web/, "Legacy has the one clear web page too");
+  assert.match(legacyBrowser, /Also close these in every browser/);
+  assert.match(legacyBrowser, /Strict/);
+  assert.doesNotMatch(legacyBrowser, /Web access/, "the old pile of cards is folded into one page");
+  assert.match(legacyApps, /Internet for this app/, "per-app internet switch right on the Apps list");
   assert.match(legacy, /Ready-made setups/);
   assert.match(legacy, /Status/);
   assert.match(seen["overview/status"], /Ready-made setups/);

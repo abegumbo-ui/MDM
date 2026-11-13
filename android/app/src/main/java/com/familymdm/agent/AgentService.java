@@ -198,6 +198,8 @@ public class AgentService extends Service {
                 // Wake up in time to close a Play Store window on the minute, not at the next check-in.
                 int storeLeft = StoreAccess.minutesLeft(this);
                 if (StoreAccess.open(this) && storeLeft >= 0) sleepSeconds = Math.min(sleepSeconds, storeLeft * 60L + 2);
+                long offLeft = Agent.prefs(this).getLong("restrictionsOffUntil", 0) - System.currentTimeMillis();
+                if (offLeft > 0) sleepSeconds = Math.min(sleepSeconds, offLeft / 1000 + 2); // wake right when "all off" ends, to put everything back
                 lastSleepSeconds = Math.max(3, sleepSeconds);
                 Thread.sleep(Math.max(3, sleepSeconds) * 1000L);
             } catch (InterruptedException e) {
@@ -429,7 +431,8 @@ public class AgentService extends Service {
 
         JSONObject policy = reply.optJSONObject("policy");
         if (policy != null) {
-            Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+            // Set before applying: while everything is off, the rest of the policy is not applied, and the deadline must still be read.
+            Agent.prefs(this).edit().putString("policy", policy.toString()).putLong("restrictionsOffUntil", policy.optLong("restrictionsOffUntil", 0)).apply();
             PolicyApplier.apply(this, policy);
             syncCustomIcons(server, token, policy.optJSONObject("customIcons"));
             Updater.maybeAutoUpdate(this, policy);

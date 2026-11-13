@@ -60,8 +60,9 @@ public class BlockAccessibilityService extends AccessibilityService {
             AppBlocklist.recordSeen(this, component);
             String title = event.getText() != null && !event.getText().isEmpty() && event.getText().get(0) != null ? event.getText().get(0).toString() : "";
             PartBlocker.noteScreen(pkg, clsCs.toString(), title);
-            boolean byTitle = !title.isEmpty() && PartBlocker.blockedTitles(this).contains(pkg + "|" + title);
-            if (byTitle || (AppBlocklist.list(this).contains(component) && !AppBlocklist.isPaused(this, component))) {
+            boolean off = EmergencyUnlock.isActive(this); // "all restrictions off": nothing is closed, searches are still noted
+            boolean byTitle = !off && !title.isEmpty() && PartBlocker.blockedTitles(this).contains(pkg + "|" + title);
+            if (!off && (byTitle || (AppBlocklist.list(this).contains(component) && !AppBlocklist.isPaused(this, component)))) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
                 Agent.addEvent(this, "restriction", "Blocked screen opened (" + (byTitle ? title : component) + ") -- backed out instantly");
                 if (now - lastNoteAt > 3000) {
@@ -71,7 +72,7 @@ public class BlockAccessibilityService extends AccessibilityService {
                 }
                 return;
             }
-            if (InAppRules.whatsAppBlocks(pkg, clsCs.toString(), Protection.waStatus(this), Protection.waChannels(this))) {
+            if (!off && InAppRules.whatsAppBlocks(pkg, clsCs.toString(), Protection.waStatus(this), Protection.waChannels(this))) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
                 if (now - lastNoteAt > 60000) {
                     lastNoteAt = now;
@@ -83,7 +84,7 @@ public class BlockAccessibilityService extends AccessibilityService {
             }
             lastPkg = pkg;
             lastWindowAt = now;
-            checkInApp(pkg, clsCs.toString(), now);
+            if (!off) checkInApp(pkg, clsCs.toString(), now);
             if (Monitor.on(this)) Monitor.scan(this, pkg, getRootInActiveWindow());
             Monitor.trackSearch(this, pkg, getRootInActiveWindow(), true);
             Monitor.watchBadSearch(this, pkg, getRootInActiveWindow());
@@ -101,7 +102,7 @@ public class BlockAccessibilityService extends AccessibilityService {
             }
             // A web page often appears a moment after the screen opens: look again for a few
             // seconds after each new screen, at most every half second.
-            if (pkg.equals(lastPkg) && now - lastWindowAt < 4000 && now - lastCheckAt > 500) checkInApp(pkg, null, now);
+            if (pkg.equals(lastPkg) && now - lastWindowAt < 4000 && now - lastCheckAt > 500 && !EmergencyUnlock.isActive(this)) checkInApp(pkg, null, now);
         }
     }
 

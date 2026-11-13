@@ -124,7 +124,7 @@ final class Protection {
 
     /** Web filtering paused right now? Uses the phone's own clock, so it ends on time offline too. */
     static boolean paused(Context c) {
-        return Agent.prefs(c).getLong("pauseUntil", 0) > System.currentTimeMillis();
+        return Agent.prefs(c).getLong("pauseUntil", 0) > System.currentTimeMillis() || EmergencyUnlock.isActive(c);
     }
 
     /** True while "internet only for these apps" is on, so the filter has to work out which app is asking. */

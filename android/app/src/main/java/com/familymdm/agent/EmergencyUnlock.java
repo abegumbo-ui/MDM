@@ -53,9 +53,21 @@ final class EmergencyUnlock {
         return c.getExternalFilesDir(null);
     }
 
+    /** Every restriction is off right now: the dashboard's "turn everything off for a while" (timed, on the phone's own clock, so it ends on
+     * time even with no internet) or the emergency file below. */
+    static boolean isActive(Context c) {
+        return timedOff(c) || fileActive(c);
+    }
+
+    /** "Turn off all restrictions for a while" from the dashboard. The phone keeps being managed (it stays device owner, protects itself,
+     * keeps reporting); only the restrictions stand down, and come back by themselves when the time is up. */
+    static boolean timedOff(Context c) {
+        return Agent.prefs(c).getLong("restrictionsOffUntil", 0) > System.currentTimeMillis();
+    }
+
     /** True if the configured file exists, right where this app can always read it, and its
      * content matches what was set up. */
-    static boolean isActive(Context c) {
+    static boolean fileActive(Context c) {
         String fileName = prefs(c).getString("fileName", null);
         String saltB64 = prefs(c).getString("salt", null);
         String wantHash = prefs(c).getString("hash", null);

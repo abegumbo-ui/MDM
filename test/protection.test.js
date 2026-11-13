@@ -122,3 +122,15 @@ test("web pages inside apps: cleaned and sent to the phone", () => {
   assert.deepEqual(p.inAppExceptions, ["com.bank"]);
   assert.ok(summarizeConfigChange(normalizeConfig({}), c).includes("Web pages inside apps: all closed"));
 });
+
+test("'turn off all restrictions for a while': cleaned, capped at 24 hours, sent to the phone, noted in the change summary, never copied into a template", () => {
+  const soon = Date.now() + 3600000;
+  const c = normalizeConfig({ restrictionsOffUntil: soon, restrictionsOffSince: Date.now() });
+  assert.equal(c.restrictionsOffUntil, Math.floor(soon));
+  assert.equal(normalizeConfig({ restrictionsOffUntil: Date.now() + 10 * 24 * 3600000 }).restrictionsOffUntil <= Date.now() + 24 * 3600000, true, "never more than a day ahead");
+  assert.equal(normalizeConfig({ restrictionsOffUntil: -3 }).restrictionsOffUntil, 0);
+  assert.equal(normalizeConfig({ restrictionsOffUntil: "soon" }).restrictionsOffUntil, 0);
+  assert.equal(buildAgentPolicy(c, []).restrictionsOffUntil, Math.floor(soon));
+  assert.ok(summarizeConfigChange(normalizeConfig({}), c).includes("ALL restrictions turned off for a while"));
+  assert.ok(summarizeConfigChange(c, normalizeConfig({})).includes("Restrictions back on"));
+});

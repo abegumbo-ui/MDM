@@ -146,6 +146,8 @@ final class AppBlocklist {
 
     private static void check(Context c) {
         long now = System.currentTimeMillis();
+        if (EmergencyUnlock.isActive(c)) { lastEventTime = now; return; } // "all restrictions off": no screen is backed out
+
         UsageStatsManager usm = (UsageStatsManager) c.getSystemService(Context.USAGE_STATS_SERVICE);
         if (usm == null) {
             lastEventTime = now;

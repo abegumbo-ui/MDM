@@ -121,6 +121,7 @@ final class ScreenTime {
         Tamper.check(c); // remembers the phone is on (for "was off for ...") and watches the SIM
         Whereabouts.check(c); // location history, when switched on
         JSONObject cfg = config(c);
+        if (EmergencyUnlock.isActive(c)) cfg = null; // "all restrictions off": no daily limit, bedtime, school time or app limits (usage is still counted)
         long now = System.currentTimeMillis();
         Calendar cal = Calendar.getInstance();
         int dow = cal.get(Calendar.DAY_OF_WEEK) - 1;
