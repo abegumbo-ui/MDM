@@ -100,3 +100,16 @@ Nothing of this is tested on a real phone/PC yet: checklist 7s, 7t and 8.
 - #274 PC: Block ads, sites allowed for a while.
 - Test phone: Samsung Galaxy A16 (SM-S166V, Android 16, serial R5GL40JLNTY). MDM app 0.3.617 installed and made device owner by adb (user asked), Browser 1000044 installed. NOT connected to the dashboard yet (needs a code from the user). New phones get "Block factory reset" and "Block USB debugging" by default: switch both off while testing (see the PDF).
 - Guide for the user: Downloads\MDM phone test - what to check.pdf (made from docs/PHONE-TEST-CHECKLIST.md + today's features).
+
+## Night of 2026-11-13 → 14 (user's orders at ~2 AM: "go a whole night")
+The Pi is the main server now (public https://mdmpi.tail67992b.ts.net, Tailscale Funnel; Cloudflare = backup, 4 variables set, all data copied: 350 entries).
+Rules unchanged: branch → PR → build check → merge; never change the PC's Wi-Fi; no PC system changes (Tailscale + the RNDIS driver were done with the user's yes).
+1. [ ] Dashboard header badge: Raspberry Pi / Cloudflare (backup) + each phone's chip "via Pi / via Cloudflare" (Worker: /api/server-status, device.lastVia).
+2. [ ] Server page (Pi only): health, memory, temperature, power, Wi-Fi now + remembered networks (add with password, prefer, forget), restart, reboot, log, copy now. Backend done (pi/admin.mjs, system.mjs) but NOT committed/tested yet; UI not written.
+3. [ ] 3-second check-ins on the Pi (code done: env FAST/BURST_POLL_SECONDS; Cloudflare keeps 30/15): verify live with the A16.
+4. [ ] Dashboard redo, Family Link style: per-device Home with big switches + "More settings" for the old pages; simpler top level; keep search.
+5. [ ] Phone app UI polish (Administrator screen, tiles, spacing, consistent look).
+6. [ ] Re-test EVERY feature on the A16 (old + new) and record in docs/PHONE-TEST-CHECKLIST.md; fix what fails.
+7. [ ] Leftovers: lock-screen PIN/type (setPin/clearPin exist; add lock type hint), SafeSearch in Chrome (build 667 proxy host map), Software update block, Downloads cancel test (interrupted), Music icon.
+8. [ ] Pi hardening: stop using USB+wall together (rebooted twice); Server page "update" (self-update from GitHub) later.
+9. [ ] Morning summary for the user (plain words: what works, what to check, what is still open).

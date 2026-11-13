@@ -30,6 +30,22 @@ export const skipKey = (k) => k.startsWith("repl:") || k.startsWith("shot:") || 
 export const serversFor = (env) =>
   env.PRIMARY_URL && env.BACKUP_URL ? { primary: String(env.PRIMARY_URL).replace(/\/+$/, ""), backup: String(env.BACKUP_URL).replace(/\/+$/, "") } : undefined;
 
+/** Which server this is, for the dashboard badge: "pi" on the Raspberry Pi, otherwise "cloudflare". */
+export async function serverInfo(env) {
+  const s = serversFor(env);
+  return {
+    runtime: env.RUNTIME === "pi" ? "pi" : "cloudflare",
+    role: env.ROLE || "",
+    primary: s ? s.primary : "",
+    backup: s ? s.backup : "",
+    // Cloudflare only: phones had to use it because the Pi was off (it is the one saving changes until the Pi is back).
+    outage: env.ROLE === "backup" ? !!(await env.STATE.get("repl:outage")) : false,
+  };
+}
+
+/** Which server a phone's check-in went to: the one it says it fell back to, else this one. */
+export const viaOf = (env, body) => (body && body.viaBackup === true ? "cloudflare" : env.RUNTIME === "pi" ? "pi" : "cloudflare");
+
 /** A phone that could not reach the Pi checks in here: from now on this server is the one saving changes. */
 export async function noteBackupUse(env, body, now = Date.now()) {
   if (env.ROLE !== "backup" || !body || body.viaBackup !== true) return;

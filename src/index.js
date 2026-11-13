@@ -1,5 +1,5 @@
 import { endSitesEarly, MESSAGE_WORD_GROUPS, effectiveFilter, placesAt, messageWordList, matchMessageWord, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
-import { handleInternal, serversFor, noteBackupUse } from "./replicate.js";
+import { handleInternal, serversFor, noteBackupUse, serverInfo, viaOf } from "./replicate.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { maybeSendDaily, maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY, alertsOn, validPushEndpoint, vapidKeys, latestForPush, SERVICE_WORKER } from "./alerts.js";
@@ -75,11 +75,18 @@ async function markAdminActive(env, now = Date.now()) {
   const last = Number(await env.STATE.get("adminActive")) || 0;
   if (now - last > 60 * 1000) await env.STATE.put("adminActive", String(now)); // at most one write a minute
 }
+// The three speeds can be set per server (POLL_SECONDS, FAST_POLL_SECONDS, BURST_POLL_SECONDS): Cloudflare's free plan needs
+// the slow numbers above, the Raspberry Pi has no limit and runs at 3 seconds while the dashboard is open.
+const secondsFrom = (v, fallback) => {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n >= 3 && n <= 3600 ? n : fallback;
+};
 async function pollFor(env, now = Date.now()) {
+  const base = secondsFrom(env.POLL_SECONDS, POLL_SECONDS);
   const last = Number(await env.STATE.get("adminActive")) || 0;
-  if (now - last >= FAST_WINDOW_MS) return POLL_SECONDS; // one read only when nobody is on the dashboard
+  if (now - last >= FAST_WINDOW_MS) return base; // one read only when nobody is on the dashboard
   const act = Number(await env.STATE.get("adminAction")) || 0;
-  return now - act < BURST_WINDOW_MS ? BURST_POLL_SECONDS : FAST_POLL_SECONDS;
+  return now - act < BURST_WINDOW_MS ? secondsFrom(env.BURST_POLL_SECONDS, BURST_POLL_SECONDS) : secondsFrom(env.FAST_POLL_SECONDS, FAST_POLL_SECONDS);
 }
 
 // Sites visited: the site a hostname belongs to ("m.youtube.com" -> "youtube.com", "www.ynet.co.il" -> "ynet.co.il").
@@ -214,6 +221,11 @@ async function getSession(request, env) {
   return { role: "client", id: cm[1], name: c.name };
 }
 const isAdmin = (session) => !!session && session.role === "admin";
+/** For the Raspberry Pi's own pages (pi/admin.mjs): the signed-in administrator of this request, or null. */
+export async function adminSessionOf(request, env) {
+  const s = await getSession(request, env);
+  return isAdmin(s) ? s : null;
+}
 const isClient = (session) => !!session && session.role === "client";
 
 // ---- KV state ----
@@ -288,6 +300,7 @@ const publicDevice = (d) => ({
   id: d.id,
   name: d.name,
   lastSeen: d.lastSeen,
+  via: d.via || "",
   info: d.info || {},
   packages: d.packages || [],
   pending: (d.queue || []).length,
@@ -937,6 +950,8 @@ async function adminApiInner(request, env, url, session) {
       userMenu: USER_MENU,
       origin: url.origin,
       masterIterations: MASTER_ITERATIONS,
+      // Which server is showing this page (the Raspberry Pi, or Cloudflare), for the badge at the top of the dashboard.
+      server: await serverInfo(env),
       session: {
         ...(session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name }),
         ...(session.helper ? { helper: session.helperName, viewOnly: !!session.viewOnly } : {}),
@@ -1413,6 +1428,9 @@ async function agentApi(request, env, url, ctx) {
     const now = Date.now();
     if (now - (d.lastSeen || 0) > LAST_SEEN_WRITE_MS) dirty = true;
     d.lastSeen = now;
+    // Which server the phone used this time (shown as "via Raspberry Pi / Cloudflare"); saved only when it changes.
+    const viaNow = viaOf(env, body);
+    if (d.via !== viaNow) { d.via = viaNow; dirty = true; }
 
     if (Array.isArray(body.packages)) {
       const pk = body.packages

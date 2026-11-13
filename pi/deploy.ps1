@@ -49,6 +49,9 @@ $pkg = Join-Path $work 'mdm-pi-src'
 New-Item -ItemType Directory -Force "$pkg\src", "$pkg\pi" | Out-Null
 Copy-Item "$root\src\*.js" "$pkg\src\"
 Copy-Item "$root\pi\*" "$pkg\pi\" -Exclude 'deploy.ps1'
+# What version this is (shown on the dashboard's Server page).
+$sha = (& git -C $root rev-parse --short HEAD 2>$null)
+[IO.File]::WriteAllText((Join-Path $pkg 'VERSION'), "$sha  deployed $((Get-Date).ToString('yyyy-MM-dd HH:mm'))`n")
 # Files for Linux: plain line endings.
 $envText = ((Settings-Lines) -join "`n") + "`n"
 [IO.File]::WriteAllText((Join-Path $work 'mdm-pi.env'), $envText)
@@ -61,6 +64,9 @@ Push-Location $work; & tar -cf $tar 'mdm-pi-src'; Pop-Location
 Write-Host "copying the program to the Pi..."
 & scp @sshOpts $tar (Join-Path $work 'mdm-pi.env') "${scpDest}:/tmp/"
 if ($LASTEXITCODE -ne 0) { throw 'could not copy to the Pi' }
+# The Pi has no clock of its own: set it from this PC first (package downloads refuse a wrong date).
+$utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')
+Run-Ssh "sudo date -u -s '$utc'" | Out-Null
 Run-Ssh 'cd /tmp && rm -rf mdm-pi-src && tar -xf mdm-pi.tar && sudo bash /tmp/mdm-pi-src/pi/install.sh'
 if ($LASTEXITCODE -ne 0) { throw 'the install on the Pi failed' }
 
@@ -68,8 +74,11 @@ $code = 0
 if (-not $SkipTailscale) {
   Write-Host "setting up the public address (Tailscale)..."
   $lines = @()
+  # The Pi prints a harmless warning at login (on stderr); that must not stop this script.
+  $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
   Run-Ssh 'sudo bash /tmp/mdm-pi-src/pi/tailscale-setup.sh' 2>&1 | ForEach-Object { Write-Host $_; $lines += [string]$_ }
   $code = $LASTEXITCODE
+  $ErrorActionPreference = $prevEap
   $hit = $lines | Select-String 'PUBLIC-ADDRESS=(\S+)' | Select-Object -First 1
   if ($hit) {
     # Remembered, so a later deploy does not put an empty address back.
