@@ -44,7 +44,8 @@
       [' .dl.del', 'background:transparent;color:#d93025;border:1px solid #d93025;padding:6px 15px;margin-left:8px'],
     ]);
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
-  function isHome() { var p = location.pathname; return p === '/' || p === ''; }
+  // Home, and for YouTube Music also Library (where the downloaded songs live).
+  function isHome() { var p = location.pathname; return p === '/' || p === '' || (music && (p === '/library' || p.indexOf('/library/') === 0)); }
   function isDark() {
     var h = document.documentElement;
     return h.hasAttribute('dark') || h.hasAttribute('darker-dark-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
@@ -53,8 +54,14 @@
     var top = 0, bottom = 0;
     var head = document.querySelector('ytm-mobile-topbar-renderer, #header-bar, #masthead-container, ytmusic-nav-bar');
     if (head) top = Math.max(0, head.getBoundingClientRect().bottom);
-    var foot = document.querySelector('ytm-pivot-bar-renderer, ytmusic-pivot-bar-renderer');
-    if (foot) bottom = Math.max(0, innerHeight - foot.getBoundingClientRect().top);
+    // The bottom bars: the tabs, and (YouTube Music) the bar of the song that is playing; the list stops above whichever is higher.
+    var bars = ['ytm-pivot-bar-renderer', 'ytmusic-pivot-bar-renderer', 'ytmusic-player-bar'];
+    for (var bi = 0; bi < bars.length; bi++) {
+      var bar = document.querySelector(bars[bi]);
+      if (!bar) continue;
+      var r = bar.getBoundingClientRect();
+      if (r && r.height !== 0 && r.top > 0) bottom = Math.max(bottom, innerHeight - r.top);
+    }
     box.style.top = (top || 48) + 'px';
     box.style.bottom = bottom + 'px';
     box.className = isDark() ? 'dark' : '';
@@ -190,6 +197,7 @@
   // next approved one plays (the list goes round and round); a song that is not approved is stopped and replaced by an approved one.
   if (music && data.videos.length) {
     var ids = data.videos.map(function (v) { return v.v; });
+    window.__mdmApprovedIds = ids; // music_ask.js: these songs need no "Ask" button
     var step = function (from, by) { var i = ids.indexOf(from); return ids[((i < 0 ? 0 : i + by) % ids.length + ids.length) % ids.length]; };
     var play = function (id) { location.replace(location.origin + '/watch?v=' + id); };
     setInterval(function () {
