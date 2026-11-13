@@ -239,3 +239,27 @@ test("screens blocked on the phone (by the name of the screen) are kept in the s
   assert.deepEqual(normalizeConfig({}).blockedComponents, [], "none by default");
   assert.ok(summarizeConfigChange(normalizeConfig({}), c).includes("Blocked app screens (by name of the screen): 1"));
 });
+
+test("a command the phone never confirmed stops showing as waiting after an hour, a fresh one stays", async () => {
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Fl" } }) })).json();
+  const sync = (body) => req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  await sync({});
+  const d = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.name.endsWith("Fl"));
+  const post = (type) => req(`/api/devices/${d.id}/command`, { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type, args: {} }) });
+  await post("sync");
+  await sync({}); // delivered: now "waiting for the phone to confirm"
+  let now = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.id === d.id);
+  assert.equal(now.inflight.length, 1, "a delivered command waits for its confirmation");
+  const realNow = Date.now;
+  Date.now = () => realNow() + 2 * 3600 * 1000; // two hours later, still no confirmation
+  try {
+    await sync({});
+  } finally {
+    Date.now = realNow;
+  }
+  now = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.id === d.id);
+  assert.equal(now.inflight.length, 0, "it is dropped after an hour");
+});

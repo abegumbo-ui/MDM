@@ -141,3 +141,13 @@ Rules as always: branch -> PR -> build check -> merge; never touch the PC's syst
 - [ ] Lock a screen from the dashboard by name; a wrong name answers "no such screen or app on this phone".
 - [x] YouTube Music Back bug (search -> blocked song -> Back, Back left the app): fixed in code, needs build + check.
 - Resume notes for restarts after a usage-limit pause: docs/SABBATH-RESUME.md (hourly check-in job reads it).
+
+### Sabbath list, status at 2026-11-13 17:50
+- Windows `.exe` (FamilyMdmSetup): built, CI-built, sent to the user. Tested: parsing, read-only run and put-back on the A16. NOT tested: a real hand-over on a fresh phone.
+- Phone-to-phone OTG app (android/otgsetup): built, compiles, CI-built. NOT tested on two phones.
+- Whole-phone test pass: partial. Verified on the A16 (build 740): Music Back fix, Restricted Mode in Music, Browser add-on, the update-download bug (found and fixed: it failed whenever browser inspection was on), self-update now works. NOT verifiable until the Pi runs the new server code (needs the user's Tailscale sign-in): Open level, daily site allowances, screen lookup by name, blocks syncing, phone-side all-off.
+- Simplify the UI: not started (needs the user's taste; the Browser page was already folded from 17 cards to one page).
+- Browser check: Browser add-on verified on the A16; the separate Browser app was not opened.
+- On-device picture model: the model and the dashboard setting already existed; the choice and photo alerts are now also on the phone's own Rules screens. No new model added.
+- Parity: blocks made on the phone now sync (screens by name, by title); picture checker, photo alerts, timed all-off, YouTube mode, Music pictures are on the phone's screens.
+- Netspark research: done (see MORNING-SUMMARY).
