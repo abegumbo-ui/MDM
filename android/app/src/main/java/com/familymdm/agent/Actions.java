@@ -163,6 +163,42 @@ final class Actions {
         }
     }
 
+    /**
+     * Gets PIN control ready in the background, so "Set PIN" and "Remove screen lock" work from the dashboard the first time
+     * (before, the token was only made by the first attempt, which then failed). A phone with no screen lock is ready at once;
+     * a phone that already has one still needs the one-time "Activate PIN control" confirmation on the phone itself, because
+     * Android only lets the person who knows the lock approve that. Never throws.
+     */
+    static void prepareTokenQuietly(Context c) {
+        try {
+            if (Agent.prefs(c).getBoolean("rpTokenSet", false)) return;
+            if (Agent.dpm(c).setResetPasswordToken(Agent.admin(c), token(c))) {
+                Agent.prefs(c).edit().putBoolean("rpTokenSet", true).apply();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * How strong the phone's current screen lock is, in words ("" when it cannot be told). Android never tells an app what the
+     * lock is (nobody can read a PIN, a pattern or a password that someone chose), and it does not say pattern or PIN either:
+     * only how strong it is.
+     */
+    static String lockStrength(Context c) {
+        try {
+            if (!hasScreenLock(c)) return "none";
+            if (Build.VERSION.SDK_INT < 29) return "set";
+            switch (Agent.dpm(c).getPasswordComplexity()) {
+                case DevicePolicyManager.PASSWORD_COMPLEXITY_LOW: return "pattern or simple PIN";
+                case DevicePolicyManager.PASSWORD_COMPLEXITY_MEDIUM: return "PIN or password (medium)";
+                case DevicePolicyManager.PASSWORD_COMPLEXITY_HIGH: return "long PIN or password (strong)";
+                default: return "set";
+            }
+        } catch (Exception e) {
+            return hasScreenLock(c) ? "set" : "none";
+        }
+    }
+
     private static byte[] token(Context c) {
         String stored = Agent.prefs(c).getString("rpToken", null);
         if (stored != null) return Base64.decode(stored, Base64.NO_WRAP);

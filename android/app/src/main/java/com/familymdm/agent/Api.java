@@ -30,6 +30,16 @@ final class Api {
     // does not answer; the next call tries the Pi again, so the phone is back on it as soon as it is.
     private static volatile String primary, backup;
     static volatile boolean onBackup; // the last answer came from the backup
+    // After the Pi failed to answer, go straight to the backup for a minute (instead of waiting 15 seconds at every call
+    // for a Pi that is off), then try the Pi again.
+    private static volatile long primaryDownUntil;
+    private static final long PRIMARY_RETRY_MS = 60_000;
+
+    /** In words, for the app's front screen: which server the phone is talking to ("" when only one server is set up). */
+    static String where() {
+        if (primary == null || backup == null) return "";
+        return onBackup ? "Cloudflare (backup)" : "Raspberry Pi";
+    }
 
     static void setServers(String p, String b) {
         p = cleanOrigin(p);
@@ -57,14 +67,19 @@ final class Api {
         if (p == null || b == null || !(o.equals(p) || o.equals(b))) return postOnce(url, body, bearer);
         String path = url.substring(o.length());
         boolean down = false; // the Pi did not answer at all (not: it answered with an error about this request)
-        try {
-            JSONObject r = postOnce(p + path, body, bearer);
-            onBackup = false;
-            return r;
-        } catch (HttpException e) {
-            down = e.code >= 500;
-        } catch (IOException e) {
-            down = true;
+        if (System.currentTimeMillis() < primaryDownUntil) {
+            down = true; // it failed a moment ago: do not wait for it again right now
+        } else {
+            try {
+                JSONObject r = postOnce(p + path, body, bearer);
+                onBackup = false;
+                return r;
+            } catch (HttpException e) {
+                down = e.code >= 500;
+            } catch (IOException e) {
+                down = true;
+            }
+            if (down) primaryDownUntil = System.currentTimeMillis() + PRIMARY_RETRY_MS;
         }
         JSONObject copy = new JSONObject(body.toString());
         if (down && path.endsWith("/agent/sync")) copy.put("viaBackup", true); // the backup then notes that the Pi was off

@@ -167,7 +167,9 @@ public class AgentService extends Service {
         o.put("agent", "0.1.0");
         o.put("deviceOwner", Agent.isOwner(this));
         o.put("screenLock", Actions.hasScreenLock(this));
+        Actions.prepareTokenQuietly(this);
         o.put("pinControl", Actions.pinControlActive(this));
+        o.put("lockStrength", Actions.lockStrength(this));
         o.put("appLock", Agent.prefs(this).getBoolean("appLock", false));
         o.put("masterSet", Master.isSet(this));
         o.put("restrictions", new JSONArray(Agent.getSet(this, "restrictions")));
