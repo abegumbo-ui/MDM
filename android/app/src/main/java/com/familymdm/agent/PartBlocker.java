@@ -538,7 +538,6 @@ final class PartBlocker {
                 showConfirmScreen(s, pkg, "title:" + pkg + "|" + title.trim(), appLabel(s, pkg) + ": " + title.trim());
                 return;
             }
-            if (pickButton != null) pickButton.setVisibility(View.VISIBLE);
             showPanel(s, "I cannot read what this page is called (it only says \"Settings\"), so blocking it would block every Settings page. Nothing was blocked. Use Pick a part and tap something on the page instead.", false);
             return;
         }
@@ -703,6 +702,7 @@ final class PartBlocker {
     private static void showPanel(AccessibilityService s, String text, boolean choice) {
         WindowManager wm = s.getSystemService(WindowManager.class);
         removeView(wm, panel);
+        if (pickButton != null) pickButton.setVisibility(View.GONE); // no bar underneath the panel
         LinearLayout box = new LinearLayout(s);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setBackgroundColor(0xF2FFFFFF);
