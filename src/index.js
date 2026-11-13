@@ -11,7 +11,7 @@ const SESSION_SECONDS = 60 * 60 * 12;
 // is also the real upper bound on "how long until a dashboard action takes effect" (the UI says so
 // honestly rather than a shorter number that isn't true). 5 minutes, not something much shorter,
 // to stay well under the KV free tier's write/read caps across many devices.
-const POLL_SECONDS = 60;
+const POLL_SECONDS = 300; // nobody on the dashboard: every 5 minutes (keeps the free plan's daily limits safe)
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
@@ -56,8 +56,17 @@ const MAX_TRAFFIC_LOG = 150;
 const MAX_LOCATIONS = 200;
 const MAX_CALLS = 300;
 // Faster check-ins while someone is using the dashboard (see adminActive): every 30 s for 10 minutes.
-const FAST_POLL_SECONDS = 15; // while the dashboard is open
+const FAST_POLL_SECONDS = 30;
 const FAST_WINDOW_MS = 10 * 60 * 1000;
+// Right after the dashboard changes something: every 15 s for 3 minutes, so a change shows up on the phone fast.
+const BURST_POLL_SECONDS = 15;
+const BURST_WINDOW_MS = 3 * 60 * 1000;
+let adminActionMarked = 0;
+async function markAdminAction(env, now = Date.now()) {
+  if (now - adminActionMarked < 20 * 1000) return; // at most one write per 20 s
+  adminActionMarked = now;
+  await env.STATE.put("adminAction", String(now));
+}
 let adminActiveMarked = 0; // this worker already noted it in the last minute: no storage read at all
 async function markAdminActive(env, now = Date.now()) {
   if (now - adminActiveMarked < 60 * 1000) return;
@@ -67,7 +76,9 @@ async function markAdminActive(env, now = Date.now()) {
 }
 async function pollFor(env, now = Date.now()) {
   const last = Number(await env.STATE.get("adminActive")) || 0;
-  return now - last < FAST_WINDOW_MS ? FAST_POLL_SECONDS : POLL_SECONDS;
+  if (now - last >= FAST_WINDOW_MS) return POLL_SECONDS; // one read only when nobody is on the dashboard
+  const act = Number(await env.STATE.get("adminAction")) || 0;
+  return now - act < BURST_WINDOW_MS ? BURST_POLL_SECONDS : FAST_POLL_SECONDS;
 }
 
 // Sites visited: the site a hostname belongs to ("m.youtube.com" -> "youtube.com", "www.ynet.co.il" -> "ynet.co.il").
@@ -645,6 +656,7 @@ async function adminApi(request, env, url, session) {
   }
   const res = await adminApiInner(request, env, url, session);
   if (method !== "GET" && method !== "HEAD" && res.ok) {
+    await markAdminAction(env); // phones check in every 15 s for 3 minutes after a change
     const change = describeChange(method, url.pathname, body);
     if (change) {
       await auditAdd(env, {

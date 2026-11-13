@@ -90,6 +90,7 @@ final class PartBlocker {
         if (picking) return;
         if (EmergencyUnlock.isActive(s)) { if (!covers.isEmpty()) clearCovers(s); return; } // every restriction is off during an emergency unlock
         if (pkg == null || pkg.equals(s.getPackageName()) || pkg.equals("com.android.systemui")) return;
+        if (screenBlockedNow(s, pkg)) return;
         if (!anyFor(s, pkg)) {
             if (coveredPkg != null && !pkg.equals(coveredPkg)) clearCovers(s);
             return;
@@ -250,6 +251,99 @@ final class PartBlocker {
     /** The screen the person is on right now (the app's own screen, not ours). */
     static volatile String currentScreen, currentScreenPkg, currentTitle;
 
+    // ---------- a screen's "fingerprint": the words at the top of it ----------
+
+    static final String SEP = "\u001f";
+
+    /** Screens blocked by what is written at the top of them (works when the title cannot be read). */
+    static java.util.Set<String> blockedScreens(Context c) {
+        return Agent.getSet(c, "blockedScreens");
+    }
+
+    /** The first words on screen, top to bottom (the title, then the headings), at most max of them. */
+    static List<String> topTexts(AccessibilityNodeInfo root, int max) {
+        List<Object[]> found = new ArrayList<>();
+        if (root == null) return new ArrayList<>();
+        Rect screen = new Rect();
+        root.getBoundsInScreen(screen);
+        int limit = screen.top + Math.max(1, screen.height()) * 42 / 100;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        while (!q.isEmpty() && seen++ < 500) {
+            AccessibilityNodeInfo n = q.poll();
+            CharSequence t = n.getText();
+            if (t != null && !n.isPassword() && n.isVisibleToUser()) {
+                String x = t.toString().trim().replaceAll("\\s+", " ");
+                if (x.length() >= 2 && x.length() <= 60 && !x.matches("[\\d\\s:.,%/+\\-]+")) {
+                    Rect r = new Rect();
+                    n.getBoundsInScreen(r);
+                    if (r.top < limit && r.height() > 0) found.add(new Object[]{r.top, r.left, x});
+                }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo ch = n.getChild(i);
+                if (ch != null) q.add(ch);
+            }
+        }
+        java.util.Collections.sort(found, (a, b) -> ((Integer) a[0]).equals(b[0]) ? ((Integer) a[1]).compareTo((Integer) b[1]) : ((Integer) a[0]).compareTo((Integer) b[0]));
+        List<String> out = new ArrayList<>();
+        for (Object[] f : found) {
+            String x = (String) f[2];
+            if (!out.contains(x)) out.add(x);
+            if (out.size() >= max) break;
+        }
+        return out;
+    }
+
+    static String signatureOf(String pkg, List<String> texts) {
+        return pkg + SEP + String.join(SEP, texts);
+    }
+
+    static String signatureLabel(String sig) {
+        String[] p = sig.split(SEP);
+        StringBuilder b = new StringBuilder();
+        for (int i = 1; i < p.length; i++) b.append(i > 1 ? " › " : "").append(p[i]);
+        return b.toString();
+    }
+
+    private static long lastSigScan;
+    private static long lastSigBack;
+
+    /** Is the screen open now one that was blocked by its fingerprint? Backs out of it if so. */
+    private static boolean screenBlockedNow(AccessibilityService s, String pkg) {
+        java.util.Set<String> all = blockedScreens(s);
+        if (all.isEmpty()) return false;
+        List<String> mine = new ArrayList<>();
+        for (String sig : all) if (sig.startsWith(pkg + SEP)) mine.add(sig);
+        if (mine.isEmpty()) return false;
+        long now = System.currentTimeMillis();
+        if (now - lastSigScan < 250) return false;
+        lastSigScan = now;
+        AccessibilityNodeInfo root = s.getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null || !pkg.contentEquals(root.getPackageName())) return false;
+        List<String> here = topTexts(root, 14);
+        for (String sig : mine) {
+            String[] p = sig.split(SEP);
+            boolean all3 = p.length > 1;
+            for (int i = 1; i < p.length && all3; i++) {
+                boolean found = false;
+                for (String h : here) if (h.equalsIgnoreCase(p[i])) { found = true; break; }
+                if (!found) all3 = false;
+            }
+            if (!all3) continue;
+            if (now - lastSigBack > 700) {
+                lastSigBack = now;
+                s.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);
+                Agent.addEvent(s, "restriction", "Blocked screen opened (" + signatureLabel(sig) + ") -- backed out instantly");
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                        android.widget.Toast.makeText(s.getApplicationContext(), "This screen is not allowed on this phone.", android.widget.Toast.LENGTH_SHORT).show());
+            }
+            return true;
+        }
+        return false;
+    }
+
     /** Screens blocked by their title (Settings pages, which all have the same class name). */
     static java.util.Set<String> blockedTitles(Context c) {
         return Agent.getSet(c, "blockedTitles");
@@ -281,17 +375,28 @@ final class PartBlocker {
             return;
         }
         String pkg = currentScreenPkg;
-        if (isHome(s, pkg) || pkg.equals("com.android.settings") || pkg.equals("com.android.dialer") || pkg.equals("com.google.android.dialer")) {
-            showPanel(s, "The home screen, Settings and the phone app cannot be blocked this way. Open the app you want first.", false);
+        if (isHome(s, pkg) || pkg.equals("com.android.dialer") || pkg.equals("com.google.android.dialer") || pkg.equals("com.samsung.android.dialer") || pkg.equals("com.android.emergency")) {
+            showPanel(s, "The home screen and the phone app cannot be blocked (calls, emergency calls). Open another app's screen, or a Settings page.", false);
             return;
         }
         String cls = comp.substring(comp.indexOf('/') + 1);
         String nice = cls.substring(cls.lastIndexOf('.') + 1).replaceAll("(Activity|Fragment)$", "").replaceAll("([a-z])([A-Z])", "$1 $2");
         if (pickButton != null) pickButton.setVisibility(View.GONE);
         String title = currentTitle;
-        if (sharedClass(pkg, cls) && title != null && !title.trim().isEmpty()) {
-            // Settings: every page is "SubSettings", so blocking the class would block them all.
-            showConfirmScreen(s, pkg, "title:" + pkg + "|" + title.trim(), appLabel(s, pkg) + ": " + title.trim());
+        if (sharedClass(pkg, cls)) {
+            // Settings: every page is "SubSettings", so blocking the class would block them all. Told apart by
+            // the words at the top of the page instead (its title and first headings).
+            AccessibilityNodeInfo root = s.getRootInActiveWindow();
+            List<String> top = root != null && root.getPackageName() != null && pkg.contentEquals(root.getPackageName()) ? topTexts(root, 3) : new ArrayList<String>();
+            if (!top.isEmpty()) {
+                showConfirmScreen(s, pkg, "sig:" + signatureOf(pkg, top), appLabel(s, pkg) + ": " + String.join(" › ", top));
+                return;
+            }
+            if (title != null && !title.trim().isEmpty()) {
+                showConfirmScreen(s, pkg, "title:" + pkg + "|" + title.trim(), appLabel(s, pkg) + ": " + title.trim());
+                return;
+            }
+            showPanel(s, "This page shows no words I can read, so I cannot tell it from the other Settings pages. Use Pick a part and tap something on it instead.", false);
             return;
         }
         showConfirmScreen(s, pkg, comp, appLabel(s, pkg) + ": " + nice);
@@ -310,7 +415,11 @@ final class PartBlocker {
         box.addView(t);
         LinearLayout row = new LinearLayout(s);
         addBtn(s, row, "Block it", v -> {
-            if (comp.startsWith("title:")) {
+            if (comp.startsWith("sig:")) {
+                java.util.Set<String> sigs = Agent.getSet(s, "blockedScreens");
+                sigs.add(comp.substring(4));
+                Agent.putSet(s, "blockedScreens", sigs);
+            } else if (comp.startsWith("title:")) {
                 java.util.Set<String> titles = Agent.getSet(s, "blockedTitles");
                 titles.add(comp.substring(6));
                 Agent.putSet(s, "blockedTitles", titles);
