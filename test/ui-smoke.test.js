@@ -247,6 +247,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   const legacyBrowser = tryRender("legacy: web protection page", "uiMode='legacy';deviceSection='browser';subs['browser']='access';tab='devices';openId=devices[0].id;render()");
   const legacyApps = tryRender("legacy: apps", "uiMode='legacy';deviceSection='apps';subs['apps']='regular';tab='devices';openId=devices[0].id;render()");
   const legacyBlocking = tryRender("legacy: blocking apps and screens", "uiMode='legacy';deviceSection='apps';subs['apps']='blocking';tab='devices';openId=devices[0].id;render()");
+  const legacyTime = tryRender("legacy: time limits", "uiMode='legacy';deviceSection='time';subs['time']='limits';tab='devices';openId=devices[0].id;render()");
   const legacyOpen = tryRender("legacy: Open level", "devices[0]._bf=devices[0].config.browserFilter;devices[0].config.browserFilter='custom';devices[0].config.filterKinds=['adult','news'];uiMode='legacy';deviceSection='browser';subs['browser']='access';tab='devices';openId=devices[0].id;render()");
   tryRender("back to the earlier level", "devices[0].config.browserFilter=devices[0]._bf;uiMode='new'");
   const legacyOff = tryRender("legacy: everything is off", "devices[0].config.restrictionsOffUntil=Date.now()+3600000;devices[0].config.restrictionsOffSince=Date.now();uiMode='legacy';deviceSection='overview';subs['overview']='status';tab='devices';openId=devices[0].id;render()");
@@ -261,6 +262,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(legacyApps, /Internet for this app/, "per-app internet switch right on the Apps list");
   assert.match(legacyBlocking, /Block a screen by its name/, "a screen can be blocked by typing its name");
   assert.match(legacyBlocking, /Look it up/);
+  assert.match(legacyTime, /Time on a site, every day/, "a daily allowance can be given to a site");
+  assert.match(legacyTime, /every day \(not 2 hours from when you approved it\)/);
   assert.match(legacyOpen, /Open: close only what I choose/, "the new lowest level is offered");
   assert.match(legacyOpen, /Close only these kinds of site/, "with a switch for each kind of site");
   assert.match(legacyOpen, /Adult sites/);

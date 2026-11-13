@@ -120,6 +120,52 @@ public class BrowserAddonActivity extends Activity {
             WebFilter.setPolicy(this, "off", "");
             WebFilter.setYoutubeMode(this, "channels");
         }
+        tickHandler.removeCallbacks(siteTick);
+        tickHandler.postDelayed(siteTick, 1000);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        tickHandler.removeCallbacks(siteTick);
+    }
+
+    // ---------- a daily time allowance for a site (screenTime.siteLimits): counted while its page is on screen ----------
+
+    private final android.os.Handler tickHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable siteTick = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                String u = webView == null ? null : webView.getUrl();
+                String h = u != null && u.startsWith("http") ? SitePolicy.hostOf(u) : null;
+                boolean covered = overlay != null && overlay.getVisibility() == View.VISIBLE;
+                if (h != null && !covered) {
+                    SiteTime.add(BrowserAddonActivity.this, h, 5000);
+                    if (SiteTime.exhausted(BrowserAddonActivity.this, h)) {
+                        showTimeUp(h);
+                        webView.loadUrl("about:blank"); // otherwise a video keeps playing under the message
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // a counting problem must never break the page
+            }
+            tickHandler.postDelayed(this, 5000);
+        }
+    };
+
+    private void showTimeUp(String host) {
+        webView.setVisibility(View.GONE);
+        ensureOverlay();
+        overlay.removeAllViews();
+        overlay.addView(Ui.titleText(this, "Time is up for today"));
+        overlay.addView(Ui.body(this, SiteTime.message(this, host), true));
+        overlay.addView(Ui.button(this, "Ask for more time", Ui.TONAL, v -> {
+            Agent.addAppRequest(this, "time", null, null);
+            AgentService.requestSync();
+            toast("Your parent was asked for more time.");
+        }));
+        overlay.addView(Ui.button(this, "Go to the start page", Ui.OUTLINED, v -> load(HOME_URL)));
     }
 
     @Override
@@ -182,6 +228,11 @@ public class BrowserAddonActivity extends Activity {
         }
         if (SitePolicy.isBlockedAdult(url)) {
             showAdultBlocked();
+            return true;
+        }
+        String hostNow = SitePolicy.hostOf(url);
+        if (hostNow != null && SiteTime.exhausted(this, hostNow)) { // the day's allowance for this site is used up
+            showTimeUp(hostNow);
             return true;
         }
         boolean imageSearch = Protection.blocksImageSearch(this, url);

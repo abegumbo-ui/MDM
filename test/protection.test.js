@@ -213,3 +213,21 @@ test("Open level: the whole web is open, only the chosen kinds are closed (adult
   assert.ok(summarizeConfigChange(normalizeConfig({ browserFilter: "custom" }), normalizeConfig({ browserFilter: "custom", filterKinds: ["adult", "gambling"] })).includes("Open web, closed kinds: adult, gambling"));
   assert.equal(buildAgentPolicy(normalizeConfig({ browserFilter: "custom", youtubeMode: "restricted" }), []).youtubeMode, "restricted", "a YouTube setting chosen by hand still wins");
 });
+
+test("daily time per site: tidied, sent to the phone with the screen-time rules, and the day's use comes back with the check-in", async () => {
+  const c = normalizeConfig({ screenTime: { siteLimits: { "https://www.YouTube.com/watch?v=1": 120, "music.youtube.com": 60, "bad host": 30, "nodot": 10, "zero.com": 0, "huge.com": 9999 } } });
+  assert.deepEqual(c.screenTime.siteLimits, { "youtube.com": 120, "music.youtube.com": 60, "huge.com": 1440 }, "addresses become site names; junk and zero are dropped; a day has 1440 minutes");
+  assert.deepEqual(buildAgentPolicy(c, []).screenTime.siteLimits, { "youtube.com": 120, "music.youtube.com": 60, "huge.com": 1440 }, "the phone gets them with the rest of screenTime");
+  assert.deepEqual(normalizeConfig({}).screenTime.siteLimits, {}, "none by default");
+  const before = normalizeConfig({}), after = normalizeConfig({ screenTime: { siteLimits: { "youtube.com": 120 } } });
+  assert.ok(summarizeConfigChange(before, after).includes("Daily time per site: youtube.com 120 min"));
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Sl" } }) })).json();
+  const sync = (body) => req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  await sync({});
+  await sync({ usage: { day: "2026-11-13", total: 5, ok: true, apps: [], sites: [{ h: "youtube.com", m: 30, l: 120 }, { h: "bad host", m: 1, l: 1 }, "nope", { h: "music.youtube.com", m: 99999, l: 60 }] } });
+  const d = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.name.endsWith("Sl"));
+  assert.deepEqual(d.usage["2026-11-13"].sites, [{ h: "youtube.com", m: 30, l: 120 }, { h: "music.youtube.com", m: 1440, l: 60 }], "broken entries are dropped and minutes are capped");
+});

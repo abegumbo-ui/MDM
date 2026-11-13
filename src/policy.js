@@ -336,9 +336,21 @@ export const BROWSER_FILTERS = ["off", "moderate", "strict", "custom"];
 
 /**
  * Screen time: dailyLimit is minutes a day for the whole phone (0 = no limit); bedtime is a
- * {days, from, to} window when the phone is locked; appLimits is minutes a day per app; exempt is
+ * {days, from, to} window when the phone is locked; appLimits is minutes a day per app; siteLimits is minutes a day per
+ * site ("youtube.com": 120 = two hours EVERY day, the budget starts again each morning); exempt is
  * apps that do not count toward the daily limit (Phone, Maps...).
  */
+export function normalizeSiteLimits(v) {
+  const out = {};
+  for (const [raw, m] of Object.entries(v && typeof v === "object" && !Array.isArray(v) ? v : {})) {
+    const host = String(raw).trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/^www\./, "").replace(/[/?#:].*$/, "");
+    const minutes = Number.isInteger(m) ? Math.min(Math.max(m, 0), 24 * 60) : 0;
+    if (minutes > 0 && host.length <= 100 && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host)) out[host] = minutes;
+    if (Object.keys(out).length >= 40) break;
+  }
+  return out;
+}
+
 export function normalizeScreenTime(raw) {
   const c = raw && typeof raw === "object" ? raw : {};
   const clamp = (v) => (Number.isInteger(v) ? Math.min(Math.max(v, 0), 24 * 60) : 0);
@@ -353,7 +365,7 @@ export function normalizeScreenTime(raw) {
   // A break inside school time (lunch): the phone works normally then.
   const hm = /^([01]\d|2[0-3]):[0-5]\d$/;
   const schoolBreak = c.schoolBreak && hm.test(c.schoolBreak.from) && hm.test(c.schoolBreak.to) && c.schoolBreak.from < c.schoolBreak.to ? { from: c.schoolBreak.from, to: c.schoolBreak.to } : null;
-  return { dailyLimit: clamp(c.dailyLimit), weekendLimit: clamp(c.weekendLimit), weekendDays, bedtime: normalizeSchedule(c.bedtime), schoolTime: normalizeSchedule(c.schoolTime), schoolBreak, appLimits, exempt };
+  return { dailyLimit: clamp(c.dailyLimit), weekendLimit: clamp(c.weekendLimit), weekendDays, bedtime: normalizeSchedule(c.bedtime), schoolTime: normalizeSchedule(c.schoolTime), schoolBreak, appLimits, siteLimits: normalizeSiteLimits(c.siteLimits), exempt };
 }
 
 // Whole groups of apps that can be blocked with one switch, like other parental-control apps offer.
@@ -1064,6 +1076,7 @@ export function summarizeConfigChange(before, after) {
   const stB = normalizeScreenTime(before.screenTime), stA = normalizeScreenTime(after.screenTime);
   if (stB.dailyLimit !== stA.dailyLimit) lines.push("Daily screen time: " + (stA.dailyLimit ? stA.dailyLimit + " minutes" : "no limit"));
   if (JSON.stringify(stB.bedtime) !== JSON.stringify(stA.bedtime)) lines.push("Bedtime: " + (stA.bedtime ? stA.bedtime.from + " to " + stA.bedtime.to : "off"));
+  if (JSON.stringify(stB.siteLimits) !== JSON.stringify(stA.siteLimits)) lines.push("Daily time per site: " + (Object.entries(stA.siteLimits).map(([h, m]) => h + " " + m + " min").join(", ") || "none"));
   if (JSON.stringify(stB.appLimits) !== JSON.stringify(stA.appLimits)) lines.push("App time limits changed (" + Object.keys(stA.appLimits).length + " app(s))");
   if (!!before.safeSearch !== !!after.safeSearch) lines.push("Forced SafeSearch: " + (after.safeSearch ? "on" : "off"));
   if (!!before.safeSearchOff !== !!after.safeSearchOff) lines.push("SafeSearch: " + (after.safeSearchOff ? "off" : "on"));

@@ -1816,7 +1816,39 @@ function renderTimeLimits(m,dv){
   ac.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),h('label',{class:'row small mute',style:'margin-top:2px;cursor:pointer'},cb,'Does not count toward the daily limit')),
    pick(st.appLimits[a.p]||0,[[0,'No limit'],[15,'15 min a day'],[30,'30 min a day'],[45,'45 min a day'],[60,'1 hour a day'],[90,'1.5 hours a day'],[120,'2 hours a day'],[180,'3 hours a day']],function(v){if(v)st.appLimits[a.p]=v;else delete st.appLimits[a.p];save()})))}
  m.append(ac);
+ renderSiteLimits(m,dv,st,function(msg){return save(msg).then(render)});
  m.append(h('div',{class:'card'},h('h2',null,'Good to know'),h('div',{class:'mute'},'Time is counted on the phone itself, so limits keep working with no internet. The count needs Android\'s "usage access" for the Agent: it asks for it by itself, and the Usage tab tells you if a phone refused. A lock you send yourself from Security always wins over these.')))}
+
+/** "YouTube for 2 hours EVERY day": a daily time allowance per site. It starts again each morning; it is not 2 hours from when it was approved. */
+function renderSiteLimits(m,dv,st,save){
+ st.siteLimits=st.siteLimits||{};
+ const used={};
+ const today=Object.keys(dv.usage||{}).sort().pop();
+ for(const s of ((dv.usage||{})[today]||{}).sites||[])used[s.h]=s.m;
+ const card=h('div',{class:'card'},h('h2',null,'Time on a site, every day'),
+  h('div',{class:'mute'},'Give a site an allowance that starts again every morning: for example YouTube for 2 hours every day (not 2 hours from when you approved it). When it is used up the site shows "Time is up for today" until midnight, with a button to ask you for more. Counted on the phone while the site is on screen in the YouTube and YouTube Music icons and in our Browser. In other browsers the time cannot be counted, so a site with an allowance should be closed there.'));
+ const times=[[15,'15 minutes'],[30,'30 minutes'],[45,'45 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours']];
+ const words=function(mins){const t=times.find(function(x){return x[0]===mins});return t?t[1]:mins+' minutes'};
+ const hosts=Object.keys(st.siteLimits).sort();
+ if(!hosts.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'No site has an allowance yet.'));
+ for(const host of hosts){
+  const sel=h('select');for(const t of times)sel.append(new Option(t[1]+' a day',String(t[0])));
+  if(!times.some(function(t){return t[0]===st.siteLimits[host]}))sel.append(new Option(words(st.siteLimits[host])+' a day',String(st.siteLimits[host])));
+  sel.value=String(st.siteLimits[host]);
+  sel.onchange=function(){st.siteLimits[host]=parseInt(sel.value,10);save('Saved. The phone applies it within about 5 minutes.')};
+  const u=used[host];
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},host),
+   h('div',{class:'mute small'},u==null?'Not used yet today, or the phone has not reported yet.':'Used today: '+words(u).replace(/^0 minutes$/,'0 minutes')+(u>=st.siteLimits[host]?' · time is up':''))),
+   sel,btn('Remove','outline',function(){delete st.siteLimits[host];save('Removed. That site has no daily allowance now.')})));
+ }
+ const inp=h('input',{type:'text',placeholder:'youtube.com  or  music.youtube.com',style:'width:100%;margin-top:10px'});
+ const amount=h('select');for(const t of times)amount.append(new Option(t[1]+' a day',String(t[0])));amount.value='120';
+ card.append(inp,h('div',{class:'row',style:'margin-top:8px'},amount,btn('Add','',async function(){
+  const host=inp.value.trim().toLowerCase().replace(/^[a-z]+:\/\//,'').replace(/^www\./,'').replace(/[\/?#:].*$/,'');
+  if(!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host)){snack('Type a site name like youtube.com.',1);return}
+  st.siteLimits[host]=parseInt(amount.value,10);inp.value='';await save('Saved. '+host+' has '+words(st.siteLimits[host])+' every day.')})));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'YouTube Music is its own site: a limit on youtube.com does not count it, so give music.youtube.com its own. Extra time you give from the dashboard (or "turn off all restrictions") lifts the limit while it lasts.'));
+ m.append(card)}
 
 /* ---------- Browser group: everything about what this phone can open on the web, in one place ---------- */
 function buildBrowserGroup(m,dv){
@@ -3494,6 +3526,7 @@ function essTime(box,dv){
    b.onclick=function(){const set=new Set(bt.days||[]);on?set.delete(i):set.add(i);bt.days=[...set].sort();save()};days.append(b)});
   card.append(days)}
  box.append(card);
+ renderSiteLimits(box,dv,st,save);
  const ml=h('button',{type:'button',class:'ctl slim'},h('span',{class:'grow'},h('span',{class:'ct'},'More limits'),h('span',{class:'mute'},'A different limit on some days, school time, apps that do not count')),h('span',{class:'mute'},'›'));
  ml.onclick=function(){goMore('time','limits')};
  box.append(h('div',{class:'card'},ml))}

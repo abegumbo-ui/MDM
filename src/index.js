@@ -1847,6 +1847,10 @@ async function agentApi(request, env, url, ctx) {
       const entry = {
         total: Number.isInteger(u.total) ? Math.min(Math.max(u.total, 0), 1440) : 0,
         ok: u.ok !== false,
+        // The day's allowance used per site (YouTube icons and the Browser): [{h, m, l}].
+        sites: (Array.isArray(u.sites) ? u.sites : []).slice(0, 40)
+          .filter((s) => s && typeof s.h === "string" && /^[a-z0-9.-]{3,100}$/.test(s.h))
+          .map((s) => ({ h: s.h, m: Number.isInteger(s.m) ? Math.min(Math.max(s.m, 0), 1440) : 0, l: Number.isInteger(s.l) ? Math.min(Math.max(s.l, 0), 1440) : 0 })),
         apps: (Array.isArray(u.apps) ? u.apps : []).slice(0, 15)
           .filter((a) => a && PKG_RE.test(a.p || ""))
           .map((a) => ({ p: a.p, l: String(a.l || a.p).slice(0, 60), m: Number.isInteger(a.m) ? Math.min(Math.max(a.m, 0), 1440) : 0 })),
