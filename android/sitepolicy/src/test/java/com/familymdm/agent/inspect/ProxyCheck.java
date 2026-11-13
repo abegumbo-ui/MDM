@@ -357,6 +357,22 @@ public class ProxyCheck {
         check(pics.onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a", sh)) == null, "pictures show on a page from the 'show pictures' list");
         check(pics.onRequest(new InspectProxy.Request("GET", "img.school.test", 443, true, "/a", ih)) == null, "pictures from a listed site show anywhere");
         check(new YoutubeInspector(false, Collections.<String>emptySet()).onRequest(new InspectProxy.Request("GET", "cdn.test", 443, true, "/a", ih)) == null, "with the setting off, pictures are untouched");
+        // approved songs keep their art with "No pictures" on; YouTube Music's own art too unless pictures are off for it
+        YoutubeInspector art = new YoutubeInspector(false, Collections.<String>emptySet(), true, Collections.<String>emptySet());
+        art.setYoutubeChannels(new HashSet<String>(), new HashSet<>(Collections.singleton("abcdefghijk")), "");
+        InspectProxy.Headers ah = new InspectProxy.Headers();
+        ah.add("Sec-Fetch-Dest", "image");
+        ah.add("Referer", "https://music.youtube.com/");
+        check(art.onRequest(new InspectProxy.Request("GET", "i.ytimg.com", 443, true, "/vi/abcdefghijk/mqdefault.jpg", ah)) == null, "the picture of an approved song still shows");
+        check(art.onRequest(new InspectProxy.Request("GET", "i.ytimg.com", 443, true, "/vi_webp/abcdefghijk/mqdefault.webp", ah)) == null, "also its webp picture");
+        check(art.onRequest(new InspectProxy.Request("GET", "i.ytimg.com", 443, true, "/vi/zzzzzzzzzzz/mqdefault.jpg", ah)) != null, "the picture of a song that is not approved stays blank");
+        check(art.onRequest(new InspectProxy.Request("GET", "lh3.googleusercontent.com", 443, true, "/art=w226", ah)) != null, "Music's own art stays blank until pictures are chosen for it");
+        art.setMusicPictures(true);
+        check(art.onRequest(new InspectProxy.Request("GET", "lh3.googleusercontent.com", 443, true, "/art=w226", ah)) == null, "with pictures chosen for Music, its art loads (the page decides where it shows)");
+        InspectProxy.Headers otherPage = new InspectProxy.Headers();
+        otherPage.add("Sec-Fetch-Dest", "image");
+        otherPage.add("Referer", "https://news.test/story");
+        check(art.onRequest(new InspectProxy.Request("GET", "lh3.googleusercontent.com", 443, true, "/art=w226", otherPage)) != null, "other sites still get blank pictures");
 
         // ---- picture filter (photo checker / cover skin, carried to every browser) ----
         YoutubeInspector pf = new YoutubeInspector(false, Collections.<String>emptySet());

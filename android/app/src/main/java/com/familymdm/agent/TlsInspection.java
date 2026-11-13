@@ -186,6 +186,7 @@ final class TlsInspection {
         rules = new YoutubeInspector("restricted".equals(policy.optString("youtubeMode", "channels")), bypass,
                 policy.optBoolean("blockImages", false), imagesAllow, words);
         rules.setBlockImageSearch(policy.optBoolean("blockImageSearch", false));
+        rules.setMusicPictures(!"hide".equals(policy.optString("musicPictures", "allowed")));
         rules.setYoutubeOff("blocked".equals(policy.optString("youtubeMode", "")));
         youtubeChannels(policy);
         rules.setStrictSearch("strict".equals(policy.optString("browserFilter", "off")));
