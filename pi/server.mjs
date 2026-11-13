@@ -49,6 +49,7 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
       res.end(JSON.stringify({ ok: true, role: vars.ROLE, entries: kv.size, uptimeSeconds: Math.round((Date.now() - started) / 1000), rssMB: Math.round(mem.rss / 1048576), waiting: waitingPhones() }));
       return;
     }
+    const startedAt = Date.now();
     const chunks = [];
     let size = 0;
     for await (const c of req) {
@@ -79,6 +80,10 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
     const cookies = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : [];
     if (cookies.length) out['set-cookie'] = cookies;
     const bytes = Buffer.from(await response.arrayBuffer());
+    // A phone's request that failed or took long is worth a line in the log (it falls back to Cloudflare when this server fails it).
+    if (url.pathname.startsWith('/agent/') && url.pathname !== '/agent/wait' && (response.status >= 400 || Date.now() - startedAt > 4000)) {
+      log(req.method + ' ' + url.pathname + ' answered ' + response.status + ' in ' + (Date.now() - startedAt) + ' ms (' + body.length + ' bytes in)' + (response.status >= 400 ? ': ' + bytes.toString('utf8').slice(0, 160) : ''));
+    }
     res.writeHead(response.status, out);
     res.end(req.method === 'HEAD' ? undefined : bytes);
   }

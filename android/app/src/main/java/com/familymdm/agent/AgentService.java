@@ -401,6 +401,12 @@ public class AgentService extends Service {
         // The Raspberry Pi and its backup (set up under "Server" in the dashboard); empty = one server only.
         Api.setServers(Agent.prefs(this).getString("serverPrimary", null), Agent.prefs(this).getString("serverBackup", null));
         JSONObject reply = Api.post(server + "/agent/sync", body, token);
+        String problem = Api.takePrimaryProblem();
+        if (problem != null && System.currentTimeMillis() - Agent.prefs(this).getLong("primaryProblemAt", 0) > 10 * 60 * 1000L) {
+            // The Raspberry Pi failed this check-in and the backup took it: say why, at most every 10 minutes.
+            Agent.prefs(this).edit().putLong("primaryProblemAt", System.currentTimeMillis()).apply();
+            Agent.addEvent(this, "warning", "The Raspberry Pi did not take a check-in (" + problem + "); the backup did");
+        }
         JSONObject servers = reply.optJSONObject("servers");
         Agent.prefs(this).edit()
                 .putString("serverPrimary", servers == null ? null : servers.optString("primary", null))
