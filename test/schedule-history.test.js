@@ -87,15 +87,15 @@ test("weekly report goes out once, Sunday evening, only when alerts are set up",
   }
 });
 
-test("phones check in every 15 s while the dashboard is in use; the schedule and per-app modes reach the phone", async () => {
+test("phones check in every 30 s while the dashboard is in use, every 15 s for 3 minutes after a change; the schedule and per-app modes reach the phone", async () => {
   const { code } = await (await req("/api/codes", { method: "POST", headers: { ...J, cookie: await cookie() }, body: JSON.stringify({ type: "enroll" }) })).json();
   const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Sched" } }) })).json();
   const sync = async (info) => (await req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(info ? { info } : {}) })).json();
   kv.set("adminActive", String(Date.now() - 20 * 60 * 1000));
-  assert.equal((await sync()).pollSeconds, 60, "nobody on the dashboard: every minute");
+  assert.equal((await sync()).pollSeconds, 300, "nobody on the dashboard: every 5 minutes");
   const c = await cookie();
   const dev = (await (await req("/api/devices", { headers: { cookie: c } })).json()).find((d) => d.name.endsWith("Sched"));
-  assert.equal((await sync()).pollSeconds, 15, "dashboard open: every 15 seconds");
+  assert.equal((await sync()).pollSeconds, 15, "dashboard open and something was just changed (the device was made from it): every 15 seconds for 3 minutes");
 
   // A schedule that is on all day, every day: the phone gets its level now.
   await req(`/api/devices/${dev.id}/config`, { method: "PUT", headers: { cookie: c, ...J }, body: JSON.stringify({ browserFilter: "moderate", filterSchedule: { on: true, level: "strict", days: [0, 1, 2, 3, 4, 5, 6], from: "00:00", to: "00:00" }, filterSkipApps: ["com.bank"], recordSites: true }) });

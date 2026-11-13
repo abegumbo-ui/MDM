@@ -591,6 +591,18 @@ final class PhoneRules {
                 rebuild.run();
             }), 6);
         }
+        for (String sg : new java.util.TreeSet<>(PartBlocker.blockedScreens(a))) {
+            LinearLayout row = new LinearLayout(a);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.addView(Ui.body(a, "Screen: " + PartBlocker.signatureLabel(sg) + "  (" + sg.substring(0, sg.indexOf(PartBlocker.SEP)) + ")", false));
+            Ui.add(row, Ui.button(a, "Remove", Ui.OUTLINED, v -> {
+                java.util.Set<String> s = PartBlocker.blockedScreens(a);
+                s.remove(sg);
+                Agent.putSet(a, "blockedScreens", s);
+                rebuild.run();
+            }), 4);
+            Ui.add(card, row, 10);
+        }
         for (String t : new java.util.TreeSet<>(PartBlocker.blockedTitles(a))) {
             LinearLayout row = new LinearLayout(a);
             row.setOrientation(LinearLayout.VERTICAL);
