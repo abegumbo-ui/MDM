@@ -186,7 +186,8 @@ public class YoutubeAddonActivity extends Activity {
         w.getSettings().setDomStorageEnabled(true);
         // Without "wv" YouTube treats this as a normal phone browser instead of asking for its app.
         String ua = w.getSettings().getUserAgentString();
-        w.getSettings().setUserAgentString(ua.replace("; wv", "").replace(" Version/4.0 ", " "));
+        // "MDMAddon/" tells the HTTPS filter that this screen adds its own scripts (it adds none of its own to these pages).
+        w.getSettings().setUserAgentString(ua.replace("; wv", "").replace(" Version/4.0 ", " ") + " MDMAddon/1");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
         w.setBackgroundColor(0xFF0F0F0F);

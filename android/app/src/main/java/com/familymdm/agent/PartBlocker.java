@@ -410,7 +410,10 @@ final class PartBlocker {
     }
 
     private static boolean isSettingsApp(String pkg) {
-        return pkg != null && pkg.contains("settings") && !pkg.equals("com.familymdm.agent");
+        // Not Settings' search screen (its own app, "...settings.intelligence"): its recent searches and results are
+        // not pages, and guarding it threw you Home the moment you opened the search bar. A result that opens a
+        // protected page is still closed when that page opens (in Settings itself).
+        return pkg != null && pkg.contains("settings") && !pkg.contains("settings.intelligence") && !pkg.equals("com.familymdm.agent");
     }
 
     /**
@@ -424,6 +427,8 @@ final class PartBlocker {
             String t = top.get(i);
             if (label != null && t.equalsIgnoreCase(label)) return true;
             if (i < 3) for (String p : CERTIFICATE_PAGES) if (t.equalsIgnoreCase(p)) return true;
+            // "Reset accessibility settings" (page or its question): it could switch the MDM's accessibility off.
+            if (t.toLowerCase(java.util.Locale.ROOT).contains("reset accessibility")) return true;
         }
         return false;
     }

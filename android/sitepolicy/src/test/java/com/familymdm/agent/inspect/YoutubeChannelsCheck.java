@@ -33,6 +33,20 @@ public class YoutubeChannelsCheck {
         check(y.channelPageAllowed("https://www.youtube.com/channel/UCabc", "\"vanityChannelUrl\":\"http://www.youtube.com/@AllowedCh\""), "an allowed channel's /channel/ page");
         check(!y.channelPageAllowed("https://www.youtube.com/channel/UCxyz", "\"vanityChannelUrl\":\"http://www.youtube.com/@other\""), "another channel's /channel/ page is refused");
 
+        // The YouTube and Music icons add their own scripts: the filter's copy would come first and win, so it adds nothing for them.
+        InspectProxy.Headers plain = new InspectProxy.Headers();
+        plain.set("User-Agent", "Mozilla/5.0 (Linux; Android 16) Chrome/130 Mobile Safari/537.36");
+        InspectProxy.Headers addon = new InspectProxy.Headers();
+        addon.set("User-Agent", "Mozilla/5.0 (Linux; Android 16) Chrome/130 Mobile Safari/537.36 MDMAddon/1");
+        InspectProxy.Request inChrome = new InspectProxy.Request("GET", "m.youtube.com", 443, true, "/", plain);
+        InspectProxy.Request inIcon = new InspectProxy.Request("GET", "music.youtube.com", 443, true, "/", addon);
+        byte[] page = "<html><head></head><body>x</body></html>".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        check(y.rewrites(inChrome, "text/html"), "Chrome and the other browsers: the page is rewritten");
+        check(new String(y.rewrite(inChrome, page), java.nio.charset.StandardCharsets.UTF_8).contains("<script>x</script>"), "Chrome and the other browsers: the filter's scripts are added");
+        check(!y.rewrites(inIcon, "text/html"), "the YouTube / Music icon: the page is not rewritten");
+        check(!y.wantsIdentity(inIcon), "the YouTube / Music icon: no decoding asked for");
+        check(java.util.Arrays.equals(y.rewrite(inIcon, page), page), "the YouTube / Music icon: the page is left as it is");
+
         System.out.println(failures == 0 ? "ALL PASSED" : failures + " FAILED");
         if (failures > 0) System.exit(1);
     }
