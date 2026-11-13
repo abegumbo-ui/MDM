@@ -685,7 +685,7 @@ function renderDeviceDetail(m,d){
   kv('Android',d.info.android||'?'),kv('Agent build',(d.info.versionCode||'?')+(latest?' (latest '+latest.versionCode+')':'')),
   kv('Last check-in',ago(d.lastSeen)),kv('Battery',d.info.battery?d.info.battery.pct+'%'+(d.info.battery.charging?' (charging)':''):'unknown'),
   kv('Connection',d.info.wifi?(d.info.wifi.transport==='wifi'?'Wi-Fi '+(d.info.wifi.ssid||'(name hidden)')+(d.info.wifi.rssi?' · '+d.info.wifi.rssi+' dBm':''):d.info.wifi.transport==='mobile'?'SIM card'+(d.info.wifi.carrier?' — '+d.info.wifi.carrier:''):'None'):'unknown'),
-  kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On':'Off'),
+  kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On'+(d.info.lockStrength&&d.info.lockStrength!=='set'?' · '+d.info.lockStrength:''):'Off'),
   kv('PIN control',d.info.pinControl===undefined?'unknown':d.info.pinControl?'Ready: you can set or remove the lock':'Not active yet (see Lock)'),
   kv('Apps',d.packages.length+' ('+d.packages.filter(function(p){return p.h}).length+' hidden)'),
   kv('Sync',pendingCount(d)?pendingApps(d).map(function(p){const want=new Set(d.applied.hide);return (p.l||p.p)+(want.has(p.p)?' (hiding)':' (showing)')}).join(', ')+' — applies within about 5 minutes':'In sync'));
@@ -746,6 +746,7 @@ function renderDeviceDetail(m,d){
   cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
   cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
   lockBox.append(lr);
+  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},(d.info.screenLock===false?'This phone has no screen lock. ':'The lock on it now: '+(d.info.lockStrength||'set')+'. ')+(d.info.pinControl?'PIN control is ready: Set PIN and Remove screen lock work.':'PIN control is not ready yet. A phone with no lock gets ready by itself at its next check-in (on a current agent build). A phone that already has a lock needs one tap on the phone: MDM Agent, Administrator, Activate PIN control.')));
   lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Device → Controls.'));
   lk.append(lockBox);
  } else if(lockSub==='applock'){

@@ -308,7 +308,9 @@ final class PolicyApplier {
                 // was happening at all. The call itself is a no-op on Android's end once it's really hidden.
                 boolean wasHidden = dpm.isApplicationHidden(admin, pkg);
                 Agent.TOUCHED.put(pkg, System.currentTimeMillis());
-                if (dpm.setApplicationHidden(admin, pkg, true)) {
+                // Android answers false when nothing changed (already hidden): that is success too, and the app must be
+                // remembered as hidden by us, or it can never be shown again when the block is removed.
+                if (dpm.setApplicationHidden(admin, pkg, true) || dpm.isApplicationHidden(admin, pkg)) {
                     hiddenByUs.add(pkg);
                     if (!wasHidden) Agent.addEvent(c, "hide", "Hidden: " + nameOf(pkg));
                     errorCleared(c, "hide:" + pkg);
@@ -320,6 +322,22 @@ final class PolicyApplier {
             }
         }
         for (String pkg : showSet) {
+            try {
+                if (dpm.isApplicationHidden(admin, pkg)) {
+                    Agent.TOUCHED.put(pkg, System.currentTimeMillis());
+                    dpm.setApplicationHidden(admin, pkg, false);
+                    Agent.addEvent(c, "show", "Shown again: " + nameOf(pkg));
+                }
+                hiddenByUs.remove(pkg);
+            } catch (Exception e) {
+                errorOnce(c, "show:" + pkg, "Could not show " + nameOf(pkg) + ": " + e.getMessage());
+            }
+        }
+        // Anything this agent hid earlier that the dashboard no longer hides comes back. (The "show" list only names apps the
+        // dashboard has on its list of installed apps, and a hidden app can be missing from it, so a block that was removed
+        // would otherwise leave the app hidden for good.)
+        for (String pkg : new java.util.ArrayList<>(hiddenByUs)) {
+            if (hideSet.contains(pkg) || showSet.contains(pkg) || never.contains(pkg)) continue;
             try {
                 if (dpm.isApplicationHidden(admin, pkg)) {
                     Agent.TOUCHED.put(pkg, System.currentTimeMillis());

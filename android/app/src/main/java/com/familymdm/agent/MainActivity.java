@@ -379,7 +379,8 @@ public class MainActivity extends Activity {
         sb.append(owner ? "Device owner: yes\n" : previewSkip ? "Device owner: NO — previewing without it; nothing is actually enforced\n" : "Device owner: NO (do step 1 below)\n");
         if (enrolled) {
             long last = Agent.prefs(this).getLong("lastSync", 0);
-            sb.append("Mode: online (dashboard)\nServer: ").append(Agent.prefs(this).getString("server", ""));
+            String where = Api.where();
+            sb.append("Mode: online (dashboard)\nServer: ").append(where.isEmpty() ? Agent.prefs(this).getString("server", "") : where);
             sb.append("\nLast check-in: ").append(last == 0 ? "not yet"
                     : DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(last)));
         } else if (standalone) {
