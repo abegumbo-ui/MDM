@@ -270,6 +270,12 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     }
 
     private volatile boolean musicPictures;
+    private volatile String restrictLevel; // "Strict" or "Moderate" when YouTube's own Restricted Mode is forced from the dashboard, otherwise null
+
+    /** The dashboard's "YouTube Restricted Mode": every request to YouTube and YouTube Music carries Google's Restricted Mode header (the DNS method does not cover music.youtube.com). */
+    public void setRestrictLevel(String level) {
+        restrictLevel = level;
+    }
 
     /** YouTube Music: with "No pictures" on, let the page's own album art through (the page script then shows it only where the parent allows). */
     public void setMusicPictures(boolean on) {
@@ -344,6 +350,8 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         if (channels(r.host) && isDocument(r) && r.host.toLowerCase(java.util.Locale.ROOT).matches("(www\\.|m\\.)?youtube\\.com") && channelsRefuses(r.url())) {
             return InspectProxy.Response.html(403, notAllowedYoutube(r.url()));
         }
+        String level = restrictLevel;
+        if (level != null && isYoutube(r.host)) r.headers.set(YoutubeRestricted.RESTRICT_HEADER, level);
         if (!restricted || !isYoutube(r.host)) return null;
         r.headers.set(YoutubeRestricted.RESTRICT_HEADER, YoutubeRestricted.RESTRICT_VALUE);
         if (!isDocument(r)) return null;
