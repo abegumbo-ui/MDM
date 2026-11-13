@@ -184,6 +184,7 @@ public class YoutubeAddonActivity extends Activity {
         WebView w = new WebView(this);
         w.getSettings().setJavaScriptEnabled(true);
         w.getSettings().setDomStorageEnabled(true);
+        w.getSettings().setMediaPlaybackRequiresUserGesture(false); // the next approved song starts by itself
         // Without "wv" YouTube treats this as a normal phone browser instead of asking for its app.
         String ua = w.getSettings().getUserAgentString();
         // "MDMAddon/" tells the HTTPS filter that this screen adds its own scripts (it adds none of its own to these pages).
@@ -490,6 +491,19 @@ public class YoutubeAddonActivity extends Activity {
         } else if ("download".equals(what)) {
             String why = Downloads.request(this, u.getQueryParameter("u"), music() || "music".equals(u.getQueryParameter("k")));
             Toast.makeText(this, why == null ? "Downloading… see it under Downloads." : why, Toast.LENGTH_LONG).show();
+        } else if ("delete".equals(what)) {
+            final String delId = u.getQueryParameter("id");
+            if (delId != null && delId.matches("[A-Za-z0-9_-]{11}")) {
+                new android.app.AlertDialog.Builder(this)
+                        .setMessage("Delete this download from the phone?")
+                        .setPositiveButton("Delete", (d, w) -> {
+                            Downloads.remove(this, delId);
+                            Toast.makeText(this, "Deleted from the phone.", Toast.LENGTH_SHORT).show();
+                            open(home()); // the home page shows what is left
+                        })
+                        .setNegativeButton("Keep", null)
+                        .show();
+            }
         } else if ("downloads".equals(what)) {
             startActivity(new Intent(this, DownloadsActivity.class).putExtra("music", music()));
         } else if ("play".equals(what)) {
