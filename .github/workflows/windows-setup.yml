@@ -24,6 +24,9 @@ jobs:
           $p = Start-Process -FilePath "$PWD\FamilyMdmSetup.exe" -ArgumentList '--selftest' -Wait -PassThru
           Get-Content "$env:LOCALAPPDATA\FamilyMDMSetup\setup.log"
           if ($p.ExitCode -ne 0) { throw "self-test failed ($($p.ExitCode))" }
+      - name: Whole-flow tests against a pretend adb (the account services go off, owner is set, they come back on; failures still put things back)
+        shell: powershell
+        run: ./windows/FamilyMdmSetup/test/run-flow-tests.ps1 -Exe "$PWD\FamilyMdmSetup.exe"
       - name: Publish next to the app files on the "latest" release
         # Same rule as the Android build: only the push that lands on main is a real release.
         if: github.ref == 'refs/heads/main'

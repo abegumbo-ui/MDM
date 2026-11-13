@@ -36,6 +36,7 @@ checks it against the published checksum).
 GitHub builds it too (`windows-setup.yml`) and puts `FamilyMdmSetup.exe` on the *Latest agent build* release.
 
 ## Tested
-Reading of the phone's output (self-test), a read-only run against a Samsung A16 that is already managed, and the
-switch-off and put-back of an account service on that phone. The actual hand-over on a fresh phone has to be tried on a
-phone that is not managed yet: not done.
+- Reading of the phone's output (`--selftest`, against copies of real phone output).
+- The whole flow against a pretend adb that behaves like a phone with a Google and a Samsung account (`test/run-flow-tests.ps1`, 18 checks, also run on every build): the account services of the existing accounts go off BEFORE set-device-owner and come back on right after; a failure still puts them back; a phone that is already ours, managed by another app, or has two users is handled; "only check" changes nothing; "put things back" repairs an interrupted run.
+- A read-only run and a switch-off/put-back of one account service on a real phone (the Samsung A16).
+- NOT tried: the real hand-over on a phone that is not managed yet.
