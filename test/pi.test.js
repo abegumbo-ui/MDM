@@ -308,3 +308,31 @@ test("the dashboard says which server it is, and each phone says which one it us
   assert.equal((await (await cf("/api/devices", { headers: { cookie: ck } })).json())[0].via, "cloudflare");
   kv.close();
 });
+
+test("a phone waiting on the Raspberry Pi is woken the moment the dashboard changes something; Cloudflare says unsupported", async () => {
+  const app = await createApp({ dataDir: tmp(), vars: readEnv({ ADMIN_PASSWORD: "pw pw pw" }), replication: false, scheduleMs: 0 });
+  const port = await listen(app);
+  const base = `http://127.0.0.1:${port}`;
+  const J = { "content-type": "application/json" };
+  const login = await fetch(base + "/login", { method: "POST", body: new URLSearchParams({ password: "pw pw pw" }), redirect: "manual" });
+  const cookie = login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+  const { code } = await (await fetch(base + "/api/codes", { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await fetch(base + "/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "T" } }) })).json();
+  assert.equal((await fetch(base + "/agent/wait", { method: "POST", headers: J, body: "{}" })).status, 401, "a phone must sign in to wait");
+  const started = Date.now();
+  const waiting = fetch(base + "/agent/wait", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: "{}" }).then((r) => r.json());
+  await new Promise((r) => setTimeout(r, 300));
+  const dev = (await (await fetch(base + "/api/devices", { headers: { cookie } })).json())[0];
+  await fetch(base + `/api/devices/${dev.id}/config`, { method: "PUT", headers: { cookie, ...J }, body: JSON.stringify({ blockImageSearch: true }) });
+  const answer = await waiting;
+  assert.equal(answer.wake, true, "the waiting phone is told at once");
+  assert.ok(Date.now() - started < 5000, "within seconds, not at its next timer");
+  await app.stop();
+
+  const { default: worker } = await import("../src/index.js");
+  const kv = new KvStore(tmp()); await kv.init();
+  const env = { ADMIN_PASSWORD: "x", STATE: kv };
+  const r = await worker.fetch(new Request("https://cf.example/agent/wait", { method: "POST", headers: J, body: "{}" }), env, { waitUntil() {} });
+  assert.deepEqual(await r.json(), { wake: false, unsupported: true }, "Cloudflare never holds a phone's request");
+  kv.close();
+});
