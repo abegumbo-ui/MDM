@@ -315,6 +315,10 @@ final class PhoneRules {
         toggle(a, card, c, "blockAds", "Block ads", "Ad servers are blocked in every app and browser (with Moderate or Strict). A few apps may show empty boxes where ads were.", rebuild);
         toggle(a, card, c, "blockImageSearch", "Block image search", "The \"Images\" tab of Google, Bing and DuckDuckGo is refused.", rebuild);
         toggle(a, card, c, "blockImages", "Block pictures on web pages", "Pages load without pictures in our browsers (in Chrome only with Inspection on, set on the dashboard).", rebuild);
+        // The on-device picture checker: pictures are looked at on THIS phone, before they show. Nothing is sent anywhere.
+        choice(a, card, c, "pictureGuard", "Pictures that may show nudity", "Checked on this phone by a model that lives on the phone, before the picture shows.",
+                new String[]{"off", "nudity", "skin"},
+                new String[]{"Show all pictures", "Hide pictures that may show nudity", "Hide those, and cover skin"}, "off", rebuild);
         choice(a, card, c, "inAppBrowsers", "Web pages inside apps", "Links opened inside Instagram, Gmail and other apps.",
                 new String[]{"off", "tabs", "all"}, new String[]{"Allowed", "Close browser pages that apps open", "Close every web page inside apps"}, "off", rebuild);
         approvedSites(a, card, c, rebuild);
@@ -673,6 +677,10 @@ final class PhoneRules {
     private static void safety(Activity a, LinearLayout root, JSONObject c, Runnable rebuild, boolean off) {
         health(a, root);
         if (off) return;
+        LinearLayout pics = Ui.card(a, root);
+        pics.addView(Ui.titleText(a, "Photos"));
+        toggle(a, pics, c, "nudityAlerts", "Alerts about photos that may show nudity",
+                "Photos taken or saved on this phone are checked on the phone itself; a flagged one is reported to the dashboard (the photo is not sent). The child is told this is on.", rebuild);
         LinearLayout card = Ui.card(a, root);
         card.addView(Ui.titleText(a, "Message alerts"));
         toggle(a, card, c, "messageAlerts", "Alerts about worrying words in chats",

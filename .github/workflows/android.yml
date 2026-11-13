@@ -78,7 +78,7 @@ jobs:
           gh release download models -p nsfw.tflite -D android/browser/src/main/assets --clobber || true
           gh release download models -p nudenet320.tflite -D android/app/src/main/assets --clobber || echo "::warning::No man/woman detector yet."
           gh release download models -p nsfw.tflite -D android/app/src/main/assets --clobber || echo "::warning::No photo checker model yet (run the Photo checker model workflow on main)."
-      - name: Build release APKs (agent full + agent enroll + browser + lockdown)
+      - name: Build release APKs (agent full + agent enroll + browser + lockdown + phone-to-phone setup)
         # "Release" build type here just means Gradle's normal release settings (debuggable=false,
         # our own dedicated signing key) -- these still aren't Play Store builds, just sideloaded
         # ones signed with something other than the SDK's generic, well-known debug.keystore.
@@ -87,12 +87,13 @@ jobs:
         env:
           DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-        run: gradle -p android :app:assembleRelease :lockdown:assembleRelease --no-daemon --stacktrace
+        run: gradle -p android :app:assembleRelease :lockdown:assembleRelease :otgsetup:assembleRelease --no-daemon --stacktrace
       - name: Name the APKs and describe this build
         run: |
           cp android/app/build/outputs/apk/full/release/app-full-release.apk mdm-agent.apk
           cp android/app/build/outputs/apk/enroll/release/app-enroll-release.apk mdm-agent-enroll.apk
           cp android/lockdown/build/outputs/apk/release/lockdown-release.apk mdm-lockdown.apk
+          cp android/otgsetup/build/outputs/apk/release/otgsetup-release.apk mdm-otg-setup.apk
           # URL-safe base64 of the raw SHA-256 digest, no padding -- exactly the format Android's
           # QR-code device-owner provisioning expects for EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM.
           AGENT_SHA256=$(openssl dgst -binary -sha256 mdm-agent.apk | openssl base64 | tr '+/' '-_' | tr -d '=')
@@ -105,6 +106,7 @@ jobs:
             mdm-agent.apk
             mdm-agent-enroll.apk
             mdm-lockdown.apk
+            mdm-otg-setup.apk
       - name: Publish to the "latest" release
         # Every push to a branch with android/** changes runs this workflow, including a PR
         # branch's own push and then, right after merging, another run on main for that same
@@ -119,7 +121,7 @@ jobs:
         run: |
           gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent, browser, and lockdown setup app." --target "$GITHUB_SHA"
           # mdm-browser.apk comes from browser-jelly.yml (the Browser based on Jelly).
-          gh release upload latest mdm-agent.apk mdm-agent-enroll.apk mdm-lockdown.apk version.json --clobber
+          gh release upload latest mdm-agent.apk mdm-agent-enroll.apk mdm-lockdown.apk mdm-otg-setup.apk version.json --clobber
           # Fixes the flag on every run too, in case an earlier run created this release as a
           # prerelease (this session's own gh token can't edit an already-published release, so
           # that correction has to happen here, with the Actions-provided token, instead).
@@ -133,7 +135,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-agent-enroll.apk mdm-lockdown.apk version.json \
+          gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-agent-enroll.apk mdm-lockdown.apk mdm-otg-setup.apk version.json \
             --title "Agent + Browser + Lockdown build ${{ github.run_number }}" \
             --notes "Android agent, browser, and lockdown setup app, build ${{ github.run_number }}. Commit: ${{ github.sha }}" \
             --target "$GITHUB_SHA"

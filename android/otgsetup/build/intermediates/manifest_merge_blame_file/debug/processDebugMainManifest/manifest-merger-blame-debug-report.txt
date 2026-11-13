@@ -1,0 +1,58 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.familymdm.otgsetup"
+4    android:versionCode="1"
+5    android:versionName="0.1.1" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="24"
+9        android:targetSdkVersion="30" />
+10
+11    <!-- Downloads the newest Family MDM app (from this project's GitHub release) to put on the other phone. -->
+12    <uses-permission android:name="android.permission.INTERNET" />
+12-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:5:5-67
+12-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:5:22-64
+13    <!-- This phone has to be able to act as the USB "computer" (host): that is what the cable adapter (OTG) needs. -->
+14    <uses-feature
+14-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:7:5-86
+15        android:name="android.hardware.usb.host"
+15-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:7:19-59
+16        android:required="true" />
+16-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:7:60-83
+17
+18    <application
+18-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:9:5-25:19
+19        android:allowBackup="false"
+19-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:12:9-36
+20        android:debuggable="true"
+21        android:extractNativeLibs="false"
+22        android:icon="@mipmap/ic_launcher"
+22-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:10:9-43
+23        android:label="Family MDM Phone Setup"
+23-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:13:9-47
+24        android:roundIcon="@mipmap/ic_launcher_round"
+24-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:11:9-54
+25        android:theme="@android:style/Theme.Material.Light.NoActionBar" >
+25-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:14:9-72
+26        <activity
+26-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:16:9-24:20
+27            android:name="com.familymdm.otgsetup.MainActivity"
+27-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:17:13-41
+28            android:configChanges="orientation|screenSize|keyboardHidden"
+28-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:19:13-74
+29            android:exported="true" >
+29-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:18:13-36
+30            <intent-filter>
+30-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:20:13-23:29
+31                <action android:name="android.intent.action.MAIN" />
+31-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:21:17-69
+31-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:21:25-66
+32
+33                <category android:name="android.intent.category.LAUNCHER" />
+33-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:22:17-77
+33-->C:\Users\ygutt\Desktop\MDM\android\otgsetup\src\main\AndroidManifest.xml:22:27-74
+34            </intent-filter>
+35        </activity>
+36    </application>
+37
+38</manifest>

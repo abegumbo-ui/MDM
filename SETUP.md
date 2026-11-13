@@ -32,6 +32,10 @@ Two ways to make the agent device owner — pick whichever is easier. Either way
    ```
    If your build has the dashboard address baked in (set via the `DASHBOARD_URL` repository variable), that's all you need — the agent already knows where to connect. If not, tap **"Use a different dashboard"** on the phone once and type the address.
 
+**Easiest with a computer:** run **FamilyMdmSetup.exe** (GitHub > Releases > *Latest agent build*). It installs the app, handles the accounts problem, makes the app the manager and switches everything back on; see windows/FamilyMdmSetup/README.md.
+
+**Without a computer:** install **mdm-otg-setup.apk** on a second phone and join the two phones with a USB cable and an OTG adapter; see ndroid/otgsetup/README.md.
+
 Either way: the phone appears under **Devices**. Tap it, open its **App rules** tab, pick what to allow, then **Save**. The phone picks changes up within about 15 seconds (longer if the phone is idle in Doze).
 
 QR provisioning needs the agent build to have finished publishing its checksum (automatic, from GitHub Actions) — if "Generate enrollment QR" says the checksum isn't ready yet, wait a minute for the latest build to finish and try again.
