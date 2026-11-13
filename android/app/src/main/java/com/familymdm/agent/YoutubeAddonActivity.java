@@ -1,6 +1,7 @@
 package com.familymdm.agent;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -14,6 +15,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 
 import com.familymdm.agent.sitepolicy.SitePolicy;
 import com.familymdm.agent.sitepolicy.YoutubeRestricted;
@@ -316,6 +318,7 @@ public class YoutubeAddonActivity extends Activity {
             if (cover != null) js.append(cover);
         }
         if ("skin".equals(p.optString("pictureGuard", "off"))) { String v = YoutubeScripts.load("video_skin.js"); if (v != null) js.append(v); }
+        if (Downloads.allowed(this)) { String d = YoutubeScripts.load("youtube_download.js"); if (d != null) js.append(d); }
         view.evaluateJavascript(js.toString(), null);
     }
 
@@ -356,8 +359,9 @@ public class YoutubeAddonActivity extends Activity {
                     }
                 }
             }
-            if (channels.length() == 0 && videos.length() == 0 && !ask) return null;
-            return YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).toString());
+            JSONArray downloads = Downloads.forPages(this);
+            if (channels.length() == 0 && videos.length() == 0 && !ask && downloads.length() == 0) return null;
+            return YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads).toString());
         } catch (Exception e) {
             return null;
         }
@@ -376,6 +380,11 @@ public class YoutubeAddonActivity extends Activity {
                 AgentService.requestSync();
             }
             show(page("Sent", "Your parent sees it on the dashboard. Once it is allowed, it opens here.", homeButton()));
+        } else if ("download".equals(what)) {
+            String why = Downloads.request(this, u.getQueryParameter("u"));
+            Toast.makeText(this, why == null ? "Downloading…" : why, Toast.LENGTH_LONG).show();
+        } else if ("play".equals(what)) {
+            startActivity(new Intent(this, DownloadPlayerActivity.class).putExtra("id", u.getQueryParameter("id")));
         } else if ("home".equals(what)) {
             open(home());
         } else if ("back".equals(what)) {

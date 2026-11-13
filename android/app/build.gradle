@@ -21,6 +21,10 @@ android {
         // repository variable), so enrolling only ever needs typing a code, never the server too.
         // Leave it unset to build a generic APK that still asks for the server once.
         resValue "string", "default_server", (System.getenv("DASHBOARD_URL") ?: "")
+        // yt-dlp (downloads) ships native code and Python for 64-bit phones only (keeps the app smaller).
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
         // Where the Browser's "check for updates" looks (unused here: this app updates itself).
         resValue "string", "update_url", (System.getenv("GITHUB_REPOSITORY") ? "https://github.com/" + System.getenv("GITHUB_REPOSITORY") + "/releases/download/latest/browser-version.json" : "")
     }
@@ -80,6 +84,13 @@ android {
         }
     }
 
+    // yt-dlp's programs are packed as libraries that must be unpacked to run.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     lint {
         // lintVitalRelease (a mandatory, fatal-by-default check that only runs for the release
         // build type, never for debug) enforces Play Store submission requirements -- e.g. a
@@ -92,6 +103,8 @@ dependencies {
     implementation project(':sitepolicy')
     // The family Browser, as an add-on of this app (its icon is turned on from the dashboard).
     implementation project(':browserlib')
+    // yt-dlp for Android: downloads YouTube videos; it updates itself at run time (YouTube changes often).
+    implementation 'io.github.junkfood02.youtubedl-android:library:0.18.1'
     // The on-phone photo checker (NudityCheck); the model file comes from the "models" release at build time.
     implementation 'org.tensorflow:tensorflow-lite:2.16.1'
     // The real Play Store protocol, for PlayUpdates.kt -- see SETUP.md's "Keeping a few apps

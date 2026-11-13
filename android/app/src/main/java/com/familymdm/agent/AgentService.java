@@ -112,8 +112,8 @@ public class AgentService extends Service {
      * the standard way around that -- the old "agent" channel is simply left unused. */
     private Notification notification() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel("agent2", "MDM agent", NotificationManager.IMPORTANCE_MIN));
-        return new Notification.Builder(this, "agent2")
+        NoBadge.install(nm, "agent3", "MDM agent", NotificationManager.IMPORTANCE_MIN, "agent2");
+        return new Notification.Builder(this, "agent3")
                 .setContentTitle("MDM agent")
                 .setContentText("Connected to your dashboard")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)

@@ -108,10 +108,10 @@ final class Protection {
         p.edit().putLong("a11yReminded", now).apply();
         try {
             android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
-            nm.createNotificationChannel(new android.app.NotificationChannel("setup", "Setup steps", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+            NoBadge.install(nm, "setup2", "Setup steps", android.app.NotificationManager.IMPORTANCE_DEFAULT, "setup");
             android.content.Intent i = new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
             android.app.PendingIntent pi = android.app.PendingIntent.getActivity(c, 42, i, android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
-            nm.notify(42, new android.app.Notification.Builder(c, "setup")
+            nm.notify(42, new android.app.Notification.Builder(c, "setup2")
                     .setContentTitle("Finish setting up: turn on MDM Agent")
                     .setContentText("Tap, choose MDM Agent, switch it on. Needed once.")
                     .setSmallIcon(android.R.drawable.ic_dialog_info)

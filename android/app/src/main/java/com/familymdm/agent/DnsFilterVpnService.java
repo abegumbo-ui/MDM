@@ -142,8 +142,8 @@ public class DnsFilterVpnService extends VpnService {
      * unused. */
     private Notification notification() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel("dnsfilter2", "DNS filter", NotificationManager.IMPORTANCE_MIN));
-        return new Notification.Builder(this, "dnsfilter2")
+        NoBadge.install(nm, "dnsfilter3", "DNS filter", NotificationManager.IMPORTANCE_MIN, "dnsfilter2");
+        return new Notification.Builder(this, "dnsfilter3")
                 .setContentTitle(Agent.prefs(this).getString("dnsFilterNotifTitle", "MDM filter"))
                 .setContentText(Agent.prefs(this).getString("dnsFilterNotifText", "Keeping you safe"))
                 .setSmallIcon(android.R.drawable.stat_notify_sync)

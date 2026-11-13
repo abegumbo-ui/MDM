@@ -592,6 +592,8 @@ export function normalizeConfig(input) {
     youtubeAddon: c.youtubeAddon === true,
     // The YouTube Music icon on the phone (same rules as YouTube).
     youtubeMusicAddon: c.youtubeMusicAddon === true,
+    // Downloading YouTube videos (yt-dlp, in the MDM app): on unless switched off.
+    downloadsOff: c.downloadsOff === true,
     // "Only what I allow": the child may search YouTube and ask for videos (on unless switched off).
     youtubeSearchOff: c.youtubeSearchOff === true,
     // Search results that are not allowed: "hide" their pictures, or show them with "skin" covered.
@@ -878,6 +880,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.blockAds = cfg.blockAds;
   out.youtubeAddon = cfg.youtubeAddon;
   out.youtubeMusicAddon = cfg.youtubeMusicAddon;
+  out.downloads = !cfg.downloadsOff;
   out.youtubeSearch = !cfg.youtubeSearchOff;
   out.youtubeSearchPictures = cfg.youtubeSearchPictures;
   out.youtubeSignIn = cfg.youtubeSignIn;

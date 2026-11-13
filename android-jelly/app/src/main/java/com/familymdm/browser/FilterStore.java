@@ -366,6 +366,15 @@ final class FilterStore {
         return prefs(c).getBoolean("youtubeSignIn", false);
     }
 
+    /** Downloads (yt-dlp, inside the MDM app): on unless the dashboard switched them off. */
+    static void setDownloads(Context c, boolean on) {
+        prefs(c).edit().putBoolean("downloads", on).apply();
+    }
+
+    static boolean downloads(Context c) {
+        return prefs(c).getBoolean("downloads", true);
+    }
+
     static boolean youtubeSearch(Context c) {
         return prefs(c).getBoolean("youtubeSearch", true);
     }

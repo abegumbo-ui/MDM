@@ -44,6 +44,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:name="org.lineageos.jelly.JellyApplication"
+        android:extractNativeLibs="true"
         android:label="MDM Agent"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false"
@@ -115,6 +116,16 @@
             android:taskAffinity="com.familymdm.agent.youtube"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@android:style/Theme.Material.NoActionBar" />
+        <!-- Downloads (yt-dlp): the service that downloads, the receiver the Browser asks, the player. -->
+        <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <receiver android:name=".DownloadReceiver" android:exported="false" />
+        <activity
+            android:name=".DownloadPlayerActivity"
+            android:exported="false"
+            android:taskAffinity="com.familymdm.agent.player"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
         <!-- The YouTube Music icon: the same screen as the YouTube icon, starting on YouTube Music, in its own task. -->
         <activity
             android:name=".YoutubeMusicActivity"
