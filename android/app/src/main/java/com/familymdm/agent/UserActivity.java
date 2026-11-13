@@ -95,7 +95,7 @@ public class UserActivity extends Activity {
         boolean online = !Agent.standalone(this) && Agent.prefs(this).getString("token", null) != null;
         int n = 0;
         if (online && menuOn("sos")) {
-            Ui.add(root, Ui.rowTile(this, "I need help", R.drawable.ic_message_tile, v -> Ui.alertDialog(this)
+            Ui.add(root, Ui.rowTile(this, "I need help", "Tell the administrator right away", R.drawable.ic_bell_tile, v -> Ui.alertDialog(this)
                     .setTitle("Ask for help?")
                     .setMessage("This tells the administrator right away and sends where the phone is. In an emergency, call the emergency number.")
                     .setNegativeButton("Cancel", null)
@@ -106,39 +106,39 @@ public class UserActivity extends Activity {
                     .show()), n++ == 0 ? 16 : 8);
         }
         if (online && menuOn("checkin")) {
-            Ui.add(root, Ui.rowTile(this, "Check in (tell them where I am)", R.drawable.ic_message_tile, v -> {
+            Ui.add(root, Ui.rowTile(this, "Check in", "Tell them where I am", R.drawable.ic_pin_tile, v -> {
                 Whereabouts.checkIn(this);
                 toast("Checking in. Your location is on its way.");
             }), n++ == 0 ? 16 : 8);
         }
         if (online && menuOn("site")) {
-            Ui.add(root, Ui.rowTile(this, "Request a site or video", R.drawable.ic_browser_tile, v -> promptSiteRequest()), n++ == 0 ? 16 : 8);
+            Ui.add(root, Ui.rowTile(this, "Request a site or video", "Ask to open a website or a video", R.drawable.ic_browser_tile, v -> promptSiteRequest()), n++ == 0 ? 16 : 8);
         }
         if (online && menuOn("app")) {
-            Ui.add(root, Ui.rowTile(this, "Request a blocked app", R.drawable.ic_apps_tile, v -> promptAppRequest()), n++ == 0 ? 16 : 8);
+            Ui.add(root, Ui.rowTile(this, "Request a blocked app", "Ask to use an app that is blocked", R.drawable.ic_apps_tile, v -> promptAppRequest()), n++ == 0 ? 16 : 8);
         }
         if (menuOn("store")) {
-            String label = "Open Google Play Store";
+            String hint = "Ask to open it for a while";
             if (StoreAccess.open(this)) {
                 int left = StoreAccess.minutesLeft(this);
-                label += left < 0 ? "\nopen for now" : "\nopen for " + left + " more min";
+                hint = left < 0 ? "Open for now" : "Open for " + left + " more min";
             }
-            Ui.add(root, Ui.rowTile(this, label, R.drawable.ic_flash, v -> openStore(online)), n++ == 0 ? 16 : 8);
+            Ui.add(root, Ui.rowTile(this, "Open Google Play Store", hint, R.drawable.ic_bag_tile, v -> openStore(online)), n++ == 0 ? 16 : 8);
         }
         if (menuOn("message")) {
-            Ui.add(root, Ui.rowTile(this, "Message the administrator", R.drawable.ic_message_tile, v -> promptMessage(online)), n++ == 0 ? 16 : 8);
+            Ui.add(root, Ui.rowTile(this, "Message the administrator", "Write to them", R.drawable.ic_message_tile, v -> promptMessage(online)), n++ == 0 ? 16 : 8);
         }
         if (menuOn("install")) {
-            Ui.add(root, Ui.rowTile(this, "Install an app from a file", R.drawable.ic_device_tile, v -> promptInstallCode()), n++ == 0 ? 16 : 8);
+            Ui.add(root, Ui.rowTile(this, "Install an app from a file", "Needs a code from the administrator", R.drawable.ic_device_tile, v -> promptInstallCode()), n++ == 0 ? 16 : 8);
         }
         if (menuOn("updates")) {
-            Ui.add(root, Ui.rowTile(this, "App updates", R.drawable.ic_update_tile, v -> {
+            Ui.add(root, Ui.rowTile(this, "App updates", "Update the apps on this phone", R.drawable.ic_update_tile, v -> {
                 showingUpdates = true;
                 build();
             }), n++ == 0 ? 16 : 8);
         }
         if (online) {
-            Ui.add(root, Ui.rowTile(this, "Refresh (check in now)", R.drawable.ic_wifi_tile, v -> {
+            Ui.add(root, Ui.rowTile(this, "Refresh", "Check in with the dashboard now", R.drawable.ic_wifi_tile, v -> {
                 AgentService.requestSync();
                 toast("Checking in...");
             }), n++ == 0 ? 16 : 8);
