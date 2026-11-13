@@ -133,3 +133,11 @@ Rules as always: branch -> PR -> build check -> merge; never touch the PC's syst
 7. [ ] Every dashboard setting that makes sense on the phone is also switchable in the phone's own Administrator screens (and flows back to the dashboard), including: pause web filtering for a while, turn off all restrictions for a while, picture checking, Restricted Mode, Music pictures, category boxes.
 8. [x] "Pause filter for a while": already built (dashboard: Pause web filtering 15 min / 1 h / 3 h; Turn off all restrictions for a while). Phone-side buttons come with item 7.
 9. [ ] Final report to the user: what is done, what is verified on the A16, what could not be tested, what still needs them (Knox / Xiaomi sign-ups, Tailscale sign-in for deploying the Pi).
+
+### Added by the user during the Sabbath run (2026-11-13 evening)
+- [ ] The installer must be a real `.exe` that runs on the PC (not a script).
+- [ ] Also a phone-to-phone installer APK that does the same over a USB OTG cable.
+- [ ] Two-way parity: blocked pages/apps set in the Agent app show on the dashboard and can be removed there; dashboard settings that apply on the phone are switchable in the phone's own screens.
+- [ ] Lock a screen from the dashboard by name; a wrong name answers "no such screen or app on this phone".
+- [x] YouTube Music Back bug (search -> blocked song -> Back, Back left the app): fixed in code, needs build + check.
+- Resume notes for restarts after a usage-limit pause: docs/SABBATH-RESUME.md (hourly check-in job reads it).

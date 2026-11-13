@@ -238,6 +238,20 @@ public class YoutubeAddonActivity extends Activity {
 
     /** Back from a page that did not open: the last page that did. False when there is none that still opens. */
     private boolean backToAllowed() {
+        // First choice: step back through the web view's own history to the nearest earlier page that opens. Everything before it
+        // (the search, the home page) stays in the list, so the next Back keeps working instead of leaving the app.
+        try {
+            android.webkit.WebBackForwardList list = web.copyBackForwardList();
+            int now = list.getCurrentIndex();
+            for (int i = now - 1; i >= 0; i--) {
+                android.webkit.WebHistoryItem item = list.getItemAtIndex(i);
+                String u = item == null ? null : item.getUrl();
+                if (u != null && u.startsWith("http") && decide(u) == null) {
+                    web.goBackOrForward(i - now);
+                    return true;
+                }
+            }
+        } catch (RuntimeException ignored) { }
         String target = lastAllowed == null ? home() : lastAllowed;
         if (decide(target) != null) target = home();
         if (decide(target) != null) return false; // even the home page does not open (YouTube is off): leave
