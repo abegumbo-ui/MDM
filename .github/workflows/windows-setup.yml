@@ -1,0 +1,35 @@
+name: Build the Windows phone-setup program
+
+on:
+  push:
+    paths:
+      - "windows/FamilyMdmSetup/**"
+      - ".github/workflows/windows-setup.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build FamilyMdmSetup.exe (the C# compiler that ships with Windows)
+        shell: powershell
+        run: ./windows/FamilyMdmSetup/build.ps1 -Out "$PWD\FamilyMdmSetup.exe"
+      - name: Self-test (reads output copied from a real phone)
+        shell: powershell
+        run: |
+          $p = Start-Process -FilePath "$PWD\FamilyMdmSetup.exe" -ArgumentList '--selftest' -Wait -PassThru
+          Get-Content "$env:LOCALAPPDATA\FamilyMDMSetup\setup.log"
+          if ($p.ExitCode -ne 0) { throw "self-test failed ($($p.ExitCode))" }
+      - name: Publish next to the app files on the "latest" release
+        # Same rule as the Android build: only the push that lands on main is a real release.
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent, browser, and lockdown setup app." --target "$GITHUB_SHA"
+          gh release upload latest FamilyMdmSetup.exe --clobber

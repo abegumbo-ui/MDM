@@ -34,7 +34,7 @@ async function cachedLogoRev(env) {
   logoRevCacheAt = now;
   return logoRevCache;
 }
-const COMMANDS = new Set(["addTime", "openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp", "screenshot", "deleteDownloads"]);
+const COMMANDS = new Set(["addTime", "openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp", "screenshot", "deleteDownloads", "findScreen"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_IMAGE_BYTES = 200 * 1024;
@@ -171,7 +171,7 @@ const MAX_FREEBROWSE_MINUTES = 240;
 const PKG_RE = /^[A-Za-z0-9_.]{1,200}$/;
 const B64_RE = /^[A-Za-z0-9+/=]+$/;
 // Settings the phone's own Administrator screen may change (sent up as configPatch).
-const PHONE_EDITABLE = ["browserFilter", "safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "pauseUntil", "recordSites", "inAppBrowsers", "internetOnlyApps", "screenTime", "callsIn", "callsOut", "callLog", "textLog", "textContent", "reportContacts", "syncContacts", "locationEvery", "blockAppGroups", "approveNew", "blockUnlisted", "blockWaStatus", "blockWaChannels", "messageAlerts", "messageGroups", "messageWords", "freezeUpdates", "disableBiometricUnlock", "autoUpdate", "reportWifi", "chromePolicy", "youtubeMode", "blockedParts", "internetOffUntil", "recordSearches", "blockAds", "waTextOnly", "sites", "callNumbers", "places", "filterSchedule", "internetApps", "recordVideos", "nudityAlerts", "pictureGuard", "browserLook", "noPictureSites", "skinWho", "youtubeAddon", "youtubeMusicAddon", "youtubeOffMessage", "adsCoveredSites", "adsAutoCoverOff", "youtubeSearchOff", "youtubeSearchPictures", "youtubeSignIn", "blockedScreens"];
+const PHONE_EDITABLE = ["browserFilter", "safeSearch", "youtubeDns", "blockImages", "blockImageSearch", "blockedWords", "pauseUntil", "recordSites", "inAppBrowsers", "internetOnlyApps", "screenTime", "callsIn", "callsOut", "callLog", "textLog", "textContent", "reportContacts", "syncContacts", "locationEvery", "blockAppGroups", "approveNew", "blockUnlisted", "blockWaStatus", "blockWaChannels", "messageAlerts", "messageGroups", "messageWords", "freezeUpdates", "disableBiometricUnlock", "autoUpdate", "reportWifi", "chromePolicy", "youtubeMode", "blockedParts", "internetOffUntil", "recordSearches", "blockAds", "waTextOnly", "sites", "callNumbers", "places", "filterSchedule", "internetApps", "recordVideos", "nudityAlerts", "pictureGuard", "browserLook", "noPictureSites", "skinWho", "youtubeAddon", "youtubeMusicAddon", "youtubeOffMessage", "adsCoveredSites", "adsAutoCoverOff", "youtubeSearchOff", "youtubeSearchPictures", "youtubeSignIn", "blockedScreens", "filterKinds"];
 // Friendly names for the chat apps message alerts look at.
 const CHAT_APPS = { 'com.android.chrome': 'Chrome', 'org.mozilla.firefox': 'Firefox', 'com.sec.android.app.sbrowser': 'Samsung Internet', 'com.brave.browser': 'Brave', 'com.microsoft.emmx': 'Edge', 'com.google.android.youtube': 'YouTube', 'com.google.android.googlequicksearchbox': 'the Google app', 'com.familymdm.browser': 'our Browser', 'com.pinterest': 'Pinterest', 'com.whatsapp': 'WhatsApp', 'com.whatsapp.w4b': 'WhatsApp Business', 'org.telegram.messenger': 'Telegram', 'com.instagram.android': 'Instagram', 'com.facebook.orca': 'Messenger', 'com.facebook.mlite': 'Messenger Lite', 'com.snapchat.android': 'Snapchat', 'org.thoughtcrime.securesms': 'Signal', 'com.discord': 'Discord', 'com.zhiliaoapp.musically': 'TikTok', 'com.google.android.apps.messaging': 'Messages', 'com.samsung.android.messaging': 'Samsung Messages', 'com.kik.android': 'Kik', 'com.viber.voip': 'Viber', 'com.google.android.apps.dynamite': 'Google Chat', texts: 'a text message' };
 export const appName = (pkg) => CHAT_APPS[pkg] || (pkg ? 'a chat app (' + pkg + ')' : 'a chat app');
@@ -1248,6 +1248,12 @@ async function adminApiInner(request, env, url, session) {
         else if (given.kind === "music" || given.kind === "video") args.kind = given.kind;
         else args.ids = (Array.isArray(given.ids) ? given.ids : []).filter((x) => typeof x === "string" && /^[A-Za-z0-9_-]{11}$/.test(x)).slice(0, 300);
       }
+      // "Block a screen by its name": the phone looks the name up in its apps and screens and answers in the command's result.
+      if (body.type === "findScreen") {
+        const name = String(given.name || "").replace(/\s+/g, " ").trim().slice(0, 60);
+        if (name.length < 2) return json({ error: "Type the name of the screen first." }, 400);
+        args.name = name;
+      }
       // Extra screen time: lifts bedtime and the limits for this many minutes from when the phone gets it.
       if (body.type === "addTime") args.minutes = Number.isInteger(given.minutes) ? Math.min(Math.max(given.minutes, 5), 240) : 15;
       // Opens the Play Store on the phone for a while (0 = until it is closed again from here).
@@ -1280,9 +1286,11 @@ async function adminApiInner(request, env, url, session) {
         await putJSON(env, key, d);
         return json({ ok: true });
       }
-      d.queue = [...(d.queue || []), { id: randomHex(6), type: body.type, args }];
+      const cmdId = randomHex(6);
+      d.queue = [...(d.queue || []), { id: cmdId, type: body.type, args }];
       await putJSON(env, key, d);
-      return json({ ok: true });
+      // A command whose answer the dashboard waits for gets its id back, to find the result by.
+      return json(body.type === "findScreen" ? { ok: true, id: cmdId } : { ok: true });
     }
   }
   // LockGuard (Windows) devices self-register with no enrollment code at all -- there's no client-

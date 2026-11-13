@@ -228,7 +228,7 @@ final class PolicyApplier {
             Agent.prefs(c).edit().putBoolean("approvedOnlyBrowsers", "off".equals(filterTier)).apply();
             // One plain line in the activity log whenever the website level changes.
             org.json.JSONArray extrasNow = policy.optJSONArray("filterExtras");
-            String levelNow = ("off".equals(filterTier) ? "Approved sites only" : "strict".equals(filterTier) ? "Strict" : "Medium")
+            String levelNow = ("off".equals(filterTier) ? "Approved sites only" : "strict".equals(filterTier) ? "Strict" : "custom".equals(filterTier) ? "Open, closed:" : "Medium")
                     + (extrasNow != null && extrasNow.length() > 0 && !"off".equals(filterTier) ? " + " + extrasNow.toString().replaceAll("[\\[\\]\"]", "").replace(",", ", ") : "");
             if (!levelNow.equals(Agent.prefs(c).getString("lastFilterLevel", ""))) {
                 Agent.prefs(c).edit().putString("lastFilterLevel", levelNow).apply();

@@ -60,6 +60,7 @@ public class BlockAccessibilityService extends AccessibilityService {
             AppBlocklist.recordSeen(this, component);
             String title = event.getText() != null && !event.getText().isEmpty() && event.getText().get(0) != null ? event.getText().get(0).toString() : "";
             PartBlocker.noteScreen(pkg, clsCs.toString(), title);
+            ScreenFinder.note(this, pkg, title); // so the dashboard can find this screen by its name
             boolean off = EmergencyUnlock.isActive(this); // "all restrictions off": nothing is closed, searches are still noted
             boolean byTitle = !off && !title.isEmpty() && PartBlocker.blockedTitles(this).contains(pkg + "|" + title);
             if (!off && (byTitle || (AppBlocklist.list(this).contains(component) && !AppBlocklist.isPaused(this, component)))) {

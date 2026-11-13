@@ -331,7 +331,8 @@ export function normalizeFrpAccounts(list) {
   return [...new Set(ids)].slice(0, 3);
 }
 
-export const BROWSER_FILTERS = ["off", "moderate", "strict"];
+// "custom" = Open: the whole web is open and only the kinds in `filterKinds` are closed (default: adult sites).
+export const BROWSER_FILTERS = ["off", "moderate", "strict", "custom"];
 
 /**
  * Screen time: dailyLimit is minutes a day for the whole phone (0 = no limit); bedtime is a
@@ -460,6 +461,14 @@ export function normalizeFilterSchedule(s) {
 /** The filter level right now: the schedule's level inside its hours, else the normal one. tz = the phone's offset from UTC in minutes. */
 /** The kinds of site that can be closed on top of Strict or Medium, in every browser (the same ids the phones' lists use). */
 export const FILTER_EXTRAS = ["social", "news", "shopping", "games", "video", "dating"];
+/** What "Open: close only what I choose" can close: the five kinds Medium closes together, one by one, then the extras. */
+export const FILTER_BASE_KINDS = ["adult", "gambling", "drugs", "scams", "piracy"];
+export const FILTER_KINDS = [...FILTER_BASE_KINDS, ...FILTER_EXTRAS];
+export function normalizeFilterKinds(v) {
+  const out = [];
+  for (const x of Array.isArray(v) ? v : []) if (FILTER_KINDS.includes(x) && !out.includes(x)) out.push(x);
+  return out;
+}
 export function normalizeFilterExtras(v) {
   const out = [];
   for (const x of Array.isArray(v) ? v : []) if (FILTER_EXTRAS.includes(x) && !out.includes(x)) out.push(x);
@@ -533,6 +542,7 @@ export function effectiveYoutubeMode(cfg) {
   const m = cfg && cfg.youtubeMode;
   if (m === "channels" || m === "restricted" || m === "open" || m === "blocked") return m;
   if (cfg && cfg.openWeb) return "open"; // a Browser on "Open: no filter": YouTube as it is
+  if (cfg && cfg.browserFilter === "custom") return "open"; // "Open: close only what I choose": YouTube is not one of the closed kinds
   return cfg && cfg.browserFilter === "moderate" ? "restricted" : "channels";
 }
 
@@ -677,6 +687,8 @@ export function normalizeConfig(input) {
     // A different filter level at set times, in the phone's own time (see effectiveFilter).
     filterSchedule: normalizeFilterSchedule(c.filterSchedule),
     filterExtras: normalizeFilterExtras(c.filterExtras),
+    // Only the "Open" level uses this; nothing saved yet means adult sites are closed, an empty list means nothing is.
+    filterKinds: Array.isArray(c.filterKinds) ? normalizeFilterKinds(c.filterKinds) : ["adult"],
     textLog: c.textLog === true,
     textContent: c.textContent === true,
     imagesAllow: normalizeDnsAllowlist(c.imagesAllow),
@@ -889,9 +901,12 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // app is excluded from that list but left running (not in `hide`); a "block" app is disabled
   // outright via `hide`, same as it always is outside home-screen mode too.
   const out = { hide: [...hide], show: [...show], allowed: [...allowed], restrictions, schedules, pending, approveNew: cfg.approveNew, reportWifi: cfg.reportWifi, autoUpdate: cfg.autoUpdate, homeScreen: cfg.homeScreen, restrictBrowsing: cfg.restrictBrowsing, browserFilter: cfg.browserFilter, youtubeMode: effectiveYoutubeMode(cfg), tlsInspection: cfg.tlsInspection, inspectBypass: cfg.inspectSkipGoogle ? [...new Set([...cfg.inspectBypass, "google.com"])] : cfg.inspectBypass, frpAccounts: cfg.frpAccounts, freezeUpdates: cfg.freezeUpdates, blockAccessibility: cfg.blockAccessibility, phoneAdminLocked: cfg.phoneAdminLocked, hideAppIcon: cfg.hideAppIcon, disableBiometricUnlock: cfg.disableBiometricUnlock, hideKioskAdmin: cfg.hideKioskAdmin, browserAddonEnabled: cfg.browserAddonEnabled, wholeAppBlocklist: cfg.wholeAppBlocklist, dnsBlocklist: cfg.dnsBlocklist, dnsAllowlist: cfg.dnsAllowlist, networkBlocklist: cfg.networkBlocklist, perAppDnsAllowlist: cfg.perAppDnsAllowlist, sites: normalizeSites(cfg.sites), dnsFilterNotifTitle: cfg.dnsFilterNotifTitle, dnsFilterNotifText: cfg.dnsFilterNotifText };
-  out.filterExtras = cfg.browserFilter === "moderate" || cfg.browserFilter === "strict"
-    ? cfg.filterExtras.filter((x) => !(cfg.browserFilter === "strict" && x === "social"))
-    : [];
+  // The phone reads the kinds closed on top of (or, for "Open", instead of) a level from this one field.
+  out.filterExtras = cfg.browserFilter === "custom"
+    ? cfg.filterKinds
+    : cfg.browserFilter === "moderate" || cfg.browserFilter === "strict"
+      ? cfg.filterExtras.filter((x) => !(cfg.browserFilter === "strict" && x === "social"))
+      : [];
   if (cfg.approveNew && known) out.known = [...known];
   out.userMenu = cfg.userMenu;
   out.screenTime = cfg.screenTime;
@@ -1025,6 +1040,9 @@ export function summarizeConfigChange(before, after) {
   if (!!before.nudityAlerts !== !!after.nudityAlerts) lines.push("Photo alerts: " + (after.nudityAlerts ? "on" : "off"));
   if (!!before.recordVideos !== !!after.recordVideos) lines.push("YouTube videos list: " + (after.recordVideos ? "on" : "off"));
   if (!!before.recordSites !== !!after.recordSites) lines.push("Sites visited list: " + (after.recordSites ? "on" : "off"));
+  if ((after.browserFilter === "custom" || before.browserFilter === "custom") && JSON.stringify(normalizeFilterKinds(before.filterKinds || ["adult"])) !== JSON.stringify(normalizeFilterKinds(after.filterKinds || ["adult"]))) {
+    lines.push("Open web, closed kinds: " + (normalizeFilterKinds(after.filterKinds || ["adult"]).join(", ") || "none"));
+  }
   if (JSON.stringify(normalizeFilterExtras(before.filterExtras)) !== JSON.stringify(normalizeFilterExtras(after.filterExtras))) {
     lines.push("Also closed in every browser: " + (normalizeFilterExtras(after.filterExtras).join(", ") || "nothing extra"));
   }

@@ -169,3 +169,47 @@ test("downloads: the phone reports what is downloaded, the dashboard can ask it 
   const cmds = reply.commands.filter((c) => c.type === "deleteDownloads").map((c) => c.args);
   assert.deepEqual(cmds, [{ ids: ["abcdefghijk"] }, { kind: "music" }, { all: true }], "only well-formed ids reach the phone");
 });
+
+test("find a screen by name: the dashboard gets the command id back, a short name is refused, and the phone's answer is found by that id", async () => {
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Fs" } }) })).json();
+  const sync = (body) => req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  await sync({});
+  const d = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.name.endsWith("Fs"));
+  const send = (args) => req(`/api/devices/${d.id}/command`, { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "findScreen", args }) });
+  assert.equal((await send({ name: " x " })).status, 400, "a one-letter name is refused");
+  const ok = await send({ name: "  Software   update  " });
+  assert.equal(ok.status, 200);
+  const { id } = await ok.json();
+  assert.match(id, /^[0-9a-f]{12}$/, "the id comes back so the dashboard can find the answer");
+  const reply = await (await sync({})).json();
+  const cmd = reply.commands.find((c) => c.id === id);
+  assert.deepEqual(cmd.args, { name: "Software update" }, "spaces are tidied before the phone sees the name");
+  const answer = JSON.stringify({ name: "Software update", found: [{ p: "com.android.settings", a: "Settings", t: "Software update", k: "screen" }], similar: [] });
+  await sync({ results: [{ id, type: "findScreen", ok: true, msg: answer }] });
+  const after = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.id === d.id);
+  const res = after.results.find((r) => r.id === id);
+  assert.equal(JSON.parse(res.msg).found[0].t, "Software update");
+  // Other commands keep answering plain { ok: true }.
+  const plain = await (await req(`/api/devices/${d.id}/command`, { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "sync" }) })).json();
+  assert.deepEqual(plain, { ok: true });
+});
+
+test("Open level: the whole web is open, only the chosen kinds are closed (adult sites at first), and YouTube is not one of them", () => {
+  const c = normalizeConfig({ browserFilter: "custom" });
+  assert.deepEqual(c.filterKinds, ["adult"], "nothing chosen yet closes adult sites only");
+  const p = buildAgentPolicy(c, []);
+  assert.equal(p.browserFilter, "custom");
+  assert.deepEqual(p.filterExtras, ["adult"], "the phone reads the kinds from the same field the extras use");
+  assert.equal(p.youtubeMode, "open", "YouTube is open in this level (the time limits are what apply to it)");
+  const mixed = normalizeConfig({ browserFilter: "custom", filterKinds: ["gambling", "bogus", "news", "news", 5, "social"], filterExtras: ["shopping"] });
+  assert.deepEqual(mixed.filterKinds, ["gambling", "news", "social"], "only known kinds, once each");
+  assert.deepEqual(buildAgentPolicy(mixed, []).filterExtras, ["gambling", "news", "social"], "the extras of Medium and Strict do not leak into Open");
+  assert.deepEqual(buildAgentPolicy(normalizeConfig({ browserFilter: "custom", filterKinds: [] }), []).filterExtras, [], "an empty list is allowed: nothing is closed");
+  assert.deepEqual(buildAgentPolicy(normalizeConfig({ browserFilter: "moderate", filterExtras: ["news"], filterKinds: ["adult"] }), []).filterExtras, ["news"], "Medium still uses its own extras");
+  assert.equal(normalizeConfig({ browserFilter: "bogus" }).browserFilter, "off", "an unknown level still means approved sites only");
+  assert.ok(summarizeConfigChange(normalizeConfig({ browserFilter: "custom" }), normalizeConfig({ browserFilter: "custom", filterKinds: ["adult", "gambling"] })).includes("Open web, closed kinds: adult, gambling"));
+  assert.equal(buildAgentPolicy(normalizeConfig({ browserFilter: "custom", youtubeMode: "restricted" }), []).youtubeMode, "restricted", "a YouTube setting chosen by hand still wins");
+});
