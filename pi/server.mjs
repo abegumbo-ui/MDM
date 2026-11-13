@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import worker from '../src/index.js';
 import { KvStore } from './kv.mjs';
 import { startReplication } from './sync.mjs';
+import { createAdmin } from './admin.mjs';
 
 const MAX_BODY = 40 * 1024 * 1024;
 const DROP_REQUEST_HEADERS = new Set(['connection', 'content-length', 'transfer-encoding', 'keep-alive', 'upgrade', 'proxy-connection', 'te', 'expect']);
@@ -13,17 +14,22 @@ const DROP_REQUEST_HEADERS = new Set(['connection', 'content-length', 'transfer-
 /** Everything the Worker reads from its environment, taken from the process environment. */
 export function readEnv(src = process.env) {
   const vars = {};
-  for (const k of ['ADMIN_PASSWORD', 'GITHUB_REPO', 'PLAY_ANDROID_ID', 'PLAY_EMAIL', 'PLAY_MASTER_TOKEN', 'ROLE', 'PRIMARY_URL', 'BACKUP_URL', 'REPLICA_SECRET', 'YOUTUBE_API_KEY']) {
+  for (const k of ['ADMIN_PASSWORD', 'GITHUB_REPO', 'PLAY_ANDROID_ID', 'PLAY_EMAIL', 'PLAY_MASTER_TOKEN', 'ROLE', 'PRIMARY_URL', 'BACKUP_URL', 'REPLICA_SECRET', 'POLL_SECONDS', 'FAST_POLL_SECONDS', 'BURST_POLL_SECONDS']) {
     if (src[k]) vars[k] = src[k];
   }
   if (!vars.ROLE) vars.ROLE = 'main';
+  // No daily limits on the Pi: phones check in every 3 seconds while the dashboard is open (and right after a change),
+  // every 5 minutes when nobody is looking. Cloudflare keeps its own, slower numbers (see src/index.js).
+  if (!vars.FAST_POLL_SECONDS) vars.FAST_POLL_SECONDS = '3';
+  if (!vars.BURST_POLL_SECONDS) vars.BURST_POLL_SECONDS = '3';
+  if (!vars.POLL_SECONDS) vars.POLL_SECONDS = '300';
   return vars;
 }
 
-export async function createApp({ dataDir, vars, publicUrl = '', log = () => {}, replication = true, fetchFn, scheduleMs = 15 * 60 * 1000 }) {
+export async function createApp({ dataDir, vars, publicUrl = '', log = () => {}, replication = true, fetchFn, scheduleMs = 15 * 60 * 1000, piAdminOptions }) {
   const kv = new KvStore(dataDir);
   await kv.init();
-  const env = { ...vars, STATE: kv };
+  const env = { ...vars, STATE: kv, RUNTIME: 'pi' };
   const pending = new Set();
   const ctx = {
     waitUntil(p) {
@@ -34,6 +40,7 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
   };
   const repl = replication ? startReplication({ kv, vars, log, fetchFn }) : null;
   const started = Date.now();
+  const piAdmin = createAdmin({ env, vars, kv, getRepl: () => repl, publicUrl, started, ...(piAdminOptions || {}) });
 
   async function handle(req, res) {
     if (req.url === '/healthz') {
@@ -64,7 +71,9 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
     }
     const init = { method: req.method, headers };
     if (req.method !== 'GET' && req.method !== 'HEAD' && body.length) init.body = body;
-    const response = await worker.fetch(new Request(url, init), env, ctx);
+    const request = new Request(url, init);
+    // The Server page (/api/pi/*) is the Pi's own; everything else is the dashboard code.
+    const response = (await piAdmin.handle(request)) || (await worker.fetch(request, env, ctx));
     const out = {};
     response.headers.forEach((v, k) => { if (k !== 'set-cookie') out[k] = v; });
     const cookies = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : [];
@@ -93,7 +102,9 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
     async stop() {
       if (sched) clearInterval(sched);
       if (repl) repl.stop();
-      await new Promise((r) => server.close(r));
+      const closing = new Promise((r) => server.close(r));
+      if (server.closeIdleConnections) server.closeIdleConnections(); // do not wait for browsers that keep a connection open
+      await closing;
       await Promise.all([...pending]);
       kv.close();
     },

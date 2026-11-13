@@ -13,7 +13,7 @@ Restart=always
 RestartSec=3
 # A Raspberry Pi Zero 2 W has 512 MB: keep the server from taking all of it (big things live on the SD card).
 Environment=NODE_OPTIONS=--max-old-space-size=200
-NoNewPrivileges=true
+# (No NoNewPrivileges: the Server page runs a few allowed commands through sudo, see /etc/sudoers.d/mdm-pi.)
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true

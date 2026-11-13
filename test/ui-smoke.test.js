@@ -72,7 +72,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   const { call, cookie } = await setUp();
   const reg = new Map();
   const mk = (tag) => new El(tag, reg);
-  for (const id of ["main", "snack", "crumbs", "who", "tabs"]) mk("div").setAttribute("id", id);
+  for (const id of ["main", "snack", "crumbs", "who", "tabs", "srv", "mode"]) mk("div").setAttribute("id", id);
   const errors = [];
   const store = new Map();
   const ctx = vm.createContext({
@@ -108,6 +108,20 @@ test("every dashboard page, group and tab opens without an error", async () => {
   const seen = {};
   seen.list = tryRender("device list", "tab='devices';openId=null;openBrowserId=null;openWinId=null;render()");
   for (const page of ["codes", "settings", "clients", "audit", "templates"]) seen[page] = tryRender(page, `tab='${page}';openId=null;render()`);
+  // The first time a phone is opened its page goes back to its start (the home): open it once, then visit every group.
+  seen.home = tryRender("phone home (new look)", "tab='devices';openId=devices[0].id;openBrowserId=null;openWinId=null;render()");
+  seen.server = tryRender("server page", "tab='server';openId=null;render()");
+  seen.badgeCloudflare = reg.get("srv").textContent;
+  // The same page on the Raspberry Pi: health, Wi-Fi, the networks it remembers, the backup, restart and log.
+  seen.serverPi = tryRender("server page on the Pi", "var __s0=state.server;state.server={runtime:'pi',role:'main',primary:'https://pi.example',backup:'https://cf.example',outage:false};" +
+    "piInfo={role:'main',version:'abc1234',serverUptimeSeconds:99,entries:5,publicUrl:'https://pi.example',backupUrl:'https://cf.example',polling:{idleSeconds:300,dashboardOpenSeconds:3,afterChangeSeconds:3}," +
+    "health:{model:'Raspberry Pi Zero 2 W',uptimeSeconds:3600,cpuTempC:41,memoryTotalMB:416,memoryFreeMB:200,diskTotalGB:30,diskFreeGB:25,power:{ok:true}},wifi:{state:'connected',ssid:'Home',signal:70,ip:'192.168.0.5/24'}," +
+    "tailscale:{installed:true,state:'Running',name:'x.ts.net'},replication:{configured:true,pending:2,lastCopyAt:Date.now(),lastCopyCount:3,backupReachable:true,outagesRecovered:0}};" +
+    "piWifi={saved:[{name:'Home',priority:10,autoconnect:true,active:true},{name:'Guest',priority:5,autoconnect:true,active:false}],visible:[{ssid:'Cafe',signal:50,security:'WPA2',active:false}]};tab='server';render()");
+  seen.badgePi = reg.get("srv").textContent;
+  seen.homeOnPi = tryRender("phone home with the Pi badge", "tab='devices';openId=devices[0].id;render()");
+  tryRender("back to Cloudflare", "state.server=__s0;piInfo=null;piWifi=null");
+  tryRender("back to the phone", "tab='devices';openId=devices[0].id;render()");
   const groups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,g.subs.map(function(s){return s[0]})]}))", ctx);
   for (const [g, subs] of JSON.parse(groups)) {
     for (const sub of subs) {
@@ -170,6 +184,39 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen.list, /Pixel/);
   assert.match(seen["browser/access"], /Blocked words \(2\)/);
   assert.match(seen["browser/access"], /Block image search/);
+  // The new look: a home with what is waiting, quick buttons and one line per part; Browser has its own simple page.
+  assert.match(seen.home, /Requests from the phone \(3\)/);
+  assert.match(seen.home, /Quick actions/);
+  assert.match(seen.home, /Lock screen/);
+  assert.match(seen.home, /Screen time today/);
+  assert.match(seen.home, /Browser and web/);
+  assert.match(seen.home, /Moderate filter · 1 site approved · SafeSearch on/);
+  assert.match(seen.home, /3 h a day|3 h/);
+  assert.doesNotMatch(seen.home, /Ready-made setups/, "the long overview page is not on the home");
+  assert.match(seen["browser/summary"], /What can they open on the web\?/);
+  assert.match(seen["browser/summary"], /Only sites I approve/);
+  assert.match(seen["browser/summary"], /Safe browsing/);
+  assert.match(seen["browser/summary"], /Approved sites \(1\)/);
+  assert.match(seen["browser/summary"], /More settings/);
+  assert.match(seen["browser/summary"], /What this phone can open/, "the old tabs are still there under More settings");
+  assert.match(seen.server, /This page comes from Cloudflare/);
+  assert.match(seen.badgeCloudflare, /Cloudflare/);
+  assert.match(seen.badgePi, /Raspberry Pi/);
+  assert.match(seen.serverPi, /This page comes from your Raspberry Pi/);
+  assert.match(seen.serverPi, /Networks the Pi remembers/);
+  assert.match(seen.serverPi, /Guest/);
+  assert.match(seen.serverPi, /Add a network/);
+  assert.match(seen.serverPi, /every 3 seconds/);
+  assert.match(seen.serverPi, /every 5 minutes/);
+  assert.match(seen.serverPi, /Cloudflare backup/);
+  assert.match(seen.serverPi, /Restart the Pi/);
+  assert.match(seen.serverPi, /via Cloudflare/, "each phone says which server it used");
+  assert.match(seen.homeOnPi, /via Cloudflare/);
+  // The old look is still there, exactly as it was, behind the switch.
+  const legacy = tryRender("legacy look", "uiMode='legacy';deviceSection='overview';subs['overview']='status';tab='devices';openId=devices[0].id;render()");
+  tryRender("back to the new look", "uiMode='new'");
+  assert.match(legacy, /Ready-made setups/);
+  assert.match(legacy, /Status/);
   assert.match(seen["overview/status"], /Ready-made setups/);
   assert.match(seen["overview/status"], /What.s on for this phone/);
   assert.match(seen["overview/status"], /Websites: Moderate filter/);

@@ -33,10 +33,24 @@ echo "== service user and folders"
 id -u "$SVC_USER" >/dev/null 2>&1 || useradd --system --home "$DATA" --shell /usr/sbin/nologin "$SVC_USER"
 mkdir -p "$APP" "$DATA"
 
+echo "== what the Server page in the dashboard may do (Wi-Fi networks, restart, the log, the temperature)"
+# Only these exact programs, only for the service user, nothing else.
+for g in systemd-journal video netdev; do getent group "$g" >/dev/null 2>&1 && usermod -aG "$g" "$SVC_USER" || true; done
+NMCLI="$(command -v nmcli || echo /usr/bin/nmcli)"
+SYSTEMCTL="$(command -v systemctl || echo /usr/bin/systemctl)"
+cat > /etc/sudoers.d/mdm-pi <<EOF
+$SVC_USER ALL=(root) NOPASSWD: $NMCLI, $SYSTEMCTL restart mdm-pi, $SYSTEMCTL reboot
+EOF
+chmod 440 /etc/sudoers.d/mdm-pi
+visudo -cf /etc/sudoers.d/mdm-pi >/dev/null || { rm -f /etc/sudoers.d/mdm-pi; echo "sudoers check failed (Server page buttons will not work)"; }
+# Tailscale: let the service user read its status.
+if command -v tailscale >/dev/null 2>&1; then tailscale set --operator="$SVC_USER" >/dev/null 2>&1 || true; fi
+
 echo "== program files"
 rm -rf "$APP/src" "$APP/pi"
 cp -r "$SRC/src" "$SRC/pi" "$APP/"
 rm -f "$APP/pi/deploy.ps1" "$APP/pi/README.md"
+if [ -f "$SRC/VERSION" ]; then cp "$SRC/VERSION" "$APP/VERSION"; fi
 printf '{ "name": "mdm-pi", "private": true, "type": "module" }\n' > "$APP/package.json"
 chown -R root:root "$APP"
 chown -R "$SVC_USER:$SVC_USER" "$DATA"

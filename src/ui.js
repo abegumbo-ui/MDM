@@ -171,6 +171,35 @@ section.cols>.card{margin:0}
   main{padding:16px 14px 60px}
   section.cols{grid-template-columns:minmax(0,1fr)}
 }
+/* New look */
+.srv{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;border-radius:999px;padding:4px 10px;text-decoration:none;background:var(--surface-3);color:var(--on-surface-variant);white-space:nowrap}
+.srv.ok{background:var(--ok-container);color:var(--ok)}.srv.warn{background:var(--warn-container);color:var(--warn)}
+.modeseg{display:inline-flex;border:1px solid var(--outline);border-radius:8px;overflow:hidden}
+.modeseg button{background:var(--surface-1);border:0;border-right:1px solid var(--outline);padding:5px 10px;color:var(--on-surface-variant);font:500 12px Inter,system-ui,sans-serif;cursor:pointer}
+.modeseg button:last-child{border-right:0}
+.modeseg button.on{background:var(--primary-container);color:var(--on-primary-container)}
+.ptitle{font-size:22px;font-weight:600;margin:0;letter-spacing:-.01em}
+.homecol{max-width:720px}
+.ctls{display:flex;flex-direction:column;background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:14px;overflow:hidden;max-width:720px;box-shadow:var(--shadow)}
+button.ctl{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--outline-variant);padding:14px 16px;color:inherit;font:inherit;cursor:pointer}
+button.ctl:first-child{border-top:0}
+button.ctl:hover{background:var(--surface-2)}
+button.ctl .grow{display:flex;flex-direction:column;gap:2px}
+.ct{font-weight:500;font-size:15px;display:block}
+button.ctl.slim{padding:12px 4px;border-top:1px solid var(--outline-variant)}
+button.ctl.slim:first-child{border-top:0}
+.ctl .badge{background:var(--primary);color:#fff;border-radius:999px;font-size:11px;padding:1px 8px}
+.choices{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+button.choice{display:flex;align-items:flex-start;gap:12px;text-align:left;background:var(--surface-1);border:1px solid var(--outline);border-radius:12px;padding:12px 14px;color:inherit;font:inherit;cursor:pointer}
+button.choice .grow{display:flex;flex-direction:column;gap:2px}
+button.choice .rb{width:18px;height:18px;border-radius:50%;border:2px solid var(--outline);flex:none;margin-top:2px}
+button.choice.on{border-color:var(--primary);background:var(--primary-container)}
+button.choice.on .rb{border-color:var(--primary);background:radial-gradient(var(--primary) 0 45%,transparent 50%)}
+details.more{margin-top:8px}
+details.more>summary{cursor:pointer;font-weight:500;padding:12px 4px;list-style:none;color:var(--primary)}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:'\u25B8  '}
+details.more[open]>summary::before{content:'\u25BE  '}
 `;
 
 export const loginPage = (error = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -193,7 +222,7 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>${STYLE}</style></head>
 <body>
-<header class="bar"><div class="top"><a class="brand" href="#devices"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z"/></svg></span>MDM</a><div class="crumbs" id="crumbs"></div><span class="who" id="who"></span><a class="out" href="/logout">Sign out</a></div></header>
+<header class="bar"><div class="top"><a class="brand" href="#devices"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z"/></svg></span>MDM</a><div class="crumbs" id="crumbs"></div><span id="srv"></span><span id="mode"></span><span class="who" id="who"></span><a class="out" href="/logout">Sign out</a></div></header>
 <main id="main">Loading…</main>
 <div id="snack"></div>
 <script>
@@ -333,11 +362,13 @@ function setCrumbs(parts){
 function pageHead(m,title,sub){m.append(h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,title),sub?h('div',{class:'sub'},sub):null)))}
 function render(){
  if(!state)return; // still loading: load() draws the page once the data is in
+ renderBar();
  const m=document.getElementById('main');m.textContent='';
  const who=document.getElementById('who');if(who&&state&&state.session)who.textContent=state.session.helper?state.session.helper+(state.session.viewOnly?' (view only)':''):state.session.role==='admin'?'Administrator':'Client account';
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){setCrumbs([['Devices','devices'],[d.name]]);renderDeviceDetail(m,d);return}openId=null}
  if(tab==='devices'&&openBrowserId){const b=browsers.find(function(x){return x.id===openBrowserId});if(b){setCrumbs([['Devices','devices'],[b.name]]);renderBrowserDetail(m,b);return}openBrowserId=null}
  if(tab==='devices'&&openWinId){const w=windevices.find(function(x){return x.id===openWinId});if(w){setCrumbs([['Devices','devices'],[w.name]]);renderWinDetail(m,w);return}openWinId=null}
+ if(tab==='server'){setCrumbs([['Devices','devices'],['Server']]);pageHead(m,'Server','The computer that runs this dashboard');renderServer(m);return}
  if(tab==='codes'||tab==='settings'||tab==='clients'||tab==='audit'||tab==='templates'){
   const T={codes:'Add a device',clients:'Clients',settings:'Settings',audit:'Activity',templates:'Templates'}[tab];
   setCrumbs([['Devices','devices'],[T]]);
@@ -350,7 +381,7 @@ function render(){
   return}
  setCrumbs([['Devices']]);
  renderDevices(m)}
-window.addEventListener('hashchange',function(){route();window.scrollTo(0,0);render()});
+window.addEventListener('hashchange',function(){route();if(tab==='server'){piInfo=null;piWifi=null}window.scrollTo(0,0);render()});
 
 /* ---------- devices ---------- */
 const NAMES={addTime:'Extra screen time',openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app',screenshot:'Screenshot'};
@@ -378,6 +409,7 @@ function chipsFor(d,full){
  if(d.info.kiosk)c.append(h('span',{class:'chip ok'},'Home screen mode'));
  if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
  if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'Update available'));
+ if(full){const vc=viaChip(d);if(vc)c.append(vc)}
  const n=pendingCount(d);if(n&&full)c.append(h('span',{class:'chip warn',title:pendingApps(d).map(function(p){return p.l||p.p}).join(', ')},n+' changes pending'));
  return c}
 let devSearch='',devFilter='all';
@@ -428,6 +460,7 @@ function renderDevices(m){
   else st.append(h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},h('span',{class:'dot'}),isOnline(d)?'Online':'Offline'));
   if(lockedNow(d))st.append(h('span',{class:'chip warn'},'Locked'));
   if(needsUpdate(d))st.append(h('span',{class:'chip warn'},'Update'));
+  {const vc=viaChip(d);if(vc)st.append(vc)}
   const bat=d.info.battery;
   const sub=(state.session.role==='admin'&&d.ownerId)?d.ownerId:'Android phone';
   const row=trow('device',d.name,sub,st,bat?bat.pct+'%'+(bat.charging?' · charging':''):'—',ago(d.lastSeen),'device/'+d.id,d.id);
@@ -816,6 +849,7 @@ function renderDeviceDetail(m,d){
  sWrap.append(h('div',{class:'ico'},svgIcon('search','currentColor')),sInput,sResults);
  headBox.insertBefore(sWrap,headBox.lastChild);
 
+ if(uiMode==='new'){renderDeviceNew(m,d,body);return}
  // ----- side menu (5 groups) + tabs along the top of the chosen group -----
  const sec=GROUPS.some(function(g){return g.key===deviceSection})?deviceSection:'overview';
  const G=GROUPS.find(function(g){return g.key===sec});
@@ -2893,6 +2927,355 @@ function renderDeviceCard(m,dv){
  // "Administrator code" row -- every kind of lock lives together there now, not scattered.
 }
 
+/* ---------- New look (like Family Link): a simple home, simple pages, and a switch back to the old look ---------- */
+// "New" is the default. "Legacy" is the old screen, unchanged. The choice is kept in this browser.
+let uiMode='new';try{if(localStorage.getItem('uiMode')==='legacy')uiMode='legacy'}catch(e){}
+function setUiMode(v){uiMode=v;try{localStorage.setItem('uiMode',v)}catch(e){}render()}
+Object.assign(ICONS,{
+ pin:'M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7zM12,11.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 2.5,-2.5 2.5,1.12 2.5,2.5 -1.12,2.5 -2.5,2.5z',
+ play:'M10,16.5l6,-4.5 -6,-4.5v9zM12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,20c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8z',
+ bell:'M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.89,2 2,2zM18,16v-5c0,-3.07 -1.64,-5.64 -4.5,-6.32L13.5,4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.63,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2z',
+ server:'M4,1h16c1.1,0 2,0.9 2,2v6c0,1.1 -0.9,2 -2,2H4c-1.1,0 -2,-0.9 -2,-2V3c0,-1.1 0.9,-2 2,-2zM6,7.5c0.83,0 1.5,-0.67 1.5,-1.5S6.83,4.5 6,4.5 4.5,5.17 4.5,6 5.17,7.5 6,7.5zM4,13h16c1.1,0 2,0.9 2,2v6c0,1.1 -0.9,2 -2,2H4c-1.1,0 -2,-0.9 -2,-2v-6c0,-1.1 0.9,-2 2,-2zM6,19.5c0.83,0 1.5,-0.67 1.5,-1.5s-0.67,-1.5 -1.5,-1.5 -1.5,0.67 -1.5,1.5 0.67,1.5 1.5,1.5z'});
+
+/** The two things at the top of every page: which server shows this page, and the New / Legacy switch. */
+function renderBar(){
+ const srv=document.getElementById('srv');
+ if(srv){srv.textContent='';const s=state&&state.server;
+  if(s){const pi=s.runtime==='pi';
+   const label=pi?'Raspberry Pi':(s.role==='backup'?'Cloudflare (backup)':'Cloudflare');
+   srv.append(h('a',{class:'srv '+(pi?'ok':s.outage?'warn':''),href:'#server',title:pi?'This page comes from your Raspberry Pi. Tap for details.':'This page comes from Cloudflare'+(s.role==='backup'?', the backup copy of the Raspberry Pi. Tap for details.':'. Tap for details.')},h('span',{class:'dot'}),label))}}
+ const md=document.getElementById('mode');
+ if(md){md.textContent='';
+  const seg=h('div',{class:'modeseg',title:'New look, or the old look'});
+  for(const o of [['new','New'],['legacy','Legacy']]){const b=h('button',{type:'button',class:uiMode===o[0]?'on':''},o[1]);b.onclick=function(){if(uiMode!==o[0])setUiMode(o[0])};seg.append(b)}
+  md.append(seg)}}
+
+/** "via Raspberry Pi" / "via Cloudflare": which server this phone talked to last (only when a Pi is set up). */
+function viaChip(d){
+ const s=state&&state.server;if(!s||!s.primary||!d.via)return null;
+ const pi=d.via==='pi';
+ return h('span',{class:'chip '+(pi?'':'warn'),title:pi?'The phone talks to your Raspberry Pi.':'The phone could not reach the Raspberry Pi and used Cloudflare, the backup.'},pi?'via Raspberry Pi':'via Cloudflare')}
+
+/** One line for each part of a phone, shown on its home page. */
+function homeSummary(d){
+ const c=d.config||{},st=c.screenTime||{},i=d.info||{},now=Date.now(),out={};
+ const sites=Object.values(c.sites||{});
+ const nCh=sites.filter(function(x){return x.type==='youtube'}).length,nSites=sites.length-nCh;
+ const lvl={off:'Approved sites only',moderate:'Moderate filter',strict:'Strict filter'}[c.browserFilter||'off']||'Approved sites only';
+ const blocked=Object.values(c.apps||{}).filter(function(a){return a.mode==='block'}).length,grp=(c.blockAppGroups||[]).length;
+ out.time=st.dailyLimit?fmtMin(st.dailyLimit)+' a day'+(st.bedtime?' · bedtime '+st.bedtime.from:''):(st.bedtime?'Bedtime '+st.bedtime.from+' to '+st.bedtime.to:'No limits set');
+ out.apps=([blocked?blocked+(blocked===1?' app':' apps')+' blocked':'',grp?grp+(grp===1?' group':' groups')+' blocked':''].filter(Boolean).join(' · ')||'No apps blocked')+(c.approveNew?' · new apps wait for you':'');
+ out.browser=lvl+' · '+nSites+(nSites===1?' site':' sites')+' approved'+(c.safeSearchOff?'':c.safeSearch?' · SafeSearch on':'');
+ out.youtube={auto:'Follows the browser level',open:'Open',restricted:'Restricted',channels:'Only what you allow',blocked:'Off'}[c.youtubeMode||'auto']+(nCh?' · '+nCh+(nCh===1?' channel':' channels'):'')+(c.youtubeAddon?' · YouTube icon':'')+(c.youtubeMusicAddon?' · Music icon':'');
+ const cin=c.callsIn||'all',cout=c.callsOut||'all';
+ out.calls=cin==='all'&&cout==='all'?'Anyone can call and be called':(cin==='list'||cout==='list'?'Only the allowed numbers':'Contacts and allowed numbers');
+ out.location=c.locationEvery?'Noted every '+c.locationEvery+' minutes':'Find it any time';
+ out.internet=(c.internetOffUntil||0)>now?'Off until '+hhmm(c.internetOffUntil):(c.pauseUntil||0)>now?'Web filter paused until '+hhmm(c.pauseUntil):(c.internetOnlyApps?'Only '+(c.internetApps||[]).length+' chosen apps':'On');
+ const pb=healthProblems(d),bad=pb.filter(function(x){return x.level==='bad'}).length;
+ out.safety=(bad?bad+(bad===1?' thing needs fixing':' things need fixing'):pb.length?'Something to look at':'Everything works')+(c.messageAlerts?' · message alerts on':'');
+ out.security=i.screenLock===undefined?'Lock, app lock, restrictions':'Screen lock '+(i.screenLock?'on':'off');
+ out.device=[i.android?'Android '+i.android:'',i.versionCode?'build '+i.versionCode:'',needsUpdate(d)?'update available':''].filter(Boolean).join(' · ')||'Updates, menus, controls';
+ out.status='Messages, activity and the phone\'s details';
+ return out}
+
+const HOME_ROWS=[
+ ['time','clock','Screen time','time',null],
+ ['apps','apps','Apps','apps',null],
+ ['browser','globe','Browser and web','browser',null],
+ ['youtube','play','YouTube','youtube',null],
+ ['calls','phone','Calls and texts','calls',null],
+ ['location','pin','Location','device','location'],
+ ['internet','wifi','Internet','internet',null],
+ ['safety','bell','Safety and alerts','safety',null],
+ ['security','lock','Lock and security','security',null],
+ ['device','device','Phone settings','device',null],
+ ['status','doc','Status and activity','overview',null]];
+const NEW_TITLES={overview:'Status and activity',safety:'Safety and alerts',apps:'Apps',youtube:'YouTube',time:'Screen time',browser:'Browser and web',calls:'Calls and texts',internet:'Internet',security:'Lock and security',device:'Phone settings'};
+
+/** Opens a group on one of its "more settings" tabs (the old tabs live inside "More settings" in the new look). */
+function goMore(sec,sub){open['more-'+sec]=true;goTo(sec,sub)}
+function backHome(){setDeviceSection(null);window.scrollTo(0,0);render()}
+function simpleSwitch(title,text,on,onchange){return h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),text?h('div',{class:'mute'},text):null),sw(on,onchange))}
+/** A column of big choices (like a radio list). choices = [[value,title,text],...] */
+function choiceList(choices,cur,onpick){
+ const box=h('div',{class:'choices'});
+ for(const o of choices){
+  const b=h('button',{type:'button',class:'choice'+(String(o[0])===String(cur)?' on':'')},h('span',{class:'rb'}),h('span',{class:'grow'},h('span',{class:'ct'},o[1]),o[2]?h('span',{class:'mute'},o[2]):null));
+  b.onclick=function(){if(String(o[0])!==String(cur))onpick(o[0])};box.append(b)}
+ return box}
+function siteRequestsCard(m,dv){
+ renderRequestsCard(m,(dv.siteRequests||[]).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at,note:r.note}}),dv)}
+
+function renderDeviceNew(m,d,body){
+ const sec=GROUPS.some(function(g){return g.key===deviceSection})?deviceSection:null;
+ if(!sec){renderHomeNew(m,d);return}
+ renderGroupNew(m,d,sec,body)}
+
+/** The home of one phone: what is waiting for you, the quick buttons, and one line for each part. */
+function renderHomeNew(m,d){
+ const sum=homeSummary(d);
+ const col=h('div',{class:'homecol'});
+ // 1. Things waiting for you (each card shows only when there is something).
+ renderSos(col,d);renderAppRequests(col,d);siteRequestsCard(col,d);renderHealthSummary(col,d);
+ if((d.messages||[]).length){
+  const last=d.messages[d.messages.length-1];
+  col.append(h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Message from the phone'+(d.messages.length>1?' ('+d.messages.length+')':'')),h('div',null,last.msg),h('div',{class:'row',style:'margin-top:8px'},btn('Open messages','tonal',function(){goTo('overview','messages')}))))}
+ // 2. Quick buttons.
+ const q=h('div',{class:'card quick'});
+ const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it at its next check-in.');load()};
+ q.append(h('h2',null,'Quick actions'));
+ const qr=h('div',{class:'row',style:'margin-top:8px'});
+ qr.append(btn('Lock screen','tonal',async function(){
+  const v=await ask('Lock this phone',[
+   {key:'minutes',label:'How long',options:[['0','Just lock the screen'],['5','5 minutes'],['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours']]},
+   {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
+   'A timed lock shows your message and a countdown, and nothing else opens until time is up (or you unlock it). Emergency calls stay available.');
+  if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
+ if(lockedNow(d))qr.append(btn('Unlock now','tonal',function(){return queue('Unlock','unlock',{})}));
+ qr.append(btn('Find phone','tonal',function(){return queue('Find phone','locate',{})}));
+ qr.append(btn('+15 minutes','tonal',function(){return queue('Extra screen time','addTime',{minutes:15})}));
+ const off=(d.config.internetOffUntil||0)>Date.now();
+ qr.append(btn(off?'Internet back on':'Internet off for 1 hour','tonal',async function(){d.config.internetOffUntil=off?0:Date.now()+3600000;await saveConfigFor(d,off?'The internet comes back on at the next check-in.':'Internet off until '+hhmm(d.config.internetOffUntil)+'.');render()}));
+ q.append(qr);
+ // The last place the phone was found, if it has been found.
+ const lastFix=(d.results||[]).slice().reverse().find(function(r){return r.type==='locate'&&r.ok});
+ if(lastFix){let fix=null;try{fix=JSON.parse(lastFix.msg)}catch(e){}
+  if(fix)q.append(h('div',{class:'mute small',style:'margin-top:8px'},'Last found '+ago(lastFix.at)+': ',h('a',{href:'https://maps.google.com/?q='+fix.lat+','+fix.lon,target:'_blank',rel:'noopener'},'open the map ↗')))}
+ col.append(q);
+ // 3. Today.
+ const usage=d.usage||{},days=Object.keys(usage).sort().reverse(),st=(d.config||{}).screenTime||{};
+ if(days.length){
+  const today=usage[days[0]],limit=st.dailyLimit||0;
+  const t=h('div',{class:'card'},h('h2',null,'Screen time today'),h('div',{class:'hero'},fmtMin(today.total)),h('div',{class:'mute'},limit?'of '+fmtMin(limit)+' allowed':'No daily limit set'));
+  if(limit)t.append(h('div',{class:'meter'},h('i',{style:'width:'+Math.min(100,Math.round(100*today.total/limit))+'%'})));
+  const top=(today.apps||[]).slice(0,3);
+  if(top.length)t.append(h('div',{class:'mute small',style:'margin-top:10px'},'Most used: '+top.map(function(a){return (a.l||a.p)+' '+fmtMin(a.m)}).join(' · ')));
+  col.append(t)}
+ m.append(col);
+ // 4. The parts, one line each.
+ const list=h('div',{class:'ctls'});
+ for(const r of HOME_ROWS){
+  let badge=0;
+  if(r[0]==='status')badge=(d.messages||[]).length;
+  if(r[0]==='browser')badge=(d.siteRequests||[]).length;
+  if(r[0]==='safety')badge=healthProblems(d).filter(function(x){return x.level==='bad'}).length+(d.msgAlerts||[]).length;
+  const row=h('button',{type:'button',class:'ctl'},h('span',{class:'avatar'},svgIcon(r[1],'currentColor')),h('span',{class:'grow'},h('span',{class:'ct'},r[2]),h('span',{class:'mute'},sum[r[0]]||'')),badge?h('span',{class:'badge'},String(badge)):null,h('span',{class:'mute'},'›'));
+  row.onclick=function(){goTo(r[3],r[4]);window.scrollTo(0,0)};
+  list.append(row)}
+ m.append(list);
+ m.append(h('div',{class:'mute small',style:'margin-top:14px'},'Want the old screen? Use the New / Legacy switch at the top.'))}
+
+/** One part of a phone, in the new look: the few things that matter on top, everything else under "More settings". */
+function renderGroupNew(m,d,sec,body){
+ const G=GROUPS.find(function(g){return g.key===sec});
+ const back=h('button',{type:'button',class:'btn tonal'},'‹ Home');back.onclick=backHome;
+ m.append(h('div',{class:'row',style:'margin-bottom:14px'},back,h('h1',{class:'ptitle'},NEW_TITLES[sec]||G.label)));
+ const ess={browser:essBrowser}[sec];
+ const cur=getSub(sec);
+ const content=h('div',{class:'content'});
+ const old=h('div');
+ const pills=h('div',{class:'pills'});
+ for(const sub of G.subs){
+  const b=h('button',{class:sub[0]===cur?'on':''},sub[1]);
+  b.onclick=function(){subs[sec]=sub[0];saveSubs();render()};pills.append(b)}
+ old.append(pills);
+ if(GROUP_HELP[sec])old.append(h('div',{class:'mute small',style:'margin:-4px 0 12px'},GROUP_HELP[sec]));
+ old.append(typeof body[sec].nodeType==='number'?body[sec]:body[sec][cur]);
+ if(ess){
+  ess(content,d);
+  const det=h('details',{class:'more',open:open['more-'+sec]?'':null});
+  det.ontoggle=function(){open['more-'+sec]=det.open};
+  det.append(h('summary',null,'More settings'),old);
+  content.append(det)}
+ else content.append(old);
+ m.append(content)}
+
+/* ----- Browser and web, in the new look ----- */
+function essBrowser(box,dv){
+ const c=dv.config;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ // 1. What can they open?
+ const cur=c.browserFilter||'off';
+ const lvl=h('div',{class:'card'},h('h2',null,'What can they open on the web?'));
+ lvl.append(choiceList([
+  ['off','Only sites I approve','Nothing opens unless it is on your list below. The safest choice.'],
+  ['moderate','The web, without the bad sites','Blocks adult, gambling, drugs, scam and piracy sites.'],
+  ['strict','The web, without the bad sites and social media','The same, and also Facebook, Instagram, TikTok and X.']],cur,function(v){
+  if(v!=='off'&&cur==='off'&&!confirm('This opens the whole web, except the blocked kinds of sites. Filters only know sites that are already on public lists, so they cannot catch everything. Continue?'))return;
+  c.browserFilter=v;save(v==='off'?'Approved sites only.':'Saved. The phone downloads the lists at its next check-in and stays on approved sites only until it has them.')}));
+ lvl.append(h('div',{class:'mute small',style:'margin-top:8px'},'Sites on your approved list below always open, whichever you choose. Applies to our Browser and to Chrome and other browsers on the phone.'));
+ box.append(lvl);
+ // 2. Safe browsing.
+ const sf=h('div',{class:'card'},h('h2',null,'Safe browsing'));
+ sf.append(simpleSwitch('SafeSearch','Google, Bing and DuckDuckGo show filtered results only, in every browser and app.',!c.safeSearchOff,function(on){c.safeSearchOff=!on;c.safeSearch=on;save(on?'SafeSearch on.':'SafeSearch off.')}));
+ sf.append(simpleSwitch('Block image search','The Images tab of Google, Bing and DuckDuckGo is refused.',!!c.blockImageSearch,function(on){c.blockImageSearch=on;save(on?'Image search will be blocked.':'Image search is allowed again.')}));
+ sf.append(simpleSwitch('Block ads','No ads on web pages or in YouTube.',!!c.blockAds,function(on){c.blockAds=on;save(on?'Ads blocked from the next check-in.':'Ads allowed again.')}));
+ sf.append(simpleSwitch('No incognito tabs','Chrome cannot open a private tab, so everything stays in its history.',!!(c.chromePolicy&&c.chromePolicy.noIncognito),function(on){c.chromePolicy=Object.assign({},c.chromePolicy||{},{noIncognito:on});save(on?'Incognito is off in Chrome.':'Incognito is allowed in Chrome.')}));
+ const picVal=c.blockImages?'none':(c.pictureGuard||'off');
+ const pic=h('select');for(const o of [['off','Show all pictures'],['nudity','Hide pictures that may show nudity'],['skin','Hide those, and cover skin'],['none','No pictures at all']])pic.append(new Option(o[1],o[0]));
+ pic.value=picVal;
+ pic.onchange=function(){if(pic.value==='none'){c.blockImages=true}else{c.blockImages=false;c.pictureGuard=pic.value}save(pic.value==='off'?'All pictures shown.':pic.value==='none'?'Web pages load without pictures.':'Saved. Pictures are checked on the phone from the next check-in.')};
+ sf.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Pictures on web pages'),h('div',{class:'mute'},'Checked on the phone before they show. Each site can be set differently below.')),pic));
+ sf.append(simpleSwitch('Block videos on web pages','Videos do not play. Allow one site\'s videos in the list below. YouTube has its own page.',!!c.blockVideos,function(on){c.blockVideos=on;save(on?'Videos on web pages are blocked.':'Videos on web pages are allowed.')}));
+ box.append(sf);
+ // 3. Requests waiting.
+ siteRequestsCard(box,dv);
+ // 4. Approved sites.
+ const sites=c.sites||{},keys=Object.keys(sites).filter(function(k){return sites[k].type!=='youtube'});
+ const ap=h('div',{class:'card'},h('h2',null,'Approved sites ('+keys.length+')'),h('div',{class:'mute'},'Type a site like khanacademy.org. It opens, with all its pages, on this phone.'));
+ const url=h('input',{type:'text',placeholder:'khanacademy.org',class:'grow'});
+ const add=async function(){
+  const link=url.value.trim();if(!link)return;
+  const channel=ytChannelOf(link);
+  if(channel){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+channel,id:channel,label:'YouTube channel '+channel});url.value='';return}
+  if(isYoutubeUrl(link)&&!/[?&]v=|youtu\.be\//.test(link)){snack('To allow YouTube, use the YouTube page: it allows channels and videos one by one.',1);return}
+  const exact=/^https?:\/\/[^/]+\/.+/.test(link);
+  await addSite(dv,{type:exact?'exact':'domain',url:link,label:hostOfUrl(link)});url.value=''};
+ url.onkeydown=function(e){if(e.key==='Enter')add()};
+ ap.append(h('div',{class:'row',style:'margin-top:8px'},url,btn('Add','',add)),allowForPicker());
+ if(!keys.length)ap.append(h('div',{class:'mute',style:'margin-top:10px'},'No sites yet. Add one above, or approve a request.'));
+ for(const k of keys){
+  const s=sites[k];
+  const pics=h('select');for(const o of [['','Pictures: as set above'],['allow','Pictures: always show'],['block','Pictures: always hide']])pics.append(new Option(o[1],o[0]));
+  pics.value=s.pictures||(s.blockImages?'block':'');
+  pics.onchange=async function(){s.pictures=pics.value;s.blockImages=pics.value==='block';await save('Saved.')};
+  const vids=h('select');for(const o of [['','Videos: as set above'],['allow','Videos: allowed'],['block','Videos: blocked']])vids.append(new Option(o[1],o[0]));
+  vids.value=s.videos||'';
+  vids.onchange=async function(){s.videos=vids.value;await save('Saved.')};
+  ap.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500;word-break:break-all'},s.label||s.url),
+   h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='exact'?'This page only: ':'Whole site: ')+s.url+(s.until?' · '+untilText(s.until):'')),
+   h('div',{class:'row',style:'margin-top:8px'},pics,vids)),
+   btn('Remove','outline',async function(){if(!confirm('Remove '+(s.label||s.url)+'?'))return;delete c.sites[k];await save('Removed.')})))}
+ box.append(ap);
+ // 5. Our own browser, and the other parts.
+ const ob=h('div',{class:'card'},h('h2',null,'Our browser on the phone'));
+ ob.append(simpleSwitch('Browser icon in the MDM app','A light browser that opens only the sites on your list.',!!c.browserAddonEnabled,function(on){c.browserAddonEnabled=on;save(on?'The Browser icon is on the phone now.':'The Browser icon is off.')}));
+ ob.append(simpleSwitch('Make it the only browser','Every link on the phone opens in it. Block Chrome under Apps so it cannot be opened directly.',!!c.restrictBrowsing,function(on){c.restrictBrowsing=on;save(on?'This is now the only browser.':'Chrome and other browsers can be used again.')}));
+ box.append(ob);
+ const more=h('div',{class:'card'});
+ for(const r of [['YouTube settings','Channels, videos, YouTube Music, downloads',function(){goTo('youtube')}],['Sites visited','What they opened and searched',function(){goMore('browser','history')}],['Filter schedule and blocked words','A different level at set times; words that are refused',function(){goMore('browser','access')}]]){
+  const b=h('button',{type:'button',class:'ctl slim'},h('span',{class:'grow'},h('span',{class:'ct'},r[0]),h('span',{class:'mute'},r[1])),h('span',{class:'mute'},'›'));b.onclick=r[2];more.append(b)}
+ box.append(more)}
+
+/* ---------- Server: the computer that runs this dashboard (the Raspberry Pi), and the Cloudflare backup ---------- */
+let piInfo=null,piWifi=null,piLog='',piLoading=false;
+function fmtUp(sec){sec=Math.round(sec||0);const dd=Math.floor(sec/86400),hh=Math.floor(sec%86400/3600),mm=Math.floor(sec%3600/60);return dd?dd+' d '+hh+' h':hh?hh+' h '+mm+' min':mm+' min'}
+async function loadServerPage(){
+ if(piLoading)return;piLoading=true;
+ piInfo=null;piWifi=null;
+ try{piInfo=await call('GET','/api/pi/status')}catch(e){piInfo={error:e.message}}
+ if(piInfo&&!piInfo.error){try{piWifi=await call('GET','/api/pi/wifi')}catch(e){piWifi={error:e.message}}}
+ piLoading=false;
+ if(tab==='server')render()}
+function renderServer(m){
+ const s=state.server||{};
+ const nPi=devices.filter(function(d){return d.via==='pi'}).length,nCf=devices.filter(function(d){return d.via==='cloudflare'}).length;
+ // Which server is this page from.
+ const top=h('div',{class:'card'},h('h2',null,s.runtime==='pi'?'This page comes from your Raspberry Pi':'This page comes from Cloudflare'));
+ if(s.runtime==='pi')top.append(h('div',{class:'mute'},'The Pi is the main server. Cloudflare keeps a backup copy and takes over by itself if the Pi stops answering.'));
+ else top.append(h('div',{class:'mute'},s.primary?(s.outage?'The phones could not reach the Raspberry Pi, so Cloudflare is saving their changes until the Pi is back.':'This is the backup copy. Your phones use the Raspberry Pi; Cloudflare takes over only if the Pi stops answering.'):'Cloudflare is the only server (no Raspberry Pi is set up).'));
+ if(s.runtime!=='pi'&&s.primary)top.append(h('div',{class:'row',style:'margin-top:8px'},h('a',{class:'btn tonal',href:s.primary,style:'text-decoration:none'},'Open the Raspberry Pi dashboard')));
+ m.append(top);
+ if(s.primary){
+  const ph=h('div',{class:'card'},h('h2',null,'Where the phones are connected'),h('div',{class:'mute'},nPi+(nPi===1?' phone is':' phones are')+' using the Raspberry Pi'+(nCf?', '+nCf+(nCf===1?' is':' are')+' using Cloudflare':'')+'. Phones on an older app version use Cloudflare until they update.'));
+  for(const d of devices)ph.append(h('div',{class:'kv'},h('span',null,d.name),h('span',null,viaChip(d)||h('span',{class:'mute'},'not seen yet'),h('span',{class:'mute small',style:'margin-left:8px'},ago(d.lastSeen)))));
+  m.append(ph)}
+ if(s.runtime!=='pi'){return}
+ if(!piInfo){m.append(h('div',{class:'card'},h('div',{class:'mute'},'Loading the Pi…')));loadServerPage();return}
+ if(piInfo.error){m.append(h('div',{class:'card',style:'border-color:var(--error)'},h('div',null,'Could not read the Pi: '+piInfo.error),h('div',{class:'row',style:'margin-top:8px'},btn('Try again','tonal',loadServerPage))));return}
+ const p=piInfo,hl=p.health||{};
+ const pi=(p.polling||{});
+ const hc=h('div',{class:'card'},h('h2',null,'Raspberry Pi'),
+  h('div',{class:'row',style:'margin:6px 0'},btn('Refresh','tonal',loadServerPage)));
+ hc.append(h('div',{class:'kv'},h('span',{class:'mute'},'Model'),h('b',null,hl.model||'unknown')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Running for'),h('b',null,fmtUp(hl.uptimeSeconds)+' (server '+fmtUp(p.serverUptimeSeconds)+')')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Temperature'),h('b',null,hl.cpuTempC!=null?hl.cpuTempC+' °C':'unknown')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Memory free'),h('b',null,hl.memoryFreeMB+' of '+hl.memoryTotalMB+' MB')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Storage free'),h('b',null,hl.diskFreeGB!=null?hl.diskFreeGB+' of '+hl.diskTotalGB+' GB':'unknown')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Power'),h('b',{style:hl.power&&hl.power.ok?'':'color:var(--warn)'},hl.power&&hl.power.raw?(hl.power.ok?(hl.power.underVoltageSinceStart?'OK now (too low earlier since it started)':'Good'):'Too low right now: use the wall charger'):'unknown')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Saved items'),h('b',null,String(p.entries))),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Version'),h('b',null,p.version||'unknown')));
+ m.append(hc);
+ m.append(h('div',{class:'card'},h('h2',null,'How often phones check in'),
+  h('div',{class:'kv'},h('span',{class:'mute'},'While this dashboard is open'),h('b',null,'every '+pi.dashboardOpenSeconds+' seconds')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Just after you change something'),h('b',null,'every '+pi.afterChangeSeconds+' seconds')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Otherwise'),h('b',null,'every '+Math.round(pi.idleSeconds/60)+' minutes'))));
+ // Wi-Fi.
+ const w=piWifi||{};
+ const wc=h('div',{class:'card'},h('h2',null,'Wi-Fi'));
+ const now=p.wifi||{};
+ wc.append(h('div',{class:'kv'},h('span',{class:'mute'},'Connected to'),h('b',null,now.state==='connected'?(now.ssid||now.connection)+(now.signal!=null?' · signal '+now.signal+'%':''):'not connected')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Address on the network'),h('b',null,now.ip||'none')));
+ wc.append(h('div',{style:'font-weight:500;margin-top:12px'},'Networks the Pi remembers'),h('div',{class:'mute small'},'It joins the highest one it can reach. If that one is gone, it moves to the next by itself.'));
+ for(const n of (w.saved||[])){
+  const row=h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},n.name,n.active?h('span',{class:'chip ok',style:'margin-left:8px'},'connected'):null),h('div',{class:'mute small'},'priority '+n.priority)),
+   h('div',{class:'row'},
+    n.active?null:btn('Connect now','tonal',async function(){if(!confirm('Move the Pi to "'+n.name+'" now? If it cannot join, it goes back to a network it knows.'))return;await call('POST','/api/pi/wifi/connect',{name:n.name});snack('Switching… the dashboard may pause for a moment.');setTimeout(loadServerPage,8000)}),
+    btn('Prefer','outline',async function(){const top=Math.max.apply(null,(w.saved||[]).map(function(x){return x.priority}).concat([0]));await call('POST','/api/pi/wifi/priority',{name:n.name,priority:top+10});snack('"'+n.name+'" is now the first choice.');loadServerPage()}),
+    btn('Forget','danger',async function(){if(!confirm('Forget "'+n.name+'"?'))return;try{await call('DELETE','/api/pi/wifi?name='+encodeURIComponent(n.name));snack('Forgotten.');loadServerPage()}catch(e){snack(e.message,1)}})));
+  wc.append(row)}
+ if(!(w.saved||[]).length)wc.append(h('div',{class:'mute small',style:'margin-top:6px'},'None.'));
+ wc.append(h('div',{style:'font-weight:500;margin-top:14px'},'Add a network'));
+ const ssid=h('input',{type:'text',placeholder:'Network name',class:'grow'});
+ const pw=h('input',{type:'password',placeholder:'Password (leave empty for an open network)',class:'grow'});
+ const hid=h('input',{type:'checkbox'});const conn=h('input',{type:'checkbox'});
+ wc.append(h('div',{class:'row',style:'margin-top:8px'},ssid,pw),
+  h('label',{class:'row small',style:'margin-top:8px'},hid,'Hidden network'),
+  h('label',{class:'row small',style:'margin-top:4px'},conn,'Switch to it now (otherwise the Pi uses it when it cannot reach a network it prefers)'),
+  h('div',{class:'row',style:'margin-top:8px'},btn('Save network','',async function(){
+   if(!ssid.value.trim()){snack('Type the network name.',1);return}
+   if(conn.checked&&!confirm('Move the Pi to "'+ssid.value.trim()+'" now? If the password is wrong, it goes back to a network it knows.'))return;
+   const r=await call('POST','/api/pi/wifi',{ssid:ssid.value.trim(),password:pw.value,hidden:hid.checked,connect:conn.checked});
+   pw.value='';snack(r.message||'Saved.');setTimeout(loadServerPage,conn.checked?9000:500)})));
+ const vis=(w.visible||[]).filter(function(v){return !(w.saved||[]).some(function(n){return n.name===v.ssid})}).slice(0,8);
+ if(vis.length){wc.append(h('div',{style:'font-weight:500;margin-top:14px'},'Networks in range'));
+  for(const v of vis){const b=h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},v.ssid+'  ·  '+v.signal+'%  ·  '+(v.security||'open')),btn('Use this name','outline',function(){ssid.value=v.ssid;pw.focus()}));wc.append(b)}}
+ wc.append(h('div',{class:'row',style:'margin-top:10px'},btn('Look for networks again','tonal',async function(){try{piWifi=await call('GET','/api/pi/wifi?rescan=1')}catch(e){snack(e.message,1)}render()})));
+ m.append(wc);
+ // Cloudflare backup.
+ const r=p.replication||{};
+ const bk=h('div',{class:'card'},h('h2',null,'Cloudflare backup'));
+ if(!r.configured)bk.append(h('div',{class:'mute'},'The copy to Cloudflare is not set up.'));
+ else{
+  bk.append(h('div',{class:'kv'},h('span',{class:'mute'},'Last copy'),h('b',null,r.lastCopyAt?ago(r.lastCopyAt)+(r.lastCopyCount?' ('+r.lastCopyCount+' changes)':''):'not yet')),
+   h('div',{class:'kv'},h('span',{class:'mute'},'Waiting to be copied'),h('b',null,String(r.pending||0)+' changes')),
+   h('div',{class:'kv'},h('span',{class:'mute'},'Cloudflare reachable'),h('b',null,r.backupReachable==null?'not checked yet':r.backupReachable?'yes':'no')),
+   h('div',{class:'kv'},h('span',{class:'mute'},'Times Cloudflare was needed'),h('b',null,String(r.outagesRecovered||0))));
+  if(r.lastError)bk.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--error)'},r.lastError));
+  bk.append(h('div',{class:'row',style:'margin-top:10px'},btn('Copy now','tonal',async function(){const x=await call('POST','/api/pi/copy-now',{});snack(x.ok?'Copied.':'It did not work: '+JSON.stringify(x.result||x),!x.ok);loadServerPage()})))}
+ m.append(bk);
+ // Public address.
+ const ts=p.tailscale||{};
+ m.append(h('div',{class:'card'},h('h2',null,'Address'),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Public address'),h('b',null,p.publicUrl||s.primary||'not set')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Tailscale'),h('b',null,ts.installed?(ts.state||'unknown')+(ts.name?' · '+ts.name:''):'not installed')),
+  h('div',{class:'kv'},h('span',{class:'mute'},'Cloudflare address'),h('b',null,p.backupUrl||'not set'))));
+ // Restart + log.
+ const rc=h('div',{class:'card'},h('h2',null,'Restart'),h('div',{class:'mute'},'Restarting the server takes a few seconds. Restarting the Pi takes about a minute. Phones keep their rules meanwhile, and use Cloudflare if they need to.'));
+ rc.append(h('div',{class:'row',style:'margin-top:8px'},
+  btn('Restart the server','tonal',async function(){if(!confirm('Restart the dashboard server now?'))return;await call('POST','/api/pi/restart',{});snack('Restarting. This page comes back in a few seconds.')}),
+  btn('Restart the Pi','danger',async function(){if(!confirm('Restart the whole Raspberry Pi? It is back in about a minute.'))return;await call('POST','/api/pi/reboot',{});snack('Restarting the Pi…')})));
+ m.append(rc);
+ const lg=h('div',{class:'card'},h('h2',null,'Log'));
+ lg.append(h('div',{class:'row',style:'margin-top:6px'},btn(piLog?'Refresh the log':'Show the log','tonal',async function(){try{piLog=(await call('GET','/api/pi/log?lines=120')).text||'(empty)'}catch(e){piLog='Could not read the log: '+e.message}render()})));
+ if(piLog)lg.append(h('pre',{class:'cmd',style:'max-height:360px;overflow:auto'},piLog));
+ m.append(lg)}
+
+/** A quiet refresh for the Raspberry Pi: no limits there, so the dashboard keeps itself up to date every few seconds,
+ *  but only while nothing is being typed or edited, so it never gets in the way. */
+async function liveRefresh(){
+ if(document.hidden||!state||!state.server||state.server.runtime!=='pi')return;
+ if(tab!=='devices'&&tab!=='server')return;
+ const ae=document.activeElement;
+ if(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName||''))return;
+ if(document.querySelector&&document.querySelector('dialog[open]'))return;
+ try{
+  const d=await call('GET','/api/devices');
+  const same=JSON.stringify(d)===JSON.stringify(devices);
+  if(same)return;
+  const ae2=document.activeElement;if(ae2&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae2.tagName||''))return;
+  devices=d;if(tab==='devices')render()}catch(e){}}
+
 load().catch(function(e){snack(e.message,1);document.getElementById('main').textContent='Could not load: '+e.message});
 // Every 5 minutes, not 60 seconds -- each of these three calls reads every device from Workers KV
 // (one get() per device), and a dashboard tab left open all day was the main thing actually burning
@@ -2903,4 +3286,6 @@ setInterval(function(){if(document.hidden)return;
  call('GET','/api/browsers').then(function(b){for(const x of b)x.isBrowser=true;browsers=b;if(tab==='devices')render()}).catch(function(){});
  call('GET','/api/windevices').then(function(w){windevices=w;if(tab==='devices')render()}).catch(function(){});
 },300000);
+// The Raspberry Pi has no limits, so there the dashboard keeps itself fresh every few seconds (see liveRefresh).
+setInterval(liveRefresh,5000);
 </script></body></html>`;
