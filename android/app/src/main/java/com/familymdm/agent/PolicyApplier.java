@@ -169,8 +169,20 @@ final class PolicyApplier {
 
         protectSelf(c, dpm, admin);
         if (EmergencyUnlock.isActive(c)) {
-            releaseManagedState(c, dpm, admin);
+            // A timed "all off" keeps the Agent itself protected (it cannot be uninstalled or its data cleared); the emergency file lets go of that too.
+            releaseManagedState(c, dpm, admin, !EmergencyUnlock.fileActive(c));
+            if (!Agent.prefs(c).getBoolean("offActiveNoted", false)) {
+                Agent.prefs(c).edit().putBoolean("offActiveNoted", true).apply();
+                long until = Agent.prefs(c).getLong("restrictionsOffUntil", 0);
+                Agent.addEvent(c, "restriction", EmergencyUnlock.timedOff(c)
+                        ? "All restrictions are OFF until " + new java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(new java.util.Date(until)) + " (from the dashboard)"
+                        : "All restrictions are OFF (emergency unlock)");
+            }
             return;
+        }
+        if (Agent.prefs(c).getBoolean("offActiveNoted", false)) {
+            Agent.prefs(c).edit().putBoolean("offActiveNoted", false).apply();
+            Agent.addEvent(c, "restriction", "Restrictions are back ON");
         }
         applyFrp(c, dpm, admin, policy.optJSONArray("frpAccounts"));
         SelfSetup.run(c, dpm, admin); // grants itself what it needs, switches its accessibility service on, keeps it on
@@ -1091,6 +1103,10 @@ final class PolicyApplier {
     /** The policy-cleanup half of release() -- everything except actually giving up device-owner
      * status, which release() and transferOwnershipTo() each finish differently. */
     private static void releaseManagedState(Context c, DevicePolicyManager dpm, ComponentName admin) {
+        releaseManagedState(c, dpm, admin, false);
+    }
+
+    private static void releaseManagedState(Context c, DevicePolicyManager dpm, ComponentName admin, boolean keepSelfProtection) {
         TlsInspection.release(c, dpm, admin); // first: stop pointing browsers at the proxy and remove its certificate
         Kiosk.clear(c);
         Kiosk.syncPreferredActivities(c, false, false);
@@ -1113,6 +1129,7 @@ final class PolicyApplier {
             }
             c.stopService(new Intent(c, DnsFilterVpnService.class));
         }
+        if (keepSelfProtection) return;
         try {
             dpm.setUninstallBlocked(admin, c.getPackageName(), false);
             if (Build.VERSION.SDK_INT >= 30) {

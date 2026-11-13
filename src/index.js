@@ -777,7 +777,7 @@ async function adminApiInner(request, env, url, session) {
       const src = /^[0-9a-f]{1,32}$/.test(tb.deviceId || "") ? await getJSON(env, `device:${tb.deviceId}`, null) : null;
       if (!src || !canSee(session, src.ownerId)) return json({ error: "Unknown device" }, 404);
       const { cfg } = await configOf(env, src);
-      const { frpAccounts, pauseUntil, ...config } = cfg; // reset-protection accounts belong to one phone, never copied; nor does a pause
+      const { frpAccounts, pauseUntil, restrictionsOffUntil, restrictionsOffSince, ...config } = cfg; // reset-protection accounts belong to one phone, never copied; nor does a pause
       const id = randomHex(6);
       await putJSON(env, `template:${id}`, { id, name, from: src.name, config, createdAt: Date.now(), ownerId: isClient(session) ? session.id : null });
       return json({ id, name });

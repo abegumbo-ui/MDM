@@ -625,6 +625,11 @@ export function normalizeConfig(input) {
     // Web filtering stands down until this time (ms), then returns by itself on the phone's own clock.
     pauseUntil: Number.isFinite(Number(c.pauseUntil)) && Number(c.pauseUntil) > 0 ? Math.floor(Number(c.pauseUntil)) : 0,
     // The internet is off for every app (except Android's essentials and "internet only" apps) until this time (ms).
+    // "Turn off all restrictions for a while": the phone drops every restriction until this time (its own clock) and puts them back by itself.
+    // Never more than 24 hours ahead, so a forgotten switch cannot leave a phone open for days. restrictionsOffSince tells the dashboard
+    // whether the phone has reported the change since.
+    restrictionsOffUntil: Number.isFinite(Number(c.restrictionsOffUntil)) && Number(c.restrictionsOffUntil) > 0 ? Math.min(Math.floor(Number(c.restrictionsOffUntil)), Date.now() + 24 * 3600 * 1000) : 0,
+    restrictionsOffSince: Number.isFinite(Number(c.restrictionsOffSince)) && Number(c.restrictionsOffSince) > 0 ? Math.floor(Number(c.restrictionsOffSince)) : 0,
     internetOffUntil: Number.isFinite(Number(c.internetOffUntil)) && Number(c.internetOffUntil) > 0 ? Math.floor(Number(c.internetOffUntil)) : 0,
     // Only the apps listed in internetApps (plus Android's essentials) can use the internet.
     internetOnlyApps: c.internetOnlyApps === true,
@@ -908,6 +913,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.youtubeOffMessage = cfg.youtubeOffMessage;
   out.pauseUntil = cfg.pauseUntil;
   out.internetOffUntil = cfg.internetOffUntil;
+  out.restrictionsOffUntil = cfg.restrictionsOffUntil;
   out.internetOnlyApps = cfg.internetOnlyApps;
   out.internetApps = cfg.internetApps;
   out.locationEvery = cfg.locationEvery;
@@ -990,6 +996,7 @@ export function summarizeConfigChange(before, after) {
   if (!!before.blockAds !== !!after.blockAds) lines.push("Ads: " + (after.blockAds ? "blocked" : "allowed"));
   if (!!before.blockImageSearch !== !!after.blockImageSearch) lines.push("Image search: " + (after.blockImageSearch ? "blocked" : "allowed"));
   if ((before.internetOffUntil || 0) !== (after.internetOffUntil || 0)) lines.push(after.internetOffUntil ? "Internet off for a while" : "Internet back on");
+  if ((before.restrictionsOffUntil || 0) !== (after.restrictionsOffUntil || 0)) lines.push(after.restrictionsOffUntil ? "ALL restrictions turned off for a while" : "Restrictions back on");
   if ((before.pauseUntil || 0) !== (after.pauseUntil || 0)) lines.push(after.pauseUntil ? "Web filtering paused for a while" : "Web filtering back on");
   if (!!before.internetOnlyApps !== !!after.internetOnlyApps || JSON.stringify(before.internetApps || []) !== JSON.stringify(after.internetApps || [])) lines.push("Internet only for chosen apps: " + (after.internetOnlyApps ? "on (" + (after.internetApps || []).length + " apps)" : "off"));
   if ((before.locationEvery || 0) !== (after.locationEvery || 0)) lines.push("Location history: " + (after.locationEvery ? "every " + after.locationEvery + " minutes" : "off"));
