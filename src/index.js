@@ -16,6 +16,9 @@ const POLL_SECONDS = 300; // nobody on the dashboard: every 5 minutes (keeps the
 // Workers KV's free tier allows ~1000 writes/day, so a device record is only
 // rewritten when something changed or the stored "last seen" is this stale.
 const LAST_SEEN_WRITE_MS = 10 * 60 * 1000;
+// The newest check-in time of each phone, kept in memory only. The saved record is written at most every 10 minutes (to spare Workers KV's
+// free write limit), so on its own it can look up to 10 minutes old; this makes the dashboard show the real time without any extra writes.
+const liveSeen = new Map();
 // Same idea for reads: the free tier's ~100,000/day cap is mostly spent on this one value, read
 // on every single agent sync (every POLL_SECONDS, per device) even though the logo itself changes rarely.
 // Cached per Worker isolate instead of re-read from KV every time; an isolate can live for many
@@ -299,7 +302,7 @@ const canSee = (session, ownerId) => session.role === "admin" || ownerId === ses
 const publicDevice = (d) => ({
   id: d.id,
   name: d.name,
-  lastSeen: d.lastSeen,
+  lastSeen: Math.max(d.lastSeen || 0, liveSeen.get(d.id) || 0),
   via: d.via || "",
   info: d.info || {},
   packages: d.packages || [],
@@ -1428,6 +1431,7 @@ async function agentApi(request, env, url, ctx) {
     const now = Date.now();
     if (now - (d.lastSeen || 0) > LAST_SEEN_WRITE_MS) dirty = true;
     d.lastSeen = now;
+    liveSeen.set(d.id, now);
     // Which server the phone used this time (shown as "via Raspberry Pi / Cloudflare"); saved only when it changes.
     const viaNow = viaOf(env, body);
     if (d.via !== viaNow) { d.via = viaNow; dirty = true; }
