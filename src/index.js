@@ -1893,6 +1893,11 @@ async function agentApi(request, env, url, ctx) {
         dirty = true;
       }
     }
+    // A command the phone never confirmed (an app update replaces the very app that would report back) stops showing as "waiting" after an hour.
+    if ((d.inflight || []).some((c) => now - (c.at || 0) > 3600 * 1000)) {
+      d.inflight = d.inflight.filter((c) => now - (c.at || 0) <= 3600 * 1000);
+      dirty = true;
+    }
     const commands = d.queue || [];
     if (commands.length) {
       d.queue = [];
