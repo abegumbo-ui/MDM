@@ -2,7 +2,7 @@
 // "Ask for ...", "My channels", "My videos" (or "Your music") -- what the parent allowed on the dashboard -- in
 // YouTube's own style, with a Download button under each item when downloads are on.
 // __MDM_DATA__ is replaced with {"channels":[{"h":"@x","t":"Name","i":"pic"}],"videos":[{"v":"id","t":"Title","i":"pic"}],
-//   "ask":true,"downloads":[{"v":"id","t":"Title","i":"pic"}],"music":false,"dl":true}.
+//   "ask":true,"downloads":[{"v":"id","t":"Title","i":"pic"}],"music":false,"dl":true,"nopics":false}.
 (function (data) {
   if (window.__mdmShelf) return;
   window.__mdmShelf = true;
@@ -76,7 +76,8 @@
   function tile(v, target, withDownload) {
     var w = el('div', 'vw');
     var a = el('a', 'v'); a.href = target;
-    var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = v.i || ('https://i.ytimg.com/vi/' + v.v + '/mqdefault.jpg'); a.appendChild(img);
+    // "Show song pictures" off (nopics): only the title, no picture and no empty picture area.
+    if (!data.nopics) { var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = v.i || ('https://i.ytimg.com/vi/' + v.v + '/mqdefault.jpg'); a.appendChild(img); }
     a.appendChild(el('div', null, v.t || (music ? 'Song' : 'Video')));
     w.appendChild(a);
     if (withDownload) { var d = dlButton(v); if (d) w.appendChild(d); }

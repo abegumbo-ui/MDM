@@ -1702,7 +1702,7 @@ function renderSearchPictures(m,dv){
    card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Cover skin of'),
     h('div',{class:'mute'},'Women only / men only: the phone tells men and women apart by their faces and bodies (NudeNet). When it cannot tell, it covers. Pictures only; videos are always covered for everyone.')),wh))}
   pg.value=c.pictureGuard||'off';pg.onchange=function(){c.pictureGuard=pg.value;save(pg.value==='off'?'All pictures shown.':'Saved. Pictures are checked on the phone from the next check-in.')};
-  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Pictures in our Browser'),
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Pictures on web pages (every browser)'),
    h('div',{class:'mute'},'Every picture on a web page is checked on the phone before it shows. "Hide" greys out a picture that may show nudity. "Cover skin" also paints grey blocks over every skin-coloured patch (faces and hands too; it goes by colour). Works in our own Browser, and in Chrome, Samsung Internet and Edge when Inspection (the last tab) is on'+(c.tlsInspection?' (it is).':' (it is not right now).')+' Videos are not covered; pages with many pictures load a little slower.')),pg))}
  if(!dv.isBrowser){
   card.append(h('div',{class:'mute small',style:'margin-top:12px'},'Pictures and videos are chosen per site: open the Allow list (Sites) and use the Allow / Block boxes next to each site. Nothing to type or copy here.'));
@@ -1854,7 +1854,7 @@ function renderBrowserSummary(m,dv){
   c.safeSearch?'Forced':'Not forced',c.safeSearch?'ok':'','access');
  line('Pictures',c.blockImages?(c.tlsInspection?'Hidden on web pages in our browsers, in Chrome, and in other browsers.':'Hidden in our own browsers and in Chrome. Other browsers (Firefox, Samsung Internet...) still show them unless Inspection is on.'):'Shown as normal.',
   c.blockImages?'Hidden':'Shown','','access');
- line('Chrome and other browsers',level==='off'?(c.restrictBrowsing?'Web links open in our browser only. Chrome itself is not filtered: block it under Apps if it should not be used.':'Not filtered. Only our own browsers follow the allowed list. Block Chrome under Apps, or pick Moderate or Strict to filter it.'):'Filtered by site name through the Agent\'s site filter, with the same categories as above.',
+ line('Chrome and other browsers',level==='off'?'Approved sites only, the same in every browser: Chrome, Samsung Internet, Firefox, Edge and our own Browser all open only the approved sites.':'Filtered by site name through the Agent\'s site filter, with the same categories as above.',
   level==='off'?'Not filtered':'Filtered','','apps');
  line('Inspection (certificate)',c.tlsInspection?'On: the Agent can look inside pages in Chrome and other browsers, so Restricted YouTube applies there too.':'Off. Our own browsers do not need it. Only needed to apply page-level rules (Restricted YouTube) inside Chrome.',
   c.tlsInspection?'On':'Off',c.tlsInspection?'warn':'','inspect');
