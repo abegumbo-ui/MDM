@@ -134,6 +134,15 @@ final class TlsInspection {
         }
     }
 
+    private static Set<String> hostSet(JSONArray a) {
+        Set<String> out = new HashSet<>();
+        for (int i = 0; a != null && i < a.length(); i++) {
+            String h = a.optString(i, "").trim().toLowerCase(Locale.ROOT);
+            if (!h.isEmpty()) out.add(h.startsWith("www.") ? h.substring(4) : h);
+        }
+        return out;
+    }
+
     private static void updateRules(Context c, JSONObject policy) {
         Set<String> bypass = new HashSet<>();
         for (String d : DEFAULT_BYPASS) bypass.add(d);
@@ -172,6 +181,7 @@ final class TlsInspection {
             if (!h.isEmpty()) noPics.add(h.startsWith("www.") ? h.substring(4) : h);
         }
         rules.setNoPictureSites(noPics);
+        rules.setVideoRules(policy.optBoolean("blockVideos", false), hostSet(policy.optJSONArray("videoAllow")), hostSet(policy.optJSONArray("noVideoSites")));
         String guard = policy.optString("pictureGuard", "off");
         rules.setPictureFilter("nudity".equals(guard) || "skin".equals(guard) ? new ProxyPictureFilter(c.getApplicationContext(), guard, policy.optString("skinWho", "all")) : null);
         // "Cover skin" also covers skin in videos, in Chrome and the other browsers that go through Inspection.

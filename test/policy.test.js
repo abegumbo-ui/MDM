@@ -325,3 +325,29 @@ test("signing in to YouTube is off unless allowed; whole screens blocked on the 
   const p = buildAgentPolicy(normalizeConfig({ blockedScreens: [good] }), []);
   assert.deepEqual(p.blockedScreens, [good], "the phone is told");
 });
+
+test("per-site pictures and videos: the boxes on each approved site become the phone's lists", () => {
+  const cfg = {
+    sites: {
+      a: { type: "domain", url: "https://maps.example.com", pictures: "allow", videos: "block" },
+      b: { type: "domain", url: "https://www.news.example.org", pictures: "block", videos: "allow" },
+      c: { type: "domain", url: "https://plain.example.net" },
+      d: { type: "domain", url: "https://old.example.io", blockImages: true },
+      e: { type: "domain", url: "https://junk.example.io", pictures: "maybe", videos: 5 },
+      y: { type: "youtube", id: "@somebody", pictures: "block", videos: "block" },
+    },
+    blockVideos: true,
+  };
+  const p = buildAgentPolicy(cfg, []);
+  assert.deepEqual(p.imagesAllow, ["maps.example.com"], "Allow pictures");
+  assert.deepEqual([...p.noPictureSites].sort(), ["news.example.org", "old.example.io"], "Block pictures (and the older single tick)");
+  assert.deepEqual(p.videoAllow, ["news.example.org"], "Allow videos");
+  assert.deepEqual(p.noVideoSites, ["maps.example.com"], "Block videos");
+  assert.equal(p.blockVideos, true, "the everywhere switch");
+  const s = normalizeSites(cfg.sites);
+  assert.equal(s.find((x) => x.host === "junk.example.io").pictures, undefined, "an unknown value is dropped");
+  assert.equal(s.find((x) => x.host === "junk.example.io").videos, undefined);
+  assert.equal(normalizeSite({ type: "domain", url: "https://x.test", pictures: "block" }).blockImages, true, "Block pictures also sets the older flag");
+  assert.equal(buildAgentPolicy({}, []).blockVideos, false, "videos are shown unless switched off");
+  assert.deepEqual(buildAgentPolicy({}, []).noVideoSites, []);
+});

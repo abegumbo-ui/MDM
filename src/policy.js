@@ -257,7 +257,10 @@ export function normalizeSite(raw) {
     url: url.includes("://") ? url : "https://" + url,
     host,
     label: String(raw.label || host).slice(0, 80),
-    blockImages: raw.blockImages === true,
+    blockImages: raw.blockImages === true || raw.pictures === "block",
+    // Per site: pictures / videos "allow" (shown even when they are blocked everywhere) or "block" (hidden on this site).
+    ...(raw.pictures === "allow" || raw.pictures === "block" ? { pictures: raw.pictures } : {}),
+    ...(raw.videos === "allow" || raw.videos === "block" ? { videos: raw.videos } : {}),
     installable: raw.installable !== false,
     ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
     ...untilOf(raw),
@@ -572,6 +575,8 @@ export function normalizeConfig(input) {
     youtubeDns: ["moderate", "strict"].includes(c.youtubeDns) ? c.youtubeDns : "off",
     // Hides pictures on web pages: always in our own browsers; in Chrome and others only with inspection on.
     blockImages: c.blockImages === true,
+    // Videos on web pages do not play, except on the sites marked "Allow videos" (our own browsers; Chrome and others with inspection on).
+    blockVideos: c.blockVideos === true,
     // Refuses the "Images" tab of Google, Bing and DuckDuckGo (own browsers; Chrome with inspection on).
     blockImageSearch: c.blockImageSearch === true,
     // Pictures in our Browser: "off", "nudity" (hide pictures that may show nudity) or "skin" (that, and cover skin).
@@ -915,8 +920,13 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.callLog = cfg.callLog;
   out.textLog = cfg.textLog;
   out.textContent = cfg.textContent;
-  out.imagesAllow = cfg.imagesAllow;
-  out.noPictureSites = cfg.noPictureSites;
+  // Pictures and videos per site: the boxes next to each site on the allowlist, on top of the older lists.
+  const siteHosts = (pick) => [...new Set(normalizeSites(cfg.sites).filter((s) => s.type !== "youtube" && !expired(s) && pick(s)).map((s) => String(s.host || "").replace(/^www\./, "")).filter(Boolean))];
+  out.imagesAllow = [...new Set([...cfg.imagesAllow, ...siteHosts((s) => s.pictures === "allow")])];
+  out.noPictureSites = [...new Set([...cfg.noPictureSites, ...siteHosts((s) => s.pictures === "block" || s.blockImages === true)])];
+  out.blockVideos = cfg.blockVideos;
+  out.videoAllow = siteHosts((s) => s.videos === "allow");
+  out.noVideoSites = siteHosts((s) => s.videos === "block");
   return out;
 }
 
@@ -975,6 +985,7 @@ export function summarizeConfigChange(before, after) {
   if (!!before.blockWaStatus !== !!after.blockWaStatus) lines.push("WhatsApp Status: " + (after.blockWaStatus ? "closed" : "allowed"));
   if (JSON.stringify(before.blockedParts || []) !== JSON.stringify(after.blockedParts || [])) lines.push("Blocked parts of apps: " + (after.blockedParts || []).length);
   if (JSON.stringify(before.blockedScreens || []) !== JSON.stringify(after.blockedScreens || [])) lines.push("Blocked whole screens of apps: " + (after.blockedScreens || []).length);
+  if (!!before.blockVideos !== !!after.blockVideos) lines.push("Videos on web pages: " + (after.blockVideos ? "blocked" : "shown"));
   if (!!before.protectScreens !== !!after.protectScreens) lines.push("Protected Settings pages (MDM app, certificate): " + (after.protectScreens ? "on" : "off"));
   if (!!before.youtubeSignIn !== !!after.youtubeSignIn) lines.push("Signing in to YouTube: " + (after.youtubeSignIn ? "allowed" : "not allowed"));
   if (!!before.messageAlerts !== !!after.messageAlerts) lines.push("Message alerts: " + (after.messageAlerts ? "on" : "off"));
