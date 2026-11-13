@@ -69,7 +69,10 @@ const BURST_WINDOW_MS = 3 * 60 * 1000;
 // quiet time, or an administrator changes something or queues a command. Phones then check in at once instead of at their next timer.
 // On Cloudflare there are never any waiting phones (it answers "unsupported"), so this costs nothing there.
 const wakers = new Set();
+/** How many phones are waiting to be woken right now (shown on the Pi's health line). */
+export const waitingPhones = () => wakers.size;
 function wakePhones() {
+  if (wakers.size && typeof console !== "undefined") console.log(`waking ${wakers.size} waiting phone(s)`);
   for (const f of [...wakers]) f();
 }
 function waitForWake(ms) {

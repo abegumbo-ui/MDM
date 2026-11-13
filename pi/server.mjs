@@ -3,7 +3,7 @@
 //   node pi/server.mjs          (settings from the environment, see readEnv)
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
-import worker from '../src/index.js';
+import worker, { waitingPhones } from '../src/index.js';
 import { KvStore } from './kv.mjs';
 import { startReplication } from './sync.mjs';
 import { createAdmin } from './admin.mjs';
@@ -46,7 +46,7 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
     if (req.url === '/healthz') {
       const mem = process.memoryUsage();
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, role: vars.ROLE, entries: kv.size, uptimeSeconds: Math.round((Date.now() - started) / 1000), rssMB: Math.round(mem.rss / 1048576) }));
+      res.end(JSON.stringify({ ok: true, role: vars.ROLE, entries: kv.size, uptimeSeconds: Math.round((Date.now() - started) / 1000), rssMB: Math.round(mem.rss / 1048576), waiting: waitingPhones() }));
       return;
     }
     const chunks = [];

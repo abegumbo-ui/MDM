@@ -69,11 +69,12 @@ final class TlsInspection {
         }
         public InspectProxy.Response onRequest(InspectProxy.Request r) {
             Context c = appContext;
-            if (c != null && BrowserCategoryFilter.blocksViaProxy(c, r.host)) {
+            String why = c == null ? null : BrowserCategoryFilter.refusalViaProxy(c, r.host);
+            if (why != null) {
                 String dest = r.headers.get("Sec-Fetch-Dest");
                 String accept = r.headers.get("Accept");
                 boolean page = dest != null ? dest.equals("document") : accept != null && accept.startsWith("text/html");
-                if (page) return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), "This kind of site is closed on this phone.", null));
+                if (page) return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), why, null));
                 return new InspectProxy.Response(403, "text/plain", "Closed on this phone.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
             return rules.onRequest(r);
