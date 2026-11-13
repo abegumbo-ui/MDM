@@ -199,6 +199,16 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/summary"], /Approved sites \(1\)/);
   assert.match(seen["browser/summary"], /More settings/);
   assert.match(seen["browser/summary"], /What this phone can open/, "the old tabs are still there under More settings");
+  assert.match(seen.list, /Add device/);
+  assert.match(seen.list, /Screen time today: 2 h 14 min of 3 h/, "the front page is one card for each device");
+  assert.match(seen.list, /1 request|3 requests|4 requests/);
+  assert.match(seen["apps/regular"], /New apps wait for my approval/);
+  assert.match(seen["apps/regular"], /Apps on this phone/);
+  assert.match(seen["apps/regular"], /Puzzle Fun/);
+  assert.match(seen["time/report"], /Screen time per day/);
+  assert.match(seen["time/report"], /Bedtime/);
+  assert.match(seen["youtube/yt"], /What can they watch on YouTube\?/);
+  assert.match(seen["youtube/yt"], /Only what I allow/);
   assert.match(seen.server, /This page comes from Cloudflare/);
   assert.match(seen.badgeCloudflare, /Cloudflare/);
   assert.match(seen.badgePi, /Raspberry Pi/);
