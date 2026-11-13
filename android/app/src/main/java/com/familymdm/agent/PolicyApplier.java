@@ -214,6 +214,14 @@ final class PolicyApplier {
             WebFilter.setPolicy(c, withAds, filterBase); // starts downloading the category lists if needed
             // "Approved sites only" applies in Chrome and every other browser too (BrowserCategoryFilter).
             Agent.prefs(c).edit().putBoolean("approvedOnlyBrowsers", "off".equals(filterTier)).apply();
+            // One plain line in the activity log whenever the website level changes.
+            org.json.JSONArray extrasNow = policy.optJSONArray("filterExtras");
+            String levelNow = ("off".equals(filterTier) ? "Approved sites only" : "strict".equals(filterTier) ? "Strict" : "Medium")
+                    + (extrasNow != null && extrasNow.length() > 0 && !"off".equals(filterTier) ? " + " + extrasNow.toString().replaceAll("[\\[\\]\"]", "").replace(",", ", ") : "");
+            if (!levelNow.equals(Agent.prefs(c).getString("lastFilterLevel", ""))) {
+                Agent.prefs(c).edit().putString("lastFilterLevel", levelNow).apply();
+                Agent.addEvent(c, "restriction", "Website level on this phone is now: " + levelNow);
+            }
         } catch (Exception e) {
             Log.w(TAG, "category lists: " + e);
         }

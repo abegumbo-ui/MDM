@@ -30,10 +30,29 @@ export const skipKey = (k) => k.startsWith("repl:") || k.startsWith("shot:") || 
 export const serversFor = (env) =>
   env.PRIMARY_URL && env.BACKUP_URL ? { primary: String(env.PRIMARY_URL).replace(/\/+$/, ""), backup: String(env.BACKUP_URL).replace(/\/+$/, "") } : undefined;
 
+let piCheck = { at: 0, up: false };
+/** Cloudflare only: does the Raspberry Pi answer right now? (asked at most every 20 seconds) */
+async function primaryAnswers(env, s) {
+  if (!s || !s.primary || env.RUNTIME === "pi") return env.RUNTIME === "pi";
+  const now = Date.now();
+  if (now - piCheck.at < 20000) return piCheck.up;
+  let up = false;
+  try {
+    const r = await fetch(s.primary + "/healthz", { signal: AbortSignal.timeout(2500), headers: { "cache-control": "no-cache" } });
+    up = r.ok;
+  } catch {
+    up = false;
+  }
+  piCheck = { at: now, up };
+  return up;
+}
+
 /** Which server this is, for the dashboard badge: "pi" on the Raspberry Pi, otherwise "cloudflare". */
 export async function serverInfo(env) {
   const s = serversFor(env);
   return {
+    // True when the Raspberry Pi is up (always true on the Pi itself): lets the Cloudflare page say the Pi is the one running.
+    primaryUp: await primaryAnswers(env, s),
     runtime: env.RUNTIME === "pi" ? "pi" : "cloudflare",
     role: env.ROLE || "",
     primary: s ? s.primary : "",

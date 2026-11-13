@@ -380,10 +380,7 @@ public class MainActivity extends Activity {
         if (enrolled) {
             long last = Agent.prefs(this).getLong("lastSync", 0);
             fresh = last != 0 && System.currentTimeMillis() - last < 20 * 60 * 1000L;
-            String where = Api.where();
-            if (where.isEmpty()) where = Agent.prefs(this).getString("server", "").replace("https://", "");
             sb.append(fresh ? "\u25CF Connected" : "\u25CB Not checked in lately");
-            if (!where.isEmpty()) sb.append(" \u00B7 ").append(where);
             sb.append("\nLast check-in: ").append(last == 0 ? "not yet"
                     : DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(last)));
         } else if (standalone) {

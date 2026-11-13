@@ -120,7 +120,11 @@ test("every dashboard page, group and tab opens without an error", async () => {
     "piWifi={saved:[{name:'Home',priority:10,autoconnect:true,active:true},{name:'Guest',priority:5,autoconnect:true,active:false}],visible:[{ssid:'Cafe',signal:50,security:'WPA2',active:false}]};tab='server';render()");
   seen.badgePi = reg.get("srv").textContent;
   seen.homeOnPi = tryRender("phone home with the Pi badge", "tab='devices';openId=devices[0].id;render()");
-  tryRender("back to Cloudflare", "state.server=__s0;piInfo=null;piWifi=null");
+  // The Cloudflare page says what is RUNNING: the Raspberry Pi when it answers, even though this page is the backup copy.
+  tryRender("badge: Cloudflare page, Pi running", "state.server={runtime:'cloudflare',role:'backup',primary:'https://pi.example',backup:'https://cf.example',primaryUp:true,outage:false};tab='devices';openId=null;render()");
+  seen.badgeCfPiUp = reg.get("srv").textContent;
+  tryRender("badge: Cloudflare page, Pi off", "state.server={runtime:'cloudflare',role:'backup',primary:'https://pi.example',backup:'https://cf.example',primaryUp:false,outage:true};tab='devices';openId=null;render()");
+  seen.badgeCfPiDown = reg.get("srv").textContent;  tryRender("back to Cloudflare", "state.server=__s0;piInfo=null;piWifi=null");
   tryRender("back to the phone", "tab='devices';openId=devices[0].id;render()");
   const groups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,g.subs.map(function(s){return s[0]})]}))", ctx);
   for (const [g, subs] of JSON.parse(groups)) {
@@ -221,6 +225,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen.server, /This page comes from Cloudflare/);
   assert.match(seen.badgeCloudflare, /Cloudflare/);
   assert.match(seen.badgePi, /Raspberry Pi/);
+  assert.match(seen.badgeCfPiUp, /Raspberry Pi is running/);
+  assert.match(seen.badgeCfPiDown, /Raspberry Pi is off/);
   assert.match(seen.serverPi, /This page comes from your Raspberry Pi/);
   assert.match(seen.serverPi, /Networks the Pi remembers/);
   assert.match(seen.serverPi, /Guest/);
