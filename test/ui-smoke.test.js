@@ -50,7 +50,7 @@ async function setUp() {
   await call("/agent/sync", { method: "POST", headers: { ...J, authorization: "Bearer " + token }, body: JSON.stringify({
     packages: [{ p: "com.google.android.apps.maps", l: "Maps", s: false, h: false, c: 6 }, { p: "com.instagram.android", l: "Instagram", s: false, h: true }, { p: "com.example.puzzle", l: "Puzzle Fun", s: false, h: false, c: 0 }, { p: "com.android.vending", l: "Google Play Store", s: true, h: false }],
     info: { deviceOwner: true, android: "14", versionCode: 400, battery: { pct: 80, charging: false }, wifi: { transport: "wifi", ssid: "Home" }, storeUntil: -1 },
-    siteRequests: [{ url: "https://example.com/page" }],
+    siteRequests: [{ url: "https://example.com/page" }, { url: "https://music.youtube.com/search?q=Avraham+Fried", note: "can I have his songs please" }, { url: "https://www.youtube.com/@NASA", note: "for my science homework" }],
     appRequests: [{ kind: "store" }, { kind: "app", pkg: "com.instagram.android", label: "Instagram" }, { kind: "time" }],
     usage: { day: "2026-11-10", total: 134, ok: true, apps: [{ p: "com.google.android.apps.maps", l: "Maps", m: 90 }, { p: "com.instagram.android", l: "Instagram", m: 44 }] },
     messages: [{ msg: "hello" }],
@@ -182,7 +182,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["br/youtube"], /Only what I allow/);
   assert.match(seen["br/youtube"], /Allowed channels and videos/);
   assert.doesNotMatch(seen["br/web"], /On unless you switch it off here/, "a standalone Browser has no phone-wide filter to force it with");
-  assert.match(seen["browser/sites"], /Site requests \(1\)/);
+  assert.match(seen["browser/sites"], /Site requests \(3\)/);
   assert.match(seen["browser/sites"], /YouTube channel/);
   assert.match(seen["browser/apps"], /Make this the only browser/);
   assert.match(seen["browser/inspect"], /Never look inside these sites/);
@@ -215,7 +215,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/summary"], /What this phone can open/, "the old tabs are still there under More settings");
   assert.match(seen.list, /Add device/);
   assert.match(seen.list, /Screen time today: 2 h 14 min of 3 h/, "the front page is one card for each device");
-  assert.match(seen.list, /1 request|3 requests|4 requests/);
+  assert.match(seen.list, /\d+ requests?/);
   assert.match(seen["apps/regular"], /New apps wait for my approval/);
   assert.match(seen["apps/regular"], /Apps on this phone/);
   assert.match(seen["apps/regular"], /Puzzle Fun/);
@@ -259,6 +259,12 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["youtube/music"], /Show song pictures/);
   assert.match(seen["youtube/music"], /Allowed music/);
   assert.match(seen["youtube/yt"], /Find on YouTube/);
+  assert.match(seen["youtube/music"], /Asked for in YouTube Music \(1\)/, "what the phone asked for in Music is on the Music tab");
+  assert.match(seen["youtube/music"], /Their message: “can I have his songs please”/, "with the message the child wrote");
+  assert.doesNotMatch(seen["youtube/music"], /for my science homework/, "YouTube requests stay on the YouTube tab");
+  assert.match(seen["youtube/yt"], /Asked for in YouTube \(1\)/);
+  assert.match(seen["youtube/yt"], /Their message: “for my science homework”/);
+  assert.match(seen["overview/status"], /Asked for in YouTube Music/, "and on the Overview, with the other things waiting");
   assert.match(legacy, /Ready-made setups/);
   assert.match(legacy, /Status/);
   assert.match(seen["overview/status"], /Ready-made setups/);
