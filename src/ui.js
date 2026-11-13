@@ -677,6 +677,7 @@ function renderDeviceDetail(m,d){
  renderHealthSummary(ov,d);
  renderWhatsOn(ov,d);
  renderAppRequests(ov,d);
+ ytRequestsCard(ov,d,false);ytRequestsCard(ov,d,true);
  renderAllOff(ov,d);
  renderPause(ov,d);
  renderInternetOff(ov,d);
@@ -866,14 +867,15 @@ function renderDeviceDetail(m,d){
  const side=h('nav',{class:'side'});
  for(const g of GROUPS){
   const b=h('button',{class:'nav'+(g.key===sec?' on':'')},svgIcon(g.icon,'currentColor'),g.label);
-  const nBadge=g.key==='overview'?nMsg+nApp:g.key==='browser'?nSite:g.key==='safety'?healthProblems(d).filter(function(x){return x.level==='bad'}).length+(d.msgAlerts||[]).length:0;
+  const nBadge=g.key==='overview'?nMsg+nApp+ytRequestList(d,false).length+ytRequestList(d,true).length:g.key==='youtube'?ytRequestList(d,false).length+ytRequestList(d,true).length:g.key==='browser'?nSite:g.key==='safety'?healthProblems(d).filter(function(x){return x.level==='bad'}).length+(d.msgAlerts||[]).length:0;
   if(nBadge)b.append(h('span',{class:'badge'},String(nBadge)));
   b.onclick=function(){goTo(g.key)};side.append(b)}
  const content=h('div',{class:'content'});
  const cur=getSub(sec);
  const pills=h('div',{class:'pills'});
  for(const sub of G.subs){
-  const b=h('button',{class:sub[0]===cur?'on':''},sub[1]+(sec==='overview'&&sub[0]==='messages'&&nMsg?' ('+nMsg+')':''));
+  const nYt=sec==='youtube'&&(sub[0]==='yt'||sub[0]==='music')?ytRequestList(d,sub[0]==='music').length:0;
+  const b=h('button',{class:sub[0]===cur?'on':''},sub[1]+(sec==='overview'&&sub[0]==='messages'&&nMsg?' ('+nMsg+')':'')+(nYt?' ('+nYt+')':''));
   b.onclick=function(){subs[sec]=sub[0];saveSubs();render()};pills.append(b)}
  content.append(pills);
  if(GROUP_HELP[sec])content.append(h('div',{class:'mute small',style:'margin:-4px 0 12px'},GROUP_HELP[sec]));
@@ -1133,21 +1135,21 @@ function renderRequestsCard(m,reqs,dv,title,help){
    const buttons=h('div',{class:'row',style:'margin-top:8px'});
    if(ytFind!==undefined){
     buttons.append(btn('Find it','',function(){findOnYoutube(dv,decodeURIComponent(ytFind.replace(/\+/g,' ')))}),btn('Dismiss','outline',dismiss));
-    rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
     continue}
    const musicFind=(/^https:\/\/music\.youtube\.com\/search\?q=([^&]*)/.exec(r.url)||[])[1];
    if(musicFind!==undefined){const qtext=decodeURIComponent(musicFind.replace(/\+/g,' '));
     buttons.append(btn('Find it','',function(){findOnMusic(dv,qtext)}),btn('Dismiss','outline',dismiss));
-    rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music: "'+qtext+'"'),r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music: "'+qtext+'"'),r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
     continue}
    const musicCh=(/^https:\/\/music\.youtube\.com\/channel\/(UC[A-Za-z0-9_-]{22})/.exec(r.url)||[])[1];
    if(musicCh){
     buttons.append(btn('Show their songs and albums','',function(){goTo('youtube','music');openMusicList('channel='+encodeURIComponent(musicCh),'this artist','artist')}),btn('Dismiss','outline',dismiss));
-    rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music artist'),r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music artist'),r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
     continue}
    if(ytCh){
     buttons.append(btn('Allow this channel','',async function(){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+ytCh,id:ytCh,label:ytCh});await dismiss()}),btn('Dismiss','outline',dismiss));
-    rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
     continue}
    buttons.append(btn(isVideo?'Allow this video':'Allow this page only','',async function(){
      const label=info&&info.title?info.title+(info.author?' — '+info.author:''):hostOfUrl(r.url);
@@ -1157,7 +1159,7 @@ function renderRequestsCard(m,reqs,dv,title,help){
      await addSite(dv,{type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}));
    }
    buttons.append(btn('Dismiss','outline',dismiss));
-   rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,detail,r.note?h('div',{style:'margin-top:4px'},'“'+r.note+'”'):null,
+   rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,detail,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,
     h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
    if(isVideo){
     call('GET','/api/youtube-info?url='+encodeURIComponent(r.url)).then(function(i){
@@ -2026,7 +2028,7 @@ const YT_CHOICES=[
 function renderYoutube(m,dv){
  const c=dv.config,cur=c.youtubeMode||'auto';
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
- ytRequestsCard(m,dv,false);
+ ytRequestsCard(m,dv,false,true);
  const card=h('div',{class:'card'},h('h2',null,'YouTube'));
  const seg=h('div',{class:'seg'});
  for(const [v,label] of YT_CHOICES){const x=h('button',{class:v===cur?'on':''},label);x.onclick=function(){c.youtubeMode=v;save('YouTube: '+label+'.')};seg.append(x)}
@@ -2103,10 +2105,15 @@ function songRow(dv,r,have,group){
   h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.title),h('div',{class:'mute small'},[r.channel,r.length].filter(Boolean).join(' · '))),
   have.has(r.id)?h('span',{class:'chip ok'},'Allowed'):btn('Allow','',function(){allowSongs(dv,[r],group||'')}))}
 /** What the phone asked for in YouTube (music=false) or YouTube Music (music=true), with the buttons to approve it. */
-function ytRequestsCard(m,dv,music){
+function ytRequestList(dv,music){return (dv.siteRequests||[]).filter(function(r){const host=ytHostOf(r.url||'');return music?host==='music.youtube.com':(host==='youtube.com'||host==='m.youtube.com'||host==='youtu.be')})}
+function ytRequestsCard(m,dv,music,showEmpty){
  if(dv.isBrowser||dv.isWindows)return;
- const reqs=(dv.siteRequests||[]).filter(function(r){const host=ytHostOf(r.url||'');return music?host==='music.youtube.com':(host==='youtube.com'||host==='m.youtube.com'||host==='youtu.be')}).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at,note:r.note}});
- renderRequestsCard(m,reqs,dv,music?'Asked for in YouTube Music':'Asked for in YouTube','What the phone asked to open. Approve it here, or find it and approve it. Nothing opens until you do.')}
+ const reqs=ytRequestList(dv,music).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at,note:r.note}});
+ const title=music?'Asked for in YouTube Music':'Asked for in YouTube';
+ if(!reqs.length){
+  if(showEmpty)m.append(h('div',{class:'card'},h('h2',null,title+' (0)'),h('div',{class:'mute'},'Nothing is waiting. When the phone asks for '+(music?'a song, an artist or an album':'a channel or a video')+', it shows up here with the message the child wrote.')));
+  return}
+ renderRequestsCard(m,reqs,dv,title,'What the phone asked to open, with the message the child wrote. Approve it here, or find it and approve it. Nothing opens until you do.')}
 function renderYoutubeMusic(m,dv){
  if(dv.isWindows||dv.isBrowser)return;
  const c=dv.config;
@@ -2117,7 +2124,7 @@ function renderYoutubeMusic(m,dv){
    h('div',{class:'mute'},'Its own icon, music only: no YouTube videos or channels in it. It follows the same choice as YouTube (now: '+choice[1]+'). With "Only what I allow", only the music approved below plays; anything else shows "Ask for this song" and sends you a request.')),
    sw(c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'The YouTube Music icon goes on the phone at its next check-in.':'The YouTube Music icon is removed at the next check-in.')})),
   h('div',{class:'row',style:'margin-top:8px'},btn('Change the YouTube choice','outline',function(){goTo('youtube','yt')}))));
- ytRequestsCard(m,dv,true);
+ ytRequestsCard(m,dv,true,true);
  // ---- approve music: songs, artists, albums ----
  const card=h('div',{class:'card'},h('h2',null,'Approve music'),h('div',{class:'mute'},'Search for a song, an artist or an album. Allow one song, or every song of an artist or album in one tap. Downloads work for whatever is allowed here.'));
  const seg=h('div',{class:'seg',style:'margin-top:8px'});
@@ -2428,7 +2435,7 @@ function renderWinDetail(m,w){
    const rq=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Asked for on the computer ('+w.siteRequests.length+')'),allowForPicker());
    for(const r of w.siteRequests.slice().reverse()){
     const host=hostOfUrl(r.url);
-    rq.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},host||r.url),r.note?h('div',{style:'margin-top:2px'},'“'+r.note+'”'):null,h('div',{class:'mute small'},r.url+' · '+ago(r.at))),
+    rq.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},host||r.url),r.note?h('div',{style:'margin-top:2px'},'Their message: “'+r.note+'”'):null,h('div',{class:'mute small'},r.url+' · '+ago(r.at))),
      btn('Allow','',async function(){const until=allowUntil();if(until<0){snack('Choose how long to allow it (at least one minute).',1);return}allowFor='always';
       if(until)w.config.dnsAllowTimed=[...(w.config.dnsAllowTimed||[]).filter(function(t){return t.host!==host}),{host:host,until:until}];
       else w.config.dnsAllowlist=[...new Set([...(w.config.dnsAllowlist||[]),host])];
