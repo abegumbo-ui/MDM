@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Html;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,7 +16,11 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.view.Gravity;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.familymdm.agent.sitepolicy.SitePolicy;
@@ -49,6 +55,15 @@ public class YoutubeAddonActivity extends Activity {
     /** Where this screen starts and where "home" goes (YouTube Music overrides it). */
     protected String home() {
         return HOME_YT;
+    }
+
+    /** True for the YouTube Music icon: only music.youtube.com, only the music the parent allowed. */
+    protected boolean music() {
+        return false;
+    }
+
+    private String name() {
+        return music() ? "YouTube Music" : "YouTube";
     }
     private static final String SCHEME = "mdmguard";
 
@@ -86,6 +101,7 @@ public class YoutubeAddonActivity extends Activity {
             String u = s.optString("url", "");
             String h = SitePolicy.hostOf(u);
             if (h != null && (SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h))) {
+                if ("music.youtube.com".equals(h) != music()) continue; // songs for Music, videos for YouTube
                 String id = SitePolicy.youtubeVideoId(u);
                 if (id != null) out.add(id);
             }
@@ -99,17 +115,83 @@ public class YoutubeAddonActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         root = new FrameLayout(this);
-        root.setBackgroundColor(Color.BLACK);
-        web = new WebView(this);
-        web.getSettings().setJavaScriptEnabled(true);
-        web.getSettings().setDomStorageEnabled(true);
+        root.setBackgroundColor(0xFF0F0F0F);
+        web = makeWebView();
+        root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        loading = loadingView();
+        root.addView(loading, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(root);
+        lastAllowed = home();
+        open(home());
+    }
+
+    private View loading;
+    private final Handler slow = new Handler(Looper.getMainLooper());
+
+    /** Shown until the page paints (the screen was plain black while YouTube loaded), with a way out if it never does. */
+    private View loadingView() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setBackgroundColor(0xFF0F0F0F);
+        box.setClickable(true);
+        box.addView(new ProgressBar(this));
+        TextView t = new TextView(this);
+        t.setText("Opening " + name() + "…");
+        t.setTextColor(0xFFCCCCCC);
+        t.setTextSize(16);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0, 24, 0, 0);
+        box.addView(t);
+        return box;
+    }
+
+    private void loadingOn() {
+        if (loading == null) return;
+        loading.setVisibility(View.VISIBLE);
+        slow.removeCallbacksAndMessages(null);
+        slow.postDelayed(() -> {
+            if (loading != null && loading.getVisibility() == View.VISIBLE && !isFinishing()) {
+                loadingOff();
+                show(page("Taking a long time", "The page is slow to open. Check the Wi-Fi or mobile data and try again.", "<a class=b href='" + SCHEME + "://home'>Try again</a>"));
+            }
+        }, 25000);
+    }
+
+    private void loadingOff() {
+        slow.removeCallbacksAndMessages(null);
+        if (loading != null) loading.setVisibility(View.GONE);
+    }
+
+    /** The web view's process was stopped (low memory): a new one, back on the last page. Without this the screen stays black. */
+    private void rebuildWeb() {
+        if (isFinishing()) return;
+        try {
+            root.removeView(web);
+            web.destroy();
+        } catch (Exception ignored) {
+            // replacing it anyway
+        }
+        fullscreen = null;
+        fullscreenDone = null;
+        web = makeWebView();
+        root.addView(web, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        showingBlock = false;
+        open(lastAllowed == null ? home() : lastAllowed);
+    }
+
+    private WebView makeWebView() {
+        WebView w = new WebView(this);
+        w.getSettings().setJavaScriptEnabled(true);
+        w.getSettings().setDomStorageEnabled(true);
         // Without "wv" YouTube treats this as a normal phone browser instead of asking for its app.
-        String ua = web.getSettings().getUserAgentString();
-        web.getSettings().setUserAgentString(ua.replace("; wv", "").replace(" Version/4.0 ", " "));
+        String ua = w.getSettings().getUserAgentString();
+        w.getSettings().setUserAgentString(ua.replace("; wv", "").replace(" Version/4.0 ", " "));
         CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
-        web.setWebViewClient(new Client());
-        web.setWebChromeClient(new WebChromeClient() {
+        CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
+        w.setBackgroundColor(0xFF0F0F0F);
+        w.setWebViewClient(new Client());
+        w.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onShowCustomView(View view, CustomViewCallback callback) {
                 fullscreen = view;
@@ -129,10 +211,7 @@ public class YoutubeAddonActivity extends Activity {
                 fullscreenDone = null;
             }
         });
-        root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        setContentView(root);
-        lastAllowed = home();
-        open(home());
+        return w;
     }
 
     // Where "back" goes from a page that did not open: the last page that did (not the web view's history,
@@ -182,12 +261,14 @@ public class YoutubeAddonActivity extends Activity {
         showingBlock = false;
         lastAllowed = url;
         web.stopLoading();
+        loadingOn();
         web.loadUrl(url);
     }
 
     private void show(String html) {
         trusted = false;
         showingBlock = true;
+        loadingOff();
         web.loadDataWithBaseURL("about:blank", html, "text/html", "utf-8", null);
     }
 
@@ -203,19 +284,23 @@ public class YoutubeAddonActivity extends Activity {
         // Signing in to YouTube and its consent page are fine; nothing else opens here.
         // Signing in opens only when the parent allowed it; YouTube's consent page and Google's page parts are fine.
         if (SitePolicy.isYoutubeSignIn(url) && !policy().optBoolean("youtubeSignIn", false))
-            return notAllowed(url, "Signing in to YouTube is turned off on this phone.", homeButton());
+            return notAllowed(url, "Signing in to " + name() + " is turned off on this phone.", homeButton());
         if (!yt) {
             if (SitePolicy.isYoutubeSignIn(url) || h.equals("consent.youtube.com") || h.endsWith(".gstatic.com")) return null;
-            return notAllowed(url, "Only YouTube opens in this app.", homeButton());
+            return notAllowed(url, "Only " + name() + " opens in this app.", homeButton());
         }
+        // The two icons never open each other's pages: no YouTube videos in Music, no Music in YouTube.
+        boolean musicHost = "music.youtube.com".equals(h);
+        if (music() && !musicHost) return notAllowed(url, "Only YouTube Music opens in this app. YouTube has its own icon.", homeButton());
+        if (!music() && musicHost) return notAllowed(url, "YouTube Music has its own icon.", homeButton());
         String m = mode();
         if ("blocked".equals(m)) return offPage();
         String video = SitePolicy.youtubeVideoId(url);
         if (video != null && allowedVideoIds().contains(video)) { trusted = true; return null; }
         List<SitePolicy.Site> list = sites();
-        String handle = SitePolicy.youtubeChannelHandle(url);
+        String handle = music() ? null : SitePolicy.youtubeChannelHandle(url);
         if (handle != null && SitePolicy.youtubeChannelAllowed(handle, list)) { trusted = true; return null; }
-        if (video != null) {
+        if (video != null && !music()) {
             String known = YoutubeLookup.cached(this, video);
             if (known != null && !known.isEmpty() && SitePolicy.youtubeChannelAllowed(known, list)) { trusted = true; return null; }
             if (known == null && "channels".equals(m) && SitePolicy.hasYoutubeChannels(list)) {
@@ -228,17 +313,18 @@ public class YoutubeAddonActivity extends Activity {
         if (kind == SitePolicy.YT_HOME) return null; // its feed is emptied and the allowed ones are shown (scripts)
         if ("restricted".equals(m)) {
             if (SitePolicy.youtubeRestrictedAllows(url)) return null;
-            return notAllowed(url, "This part of YouTube is not available.", homeButton());
+            return notAllowed(url, "This part of " + name() + " is not available.", homeButton());
         }
         // Searching, to find videos to ask for: the ones not allowed show covered, with "Ask for access".
         if (kind == SitePolicy.YT_SEARCH && policy().optBoolean("youtubeSearch", true)) return null;
-        return notAllowed(url, "Only the YouTube channels and videos that were allowed open here.", askButton(url, "Ask for access") + homeButton());
+        return notAllowed(url, music() ? "Only the music that was allowed opens here." : "Only the YouTube channels and videos that were allowed open here.",
+                askButton(url, music() ? "Ask for this song" : "Ask for access") + homeButton());
     }
 
     private String offPage() {
         String msg = policy().optString("youtubeOffMessage", "");
-        if (msg.isEmpty()) msg = "Sorry, YouTube is not available right now. Ask your administrator to open it.";
-        return page("YouTube is off", esc(msg), askButton(home(), "Ask to open YouTube"));
+        if (msg.isEmpty()) msg = "Sorry, " + name() + " is not available right now. Ask your administrator to open it.";
+        return page(name() + " is off", esc(msg), askButton(home(), "Ask to open " + name()));
     }
 
     private class Client extends WebViewClient {
@@ -271,7 +357,14 @@ public class YoutubeAddonActivity extends Activity {
 
         @Override
         public void onPageCommitVisible(WebView view, String url) {
+            loadingOff();
             scripts(view, url);
+        }
+
+        @Override
+        public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+            runOnUiThread(YoutubeAddonActivity.this::rebuildWeb);
+            return true;
         }
 
         @Override
@@ -282,6 +375,7 @@ public class YoutubeAddonActivity extends Activity {
             }
             // Back from a stale copy of a blocked page (restored from the history) goes to the last allowed page too.
             if ("about:blank".equals(url)) showingBlock = true;
+            if (url != null && url.startsWith("http")) loadingOff();
             scripts(view, url);
         }
 
@@ -311,11 +405,18 @@ public class YoutubeAddonActivity extends Activity {
         if (p.optBoolean("blockAds", false)) { String a = YoutubeScripts.adBlock(); if (a != null) js.append(a); }
         String m = mode();
         if ("restricted".equals(m) || "channels".equals(m)) {
-            js.append(YoutubeRestricted.HIDE_SCRIPT);
+            if (!music()) js.append(YoutubeRestricted.HIDE_SCRIPT);
             String shelf = shelf("channels".equals(m));
             if (shelf != null) js.append(shelf);
-            String cover = coverScript(m);
-            if (cover != null) js.append(cover);
+            if (!music()) {
+                String cover = coverScript(m);
+                if (cover != null) js.append(cover);
+            }
+        }
+        if (music()) {
+            if (!p.optBoolean("youtubeSignIn", false)) js.append("window.__mdmNoSignIn=true;");
+            String clean = YoutubeScripts.load("music_clean.js");
+            if (clean != null) js.append(clean);
         }
         if ("skin".equals(p.optString("pictureGuard", "off"))) { String v = YoutubeScripts.load("video_skin.js"); if (v != null) js.append(v); }
         if (Downloads.allowed(this)) { String d = YoutubeScripts.load("youtube_download.js"); if (d != null) js.append(d); }
@@ -347,11 +448,13 @@ public class YoutubeAddonActivity extends Activity {
                 String thumb = s.optString("thumb", "");
                 if (!thumb.startsWith("https://")) thumb = "";
                 if ("youtube".equals(s.optString("type"))) {
+                    if (music()) continue; // channels are YouTube's, not Music's
                     String handle = s.optString("id", "");
                     if (handle.matches("@[a-z0-9._-]{3,30}"))
                         channels.put(new JSONObject().put("h", handle).put("t", s.optString("label", handle).replaceFirst("^YouTube channel ", "")).put("i", thumb));
                 } else {
                     String u = s.optString("url", ""), h = SitePolicy.hostOf(u);
+                    if ("music.youtube.com".equals(h) != music()) continue; // Music lists songs, YouTube lists videos
                     String id = h != null && (SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h)) ? SitePolicy.youtubeVideoId(u) : null;
                     if (id != null) {
                         String t = s.optString("label", "");
@@ -359,9 +462,10 @@ public class YoutubeAddonActivity extends Activity {
                     }
                 }
             }
-            JSONArray downloads = Downloads.forPages(this);
+            JSONArray downloads = Downloads.forPages(this, music());
             if (channels.length() == 0 && videos.length() == 0 && !ask && downloads.length() == 0) return null;
-            return YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads).toString());
+            return YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads)
+                    .put("music", music()).put("dl", Downloads.allowed(this)).toString());
         } catch (Exception e) {
             return null;
         }
@@ -381,7 +485,7 @@ public class YoutubeAddonActivity extends Activity {
             }
             show(page("Sent", "Your parent sees it on the dashboard. Once it is allowed, it opens here.", homeButton()));
         } else if ("download".equals(what)) {
-            String why = Downloads.request(this, u.getQueryParameter("u"));
+            String why = Downloads.request(this, u.getQueryParameter("u"), music() || "music".equals(u.getQueryParameter("k")));
             Toast.makeText(this, why == null ? "Downloading…" : why, Toast.LENGTH_LONG).show();
         } else if ("play".equals(what)) {
             startActivity(new Intent(this, DownloadPlayerActivity.class).putExtra("id", u.getQueryParameter("id")));
@@ -392,13 +496,15 @@ public class YoutubeAddonActivity extends Activity {
         }
     }
 
-    private static String askPage(String url) {
+    private String askPage(String url) {
         boolean known = url != null && !url.isEmpty();
+        boolean mu = music();
         String field = known
                 ? "<p>" + esc(url) + "</p><input type=hidden name=w value='x'>"
-                : "<input name=w autocomplete=off placeholder='A link, or the name of a channel or video' style='font-size:17px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px'>";
-        return page(known ? "Ask your parent" : "Ask for a channel or video", known ? "Your parent gets this on the dashboard." : "Paste a link, or write what you are looking for.",
-                "<form onsubmit=\"var v=this.w.value.trim();if(!v)return false;var u=this.u.value||(/youtu\\.?be|youtube\\.com|^https?:/i.test(v)?(v.indexOf('://')<0?'https://'+v:v):'https://www.youtube.com/results?search_query='+encodeURIComponent(v));"
+                : "<input name=w autocomplete=off placeholder='" + (mu ? "The name of a song, album or artist, or a link" : "A link, or the name of a channel or video") + "' style='font-size:17px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px'>";
+        String searchBase = mu ? "https://music.youtube.com/search?q=" : "https://www.youtube.com/results?search_query=";
+        return page(known ? "Ask your parent" : (mu ? "Ask for a song, album or artist" : "Ask for a channel or video"), known ? "Your parent gets this on the dashboard." : "Paste a link, or write what you are looking for.",
+                "<form onsubmit=\"var v=this.w.value.trim();if(!v)return false;var u=this.u.value||(/youtu\\.?be|youtube\\.com|^https?:/i.test(v)?(v.indexOf('://')<0?'https://'+v:v):'" + searchBase + "'+encodeURIComponent(v));"
                         + "location.href='" + SCHEME + "://request?u='+encodeURIComponent(u)+'&note='+encodeURIComponent(this.n.value.trim());return false\">"
                         + "<input type=hidden name=u value='" + (known ? esc(url) : "") + "'>" + field
                         + "<textarea name=n rows=3 placeholder='Message to your parent (optional)' style='margin-top:12px;font-size:16px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px'></textarea>"
@@ -409,11 +515,11 @@ public class YoutubeAddonActivity extends Activity {
         return "<a class=b href='" + SCHEME + "://ask?u=" + Uri.encode(url) + "'>" + esc(label) + "</a>";
     }
 
-    private static String homeButton() {
-        return "<a class='b o' href='" + SCHEME + "://home'>Go to YouTube's home page</a>";
+    private String homeButton() {
+        return "<a class='b o' href='" + SCHEME + "://home'>Go to " + name() + "'s home page</a>";
     }
 
-    private static String notAllowed(String url, String reason, String buttons) {
+    private String notAllowed(String url, String reason, String buttons) {
         buttons = "<a class=b href='" + SCHEME + "://back'>Go back</a>" + buttons.replace("class=b href='" + SCHEME + "://ask", "class='b o' href='" + SCHEME + "://ask");
         return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.titleFor(url),
                 "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>" + (reason != null ? "<p>" + esc(reason) + "</p>" : "")

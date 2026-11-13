@@ -34,6 +34,12 @@ public class DownloadPlayerActivity extends Activity {
         v.setVideoPath(new File(Downloads.dir(this), o.optString("file")).getAbsolutePath());
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER);
         root.addView(v, lp);
+        android.widget.TextView name = new android.widget.TextView(this);
+        name.setText(o.optString("t"));
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(16);
+        name.setPadding(32, 48, 32, 16);
+        root.addView(name, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
         setContentView(root);
         setTitle(o.optString("t"));
         v.setOnPreparedListener(p -> v.start());

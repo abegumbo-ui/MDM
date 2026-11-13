@@ -54,11 +54,16 @@ final class Downloads {
 
     /** Starts a download; returns null on success, otherwise what to tell the child. */
     static String request(Context c, String url) {
+        return request(c, url, false);
+    }
+
+    /** music = a YouTube Music song: only its sound is downloaded, and it is listed in the Music icon (not YouTube). */
+    static String request(Context c, String url, boolean music) {
         String why = refusal(c, url);
         if (why != null) return why;
         String id = SitePolicy.youtubeVideoId(url);
-        if (find(c, id) != null) return "That video is already downloaded.";
-        Intent i = new Intent(c, DownloadService.class).putExtra("url", "https://www.youtube.com/watch?v=" + id);
+        if (find(c, id) != null) return music ? "That song is already downloaded." : "That video is already downloaded.";
+        Intent i = new Intent(c, DownloadService.class).putExtra("url", "https://www.youtube.com/watch?v=" + id).putExtra("music", music);
         try {
             c.startForegroundService(i);
         } catch (Exception e) {
@@ -87,9 +92,13 @@ final class Downloads {
     }
 
     static synchronized void add(Context c, String id, String title, String file, String thumb) {
+        add(c, id, title, file, thumb, false);
+    }
+
+    static synchronized void add(Context c, String id, String title, String file, String thumb, boolean music) {
         try {
             JSONArray old = list(c), next = new JSONArray();
-            next.put(new JSONObject().put("id", id).put("t", title).put("file", file).put("i", thumb == null ? "" : thumb).put("at", System.currentTimeMillis()));
+            next.put(new JSONObject().put("id", id).put("t", title).put("file", file).put("i", thumb == null ? "" : thumb).put("k", music ? "music" : "video").put("at", System.currentTimeMillis()));
             for (int i = 0; i < old.length(); i++) {
                 JSONObject o = old.optJSONObject(i);
                 if (o != null && !id.equals(o.optString("id"))) next.put(o);
@@ -117,13 +126,19 @@ final class Downloads {
         }
     }
 
-    /** For the YouTube home page and the Browser: [{id, t, i}] of what is downloaded. */
+    /** For the YouTube home page and the Browser: [{id, t, i}] of what is downloaded (videos). */
     static JSONArray forPages(Context c) {
+        return forPages(c, false);
+    }
+
+    /** The Music icon lists the downloaded songs; the YouTube icon and the Browser list the downloaded videos. */
+    static JSONArray forPages(Context c, boolean music) {
         JSONArray out = new JSONArray();
         JSONArray a = list(c);
         for (int i = 0; i < a.length(); i++) {
             JSONObject o = a.optJSONObject(i);
             if (o == null || !new File(dir(c), o.optString("file")).exists()) continue;
+            if ("music".equals(o.optString("k")) != music) continue;
             try {
                 out.put(new JSONObject().put("v", o.optString("id")).put("t", o.optString("t")).put("i", o.optString("i")));
             } catch (Exception ignored) {
