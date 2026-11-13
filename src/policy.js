@@ -644,6 +644,7 @@ export function normalizeConfig(input) {
     protectScreens: c.protectScreens !== false,
     // Whole screens of apps closed the moment they open (picked on the phone with ✓ Block this screen).
     blockedScreens: normalizeBlockedScreens(c.blockedScreens),
+    blockedComponents: normalizeBlockedComponents(c.blockedComponents),
     // Sites that will not open with ads blocked: their ads load but are covered (our Browser).
     adsCoveredSites: [...new Set(normalizeDnsAllowlist(c.adsCoveredSites).map((h) => h.replace(/^www\./, "")))],
     // Our Browser notices such sites by itself (on unless switched off).
@@ -941,6 +942,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.youtubeSignIn = cfg.youtubeSignIn;
   out.protectScreens = cfg.protectScreens;
   out.blockedScreens = cfg.blockedScreens;
+  out.blockedComponents = cfg.blockedComponents;
   out.adsCoveredSites = cfg.adsCoveredSites;
   out.adsAutoCover = !cfg.adsAutoCoverOff;
   out.youtubeOffMessage = cfg.youtubeOffMessage;
@@ -1036,6 +1038,7 @@ export function summarizeConfigChange(before, after) {
   if (JSON.stringify(before.filterSkipApps || []) !== JSON.stringify(after.filterSkipApps || [])) lines.push("Apps not filtered: " + (after.filterSkipApps || []).length);
   if (!!before.blockWaStatus !== !!after.blockWaStatus) lines.push("WhatsApp Status: " + (after.blockWaStatus ? "closed" : "allowed"));
   if (JSON.stringify(before.blockedParts || []) !== JSON.stringify(after.blockedParts || [])) lines.push("Blocked parts of apps: " + (after.blockedParts || []).length);
+  if (JSON.stringify(before.blockedComponents || []) !== JSON.stringify(after.blockedComponents || [])) lines.push("Blocked app screens (by name of the screen): " + (after.blockedComponents || []).length);
   if (JSON.stringify(before.blockedScreens || []) !== JSON.stringify(after.blockedScreens || [])) lines.push("Blocked whole screens of apps: " + (after.blockedScreens || []).length);
   if (!!before.blockVideos !== !!after.blockVideos) lines.push("Videos on web pages: " + (after.blockVideos ? "blocked" : "shown"));
   if (!!before.protectScreens !== !!after.protectScreens) lines.push("Protected Settings pages (MDM app, certificate): " + (after.protectScreens ? "on" : "off"));
@@ -1160,6 +1163,19 @@ export function normalizeBlockedScreens(v) {
     if (parts.length < 2 || !/^[A-Za-z0-9_.]{1,200}$/.test(parts[0]) || parts.slice(1).some((x) => !x || x.length > 80)) continue;
     const clean = parts.slice(0, 6).join("\u001f");
     if (!out.includes(clean)) out.push(clean);
+    if (out.length >= 100) break;
+  }
+  return out;
+}
+
+/** Whole app screens blocked on the phone with the ✓ picker: "package/ClassName". Shown on the dashboard, removable from either side. */
+export function normalizeBlockedComponents(v) {
+  const out = [];
+  for (const s of Array.isArray(v) ? v : []) {
+    if (typeof s !== "string") continue;
+    const t = s.trim();
+    if (!/^[A-Za-z0-9_.]{1,200}\/[A-Za-z0-9_.$]{1,300}$/.test(t) || out.includes(t)) continue;
+    out.push(t);
     if (out.length >= 100) break;
   }
   return out;

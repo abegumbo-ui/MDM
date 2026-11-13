@@ -231,3 +231,11 @@ test("daily time per site: tidied, sent to the phone with the screen-time rules,
   const d = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.name.endsWith("Sl"));
   assert.deepEqual(d.usage["2026-11-13"].sites, [{ h: "youtube.com", m: 30, l: 120 }, { h: "music.youtube.com", m: 1440, l: 60 }], "broken entries are dropped and minutes are capped");
 });
+
+test("screens blocked on the phone (by the name of the screen) are kept in the settings, so the dashboard lists them and can remove them", () => {
+  const c = normalizeConfig({ blockedComponents: ["com.example.app/com.example.app.PlayerActivity", "bad", "com.example.app/com.example.app.PlayerActivity"] });
+  assert.deepEqual(c.blockedComponents, ["com.example.app/com.example.app.PlayerActivity"]);
+  assert.deepEqual(buildAgentPolicy(c, []).blockedComponents, ["com.example.app/com.example.app.PlayerActivity"]);
+  assert.deepEqual(normalizeConfig({}).blockedComponents, [], "none by default");
+  assert.ok(summarizeConfigChange(normalizeConfig({}), c).includes("Blocked app screens (by name of the screen): 1"));
+});

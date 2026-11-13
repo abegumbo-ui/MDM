@@ -2817,11 +2817,17 @@ function renderBlockedScreens(m,dv){
  renderScreenByName(m,dv);
  const c=dv.config,list=c.blockedScreens||[];
  const card=h('div',{class:'card'},h('h2',null,'Blocked screens ('+list.length+')'),
-  h('div',{class:'mute'},'Screens picked on the phone with ✓ Block this screen (a Settings page, a screen of an app). Each closes the moment it opens. Remove one here and the phone opens it again at its next check-in.'));
+  h('div',{class:'mute'},'Screens picked on the phone with ✓ Block this screen (a Settings page, a screen of an app), or added here by name. Each closes the moment it opens. Everything blocked on the phone shows up here, and removing one here (or on the phone) opens it again at the next check-in.'));
  card.append(h('div',{class:'setting',style:'margin-top:10px'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect the MDM app and the certificate'),
   h('div',{class:'mute small'},'Closes, the moment they open: the MDM app\'s own Settings pages (its accessibility switch, App info) and the pages that show or remove the phone\'s certificate. So neither can be turned off. Needs the accessibility switch on; not applied during an emergency unlock.')),
   sw(c.protectScreens!==false,async function(on){c.protectScreens=on;try{await saveConfigFor(dv,on?'Those Settings pages are protected.':'Those Settings pages open normally.')}catch(e){snack(e.message,1)}render()})));
- if(!list.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
+ const comps=c.blockedComponents||[];
+ if(!list.length&&!comps.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
+ // Whole screens of apps blocked on the phone with the picker, by the name of the screen itself (package/ClassName).
+ for(const comp of comps){const at=comp.indexOf('/'),pk=comp.slice(0,at),cls=comp.slice(at+1);
+  const nice=cls.slice(cls.lastIndexOf('.')+1).replace(/(Activity|Fragment)$/,'').replace(/([a-z])([A-Z])/g,'$1 $2')||cls;
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},nice),h('div',{class:'mute small'},appLabelOf(dv,pk)+' \u00b7 '+cls)),
+   btn('Remove','outline',async function(){c.blockedComponents=comps.filter(function(x){return x!==comp});try{await saveConfigFor(dv,'Removed. The phone opens it again at its next check-in.')}catch(e){snack(e.message,1)}render()})))}
  for(const s of list){const p=s.split('\u001f');
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},p.slice(1).join(' › ')),h('div',{class:'mute small'},appLabelOf(dv,p[0]))),
    btn('Remove','outline',async function(){c.blockedScreens=list.filter(function(x){return x!==s});try{await saveConfigFor(dv,'Removed. The phone opens it again at its next check-in.')}catch(e){snack(e.message,1)}render()})))}

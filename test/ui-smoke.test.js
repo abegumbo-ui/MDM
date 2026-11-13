@@ -246,6 +246,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   const legacy = tryRender("legacy look", "uiMode='legacy';deviceSection='overview';subs['overview']='status';tab='devices';openId=devices[0].id;render()");
   const legacyBrowser = tryRender("legacy: web protection page", "uiMode='legacy';deviceSection='browser';subs['browser']='access';tab='devices';openId=devices[0].id;render()");
   const legacyApps = tryRender("legacy: apps", "uiMode='legacy';deviceSection='apps';subs['apps']='regular';tab='devices';openId=devices[0].id;render()");
+  tryRender("a screen blocked on the phone", "devices[0].config.blockedComponents=['com.example.app/com.example.app.PlayerActivity']");
   const legacyBlocking = tryRender("legacy: blocking apps and screens", "uiMode='legacy';deviceSection='apps';subs['apps']='blocking';tab='devices';openId=devices[0].id;render()");
   const legacyTime = tryRender("legacy: time limits", "uiMode='legacy';deviceSection='time';subs['time']='limits';tab='devices';openId=devices[0].id;render()");
   const legacyOpen = tryRender("legacy: Open level", "devices[0]._bf=devices[0].config.browserFilter;devices[0].config.browserFilter='custom';devices[0].config.filterKinds=['adult','news'];uiMode='legacy';deviceSection='browser';subs['browser']='access';tab='devices';openId=devices[0].id;render()");
@@ -262,6 +263,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(legacyApps, /Internet for this app/, "per-app internet switch right on the Apps list");
   assert.match(legacyBlocking, /Block a screen by its name/, "a screen can be blocked by typing its name");
   assert.match(legacyBlocking, /Look it up/);
+  assert.match(legacyBlocking, /Player/, "a screen blocked on the phone by its name is listed, to remove from here");
+  assert.match(legacyBlocking, /com\.example\.app\.PlayerActivity/);
   assert.match(legacyTime, /Time on a site, every day/, "a daily allowance can be given to a site");
   assert.match(legacyTime, /every day \(not 2 hours from when you approved it\)/);
   assert.match(legacyOpen, /Open: close only what I choose/, "the new lowest level is offered");

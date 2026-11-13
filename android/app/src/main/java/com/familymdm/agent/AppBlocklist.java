@@ -43,20 +43,51 @@ final class AppBlocklist {
 
     private AppBlocklist() {}
 
+    private static volatile long listAt;
+    private static volatile Set<String> listCache = new java.util.TreeSet<>();
+
+    /**
+     * The blocked screens ("package/ClassName"). They live in the phone's settings ("blockedComponents"), so the dashboard lists
+     * them and can remove them, and removing one on the phone shows there too. (Called many times a second: read once in a while.)
+     */
     static Set<String> list(Context c) {
-        return Agent.getSet(c, PREF_KEY);
+        long now = System.currentTimeMillis();
+        if (now - listAt < 1500) return new java.util.TreeSet<>(listCache);
+        Set<String> out = new java.util.TreeSet<>();
+        org.json.JSONArray a = PhoneRules.current(c).optJSONArray("blockedComponents");
+        for (int i = 0; a != null && i < a.length(); i++) {
+            String s = a.optString(i, "");
+            if (!s.isEmpty()) out.add(s);
+        }
+        // Screens blocked before they were kept in the settings (local to the phone): moved over once, so the dashboard shows them too.
+        Set<String> legacy = Agent.getSet(c, PREF_KEY);
+        if (!legacy.isEmpty()) {
+            out.addAll(legacy);
+            Agent.putSet(c, PREF_KEY, new java.util.HashSet<String>());
+            store(c, out, "kept the screens blocked before");
+        }
+        listCache = out;
+        listAt = now;
+        return new java.util.TreeSet<>(out);
+    }
+
+    private static void store(Context c, Set<String> set, String what) {
+        listCache = new java.util.TreeSet<>(set);
+        listAt = System.currentTimeMillis();
+        try {
+            PhoneRules.set(c, new org.json.JSONObject().put("blockedComponents", new org.json.JSONArray(new java.util.ArrayList<>(set))), what);
+        } catch (Exception ignored) {
+        }
     }
 
     static void add(Context c, String component) {
         Set<String> set = list(c);
-        set.add(component);
-        Agent.putSet(c, PREF_KEY, set);
+        if (set.add(component)) store(c, set, "blocked the screen " + component);
     }
 
     static void remove(Context c, String component) {
         Set<String> set = list(c);
-        set.remove(component);
-        Agent.putSet(c, PREF_KEY, set);
+        if (set.remove(component)) store(c, set, "unblocked the screen " + component);
         Set<String> paused = pausedList(c);
         if (paused.remove(component)) Agent.putSet(c, PAUSED_KEY, paused);
     }
