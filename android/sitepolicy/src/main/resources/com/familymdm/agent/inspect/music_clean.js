@@ -29,11 +29,14 @@
       for (var s = 0; s < si.length; s++) hide(si[s]);
     }
   }
-  // "Show song pictures" is off: album art, thumbnails and the frames of music videos are hidden (the sound keeps playing).
-  if (window.__mdmHidePics) {
+  // Song pictures: "allowed" = pictures of items that are not approved (search results, recommendations) are hidden, while the approved songs on our shelf and the song
+  // that is playing keep their art; "hide" = no pictures at all, music-video frames included (the sound keeps playing).
+  if (window.__mdmPics) {
     var st = document.createElement('style');
-    st.textContent = 'img[src*="ytimg.com"],img[src*="ggpht.com"],img[src*="googleusercontent.com"],ytmusic-thumbnail-renderer img,#song-image img,#thumbnail img,video{visibility:hidden !important}'
-      + 'ytmusic-thumbnail-renderer,#song-image{background:#2a2a2a !important}';
+    var css = 'img[src*="ytimg.com"],img[src*="ggpht.com"],img[src*="googleusercontent.com"],ytmusic-thumbnail-renderer img{visibility:hidden !important}';
+    if (window.__mdmPics === 'hide') css += 'video{visibility:hidden !important}';
+    else css += '#mdm-shelf img,#mdm-more img,#song-image img,ytmusic-player #song-image img{visibility:visible !important}';
+    st.textContent = css + 'ytmusic-thumbnail-renderer{background:#2a2a2a !important}';
     (document.head || document.documentElement).appendChild(st);
   }
   sweep();

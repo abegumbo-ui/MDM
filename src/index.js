@@ -34,7 +34,7 @@ async function cachedLogoRev(env) {
   logoRevCacheAt = now;
   return logoRevCache;
 }
-const COMMANDS = new Set(["addTime", "openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp", "screenshot"]);
+const COMMANDS = new Set(["addTime", "openStore", "closeStore", "lock", "reboot", "wipe", "release", "install", "uninstall", "sync", "setPin", "clearPin", "setAppLockPin", "clearAppLockPin", "clearOverrides", "unlock", "addWifi", "resetAppCode", "updateAgent", "listSystemApps", "locate", "checkUpdates", "updateApp", "screenshot", "deleteDownloads"]);
 const MAX_APK_BYTES = 24 * 1024 * 1024; // Workers KV allows 25 MiB per value
 const DEFAULT_REPO = "abegumbo-ui/MDM";
 const MAX_IMAGE_BYTES = 200 * 1024;
@@ -341,6 +341,8 @@ const publicDevice = (d) => ({
   calls: (d.calls || []).slice(-200),
   contacts: d.contacts || [],
   contactsAt: d.contactsAt || 0,
+  downloads: d.downloads || [],
+  downloadsAt: d.downloadsAt || 0,
   siteHistory: siteHistoryView(d.siteHistory),
   texts: (d.texts || []).slice(-200),
   overrides: d.overrides || {},
@@ -1240,6 +1242,12 @@ async function adminApiInner(request, env, url, session) {
         args.packageName = given.packageName;
       }
       if (body.type === "release") args.uninstall = given.uninstall === true;
+      // Deletes downloaded songs / videos from the phone: chosen ones, all of one kind, or everything.
+      if (body.type === "deleteDownloads") {
+        if (given.all === true) args.all = true;
+        else if (given.kind === "music" || given.kind === "video") args.kind = given.kind;
+        else args.ids = (Array.isArray(given.ids) ? given.ids : []).filter((x) => typeof x === "string" && /^[A-Za-z0-9_-]{11}$/.test(x)).slice(0, 300);
+      }
       // Extra screen time: lifts bedtime and the limits for this many minutes from when the phone gets it.
       if (body.type === "addTime") args.minutes = Number.isInteger(given.minutes) ? Math.min(Math.max(given.minutes, 5), 240) : 15;
       // Opens the Play Store on the phone for a while (0 = until it is closed again from here).
@@ -1709,6 +1717,13 @@ async function agentApi(request, env, url, ctx) {
       ...(x && Number.isFinite(Number(x.secs)) ? { secs: Math.max(0, Math.round(Number(x.secs))) } : {}),
       ...(x && typeof x.text === "string" ? { text: x.text.slice(0, 310) } : {}),
     });
+    if (Array.isArray(body.downloads)) {
+      // What is downloaded on the phone (songs and videos), so the dashboard can list it and delete from the phone.
+      d.downloads = body.downloads.slice(0, 300).filter((x) => x && typeof x === "object" && /^[A-Za-z0-9_-]{11}$/.test(String(x.id || "")))
+        .map((x) => ({ id: String(x.id), t: String(x.t || "").slice(0, 120), k: x.k === "music" ? "music" : "video", at: Number(x.at) || 0, bytes: Math.max(0, Math.floor(Number(x.bytes) || 0)) }));
+      d.downloadsAt = now;
+      dirty = true;
+    }
     if (Array.isArray(body.contacts)) {
       d.contacts = body.contacts.slice(0, 1000).filter((x) => x && typeof x === "object")
         .map((x) => ({ name: String(x.name || "").slice(0, 80), number: String(x.number || "").slice(0, 40) }));

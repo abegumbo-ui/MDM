@@ -135,10 +135,11 @@ test("'turn off all restrictions for a while': cleaned, capped at 24 hours, sent
   assert.ok(summarizeConfigChange(c, normalizeConfig({})).includes("Restrictions back on"));
 });
 
-test("YouTube Music: song pictures are hidden unless turned on, and songs allowed together keep the artist or album they came from", () => {
-  assert.equal(normalizeConfig({}).musicPictures, "hide");
+test("YouTube Music: pictures show for approved songs by default, and songs allowed together keep the artist or album they came from", () => {
+  assert.equal(normalizeConfig({}).musicPictures, "allowed", "approved songs show their art by default");
   assert.equal(normalizeConfig({ musicPictures: "show" }).musicPictures, "show");
-  assert.equal(normalizeConfig({ musicPictures: "whatever" }).musicPictures, "hide");
+  assert.equal(normalizeConfig({ musicPictures: "hide" }).musicPictures, "hide");
+  assert.equal(normalizeConfig({ musicPictures: "whatever" }).musicPictures, "allowed");
   const c = normalizeConfig({ musicPictures: "show", sites: { a: { type: "exact", url: "https://music.youtube.com/watch?v=abcdefghijk", label: "A song", group: "  Avraham Fried  " }, b: { type: "exact", url: "https://music.youtube.com/watch?v=lmnopqrstuv", label: "Another", group: 5 } } });
   const p = buildAgentPolicy(c, []);
   assert.equal(p.musicPictures, "show");
@@ -146,4 +147,25 @@ test("YouTube Music: song pictures are hidden unless turned on, and songs allowe
   assert.equal(songs.length, 2);
   assert.equal(songs.find((s) => s.label === "A song").group, "Avraham Fried");
   assert.equal(songs.find((s) => s.label === "Another").group, undefined, "a group must be a name");
+});
+
+test("downloads: the phone reports what is downloaded, the dashboard can ask it to delete some, one kind, or all", async () => {
+  const login = await req("/login", { method: "POST", body: new URLSearchParams({ password: env.ADMIN_PASSWORD }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const dev = (await (await req("/api/devices", { headers: { cookie } })).json())[0];
+  const { code } = await (await req("/api/codes", { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "enroll" }) })).json();
+  const { token } = await (await req("/agent/enroll", { method: "POST", headers: J, body: JSON.stringify({ code, info: { model: "Dl" } }) })).json();
+  const sync = (body) => req("/agent/sync", { method: "POST", headers: { ...J, authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  await sync({});
+  await sync({ downloads: [{ id: "abcdefghijk", t: "A song", k: "music", at: 1000, bytes: 4194304 }, { id: "lmnopqrstuv", t: "A video", k: "video", at: 2000, bytes: 9000000 }, { id: "bad id", t: "broken" }, "nope"] });
+  const d = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.name.endsWith("Dl"));
+  assert.deepEqual(d.downloads.map((x) => [x.id, x.k, x.bytes]), [["abcdefghijk", "music", 4194304], ["lmnopqrstuv", "video", 9000000]], "broken entries are dropped");
+  assert.ok(d.downloadsAt > 0);
+  const queue = async (args) => (await req(`/api/devices/${d.id}/command`, { method: "POST", headers: { cookie, ...J }, body: JSON.stringify({ type: "deleteDownloads", args }) })).status;
+  assert.equal(await queue({ ids: ["abcdefghijk", "../../etc", 5] }), 200);
+  assert.equal(await queue({ kind: "music" }), 200);
+  assert.equal(await queue({ all: true }), 200);
+  const reply = await (await sync({})).json();
+  const cmds = reply.commands.filter((c) => c.type === "deleteDownloads").map((c) => c.args);
+  assert.deepEqual(cmds, [{ ids: ["abcdefghijk"] }, { kind: "music" }, { all: true }], "only well-formed ids reach the phone");
 });

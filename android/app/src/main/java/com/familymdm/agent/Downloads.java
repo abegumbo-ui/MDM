@@ -127,6 +127,57 @@ final class Downloads {
         }
     }
 
+    private static String pendingHash;
+
+    /** What is downloaded, for the dashboard: [{id, t, k, at, bytes}]. Null when nothing changed since the last report. */
+    static synchronized JSONArray ifChanged(Context c) {
+        JSONArray out = new JSONArray();
+        JSONArray a = list(c);
+        for (int i = 0; i < a.length() && out.length() < 300; i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o == null) continue;
+            File f = new File(dir(c), o.optString("file"));
+            if (!f.exists()) continue;
+            try {
+                out.put(new JSONObject().put("id", o.optString("id")).put("t", o.optString("t")).put("k", o.optString("k", "video")).put("at", o.optLong("at", 0)).put("bytes", f.length()));
+            } catch (Exception ignored) {
+            }
+        }
+        String s = out.toString();
+        String hash = s.length() + ":" + s.hashCode();
+        if (hash.equals(Agent.prefs(c).getString("downloadsSentHash", ""))) return null;
+        pendingHash = hash;
+        return out;
+    }
+
+    /** After a check-in that carried the list. */
+    static void sent(Context c) {
+        if (pendingHash != null) Agent.prefs(c).edit().putString("downloadsSentHash", pendingHash).apply();
+        pendingHash = null;
+    }
+
+    /** The dashboard's "delete from the phone". args: {ids:[...]} or {all:true} or {kind:"music"|"video"}. Returns what to tell the dashboard. */
+    static synchronized String deleteFor(Context c, JSONObject args) {
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        JSONArray want = args.optJSONArray("ids");
+        for (int i = 0; want != null && i < want.length(); i++) ids.add(want.optString(i));
+        boolean all = args.optBoolean("all", false);
+        String kind = args.optString("kind", "");
+        int n = 0;
+        JSONArray a = list(c);
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            if (o == null) continue;
+            String id = o.optString("id");
+            if (all || ids.contains(id) || (!kind.isEmpty() && kind.equals(o.optString("k", "video")))) {
+                remove(c, id);
+                n++;
+            }
+        }
+        if (n > 0) Agent.addEvent(c, "restriction", "Deleted " + n + " download" + (n == 1 ? "" : "s") + " from the phone (from the dashboard)");
+        return n == 0 ? "Nothing to delete" : "Deleted " + n + " download" + (n == 1 ? "" : "s") + " from the phone";
+    }
+
     /** For the YouTube home page and the Browser: [{id, t, i}] of what is downloaded (videos). */
     static JSONArray forPages(Context c) {
         return forPages(c, false);

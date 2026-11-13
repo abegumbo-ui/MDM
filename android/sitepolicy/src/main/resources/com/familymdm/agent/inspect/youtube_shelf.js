@@ -34,6 +34,10 @@
       [' .vw', 'display:block'],
       [' .v', 'color:inherit;text-decoration:none'],
       [' .v img', 'width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:#ccc;display:block'],
+      // YouTube Music: square album-art cards, like the real app.
+      [' .vids.m', 'grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px'],
+      [' .vids.m .v img', 'aspect-ratio:1/1;border-radius:8px'],
+      [' .vids.m .v div', 'font-size:13px;line-height:18px;margin-top:6px'],
       [' .v div', 'font-size:14px;font-weight:500;line-height:20px;margin-top:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden'],
       [' .dl', 'display:inline-block;margin:8px 0 2px;padding:7px 16px;border-radius:18px;background:#4F46E5;color:#fff;text-decoration:none;font-size:14px;font-weight:500'],
       [' .dl.done', 'background:transparent;color:#8a8a8a;border:1px solid #8a8a8a;padding:6px 15px'],
@@ -84,7 +88,7 @@
     return w;
   }
   function downloadedGrid() {
-    var g = el('div', 'vids');
+    var g = el('div', music ? 'vids m' : 'vids');
     data.downloads.forEach(function (v) { g.appendChild(tile(v, 'mdmguard://play?id=' + v.v, false)); });
     return g;
   }
@@ -112,13 +116,13 @@
     box = el('div'); box.id = 'mdm-more'; box.setAttribute('data-for', now); box.className = isDark() ? 'dark' : '';
     if (dls.length) {
       box.appendChild(el('h3', null, 'Downloaded'));
-      var dgrid = el('div', 'vids');
+      var dgrid = el('div', music ? 'vids m' : 'vids');
       dls.forEach(function (v) { dgrid.appendChild(tile(v, 'mdmguard://play?id=' + v.v, false)); });
       box.appendChild(dgrid);
     }
     if (vids.length) {
       box.appendChild(el('h3', null, 'More from your list'));
-      var grid = el('div', 'vids');
+      var grid = el('div', music ? 'vids m' : 'vids');
       vids.forEach(function (v) { grid.appendChild(tile(v, pageOf(v.v), true)); });
       box.appendChild(grid);
     }
@@ -156,7 +160,7 @@
     }
     if (data.videos.length) {
       box.appendChild(el('h3', null, music ? 'Your music' : 'My videos'));
-      var grid = el('div', 'vids');
+      var grid = el('div', music ? 'vids m' : 'vids');
       data.videos.forEach(function (v) { grid.appendChild(tile(v, pageOf(v.v), true)); });
       box.appendChild(grid);
     }
