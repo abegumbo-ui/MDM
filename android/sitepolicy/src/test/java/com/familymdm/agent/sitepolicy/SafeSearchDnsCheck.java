@@ -73,6 +73,21 @@ public class SafeSearchDnsCheck {
         reply[3] = (byte) 0x83;
         check(SafeSearchDns.parseA(reply).isEmpty(), "a failed lookup gives no addresses");
 
+        // Lifetimes are cut short, nothing else is touched.
+        byte[] longLived = reply.clone();
+        longLived[3] = (byte) 0x80;
+        int ttlAt1 = head.length + 6, ttlAt2 = head.length + 16 + 6; // the TTL of the CNAME record and of the A record
+        longLived[ttlAt1 + 3] = (byte) 0x10; longLived[ttlAt1 + 2] = (byte) 0x0e; // 3600 + 0x1000 seconds, a long time
+        longLived[ttlAt2 + 3] = 20; // already short: must stay 20
+        byte[] capped = SafeSearchDns.capTtl(longLived, 60);
+        long t1 = ((capped[ttlAt1] & 0xffL) << 24) | ((capped[ttlAt1 + 1] & 0xffL) << 16) | ((capped[ttlAt1 + 2] & 0xffL) << 8) | (capped[ttlAt1 + 3] & 0xffL);
+        long t2 = ((capped[ttlAt2] & 0xffL) << 24) | ((capped[ttlAt2 + 1] & 0xffL) << 16) | ((capped[ttlAt2 + 2] & 0xffL) << 8) | (capped[ttlAt2 + 3] & 0xffL);
+        check(t1 == 60 && t2 == 20, "a long lifetime is cut to 60 seconds, a short one is left alone");
+        boolean restSame = true;
+        for (int i = 0; i < longLived.length; i++) if ((i < ttlAt1 || i > ttlAt1 + 3) && capped[i] != longLived[i]) restSame = false;
+        check(restSame && SafeSearchDns.parseA(capped).size() == 1, "nothing but the lifetime changed; the address still reads out");
+        byte[] cut = java.util.Arrays.copyOf(longLived, longLived.length - 5);
+        check(java.util.Arrays.equals(SafeSearchDns.capTtl(cut, 60), cut) && SafeSearchDns.capTtl(null, 60) == null && SafeSearchDns.capTtl(new byte[] {1, 2}, 60).length == 2, "a damaged or tiny message is returned as it was");
         check(SafeSearchDns.questionType(new byte[] {1, 2, 3}) == -1 && SafeSearchDns.answer(new byte[] {1, 2, 3}, ips, 1) == null && SafeSearchDns.parseA(new byte[] {1, 2}).isEmpty(), "garbage is refused, not crashed on");
         byte[] aaaa = q.clone();
         aaaa[aaaa.length - 3] = (byte) SafeSearchDns.TYPE_AAAA;
