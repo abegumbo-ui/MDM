@@ -56,18 +56,28 @@
         var t = norm(leaf.textContent);
         if (!t || t.length > 40) continue;
         if (MENU_GONE.test(t) || (inSettings && SETTINGS_GONE.test(t))) { hide(rowOf(leaf)); continue; }
-        if (inSettings && /^downloads$/i.test(t)) hookDownloads(rowOf(leaf));
+        if (inSettings && /^downloads$/i.test(t)) replaceDownloads(rowOf(leaf));
         else if (inSettings && window.__mdmRestrict && /^restricted mode/i.test(t)) forceRestricted(rowOf(leaf));
       }
     }
   }
-  function hookDownloads(row) {
-    if (!row || row.__mdmDl) return;
+  // YouTube Music's own "Downloads" settings row is replaced by a link to this app's Downloads screen (the songs downloaded here, Play and Delete).
+  function replaceDownloads(row) {
+    if (!row || row.__mdmDl || !row.parentNode) return;
+    var before = row.previousSibling;
+    if (before && before.id === 'mdm-dl-row') { row.__mdmDl = true; hide(row); return; }
     row.__mdmDl = true;
-    row.addEventListener('click', function (e) {
-      if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); }
-      location.href = 'mdmguard://downloads';
-    }, true);
+    var a = document.createElement('a');
+    a.id = 'mdm-dl-row';
+    a.href = 'mdmguard://downloads';
+    a.textContent = 'Downloads';
+    a.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:16px;font:400 16px Roboto,Arial,sans-serif;color:inherit;text-decoration:none;cursor:pointer';
+    var arrow = document.createElement('span');
+    arrow.textContent = '\u203A';
+    arrow.style.cssText = 'font-size:24px;opacity:.8';
+    a.appendChild(arrow);
+    row.parentNode.insertBefore(a, row);
+    hide(row);
   }
   function forceRestricted(row) {
     if (!row) return;
