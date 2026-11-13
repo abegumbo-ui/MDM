@@ -61,17 +61,22 @@ final class BrowserCategoryFilter {
      * site up itself (as the Agent), so the DNS filter never sees which browser asked: everything a browser may not open is refused here too.
      */
     static boolean blocksViaProxy(Context c, String host) {
-        if (host == null || Protection.paused(c)) return false;
+        return refusalViaProxy(c, host) != null;
+    }
+
+    /** Why a request through the proxy is refused, in words for the blocked page; null when it is allowed. */
+    static String refusalViaProxy(Context c, String host) {
+        if (host == null || Protection.paused(c)) return null;
         String h = host.toLowerCase(java.util.Locale.ROOT);
         if (approvedOnly(c)) {
-            for (String p : PAGE_PARTS) if (h.equals(p) || h.endsWith("." + p)) return false;
-            return !approvedSite(c, h) && !DnsAllowlist.allows(c, h);
+            for (String p : PAGE_PARTS) if (h.equals(p) || h.endsWith("." + p)) return null;
+            return !approvedSite(c, h) && !DnsAllowlist.allows(c, h) ? "Only the sites that were approved open on this phone." : null;
         }
-        if ("off".equals(WebFilter.tier(c)) || !WebFilter.active(c)) return false;
+        if ("off".equals(WebFilter.tier(c)) || !WebFilter.active(c)) return null;
         boolean core = WebFilter.blocksCore(c, h);
         boolean browserOnly = !core && WebFilter.blocksSocial(c, h);
-        if (!core && !browserOnly) return false;
-        return !approvedSite(c, h) && !DnsAllowlist.allows(c, h);
+        if (!core && !browserOnly) return null;
+        return !approvedSite(c, h) && !DnsAllowlist.allows(c, h) ? "This kind of site is closed on this phone." : null;
     }
 
     /** True when the app's connections need identifying (only Strict's social rule depends on which app it is). */
