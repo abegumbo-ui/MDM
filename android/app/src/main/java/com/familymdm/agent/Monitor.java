@@ -441,8 +441,8 @@ final class Monitor {
     private static void tellChild(Context c, String title, String text) {
         try {
             NotificationManager nm = c.getSystemService(NotificationManager.class);
-            nm.createNotificationChannel(new NotificationChannel("monitor", "What your parent can see", NotificationManager.IMPORTANCE_DEFAULT));
-            nm.notify(43, new Notification.Builder(c, "monitor")
+            NoBadge.install(nm, "monitor2", "What your parent can see", NotificationManager.IMPORTANCE_DEFAULT, "monitor");
+            nm.notify(43, new Notification.Builder(c, "monitor2")
                     .setContentTitle(title)
                     .setContentText(text)
                     .setStyle(new Notification.BigTextStyle().bigText(text))

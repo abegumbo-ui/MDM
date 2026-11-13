@@ -99,6 +99,7 @@ public final class Guard {
             FilterStore.setYoutubeSearch(c, b.getBoolean("youtubeSearch", true));
             FilterStore.setYoutubeSearchPictures(c, b.getString("youtubeSearchPictures", "hide"));
             FilterStore.setYoutubeSignIn(c, b.getBoolean("youtubeSignIn", false));
+            FilterStore.setDownloads(c, b.getBoolean("downloads", true));
             FilterStore.setYoutubeOffMessage(c, b.getString("youtubeOffMessage", ""));
         } else if (m == Mode.ONLINE) {
             sync(c, false);
@@ -586,6 +587,32 @@ public final class Guard {
         return out;
     }
 
+    /** What the MDM app has downloaded (its files/downloads/downloads.json), for YouTube's home page. */
+    private static JSONArray downloadedForPages(Context c) {
+        JSONArray out = new JSONArray();
+        if (mode(c) != Mode.AGENT) return out;
+        try {
+            java.io.File dir = new java.io.File(c.getFilesDir(), "downloads");
+            java.io.File index = new java.io.File(dir, "downloads.json");
+            if (!index.exists()) return out;
+            JSONArray a = new JSONArray(new String(java.nio.file.Files.readAllBytes(index.toPath()), java.nio.charset.StandardCharsets.UTF_8));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o == null || !new java.io.File(dir, o.optString("file")).exists()) continue;
+                out.put(new JSONObject().put("v", o.optString("id")).put("t", o.optString("t")).put("i", o.optString("i")));
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** The "Download" button script for YouTube video pages, or null (downloads off, or not inside the MDM app). */
+    public static String downloadScript(Context ctx) {
+        Context c = ctx.getApplicationContext();
+        if (mode(c) != Mode.AGENT || !FilterStore.downloads(c)) return null;
+        return com.familymdm.agent.sitepolicy.YoutubeScripts.load("youtube_download.js");
+    }
+
     private static volatile String shelfJs;
 
     /** "Your channels" and "Your videos" on YouTube's home page (assets/youtube_shelf.js), or null if none. */
@@ -612,8 +639,9 @@ public final class Guard {
                 }
             }
             boolean ask = "channels".equals(FilterStore.youtubeMode(c)) && mode(c) != Mode.UNCONFIGURED;
-            if (channels.length() == 0 && videos.length() == 0 && !ask) return null;
-            return com.familymdm.agent.sitepolicy.YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).toString());
+            JSONArray downloads = downloadedForPages(c);
+            if (channels.length() == 0 && videos.length() == 0 && !ask && downloads.length() == 0) return null;
+            return com.familymdm.agent.sitepolicy.YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads).toString());
         } catch (Exception e) {
             return null;
         }
@@ -674,6 +702,24 @@ public final class Guard {
         Uri u = Uri.parse(url);
         String what = u.getHost() == null ? "" : u.getHost();
         switch (what) {
+            case "download": {
+                // Inside the MDM app: its downloader does the work (yt-dlp). The page stays as it is.
+                String target = u.getQueryParameter("u");
+                if (!TextUtils.isEmpty(target)) {
+                    try {
+                        c.sendBroadcast(new Intent().setClassName(c.getPackageName(), "com.familymdm.agent.DownloadReceiver").putExtra("url", target));
+                    } catch (Exception ignored) {
+                    }
+                }
+                return true;
+            }
+            case "play":
+                try {
+                    c.startActivity(new Intent().setClassName(c.getPackageName(), "com.familymdm.agent.DownloadPlayerActivity")
+                            .putExtra("id", u.getQueryParameter("id")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Exception ignored) {
+                }
+                return true;
             case "ask":
                 showPage(v, null, askPage(u.getQueryParameter("u")));
                 return true;

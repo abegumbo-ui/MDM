@@ -275,8 +275,8 @@ final class ScreenTime {
         p.edit().putBoolean("warned:" + key, true).apply();
         try {
             android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
-            nm.createNotificationChannel(new android.app.NotificationChannel("timewarn", "Screen time warnings", android.app.NotificationManager.IMPORTANCE_HIGH));
-            nm.notify(44, new android.app.Notification.Builder(c, "timewarn").setContentTitle(title).setContentText(text)
+            NoBadge.install(nm, "timewarn2", "Screen time warnings", android.app.NotificationManager.IMPORTANCE_HIGH, "timewarn");
+            nm.notify(44, new android.app.Notification.Builder(c, "timewarn2").setContentTitle(title).setContentText(text)
                     .setStyle(new android.app.Notification.BigTextStyle().bigText(text)).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setAutoCancel(true).build());
         } catch (Exception ignored) {
         }

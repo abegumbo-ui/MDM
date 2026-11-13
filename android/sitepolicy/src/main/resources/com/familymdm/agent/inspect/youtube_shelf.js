@@ -5,7 +5,8 @@
 (function (data) {
   if (window.__mdmShelf) return;
   window.__mdmShelf = true;
-  if (!data || (!data.channels.length && !data.videos.length && !data.ask)) return;
+  if (data) data.downloads = data.downloads || [];
+  if (!data || (!data.channels.length && !data.videos.length && !data.ask && !data.downloads.length)) return;
   // Its own panel over YouTube's home page (between YouTube's top bar and bottom bar), so nothing of
   // YouTube's own page can fade or hide it.
   // The same look for the home panel (#mdm-shelf, fixed) and the list under a video (#mdm-more, in the page).
@@ -60,11 +61,22 @@
     var watch = location.pathname === '/watch';
     var now = playingId();
     var vids = data.videos.filter(function (v) { return v.v !== now; });
-    if (!watch || (!vids.length && !data.channels.length)) { if (box) box.remove(); return; }
+    var dls = data.downloads.filter(function (v) { return v.v !== now; });
+    if (!watch || (!vids.length && !data.channels.length && !dls.length)) { if (box) box.remove(); return; }
     if (box && box.isConnected && box.getAttribute('data-for') === now) { box.className = isDark() ? 'dark' : ''; return; }
     if (box) box.remove();
     addCss();
     box = el('div'); box.id = 'mdm-more'; box.setAttribute('data-for', now); box.className = isDark() ? 'dark' : '';
+    if (dls.length) {
+      box.appendChild(el('h3', null, 'Downloaded'));
+      var dgrid = el('div', 'vids');
+      dls.forEach(function (v) {
+        var a = el('a', 'v'); a.href = 'mdmguard://play?id=' + v.v;
+        var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = v.i || ('https://i.ytimg.com/vi/' + v.v + '/mqdefault.jpg'); a.appendChild(img);
+        a.appendChild(el('div', null, v.t || 'Video')); dgrid.appendChild(a);
+      });
+      box.appendChild(dgrid);
+    }
     if (vids.length) {
       box.appendChild(el('h3', null, 'More from your list'));
       var grid = el('div', 'vids');
@@ -100,6 +112,16 @@
     if (data.ask) {
       var ask = el('a', 'ask', '＋  Ask for a channel or video'); ask.href = 'mdmguard://ask';
       box.appendChild(ask);
+    }
+    if (data.downloads.length) {
+      box.appendChild(el('h3', null, 'Downloaded'));
+      var dg = el('div', 'vids');
+      data.downloads.forEach(function (v) {
+        var a = el('a', 'v'); a.href = 'mdmguard://play?id=' + v.v;
+        var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = v.i || ('https://i.ytimg.com/vi/' + v.v + '/mqdefault.jpg'); a.appendChild(img);
+        a.appendChild(el('div', null, v.t || 'Video')); dg.appendChild(a);
+      });
+      box.appendChild(dg);
     }
     if (data.channels.length) {
       box.appendChild(el('h3', null, 'My channels'));

@@ -913,7 +913,7 @@ final class PolicyApplier {
             JSONArray wordsArr = policy.optJSONArray("blockedWords");
             String[] words = new String[wordsArr == null ? 0 : wordsArr.length()];
             for (int i = 0; i < words.length; i++) words[i] = wordsArr.optString(i);
-            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide") + "|" + policy.optBoolean("youtubeSignIn", false);
+            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide") + "|" + policy.optBoolean("youtubeSignIn", false) + "|" + policy.optBoolean("downloads", true);
             // Only skip when the Browser really holds these rules now: it loses them when it is removed and
             // installed again, and then it would look "not connected" (the connect screen) until a rule changed.
             Bundle held = null;
@@ -942,6 +942,7 @@ final class PolicyApplier {
             b.putBoolean("youtubeSearch", policy.optBoolean("youtubeSearch", true));
             b.putString("youtubeSearchPictures", policy.optString("youtubeSearchPictures", "hide"));
             b.putBoolean("youtubeSignIn", policy.optBoolean("youtubeSignIn", false));
+            b.putBoolean("downloads", policy.optBoolean("downloads", true));
             // The Browser is part of this app now (its rules are read back from this app's own settings); a
             // leftover separate Browser app, if any, gets them too until it is removed (removeOldBrowserApp).
             dpm.setApplicationRestrictions(admin, c.getPackageName(), b);

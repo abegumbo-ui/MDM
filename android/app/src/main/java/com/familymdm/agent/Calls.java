@@ -131,10 +131,10 @@ final class Calls {
         p.edit().putLong("callSetupReminded", now).apply();
         try {
             NotificationManager nm = c.getSystemService(NotificationManager.class);
-            nm.createNotificationChannel(new NotificationChannel("calls", "Call controls", NotificationManager.IMPORTANCE_DEFAULT));
+            NoBadge.install(nm, "calls2", "Call controls", NotificationManager.IMPORTANCE_DEFAULT, "calls");
             Intent i = new Intent(c, CallSetupActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             PendingIntent pi = PendingIntent.getActivity(c, 41, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-            nm.notify(41, new Notification.Builder(c, "calls")
+            nm.notify(41, new Notification.Builder(c, "calls2")
                     .setContentTitle("Finish setting up call controls")
                     .setContentText("Tap, then choose Allow. Needed once.")
                     .setSmallIcon(android.R.drawable.stat_sys_phone_call)

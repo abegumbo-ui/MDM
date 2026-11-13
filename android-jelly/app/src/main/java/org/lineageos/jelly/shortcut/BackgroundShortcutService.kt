@@ -140,7 +140,10 @@ class BackgroundShortcutService : Service() {
             NOTIFICATION_CHANNEL_ID,
             channelName,
             NotificationManager.IMPORTANCE_LOW
-        ).apply { description = channelDescription }
+        ).apply {
+            description = channelDescription
+            setShowBadge(false)
+        }
         notificationManager.createNotificationChannel(channel)
     }
 
