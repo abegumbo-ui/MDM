@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { endSitesEarly, normalizeTimedHosts, buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
+import { endSitesEarly, normalizeTimedHosts, normalizeBlockedScreens, buildAgentPolicy, isBlockedAdultHost, isProtected, normalizeConfig, normalizeSchedule, normalizeSite, normalizeSites, RESTRICTIONS, siteAllowed, summarizeConfigChange } from "../src/policy.js";
 
 test("hides unlisted unprotected apps, shows protected and allowed ones", () => {
   const cfg = normalizeConfig({ blockUnlisted: true, apps: { "com.google.android.apps.maps": { mode: "allow" } } });
@@ -313,4 +313,15 @@ test("computers: sites allowed for a while keep their end time, the latest per s
   assert.deepEqual(out, [{ host: "games.example", until: now + 7200e3 }]);
   const cfg = normalizeConfig({ dnsAllowTimed: [{ host: "khanacademy.org", until: now + 60e3 }] });
   assert.equal(cfg.dnsAllowTimed[0].host, "khanacademy.org");
+});
+
+test("signing in to YouTube is off unless allowed; whole screens blocked on the phone are kept clean and reach it", () => {
+  assert.equal(normalizeConfig({}).youtubeSignIn, false);
+  assert.equal(normalizeConfig({ youtubeSignIn: "yes" }).youtubeSignIn, false, "only exactly true");
+  assert.equal(buildAgentPolicy(normalizeConfig({ youtubeSignIn: true }), []).youtubeSignIn, true);
+  const sep = "\u001f";
+  const good = "com.android.settings" + sep + "Accessibility" + sep + "Installed apps";
+  assert.deepEqual(normalizeBlockedScreens([good, good, "no-separator", "bad pkg!" + sep + "x", "com.x.y" + sep + "", 5, null, "com.x.y" + sep + "a".repeat(81)]), [good]);
+  const p = buildAgentPolicy(normalizeConfig({ blockedScreens: [good] }), []);
+  assert.deepEqual(p.blockedScreens, [good], "the phone is told");
 });

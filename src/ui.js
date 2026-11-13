@@ -572,6 +572,7 @@ function buildAppsHub(m,dv){
   const bCard=h('div',{class:'card'},h('h2',null,'Whole screens of apps'),
    h('div',{class:'mute'},'A single screen of an app, closed the moment it opens. Pick it on the phone: Administrator → Apps → Blocked → Tap to block → Start, open the app and the screen, press ✓. They are listed and removed on the phone.'));
   m.append(bCard);
+  renderBlockedScreens(m,dv);
   renderBlockedParts(m,dv);
   renderWholeAppBlocklist(m,dv);
  } else if(appsSub==='store'){
@@ -795,7 +796,7 @@ function renderDeviceDetail(m,d){
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device'],
   ['SafeSearch on or off','browser','access'],['Filter level: Approved sites only, Moderate, Strict (every browser)','browser','access'],['Block ads','browser','access'],['Sites that refuse ad blocking (ads covered in black)','browser','access'],
   ['Pictures: hide nudity, cover skin (men, women), no pictures on some sites','browser','access'],['Blocked words','browser','access'],['Block image search','browser','access'],['Filter schedule','browser','access'],['YouTube Restricted Mode everywhere','browser','access'],
-  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['Let them search YouTube and ask for videos','browser','youtube'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
+  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['Let them search YouTube and ask for videos','browser','youtube'],['Allow signing in to YouTube','browser','youtube'],['Blocked screens: remove a screen that was blocked on the phone','apps','blocking'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
   ['Allowed sites, site requests, allow for a while (1 hour, 2 hours, custom)','browser','sites'],['Add-ons: put in or take out YouTube, the Browser add-on, the Browser app','apps','addons'],['YouTube icon on the phone','apps','addons'],['Uninstall an app','apps','regular'],['Browser add-on, make this the only browser, Chrome settings (no incognito)','browser','apps'],['Sites visited, searches list','browser','history'],['Release device, remove management','device','device'],['Check in every 15 seconds while the dashboard is open','device','device']];
  const sWrap=h('div',{class:'search',style:'margin:0;flex:1 1 320px;min-width:220px;max-width:100%'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
@@ -1918,6 +1919,9 @@ function renderYoutube(m,dv){
    for(const [v,l] of [['hide','Hide their pictures'],['skin','Show pictures with skin covered']]){const b=h('button',{type:'button',class:(c.youtubeSearchPictures||'hide')===v?'on':''},l);
     b.onclick=function(){c.youtubeSearchPictures=v;save(v==='skin'?'Search pictures show with skin covered.':'Search pictures are hidden.')};seg.append(b)}
    return h('div',null,h('div',{class:'mute small',style:'margin-top:10px'},'Pictures of the videos in search results that are not allowed:'),seg)})()));
+ if(!dv.isWindows)m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Allow signing in to YouTube'),
+  h('div',{class:'mute'},'Off by default: the Sign in button leads to "This part of YouTube is not allowed". Turn it on only when the child may sign in with their account (in our Browser and the YouTube icon).')),
+  sw(c.youtubeSignIn===true,function(on){c.youtubeSignIn=on;save(on?'Signing in to YouTube is allowed.':'Signing in to YouTube is not allowed.')}))));
  if(!dv.isBrowser&&!dv.isWindows)m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube app on the phone'),
   h('div',{class:'mute'},'A YouTube icon on the phone, built into the MDM app, so YouTube works even when browsers are blocked. It follows everything on this page: the choice above, your channels and videos, ad blocking and picture covering. When YouTube is Off it shows your message below.')),
   sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears on the phone at its next check-in.':'The YouTube icon is removed at the next check-in.')}))));
@@ -2450,6 +2454,16 @@ function renderAlerts(m){
 
 
 /* ---------- tap to block: parts of apps picked on the phone ---------- */
+/** Whole screens blocked with ✓ Block this screen: listed here, and removed here or on the phone. */
+function renderBlockedScreens(m,dv){
+ const c=dv.config,list=c.blockedScreens||[];
+ const card=h('div',{class:'card'},h('h2',null,'Blocked screens ('+list.length+')'),
+  h('div',{class:'mute'},'Screens picked on the phone with ✓ Block this screen (a Settings page, a screen of an app). Each closes the moment it opens. Remove one here and the phone opens it again at its next check-in.'));
+ if(!list.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
+ for(const s of list){const p=s.split('\u001f');
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},p.slice(1).join(' › ')),h('div',{class:'mute small'},appLabelOf(dv,p[0]))),
+   btn('Remove','outline',async function(){c.blockedScreens=list.filter(function(x){return x!==s});try{await saveConfigFor(dv,'Removed. The phone opens it again at its next check-in.')}catch(e){snack(e.message,1)}render()})))}
+ m.append(card)}
 function renderBlockedParts(m,dv){
  const c=dv.config,list=c.blockedParts||[];
  const card=h('div',{class:'card'},h('h2',null,'Parts of apps ('+list.length+')'),

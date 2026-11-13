@@ -346,4 +346,18 @@ public class GuardTest {
         assertEquals("2 h 5 min left", AllowList.left((2 * 60 + 5) * 60_000L));
         assertEquals("1 day 3 h left", AllowList.left((27 * 60) * 60_000L));
     }
+
+    @Test
+    public void youtubeSignIn_opensOnlyWhenAllowed_andSaysItIsAPartOfYouTube() throws Exception {
+        connected("open");
+        FilterStore.setYoutubeSignIn(c, false);
+        Guard.Decision d = Guard.check(c, "https://accounts.google.com/ServiceLogin?service=youtube", null);
+        assertFalse("signing in is off by default", d.allow);
+        assertTrue(d.html.contains("This part of YouTube is not allowed"));
+        assertFalse(Guard.check(c, "https://m.youtube.com/signin?action_handle_signin=true", null).allow);
+        FilterStore.setYoutubeSignIn(c, true);
+        assertTrue("allowed on the dashboard: it opens", Guard.check(c, "https://accounts.google.com/ServiceLogin?service=youtube", null).allow);
+        Guard.Decision other = Guard.check(c, "https://example.com/", null);
+        assertTrue("other sites are not affected", other.allow);
+    }
 }

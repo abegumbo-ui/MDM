@@ -255,9 +255,41 @@ final class PartBlocker {
 
     static final String SEP = "\u001f";
 
-    /** Screens blocked by what is written at the top of them (works when the title cannot be read). */
+    private static volatile long screensAt;
+    private static volatile java.util.Set<String> screensCache = new java.util.TreeSet<>();
+
+    /**
+     * Screens blocked by what is written at the top of them (works when the title cannot be read). They live in the
+     * phone's settings ("blockedScreens"), so the dashboard lists and removes them too.
+     */
     static java.util.Set<String> blockedScreens(Context c) {
-        return Agent.getSet(c, "blockedScreens");
+        long now = System.currentTimeMillis();
+        if (now - screensAt < 1500) return new java.util.TreeSet<>(screensCache);
+        java.util.Set<String> out = new java.util.TreeSet<>();
+        JSONArray a = PhoneRules.current(c).optJSONArray("blockedScreens");
+        for (int i = 0; a != null && i < a.length(); i++) {
+            String s = a.optString(i, "");
+            if (!s.isEmpty()) out.add(s);
+        }
+        // Screens blocked before they were kept in the settings (local to the phone): moved over once.
+        java.util.Set<String> legacy = Agent.getSet(c, "blockedScreens");
+        if (!legacy.isEmpty()) {
+            out.addAll(legacy);
+            Agent.putSet(c, "blockedScreens", new java.util.HashSet<String>());
+            setBlockedScreens(c, out, "kept the screens blocked before");
+        }
+        screensCache = out;
+        screensAt = now;
+        return new java.util.TreeSet<>(out);
+    }
+
+    static void setBlockedScreens(Context c, java.util.Set<String> screens, String what) {
+        screensCache = new java.util.TreeSet<>(screens);
+        screensAt = System.currentTimeMillis();
+        try {
+            PhoneRules.set(c, new JSONObject().put("blockedScreens", new JSONArray(new ArrayList<>(screens))), what);
+        } catch (Exception ignored) {
+        }
     }
 
     /** The first words on screen, top to bottom (the title, then the headings), at most max of them. */
@@ -416,9 +448,9 @@ final class PartBlocker {
         LinearLayout row = new LinearLayout(s);
         addBtn(s, row, "Block it", v -> {
             if (comp.startsWith("sig:")) {
-                java.util.Set<String> sigs = Agent.getSet(s, "blockedScreens");
+                java.util.Set<String> sigs = blockedScreens(s);
                 sigs.add(comp.substring(4));
-                Agent.putSet(s, "blockedScreens", sigs);
+                setBlockedScreens(s, sigs, "blocked the screen " + label);
             } else if (comp.startsWith("title:")) {
                 java.util.Set<String> titles = Agent.getSet(s, "blockedTitles");
                 titles.add(comp.substring(6));

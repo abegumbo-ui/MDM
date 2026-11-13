@@ -143,6 +143,22 @@ public final class SitePolicy {
     private static final Set<String> YOUTUBE_HOSTS = new HashSet<>(Arrays.asList(
             "youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com", "youtu.be"));
 
+    /** Google's and YouTube's sign-in pages (opened only when the parent allowed signing in). */
+    public static boolean isYoutubeSignIn(String u) {
+        String host = hostOf(u);
+        if (host == null) return false;
+        if (host.equals("accounts.google.com") || host.equals("accounts.youtube.com") || host.equals("myaccount.google.com")) return true;
+        if (!isYoutubeHost(host)) return false;
+        try {
+            String p = new URI(u.contains("://") ? u : "https://" + u).getPath();
+            if (p == null) return false;
+            String l = p.toLowerCase(Locale.ROOT);
+            return l.startsWith("/signin") || l.startsWith("/servicelogin") || l.startsWith("/accounts");
+        } catch (URISyntaxException e) {
+            return false;
+        }
+    }
+
     public static boolean isYoutubeHost(String host) {
         return host != null && YOUTUBE_HOSTS.contains(host.toLowerCase(Locale.ROOT));
     }

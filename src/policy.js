@@ -594,6 +594,10 @@ export function normalizeConfig(input) {
     youtubeSearchOff: c.youtubeSearchOff === true,
     // Search results that are not allowed: "hide" their pictures, or show them with "skin" covered.
     youtubeSearchPictures: c.youtubeSearchPictures === "skin" ? "skin" : "hide",
+    // Signing in to YouTube (and Google's sign-in page) opens only when the parent allowed it.
+    youtubeSignIn: c.youtubeSignIn === true,
+    // Whole screens of apps closed the moment they open (picked on the phone with ✓ Block this screen).
+    blockedScreens: normalizeBlockedScreens(c.blockedScreens),
     // Sites that will not open with ads blocked: their ads load but are covered (our Browser).
     adsCoveredSites: [...new Set(normalizeDnsAllowlist(c.adsCoveredSites).map((h) => h.replace(/^www\./, "")))],
     // Our Browser notices such sites by itself (on unless switched off).
@@ -871,6 +875,8 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.youtubeAddon = cfg.youtubeAddon;
   out.youtubeSearch = !cfg.youtubeSearchOff;
   out.youtubeSearchPictures = cfg.youtubeSearchPictures;
+  out.youtubeSignIn = cfg.youtubeSignIn;
+  out.blockedScreens = cfg.blockedScreens;
   out.adsCoveredSites = cfg.adsCoveredSites;
   out.adsAutoCover = !cfg.adsAutoCoverOff;
   out.youtubeOffMessage = cfg.youtubeOffMessage;
@@ -959,6 +965,8 @@ export function summarizeConfigChange(before, after) {
   if (JSON.stringify(before.filterSkipApps || []) !== JSON.stringify(after.filterSkipApps || [])) lines.push("Apps not filtered: " + (after.filterSkipApps || []).length);
   if (!!before.blockWaStatus !== !!after.blockWaStatus) lines.push("WhatsApp Status: " + (after.blockWaStatus ? "closed" : "allowed"));
   if (JSON.stringify(before.blockedParts || []) !== JSON.stringify(after.blockedParts || [])) lines.push("Blocked parts of apps: " + (after.blockedParts || []).length);
+  if (JSON.stringify(before.blockedScreens || []) !== JSON.stringify(after.blockedScreens || [])) lines.push("Blocked whole screens of apps: " + (after.blockedScreens || []).length);
+  if (!!before.youtubeSignIn !== !!after.youtubeSignIn) lines.push("Signing in to YouTube: " + (after.youtubeSignIn ? "allowed" : "not allowed"));
   if (!!before.messageAlerts !== !!after.messageAlerts) lines.push("Message alerts: " + (after.messageAlerts ? "on" : "off"));
   if (JSON.stringify(before.messageWords || []) !== JSON.stringify(after.messageWords || []) || JSON.stringify(before.messageGroups || null) !== JSON.stringify(after.messageGroups || null)) lines.push("Message alert words changed");
   if (!!before.waTextOnly !== !!after.waTextOnly) lines.push("WhatsApp photos, videos and voice messages: " + (after.waTextOnly ? "blocked" : "allowed"));
@@ -1063,6 +1071,20 @@ export function matchMessageWord(text, words) {
  * puts a "Blocked" box over it wherever it shows (so it cannot be seen or tapped); "close" leaves
  * the screen whenever it appears.
  */
+/** "app.package<US>first words<US>..." strings: a screen is told apart by the words at the top of it. */
+export function normalizeBlockedScreens(v) {
+  const out = [];
+  for (const s of Array.isArray(v) ? v : []) {
+    if (typeof s !== "string") continue;
+    const parts = s.split("\u001f").map((x) => x.trim());
+    if (parts.length < 2 || !/^[A-Za-z0-9_.]{1,200}$/.test(parts[0]) || parts.slice(1).some((x) => !x || x.length > 80)) continue;
+    const clean = parts.slice(0, 6).join("\u001f");
+    if (!out.includes(clean)) out.push(clean);
+    if (out.length >= 100) break;
+  }
+  return out;
+}
+
 export function normalizeBlockedParts(v) {
   const str = (x, n) => (typeof x === "string" ? x.trim().slice(0, n) : "");
   const out = [];

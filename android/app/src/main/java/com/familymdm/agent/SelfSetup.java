@@ -47,6 +47,36 @@ final class SelfSetup {
             result = "failed: " + e.getMessage();
         }
         note(c, result);
+        try {
+            extras(c, dpm, admin);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Other rights the agent would like (usage access for screen time, drawing over other apps). A device owner may
+     * grant itself ordinary permissions; whether Android also lets it for these two differs by version, so each is
+     * tried and the outcome is written to the activity log once.
+     */
+    private static void extras(Context c, DevicePolicyManager dpm, ComponentName admin) {
+        StringBuilder refused = new StringBuilder();
+        String[][] wanted = {{"android.permission.PACKAGE_USAGE_STATS", "usage access (screen time)"},
+                {"android.permission.SYSTEM_ALERT_WINDOW", "drawing over other apps"}};
+        for (String[] w : wanted) {
+            try {
+                if (dpm.getPermissionGrantState(admin, c.getPackageName(), w[0]) == DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) continue;
+                dpm.setPermissionGrantState(admin, c.getPackageName(), w[0], DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED);
+            } catch (Exception ignored) {
+            }
+        }
+        if (!Agent.usageAccessOn(c)) refused.append("usage access (screen time)");
+        if (!android.provider.Settings.canDrawOverlays(c)) refused.append(refused.length() > 0 ? ", " : "").append("drawing over other apps");
+        String now = refused.length() == 0 ? "ok" : refused.toString();
+        if (now.equals(Agent.prefs(c).getString("selfSetupExtras", ""))) return;
+        Agent.prefs(c).edit().putString("selfSetupExtras", now).apply();
+        Agent.addEvent(c, "restriction", refused.length() == 0
+                ? "The agent holds usage access and may draw over other apps"
+                : "Android still needs a tap on the phone for: " + refused + " (Safety → Health check shows where)");
     }
 
     /** null when the agent now holds WRITE_SECURE_SETTINGS, otherwise why not. */
