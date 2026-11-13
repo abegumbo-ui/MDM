@@ -934,6 +934,9 @@ final class PolicyApplier {
             long browseUntil = Agent.prefs(c).getLong("browseUntil", 0);
             // Category filter level (off / moderate / strict) and where the Browser downloads its lists.
             String filterTier = policy.optString("browserFilter", "off");
+            // The separate Browser app does not know the "Open: close only what I choose" level: it gets its own "open" mode (the whole web,
+            // with its built-in adult-site block and SafeSearch still on), instead of falling back to "approved sites only".
+            if ("custom".equals(filterTier)) filterTier = "open";
             String filterBase = policy.optString("browserFilterBase", "");
             String youtubeMode = policy.optString("youtubeMode", "channels");
             boolean blockImages = policy.optBoolean("blockImages", false);
