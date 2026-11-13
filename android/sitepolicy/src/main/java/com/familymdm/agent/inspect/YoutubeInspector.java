@@ -296,14 +296,26 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         return null;
     }
 
+    /**
+     * The YouTube and YouTube Music icons inside the MDM app add their own scripts and rules to the page, and say so in
+     * their browser name ("MDMAddon/"). Nothing is added for them here: this copy of the home list would come first,
+     * and the icon's own list (Music songs, Download buttons, Ask for...) would never show.
+     */
+    private static boolean isAddon(InspectProxy.Request r) {
+        String ua = r.headers == null ? null : r.headers.get("User-Agent");
+        return ua != null && ua.contains("MDMAddon/");
+    }
+
     @Override
     public boolean wantsIdentity(InspectProxy.Request r) {
+        if (isAddon(r)) return false;
         return isDocument(r) && (((restricted || youtubeAdScript != null || channelScripts != null) && isYoutube(r.host)) || pageScript != null);
     }
 
     @Override
     public boolean rewrites(InspectProxy.Request r, String contentType) {
         if (filtersPicture(r, contentType)) return true;
+        if (isAddon(r) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return false;
         if (pageScript != null && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return true;
         return (restricted || youtubeAdScript != null || channelScripts != null) && isYoutube(r.host) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html");
     }
@@ -325,6 +337,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
                 return body;
             }
         }
+        if (isAddon(r)) return body; // the icon's own scripts do all of this
         boolean yt = restricted && isYoutube(r.host);
         String ads = youtubeAdScript != null && isYoutube(r.host) ? youtubeAdScript : null;
         String js = pageScript;
