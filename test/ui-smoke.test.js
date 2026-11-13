@@ -50,6 +50,8 @@ async function setUp() {
   await call("/agent/sync", { method: "POST", headers: { ...J, authorization: "Bearer " + token }, body: JSON.stringify({
     packages: [{ p: "com.google.android.apps.maps", l: "Maps", s: false, h: false, c: 6 }, { p: "com.instagram.android", l: "Instagram", s: false, h: true }, { p: "com.example.puzzle", l: "Puzzle Fun", s: false, h: false, c: 0 }, { p: "com.android.vending", l: "Google Play Store", s: true, h: false }],
     info: { deviceOwner: true, android: "14", versionCode: 400, battery: { pct: 80, charging: false }, wifi: { transport: "wifi", ssid: "Home" }, storeUntil: -1 },
+    downloads: [{ id: "abcdefghijk", t: "Test song", k: "music", at: 1700000000000, bytes: 5242880 }, { id: "lmnopqrstuv", t: "Test video", k: "video", at: 1700000001000, bytes: 9437184 }],
+    downloadsAt: 1700000002000,
     siteRequests: [{ url: "https://example.com/page" }, { url: "https://music.youtube.com/search?q=Avraham+Fried", note: "can I have his songs please" }, { url: "https://www.youtube.com/@NASA", note: "for my science homework" }],
     appRequests: [{ kind: "store" }, { kind: "app", pkg: "com.instagram.android", label: "Instagram" }, { kind: "time" }],
     usage: { day: "2026-11-10", total: 134, ok: true, apps: [{ p: "com.google.android.apps.maps", l: "Maps", m: 90 }, { p: "com.instagram.android", l: "Instagram", m: 44 }] },
@@ -256,9 +258,16 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(legacyApps, /Internet for this app/, "per-app internet switch right on the Apps list");
   assert.match(seen["youtube/music"], /Approve music/, "YouTube Music: search and approve songs, artists and albums");
   assert.match(seen["youtube/music"], /Albums and playlists/);
-  assert.match(seen["youtube/music"], /Show song pictures/);
+  assert.match(seen["youtube/music"], /Only for songs you approved/);
   assert.match(seen["youtube/music"], /Allowed music/);
   assert.match(seen["youtube/yt"], /Find on YouTube/);
+  assert.match(seen["youtube/music"], /Downloaded on the phone \(1\)/, "the songs downloaded on the phone are listed");
+  assert.match(seen["youtube/music"], /Test song/);
+  assert.match(seen["youtube/music"], /Delete all 1 song from the phone/);
+  assert.doesNotMatch(seen["youtube/music"], /Test video/, "videos are on the YouTube tab");
+  assert.match(seen["youtube/yt"], /Downloaded on the phone \(1\)/);
+  assert.match(seen["youtube/yt"], /Test video/);
+  assert.match(seen["youtube/yt"], /Delete from the phone/);
   assert.match(seen["youtube/music"], /Asked for in YouTube Music \(1\)/, "what the phone asked for in Music is on the Music tab");
   assert.match(seen["youtube/music"], /Their message: “can I have his songs please”/, "with the message the child wrote");
   assert.doesNotMatch(seen["youtube/music"], /for my science homework/, "YouTube requests stay on the YouTube tab");

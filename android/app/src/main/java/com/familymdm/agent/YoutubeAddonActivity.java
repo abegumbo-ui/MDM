@@ -416,7 +416,8 @@ public class YoutubeAddonActivity extends Activity {
         }
         if (music()) {
             if (!p.optBoolean("youtubeSignIn", false)) js.append("window.__mdmNoSignIn=true;");
-            if (!"show".equals(p.optString("musicPictures", "hide"))) js.append("window.__mdmHidePics=true;"); // album art, thumbnails and video frames stay hidden
+            String mp = p.optString("musicPictures", "allowed"); // "allowed": art only for approved songs; "hide": none; "show": everything
+            if (!"show".equals(mp)) js.append("window.__mdmPics='" + ("hide".equals(mp) ? "hide" : "allowed") + "';");
             String clean = YoutubeScripts.load("music_clean.js");
             if (clean != null) js.append(clean);
         }
@@ -448,7 +449,7 @@ public class YoutubeAddonActivity extends Activity {
                 JSONObject s = a.optJSONObject(i);
                 if (s == null || SitePolicy.isExpired(s)) continue;
                 String thumb = s.optString("thumb", "");
-                if (!thumb.startsWith("https://") || (music() && !"show".equals(policy().optString("musicPictures", "hide")))) thumb = "";
+                if (!thumb.startsWith("https://") || (music() && "hide".equals(policy().optString("musicPictures", "allowed")))) thumb = "";
                 if ("youtube".equals(s.optString("type"))) {
                     if (music()) continue; // channels are YouTube's, not Music's
                     String handle = s.optString("id", "");
@@ -467,7 +468,7 @@ public class YoutubeAddonActivity extends Activity {
             JSONArray downloads = Downloads.forPages(this, music());
             if (channels.length() == 0 && videos.length() == 0 && !ask && downloads.length() == 0 && !Downloads.allowed(this)) return null;
             return YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads)
-                    .put("music", music()).put("dl", Downloads.allowed(this)).put("nopics", music() && !"show".equals(policy().optString("musicPictures", "hide"))).toString());
+                    .put("music", music()).put("dl", Downloads.allowed(this)).put("nopics", music() && "hide".equals(policy().optString("musicPictures", "allowed"))).toString());
         } catch (Exception e) {
             return null;
         }

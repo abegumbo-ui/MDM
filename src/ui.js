@@ -2044,7 +2044,8 @@ function renderYoutube(m,dv){
    return h('div',null,h('div',{class:'mute small',style:'margin-top:10px'},'Pictures of the videos in search results that are not allowed:'),seg)})()));
  if(!dv.isWindows&&!dv.isBrowser)m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Let them download videos'),
   h('div',{class:'mute'},'A Download button on every YouTube video (in the Browser and the YouTube icon). The video is saved on the phone with yt-dlp, listed under "Downloaded" on YouTube\'s home page, and plays with no internet. Only YouTube videos; only while YouTube is not Off.')),
-  sw(c.downloadsOff!==true,function(on){c.downloadsOff=!on;save(on?'They can download videos.':'Downloads are off.')}))));
+  sw(c.downloadsOff!==true,function(on){c.downloadsOff=!on;if(!on)offerDeleteDownloads(dv);save(on?'They can download videos.':'Downloads are off.')}))));
+ renderDownloadedCard(m,dv,false);
  if(!dv.isWindows)m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Allow signing in to YouTube'),
   h('div',{class:'mute'},'Off by default: the Sign in button leads to "This part of YouTube is not allowed". Turn it on only when the child may sign in with their account (in our Browser and the YouTube icon).')),
   sw(c.youtubeSignIn===true,function(on){c.youtubeSignIn=on;save(on?'Signing in to YouTube is allowed.':'Signing in to YouTube is not allowed.')}))));
@@ -2104,6 +2105,25 @@ function songRow(dv,r,have,group){
  return h('div',{class:'row',style:'margin:10px 0;align-items:flex-start'},h('img',{src:r.thumb,alt:'',loading:'lazy',style:'width:96px;height:54px;border-radius:8px;object-fit:cover;flex:none'}),
   h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.title),h('div',{class:'mute small'},[r.channel,r.length].filter(Boolean).join(' · '))),
   have.has(r.id)?h('span',{class:'chip ok'},'Allowed'):btn('Allow','',function(){allowSongs(dv,[r],group||'')}))}
+/** What is downloaded on the phone (songs for Music, videos for YouTube), with "Delete from the phone". */
+function renderDownloadedCard(m,dv,music){
+ if(dv.isBrowser||dv.isWindows)return;
+ const all=(dv.downloads||[]).filter(function(x){return (x.k==='music')===music});
+ const word=music?'song':'video';
+ const card=h('div',{class:'card'},h('h2',null,'Downloaded on the phone ('+all.length+')'));
+ card.append(h('div',{class:'mute'},dv.downloadsAt?'These '+word+'s are saved on the phone and play with no internet. Delete takes one off the phone the next time it checks in (seconds on the Raspberry Pi). Last reported '+ago(dv.downloadsAt)+'.':'The phone has not reported its downloads yet. It does at its next check-in, on a build from today or later.'));
+ const queue=async function(args,msg){try{await call('POST','/api/devices/'+dv.id+'/command',{type:'deleteDownloads',args:args});snack(msg);load()}catch(e){snack(e.message,1)}};
+ if(all.length)card.append(h('div',{class:'row',style:'margin:8px 0'},btn('Delete all '+all.length+' '+word+(all.length===1?'':'s')+' from the phone','danger',function(){if(confirm('Delete all '+all.length+' downloaded '+word+'s from '+dv.name+'? They cannot be played again until downloaded again.'))queue({kind:music?'music':'video'},'Queued. The phone deletes them at its next check-in.')})));
+ for(const x of all.slice().sort(function(a,b){return (b.at||0)-(a.at||0)}))
+  card.append(h('div',{class:'row',style:'margin:8px 0'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},x.t||'Untitled'),h('div',{class:'mute small'},((x.bytes||0)/1048576).toFixed(1)+' MB'+(x.at?' · '+new Date(x.at).toLocaleDateString([],{month:'short',day:'numeric'}):''))),
+   btn('Delete from the phone','outline',function(){if(confirm('Delete "'+(x.t||'this download')+'" from the phone?'))queue({ids:[x.id]},'Queued. The phone deletes it at its next check-in.')})));
+ if(!all.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing downloaded yet.'));
+ m.append(card)}
+/** Turning downloads off can also delete what is already on the phone. */
+function offerDeleteDownloads(dv){
+ const n=(dv.downloads||[]).length;
+ if(n&&confirm('Downloads are being turned off. Also delete the '+n+' downloaded song'+(n===1?'':'s')+' and video'+(n===1?'':'s')+' from the phone?'))
+  call('POST','/api/devices/'+dv.id+'/command',{type:'deleteDownloads',args:{all:true}}).then(function(){snack('Queued. The phone deletes them at its next check-in.')}).catch(function(e){snack(e.message,1)})}
 /** What the phone asked for in YouTube (music=false) or YouTube Music (music=true), with the buttons to approve it. */
 function ytRequestList(dv,music){return (dv.siteRequests||[]).filter(function(r){const host=ytHostOf(r.url||'');return music?host==='music.youtube.com':(host==='youtube.com'||host==='m.youtube.com'||host==='youtu.be')})}
 function ytRequestsCard(m,dv,music,showEmpty){
@@ -2198,10 +2218,14 @@ function renderYoutubeMusic(m,dv){
  // ---- downloads and pictures ----
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Let them download songs'),
   h('div',{class:'mute'},'A Download button on every allowed song and a Downloads button on the Music home screen (progress, Cancel). A song is saved on the phone as sound only and plays with no internet.')),
-  sw(c.downloadsOff!==true,function(on){c.downloadsOff=!on;save(on?'They can download songs.':'Downloads are off.')}))));
- m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Show song pictures'),
-  h('div',{class:'mute'},'Off (recommended): album art, thumbnails and music-video frames are hidden in the Music icon, so only the titles show. On: pictures show the way YouTube Music draws them.')),
-  sw(c.musicPictures==='show',function(on){c.musicPictures=on?'show':'hide';save(on?'Song pictures are shown.':'Song pictures are hidden.')}))))}
+  sw(c.downloadsOff!==true,function(on){c.downloadsOff=!on;if(!on)offerDeleteDownloads(dv);save(on?'They can download songs.':'Downloads are off.')}))));
+ renderDownloadedCard(m,dv,true);
+ const mpSel=h('select');
+ for(const o of [['allowed','Only for songs you approved (recommended)'],['show','Always show'],['hide','Never show']])mpSel.append(new Option(o[1],o[0]));
+ mpSel.value=c.musicPictures||'allowed';
+ mpSel.onchange=function(){c.musicPictures=mpSel.value;save(mpSel.value==='allowed'?'Album art shows for approved songs only.':mpSel.value==='show'?'Song pictures are shown everywhere.':'Song pictures are hidden everywhere.')};
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Song pictures'),
+  h('div',{class:'mute'},'Album art and thumbnails in the Music icon. "Only for songs you approved": the songs you approved show their art, and everything else (search results, recommendations) shows no picture. "Never": no pictures at all, music-video frames included.')),mpSel)))}
 /** Find a YouTube channel or video by name and allow it with one tap. */
 let ytResults=null,ytQuery='',ytKind='channel';
 /** From a request: open this device's YouTube section and search for what the child asked for. */

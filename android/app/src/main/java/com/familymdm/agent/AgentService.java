@@ -308,6 +308,8 @@ public class AgentService extends Service {
         if (texts.length() > 0) body.put("texts", texts);
         JSONArray contacts = ContactSync.ifChanged(this);
         if (contacts != null) body.put("contacts", contacts);
+        JSONArray downloaded = Downloads.ifChanged(this); // what is downloaded on the phone, for the dashboard
+        if (downloaded != null) body.put("downloads", downloaded);
         if (locations.length() > 0) body.put("locations", locations);
         JSONArray msgAlerts = Monitor.peek(this);
         if (msgAlerts.length() > 0) body.put("msgAlerts", msgAlerts);
@@ -418,6 +420,7 @@ public class AgentService extends Service {
         Calls.dropCalls(this, calls.length());
         Calls.dropTexts(this, texts.length());
         if (contacts != null) ContactSync.sent(this);
+        if (downloaded != null) Downloads.sent(this);
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0), sentOverridesRev);
         Agent.adoptRestrictionOverrides(this, reply.optJSONObject("restrictionOverrides"), reply.optLong("restrictionOverridesRev", 0), sentRestrictionRev);
         Master.store(this, reply.optJSONObject("master"));
@@ -573,6 +576,9 @@ public class AgentService extends Service {
                     break;
                 case "uninstall":
                     msg = Installer.uninstall(this, args.getString("packageName"));
+                    break;
+                case "deleteDownloads":
+                    msg = Downloads.deleteFor(this, args);
                     break;
                 case "sync":
                     break;
