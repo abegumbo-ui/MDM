@@ -87,10 +87,11 @@ final class PartBlocker {
 
     /** Called for every screen change of any app. */
     static void onScreen(AccessibilityService s, String pkg) {
-        if (picking) return;
         if (EmergencyUnlock.isActive(s)) { if (!covers.isEmpty()) clearCovers(s); return; } // every restriction is off during an emergency unlock
         if (pkg == null || pkg.equals(s.getPackageName()) || pkg.equals("com.android.systemui")) return;
+        // A screen that was blocked closes even while the picker bar is open (only covers of parts wait for it to close).
         if (screenBlockedNow(s, pkg)) return;
+        if (picking) return;
         if (!anyFor(s, pkg)) {
             if (coveredPkg != null && !pkg.equals(coveredPkg)) clearCovers(s);
             return;
@@ -214,30 +215,47 @@ final class PartBlocker {
         picking = true;
         clearCovers(s);
         WindowManager wm = s.getSystemService(WindowManager.class);
+        // Two rows that fit the screen: the hint with a ✕ (always visible, top right), then the two buttons.
         LinearLayout bar = new LinearLayout(s);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setPadding(Ui.dp(s, 8), Ui.dp(s, 6), Ui.dp(s, 8), Ui.dp(s, 6));
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setPadding(Ui.dp(s, 12), Ui.dp(s, 8), Ui.dp(s, 12), Ui.dp(s, 10));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xEE4F46E5);
-        bg.setCornerRadius(Ui.dp(s, 24));
+        bg.setColor(0xF04F46E5);
+        bg.setCornerRadius(Ui.dp(s, 22));
         bar.setBackground(bg);
+        LinearLayout top = new LinearLayout(s);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        TextView hint = new TextView(s);
+        hint.setText("Go to the screen, then press ✓.\nOr Pick a part to block one button.");
+        hint.setTextColor(Color.WHITE);
+        hint.setTextSize(14);
+        top.addView(hint, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        Button done = new Button(s);
+        done.setText("✕");
+        done.setTextSize(20);
+        done.setAllCaps(false);
+        done.setMinWidth(0);
+        done.setMinimumWidth(0);
+        done.setPadding(Ui.dp(s, 14), 0, Ui.dp(s, 14), 0);
+        done.setContentDescription("Close");
+        done.setOnClickListener(v -> stopPicking(s));
+        top.addView(done, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, Ui.dp(s, 46)));
+        LinearLayout buttons = new LinearLayout(s);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
         Button check = new Button(s);
         check.setText("✓ Block this screen");
+        check.setAllCaps(false);
         check.setOnClickListener(v -> blockThisScreen(s));
         Button pick = new Button(s);
         pick.setText("Pick a part");
+        pick.setAllCaps(false);
         pick.setOnClickListener(v -> showCapture(s));
-        Button done = new Button(s);
-        done.setText("Done");
-        done.setOnClickListener(v -> stopPicking(s));
-        TextView hint = new TextView(s);
-        hint.setText("  Go to the screen, then press ✓.\n  Or Pick a part to block just one button.  ");
-        hint.setTextColor(Color.WHITE);
-        bar.addView(hint);
-        bar.addView(check);
-        bar.addView(pick);
-        bar.addView(done);
-        WindowManager.LayoutParams p = lp(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, true);
+        buttons.addView(check, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        buttons.addView(pick, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        bar.addView(top);
+        bar.addView(buttons);
+        WindowManager.LayoutParams p = lp(s.getResources().getDisplayMetrics().widthPixels - Ui.dp(s, 24), WindowManager.LayoutParams.WRAP_CONTENT, true);
         p.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         p.y = Ui.dp(s, 90);
         try {
@@ -254,6 +272,27 @@ final class PartBlocker {
     // ---------- a screen's "fingerprint": the words at the top of it ----------
 
     static final String SEP = "\u001f";
+
+    // ---------- names that do not tell one screen from another ----------
+
+    private static final java.util.Set<String> GENERIC = new java.util.HashSet<>(java.util.Arrays.asList(
+            "settings", "search", "more options", "navigate up", "back", "menu", "home", "options", "close", "done", "ok", "cancel"));
+
+    /** A word or title that appears on many screens of an app (its own name, "Settings", "Search"...): it cannot identify one. */
+    static boolean isGenericText(Context c, String pkg, String t) {
+        if (t == null) return true;
+        String x = t.trim().toLowerCase(java.util.Locale.ROOT);
+        if (x.length() < 3 || GENERIC.contains(x)) return true;
+        String label = appLabel(c, pkg);
+        return label != null && x.equals(label.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /** True when a stored screen block says nothing that tells one screen from another: it would match them all. */
+    private static boolean tooBroad(Context c, String sig) {
+        String[] p = sig.split(SEP);
+        for (int i = 1; i < p.length; i++) if (!isGenericText(c, p[0], p[i])) return false;
+        return true;
+    }
 
     private static volatile long screensAt;
     private static volatile java.util.Set<String> screensCache = new java.util.TreeSet<>();
@@ -278,6 +317,15 @@ final class PartBlocker {
             Agent.putSet(c, "blockedScreens", new java.util.HashSet<String>());
             setBlockedScreens(c, out, "kept the screens blocked before");
         }
+        // A block that would match every screen (it only says "Settings" or the app's name) is removed on its own.
+        boolean dropped = false;
+        for (java.util.Iterator<String> it = out.iterator(); it.hasNext(); ) {
+            if (tooBroad(c, it.next())) {
+                it.remove();
+                dropped = true;
+            }
+        }
+        if (dropped) setBlockedScreens(c, out, "removed a screen block that matched too much");
         screensCache = out;
         screensAt = now;
         return new java.util.TreeSet<>(out);
@@ -398,6 +446,11 @@ final class PartBlocker {
         for (String sig : mine) {
             String[] p = sig.split(SEP);
             boolean all3 = p.length > 1;
+            if (all3) { // the first word is the page's title: it has to be among the first few on screen
+                boolean near = false;
+                for (int k = 0; k < Math.min(5, here.size()); k++) if (here.get(k).equalsIgnoreCase(p[1])) { near = true; break; }
+                all3 = near;
+            }
             for (int i = 1; i < p.length && all3; i++) {
                 boolean found = false;
                 for (String h : here) if (h.equalsIgnoreCase(p[i])) { found = true; break; }
@@ -418,7 +471,21 @@ final class PartBlocker {
 
     /** Screens blocked by their title (Settings pages, which all have the same class name). */
     static java.util.Set<String> blockedTitles(Context c) {
-        return Agent.getSet(c, "blockedTitles");
+        java.util.Set<String> all = Agent.getSet(c, "blockedTitles");
+        boolean dropped = false;
+        for (java.util.Iterator<String> it = all.iterator(); it.hasNext(); ) {
+            String e = it.next();
+            int bar = e.indexOf('|');
+            if (bar < 0 || isGenericText(c, e.substring(0, bar), e.substring(bar + 1))) {
+                it.remove(); // "Settings" as a title matches every Settings page: the block is deleted
+                dropped = true;
+            }
+        }
+        if (dropped) {
+            Agent.putSet(c, "blockedTitles", all);
+            Agent.addEvent(c, "local", "A screen block that matched every screen of an app was removed");
+        }
+        return all;
     }
 
     static void noteScreen(String pkg, String cls, String title) {
@@ -459,16 +526,20 @@ final class PartBlocker {
             // Settings: every page is "SubSettings", so blocking the class would block them all. Told apart by
             // the words at the top of the page instead (its title and first headings).
             AccessibilityNodeInfo root = s.getRootInActiveWindow();
-            List<String> top = root != null && root.getPackageName() != null && pkg.contentEquals(root.getPackageName()) ? topTexts(root, 3) : new ArrayList<String>();
+            List<String> all = root != null && root.getPackageName() != null && pkg.contentEquals(root.getPackageName()) ? topTexts(root, 8) : new ArrayList<String>();
+            List<String> top = new ArrayList<>();
+            for (String t : all) if (!isGenericText(s, pkg, t) && top.size() < 3) top.add(t);
             if (!top.isEmpty()) {
                 showConfirmScreen(s, pkg, "sig:" + signatureOf(pkg, top), appLabel(s, pkg) + ": " + String.join(" › ", top));
                 return;
             }
-            if (title != null && !title.trim().isEmpty()) {
+            // The page's own title is the only thing left: usable only if it is not a name that every page has.
+            if (title != null && !isGenericText(s, pkg, title)) {
                 showConfirmScreen(s, pkg, "title:" + pkg + "|" + title.trim(), appLabel(s, pkg) + ": " + title.trim());
                 return;
             }
-            showPanel(s, "This page shows no words I can read, so I cannot tell it from the other Settings pages. Use Pick a part and tap something on it instead.", false);
+            if (pickButton != null) pickButton.setVisibility(View.VISIBLE);
+            showPanel(s, "I cannot read what this page is called (it only says \"Settings\"), so blocking it would block every Settings page. Nothing was blocked. Use Pick a part and tap something on the page instead.", false);
             return;
         }
         showConfirmScreen(s, pkg, comp, appLabel(s, pkg) + ": " + nice);
@@ -527,6 +598,20 @@ final class PartBlocker {
         FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         tl.topMargin = Ui.dp(s, 40);
         layer.addView(t, tl);
+        Button back = new Button(s);
+        back.setText("✕");
+        back.setTextSize(20);
+        back.setAllCaps(false);
+        back.setContentDescription("Cancel");
+        back.setOnClickListener(v -> {
+            removeView(wm, capture);
+            capture = null;
+            backToPickButton(s);
+        });
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(Ui.dp(s, 56), Ui.dp(s, 56), Gravity.TOP | Gravity.END);
+        bl.topMargin = Ui.dp(s, 36);
+        bl.rightMargin = Ui.dp(s, 12);
+        layer.addView(back, bl);
         layer.setOnTouchListener((v, e) -> {
             if (e.getAction() == MotionEvent.ACTION_UP) {
                 int x = (int) e.getRawX(), y = (int) e.getRawY();
