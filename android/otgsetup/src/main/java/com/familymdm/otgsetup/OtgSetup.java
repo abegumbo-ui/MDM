@@ -105,13 +105,14 @@ final class OtgSetup {
     private static String readAll(AdbStream s) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
-            while (!s.isClosed()) {
+            // read() hands over everything that arrived, and throws once the stream is closed AND empty: that is how a command ends.
+            while (true) {
                 byte[] d = s.read();
                 if (d == null) break;
                 out.write(d);
             }
         } catch (IOException closed) {
-            // the other phone closed the stream: that is how a command ends
+            // finished
         }
         return out.toString("UTF-8");
     }

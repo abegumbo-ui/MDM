@@ -84,7 +84,20 @@ public class AdbStream implements Closeable {
 	 */
 	void readyForWrite()
 	{
+		accepted = true;
 		writeReady.set(true);
+	}
+
+	/** Set when the peer first said OKAY to our open (added to the original library). */
+	private volatile boolean accepted;
+
+	/**
+	 * True if the peer ever accepted this stream. A quick command is accepted, answers and closes within microseconds,
+	 * so 'closed' alone does not mean 'refused' (the original library took it to mean that).
+	 */
+	boolean wasAccepted()
+	{
+		return accepted;
 	}
 	
 	/**
@@ -115,16 +128,18 @@ public class AdbStream implements Closeable {
 		byte[] data = null;
 		
 		synchronized (readQueue) {
-			/* Wait for the connection to close or data to be received */
-			while (!isClosed && (data = readQueue.poll()) == null) {
+			/* Wait for the connection to close or data to be received.
+			 * Changed from the original library: data that arrived before the close is handed over first
+			 * (a short command's output and the close often arrive together; the original dropped the output). */
+			while ((data = readQueue.poll()) == null && !isClosed) {
 				readQueue.wait();
 			}
-			
-			if (isClosed) {
+
+			if (data == null) {
 				throw new IOException("Stream closed");
 			}
 		}
-		
+
 		return data;
 	}
 	

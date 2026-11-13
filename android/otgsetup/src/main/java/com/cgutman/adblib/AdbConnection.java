@@ -337,13 +337,15 @@ public class AdbConnection implements Closeable {
 		outputStream.write(AdbProtocol.generateOpen(localId, destination));
 		outputStream.flush();
 		
-		/* Wait for the connection thread to receive the OKAY */
+		/* Wait for the connection thread to receive the OKAY (or the close). Changed from the original library: waits on a condition,
+		 * so an OKAY that arrives before this point is not missed and waited for forever. */
 		synchronized (stream) {
-			stream.wait();
+			while (!stream.isClosed() && !stream.wasAccepted())
+				stream.wait();
 		}
 		
-		/* Check if the open was rejected */
-		if (stream.isClosed())
+		/* Check if the open was rejected: closed without ever being accepted (changed from the original: closed alone is not enough) */
+		if (!stream.wasAccepted())
 			throw new ConnectException("Stream open actively rejected by remote peer");
 		
 		/* We're fully setup now */
