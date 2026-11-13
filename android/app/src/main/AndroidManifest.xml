@@ -119,6 +119,7 @@
         <!-- Downloads (yt-dlp): the service that downloads, the receiver the Browser asks, the player. -->
         <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".DownloadReceiver" android:exported="false" />
+        <activity android:name=".DownloadsActivity" android:exported="false" />
         <activity
             android:name=".DownloadPlayerActivity"
             android:exported="false"

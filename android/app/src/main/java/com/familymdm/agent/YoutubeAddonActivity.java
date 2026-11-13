@@ -464,7 +464,7 @@ public class YoutubeAddonActivity extends Activity {
                 }
             }
             JSONArray downloads = Downloads.forPages(this, music());
-            if (channels.length() == 0 && videos.length() == 0 && !ask && downloads.length() == 0) return null;
+            if (channels.length() == 0 && videos.length() == 0 && !ask && downloads.length() == 0 && !Downloads.allowed(this)) return null;
             return YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads)
                     .put("music", music()).put("dl", Downloads.allowed(this)).toString());
         } catch (Exception e) {
@@ -487,7 +487,9 @@ public class YoutubeAddonActivity extends Activity {
             show(page("Sent", "Your parent sees it on the dashboard. Once it is allowed, it opens here.", homeButton()));
         } else if ("download".equals(what)) {
             String why = Downloads.request(this, u.getQueryParameter("u"), music() || "music".equals(u.getQueryParameter("k")));
-            Toast.makeText(this, why == null ? "Downloading…" : why, Toast.LENGTH_LONG).show();
+            Toast.makeText(this, why == null ? "Downloading… see it under Downloads." : why, Toast.LENGTH_LONG).show();
+        } else if ("downloads".equals(what)) {
+            startActivity(new Intent(this, DownloadsActivity.class).putExtra("music", music()));
         } else if ("play".equals(what)) {
             startActivity(new Intent(this, DownloadPlayerActivity.class).putExtra("id", u.getQueryParameter("id")));
         } else if ("home".equals(what)) {

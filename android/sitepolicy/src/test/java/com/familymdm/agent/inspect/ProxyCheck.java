@@ -386,6 +386,15 @@ public class ProxyCheck {
         vs.setPageScript(null);
         check(!vs.rewrites(page, "text/html"), "switched off again");
 
+        // Forced SafeSearch: browsers that go through the proxy are connected to the "safe" servers too (the DNS filter cannot do it for them).
+        InspectProxy.setHostMap(h -> com.familymdm.agent.sitepolicy.SafeSearchDns.target(h, true, "strict"));
+        check("forcesafesearch.google.com".equals(InspectProxy.connectTo("www.google.com")), "www.google.com goes to Google's safe server");
+        check("strict.bing.com".equals(InspectProxy.connectTo("www.bing.com")), "Bing goes to its strict server");
+        check("restrict.youtube.com".equals(InspectProxy.connectTo("m.youtube.com")), "YouTube goes to Restricted Mode");
+        check("example.org".equals(InspectProxy.connectTo("example.org")), "any other site is left alone");
+        InspectProxy.setHostMap(null);
+        check("www.google.com".equals(InspectProxy.connectTo("www.google.com")), "with SafeSearch off nothing is changed");
+
         proxy2.close();
         System.out.println(failures == 0 ? "ALL OK" : failures + " FAILED");
         System.exit(failures == 0 ? 0 : 1);

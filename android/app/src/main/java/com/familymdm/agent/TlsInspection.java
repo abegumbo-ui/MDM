@@ -185,6 +185,11 @@ final class TlsInspection {
             if (!dpm.installCaCert(admin, der)) throw new IllegalStateException("could not install the certificate");
         }
         boolean fresh = proxy == null;
+        final Context app = c.getApplicationContext();
+        // Forced SafeSearch / YouTube Restricted Mode for browsers that go through this proxy (same rule as the DNS filter).
+        InspectProxy.setHostMap(host -> com.familymdm.agent.sitepolicy.SafeSearchDns.target(host,
+                !Protection.paused(app) && Agent.prefs(app).getBoolean("safeSearch", false),
+                Protection.paused(app) ? "off" : Agent.prefs(app).getString("youtubeDns", "off")));
         if (fresh) {
             InspectProxy p = new InspectProxy(ca, LIVE, InspectProxy.verifyingUpstream());
             int port;

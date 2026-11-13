@@ -977,6 +977,8 @@ final class PolicyApplier {
             if (cp != null && cp.optBoolean("noSignin", false)) b.putInt("BrowserSignin", 0); // 0 = no signing in to Chrome
             if (policy.optBoolean("safeSearch", false)) b.putBoolean("ForceGoogleSafeSearch", true);
             String yt = policy.optString("youtubeDns", "off");
+            // Chrome's own secure DNS would look the safe addresses up elsewhere and skip the redirect to the safe servers.
+            if (policy.optBoolean("safeSearch", false) || "moderate".equals(yt) || "strict".equals(yt)) b.putString("DnsOverHttpsMode", "off");
             if ("moderate".equals(yt)) b.putInt("ForceYouTubeRestrict", 1);
             if ("strict".equals(yt)) b.putInt("ForceYouTubeRestrict", 2);
             if (policy.optBoolean("blockImages", false)) {
