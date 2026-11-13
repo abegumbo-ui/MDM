@@ -467,7 +467,7 @@ public class YoutubeAddonActivity extends Activity {
             JSONArray downloads = Downloads.forPages(this, music());
             if (channels.length() == 0 && videos.length() == 0 && !ask && downloads.length() == 0 && !Downloads.allowed(this)) return null;
             return YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads)
-                    .put("music", music()).put("dl", Downloads.allowed(this)).toString());
+                    .put("music", music()).put("dl", Downloads.allowed(this)).put("nopics", music() && !"show".equals(policy().optString("musicPictures", "hide"))).toString());
         } catch (Exception e) {
             return null;
         }
