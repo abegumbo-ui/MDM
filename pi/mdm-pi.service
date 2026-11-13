@@ -1,0 +1,23 @@
+[Unit]
+Description=MDM server (dashboard and phone API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=mdmsrv
+Group=mdmsrv
+EnvironmentFile=/etc/mdm-pi.env
+WorkingDirectory=/opt/mdm-pi
+ExecStart=/usr/bin/node /opt/mdm-pi/pi/server.mjs
+Restart=always
+RestartSec=3
+# A Raspberry Pi Zero 2 W has 512 MB: keep the server from taking all of it (big things live on the SD card).
+Environment=NODE_OPTIONS=--max-old-space-size=200
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/mdm-pi
+
+[Install]
+WantedBy=multi-user.target
