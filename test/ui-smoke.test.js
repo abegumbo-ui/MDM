@@ -209,6 +209,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["time/report"], /Bedtime/);
   assert.match(seen["youtube/yt"], /What can they watch on YouTube\?/);
   assert.match(seen["youtube/yt"], /Only what I allow/);
+  assert.match(seen["youtube/yt"], /YouTube Restricted Mode is on \(strict\)/);
+  assert.match(seen["youtube/yt"], /Use Moderate instead/);
   assert.match(seen.server, /This page comes from Cloudflare/);
   assert.match(seen.badgeCloudflare, /Cloudflare/);
   assert.match(seen.badgePi, /Raspberry Pi/);

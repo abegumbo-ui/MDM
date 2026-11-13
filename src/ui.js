@@ -3250,6 +3250,14 @@ function essYoutube(box,dv){
   ['open','Open','YouTube as it is.'],
   ['blocked','Off','YouTube does not open at all.']],cur,function(v){c.youtubeMode=v;save('YouTube: '+(YT_CHOICES.find(function(x){return x[0]===v})||[0,v])[1]+'.')}));
  box.append(card);
+ const rm=c.youtubeDns||'off';
+ if(rm!=='off'){
+  const note=h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'YouTube Restricted Mode is on ('+rm+')'),
+   h('div',{class:'mute'},'It is forced on the whole phone (Browser and web, Safe browsing). YouTube itself then refuses some videos, even ones you allowed: they do not play and cannot be downloaded ("This video is restricted").'+(rm==='strict'?' Strict refuses the most.':'')));
+  const row=h('div',{class:'row',style:'margin-top:8px'});
+  if(rm==='strict')row.append(btn('Use Moderate instead','tonal',function(){c.youtubeDns='moderate';return save('YouTube Restricted Mode is now Moderate. Phones apply it within about 5 minutes.')}));
+  row.append(btn('Turn Restricted Mode off','outline',function(){c.youtubeDns='off';return save('YouTube Restricted Mode is off. Allowed videos play normally.')}));
+  note.append(row);box.append(note)}
  const sw2=h('div',{class:'card'},h('h2',null,'On the phone'));
  sw2.append(simpleSwitch('YouTube icon','A YouTube built into the MDM app. It follows the choice above.',!!c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears at the next check-in.':'The YouTube icon is removed at the next check-in.')}));
  sw2.append(simpleSwitch('YouTube Music icon','Its own music-only icon.',c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'The YouTube Music icon appears at the next check-in.':'The YouTube Music icon is removed at the next check-in.')}));
