@@ -69,7 +69,10 @@ test("downloaded items can be deleted from the phone even when new downloads are
 // ---- YouTube Music clean-up and Ask buttons (music_clean.js, music_ask.js) against a small stand-in page ----
 const readJs = (name) => fs.readFileSync(new URL("../android/sitepolicy/src/main/resources/com/familymdm/agent/inspect/" + name, import.meta.url), "utf8");
 class El {
-  constructor(tag, text = "", parent = null, attrs = {}) { this.tag = tag; this.textContent = text; this.parentNode = parent; this.attrs = { ...attrs }; this.children = []; this.className = ""; this.style = { setProperty: (k, v) => { this.style[k] = v; }, display: "" }; this.href = attrs.href || ""; if (parent) parent.children.push(this); }
+  get textContent() { return this._text || this.children.map((c) => c.textContent).join(" "); }
+  set textContent(v) { this._text = v; }
+  addEventListener(t, fn) { (this.listeners = this.listeners || {})[t] = [...((this.listeners || {})[t] || []), fn]; }
+  constructor(tag, text = "", parent = null, attrs = {}) { this.tag = tag; this._text = text; this.parentNode = parent; this.attrs = { ...attrs }; this.children = []; this.className = ""; this.style = { setProperty: (k, v) => { this.style[k] = v; }, display: "" }; this.href = attrs.href || ""; if (parent) parent.children.push(this); }
   get tagName() { return this.tag.toUpperCase(); }
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   setAttribute(k, v) { this.attrs[k] = v; }
@@ -78,7 +81,7 @@ class El {
   get nextSibling() { const i = this.parentNode ? this.parentNode.children.indexOf(this) : -1; return i >= 0 ? this.parentNode.children[i + 1] || null : null; }
   closest(sel) { const tags = sel.split(",").map((s) => s.trim().split(/\s+/).pop()).filter((s) => /^[a-z-]+$/.test(s)); for (let e = this; e; e = e.parentNode) if (tags.includes(e.tag)) return e; return null; }
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
-  querySelectorAll(sel) { const tags = sel.split(",").map((s) => s.trim()).filter((s) => /^[a-z-]+$/.test(s)); const hrefs = sel.includes("[href") ? [...sel.matchAll(/\[href\*="([^"]+)"\]/g)].map((m) => m[1]) : []; const out = []; const walk = (e) => { for (const c of e.children) { if (tags.includes(c.tag) || (c.tag === "a" && hrefs.some((h) => c.href.includes(h)))) out.push(c); walk(c); } }; walk(this); return out; }
+  querySelectorAll(sel) { if (sel === "*") { const all = []; const w = (e) => { for (const c of e.children) { all.push(c); w(c); } }; w(this); return all; } const tags = sel.split(",").map((s) => s.trim()).filter((s) => /^[a-z-]+$/.test(s)); const hrefs = sel.includes("[href") ? [...sel.matchAll(/\[href\*="([^"]+)"\]/g)].map((m) => m[1]) : []; const out = []; const walk = (e) => { for (const c of e.children) { if (tags.includes(c.tag) || (c.tag === "a" && hrefs.some((h) => c.href.includes(h)))) out.push(c); walk(c); } }; walk(this); return out; }
 }
 function stand(path = "/", build) {
   const root = new El("html"); const timers = [];
@@ -89,41 +92,45 @@ function stand(path = "/", build) {
 }
 const hidden = (e) => e.style.display === "none";
 
-test("YouTube Music: the three-dot menu loses Help, Terms and Premium; Settings stays", () => {
-  let items;
-  const s = stand("/", (root) => { items = ["Help & feedback", "Terms & privacy policy", "Get YouTube Premium", "Settings"].map((t) => new El("ytmusic-menu-navigation-item-renderer", t, root)); });
-  s.run("music_clean.js"); s.tick();
-  assert.deepEqual(items.map(hidden), [true, true, true, false]);
-});
+const row = (parent, label) => { const r = new El("tp-yt-paper-item", "", parent); new El("yt-icon", "", r); new El("yt-formatted-string", label, r); return r; };
 
-test("YouTube Music: Settings keeps General and gets Downloads; Privacy and data and About are gone, but only in Settings", () => {
-  let rows, list;
-  const s = stand("/music_settings", (root) => { list = new El("div", "", root); rows = ["General", "Privacy and data", "About"].map((t) => new El("ytmusic-setting-category-collection-entry-renderer", t, list)); });
+test("YouTube Music: the three-dot menu loses Help and Send feedback; Settings stays; a song called Help is not touched", () => {
+  let rows, song;
+  const s = stand("/", (root) => { const menu = new El("ytmusic-menu-popup-renderer", "", root); rows = ["Settings", "Help", "Send feedback"].map((t) => row(menu, t)); const list = new El("div", "", root); song = new El("div", "", list); new El("yt-formatted-string", "Help", song); });
   s.run("music_clean.js"); s.tick();
   assert.deepEqual(rows.map(hidden), [false, true, true]);
-  const dl = list.children.find((c) => c.attrs.id === "mdm-dl-row" || c.id === "mdm-dl-row");
-  assert.ok(dl, "a Downloads row was added");
-  assert.equal(dl.href, "mdmguard://downloads");
-  const artist = stand("/channel/UCabcdefghijklmnopqrstuv", (root) => { rows = [new El("ytmusic-setting-category-collection-entry-renderer", "About", root)]; });
-  artist.run("music_clean.js"); artist.tick();
-  assert.equal(hidden(rows[0]), false, "an artist's own About section is not touched");
+  assert.equal(hidden(song), false, "only menus, dialogs and the side menu are looked at");
 });
 
-test("YouTube Music: no Explore tab, Home and Library stay", () => {
-  let tabs;
-  const s = stand("/", (root) => { tabs = ["Home", "Explore", "Library"].map((t) => new El("ytmusic-pivot-bar-item-renderer", t, root)); });
+test("YouTube Music: Settings keeps General, Downloads and Language, loses Privacy & data and About, and Downloads opens the app's own Downloads screen", () => {
+  let rows;
+  const s = stand("/", (root) => { const dlg = new El("tp-yt-paper-dialog", "", root); rows = ["General", "Downloads", "Privacy & data", "Language & location", "About"].map((t) => row(dlg, t)); });
   s.run("music_clean.js"); s.tick();
-  assert.deepEqual(tabs.map(hidden), [false, true, false]);
+  assert.deepEqual(rows.map(hidden), [false, false, true, false, true]);
+  assert.ok(rows[1].listeners && rows[1].listeners.click, "the Downloads row is taken over");
+  rows[1].listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(s.loc.href, "mdmguard://downloads");
+  let about;
+  const artist = stand("/channel/UCabcdefghijklmnopqrstuv", (root) => { about = new El("div", "", root); new El("yt-formatted-string", "About", about); });
+  artist.run("music_clean.js"); artist.tick();
+  assert.equal(hidden(about), false, "an artist's own About section is not touched");
+});
+
+test("YouTube Music: the side menu has no Explore or Upgrade; Home and Library stay", () => {
+  let rows;
+  const s = stand("/", (root) => { const g = new El("ytmusic-guide-renderer", "", root); rows = ["Home", "Explore", "Library", "Upgrade"].map((t) => row(g, t)); });
+  s.run("music_clean.js"); s.tick();
+  assert.deepEqual(rows.map(hidden), [false, true, false, true]);
 });
 
 test("YouTube Music: Restricted mode is switched on when the parent forces it, and cannot be turned off there", () => {
-  let row, toggle;
-  const build = (root, win) => { row = new El("ytmusic-setting-boolean-renderer", "Restricted mode Off", root); toggle = new El("tp-yt-paper-toggle-button", "", row); toggle.checked = false; toggle.clicked = 0; toggle.click = () => { toggle.clicked++; toggle.checked = true; }; };
-  const on = stand("/music_settings", (root, win) => { build(root, win); win.__mdmRestrict = true; });
+  let line, toggle;
+  const build = (root, win) => { const dlg = new El("tp-yt-paper-dialog", "", root); new El("yt-formatted-string", "Another setting", dlg); line = new El("div", "", dlg); new El("yt-formatted-string", "Restricted mode", line); toggle = new El("tp-yt-paper-toggle-button", "", line); toggle.checked = false; toggle.clicked = 0; toggle.click = () => { toggle.clicked++; toggle.checked = true; }; };
+  const on = stand("/", (root, win) => { build(root, win); win.__mdmRestrict = true; });
   on.run("music_clean.js"); on.tick(); on.tick();
   assert.equal(toggle.clicked, 1, "switched on once");
-  assert.equal(row.style["pointer-events"], "none");
-  const off = stand("/music_settings", build);
+  assert.equal(line.style["pointer-events"], "none");
+  const off = stand("/", build);
   off.run("music_clean.js"); off.tick();
   assert.equal(toggle.clicked, 0, "left alone when the parent has not forced it");
 });
