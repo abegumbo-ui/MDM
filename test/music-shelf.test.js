@@ -106,10 +106,12 @@ test("YouTube Music: Settings keeps General, Downloads and Language, loses Priva
   let rows;
   const s = stand("/", (root) => { const dlg = new El("tp-yt-paper-dialog", "", root); rows = ["General", "Downloads", "Privacy & data", "Language & location", "About"].map((t) => row(dlg, t)); });
   s.run("music_clean.js"); s.tick();
-  assert.deepEqual(rows.map(hidden), [false, false, true, false, true]);
-  assert.ok(rows[1].listeners && rows[1].listeners.click, "the Downloads row is taken over");
-  rows[1].listeners.click[0]({ preventDefault() {}, stopPropagation() {} });
-  assert.equal(s.loc.href, "mdmguard://downloads");
+  assert.deepEqual(rows.map(hidden), [false, true, true, false, true]);
+  assert.equal(hidden(rows[1]), true, "YouTube Music's own Downloads row is replaced...");
+  const dlRow = rows[1].parentNode.children.find((c) => c.id === "mdm-dl-row");
+  assert.ok(dlRow && dlRow.href === "mdmguard://downloads", "...by a link to the app's own Downloads screen");
+  s.tick();
+  assert.equal(rows[1].parentNode.children.filter((c) => c.id === "mdm-dl-row").length, 1, "only one such row, however often the page is swept");
   let about;
   const artist = stand("/channel/UCabcdefghijklmnopqrstuv", (root) => { about = new El("div", "", root); new El("yt-formatted-string", "About", about); });
   artist.run("music_clean.js"); artist.tick();
