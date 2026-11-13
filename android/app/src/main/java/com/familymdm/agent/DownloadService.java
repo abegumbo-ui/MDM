@@ -36,6 +36,20 @@ public class DownloadService extends Service {
     private static final ExecutorService POOL = Executors.newSingleThreadExecutor();
     private static boolean ready;
 
+    /** The useful line of yt-dlp's complaint: its "ERROR:" line, not the warnings that come first. */
+    static String reason(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "it did not work";
+        String best = null, last = null;
+        for (String line : raw.split("\\r?\\n")) {
+            String t = line.trim();
+            if (t.isEmpty()) continue;
+            if (t.startsWith("ERROR")) best = t;
+            if (!t.startsWith("WARNING")) last = t;
+        }
+        String out = best != null ? best : last != null ? last : raw.trim();
+        return out.length() > 400 ? out.substring(0, 400) : out;
+    }
+
     /** One download that is not finished yet (or did not work). */
     static final class Job {
         final String id;
@@ -193,7 +207,7 @@ public class DownloadService extends Service {
         } catch (Exception e) {
             if (job.cancelled) return; // cancelled on purpose: nothing went wrong
             job.state = "error";
-            job.error = e.getMessage() == null ? "it did not work" : e.getMessage();
+            job.error = reason(e.getMessage());
             Agent.addEvent(this, "error", "A download did not work: " + job.error);
             toast("The download did not work. Try again in a little while.");
         } finally {
