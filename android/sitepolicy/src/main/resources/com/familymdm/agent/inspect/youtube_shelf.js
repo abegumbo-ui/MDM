@@ -37,9 +37,9 @@
   }
   function place(box) {
     var top = 0, bottom = 0;
-    var head = document.querySelector('ytm-mobile-topbar-renderer, #header-bar, #masthead-container');
+    var head = document.querySelector('ytm-mobile-topbar-renderer, #header-bar, #masthead-container, ytmusic-nav-bar');
     if (head) top = Math.max(0, head.getBoundingClientRect().bottom);
-    var foot = document.querySelector('ytm-pivot-bar-renderer');
+    var foot = document.querySelector('ytm-pivot-bar-renderer, ytmusic-pivot-bar-renderer');
     if (foot) bottom = Math.max(0, innerHeight - foot.getBoundingClientRect().top);
     box.style.top = (top || 48) + 'px';
     box.style.bottom = bottom + 'px';

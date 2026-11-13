@@ -661,6 +661,29 @@ public class AdminActivity extends Activity {
         });
         if (ytOn) action(yt, "Open YouTube", Ui.TONAL, v -> startActivity(new Intent(this, YoutubeAddonActivity.class)));
 
+        // YouTube Music: the same, with its own icon.
+        LinearLayout ym = Ui.card(this, root);
+        ym.addView(Ui.titleText(this, "YouTube Music"));
+        final boolean ymOn = YoutubeMusicAddon.isEnabled(this);
+        ym.addView(Ui.body(this, ymOn
+                ? "On: a YouTube Music icon on this phone, built into this app. It follows the YouTube settings (only what you allow, restricted, or off)."
+                : "Off. Turning it on puts a YouTube Music icon on this phone, built into this app, under the same rules as YouTube.", true));
+        action(ym, ymOn ? "Take out YouTube Music" : "Put in YouTube Music", ymOn ? Ui.OUTLINED : Ui.TONAL, v -> {
+            try {
+                boolean on = !ymOn;
+                YoutubeMusicAddon.setEnabled(this, on);
+                JSONObject policy = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
+                policy.put("youtubeMusicAddon", on);
+                Agent.prefs(this).edit().putString("policy", policy.toString()).apply();
+                PhoneRules.set(this, new JSONObject().put("youtubeMusicAddon", on), "YouTube Music icon " + (on ? "put in" : "taken out"));
+                toast(on ? "YouTube Music is on this phone now." : "YouTube Music is taken out.");
+            } catch (Exception e) {
+                toast("Could not change it: " + e.getMessage());
+            }
+            build();
+        });
+        if (ymOn) action(ym, "Open YouTube Music", Ui.TONAL, v -> startActivity(new Intent(this, YoutubeMusicActivity.class)));
+
         LinearLayout addon = Ui.card(this, root);
         addon.addView(Ui.titleText(this, "Browser"));
         boolean addonOn = BrowserAddon.isEnabled(this);

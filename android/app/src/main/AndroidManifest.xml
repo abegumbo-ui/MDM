@@ -115,6 +115,27 @@
             android:taskAffinity="com.familymdm.agent.youtube"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@android:style/Theme.Material.NoActionBar" />
+        <!-- The YouTube Music icon: the same screen as the YouTube icon, starting on YouTube Music, in its own task. -->
+        <activity
+            android:name=".YoutubeMusicActivity"
+            android:exported="false"
+            android:taskAffinity="com.familymdm.agent.ytmusic"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity-alias
+            android:name=".YoutubeMusic"
+            android:targetActivity=".YoutubeMusicActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_youtube_music_addon"
+            android:roundIcon="@drawable/ic_youtube_music_addon"
+            android:label="YouTube Music">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <activity-alias
             android:name=".YoutubeAddon"
             android:targetActivity=".YoutubeAddonActivity"
@@ -134,7 +155,8 @@
             android:targetActivity="org.lineageos.jelly.MainActivity"
             android:enabled="false"
             android:exported="true"
-            android:icon="@drawable/ic_browser_addon"
+            android:icon="@mipmap/ic_browser_addon"
+            android:roundIcon="@mipmap/ic_browser_addon"
             android:label="Browser">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

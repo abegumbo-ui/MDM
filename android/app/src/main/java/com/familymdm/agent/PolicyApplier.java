@@ -196,6 +196,7 @@ final class PolicyApplier {
         } else {
             applyBrowserAddon(c, policy.optBoolean("browserAddonEnabled", false));
         applyYoutubeAddon(c, policy.optBoolean("youtubeAddon", false));
+        applyYoutubeMusicAddon(c, policy.optBoolean("youtubeMusicAddon", false));
         }
         if (WholeAppBlocklist.rev(c) == 0 && !WholeAppBlocklist.list(c).isEmpty()) {
             WholeAppBlocklist.seed(c);
@@ -825,6 +826,16 @@ final class PolicyApplier {
             Agent.addEvent(c, "restriction", wanted ? "YouTube add-on turned on" : "YouTube add-on turned off");
         } catch (Exception e) {
             errorOnce(c, "youtubeaddon", "Could not change the YouTube add-on: " + e.getMessage());
+        }
+    }
+
+    private static void applyYoutubeMusicAddon(Context c, boolean wanted) {
+        try {
+            if (YoutubeMusicAddon.isEnabled(c) == wanted) return;
+            YoutubeMusicAddon.setEnabled(c, wanted);
+            Agent.addEvent(c, "restriction", wanted ? "YouTube Music add-on turned on" : "YouTube Music add-on turned off");
+        } catch (Exception e) {
+            errorOnce(c, "youtubemusicaddon", "Could not change the YouTube Music add-on: " + e.getMessage());
         }
     }
 

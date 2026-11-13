@@ -590,6 +590,8 @@ export function normalizeConfig(input) {
     blockAds: c.blockAds === true,
     // The YouTube add-on (its own icon in the MDM app) and what YouTube shows when it is turned off.
     youtubeAddon: c.youtubeAddon === true,
+    // The YouTube Music icon on the phone (same rules as YouTube).
+    youtubeMusicAddon: c.youtubeMusicAddon === true,
     // "Only what I allow": the child may search YouTube and ask for videos (on unless switched off).
     youtubeSearchOff: c.youtubeSearchOff === true,
     // Search results that are not allowed: "hide" their pictures, or show them with "skin" covered.
@@ -875,6 +877,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.browserLook = cfg.browserLook;
   out.blockAds = cfg.blockAds;
   out.youtubeAddon = cfg.youtubeAddon;
+  out.youtubeMusicAddon = cfg.youtubeMusicAddon;
   out.youtubeSearch = !cfg.youtubeSearchOff;
   out.youtubeSearchPictures = cfg.youtubeSearchPictures;
   out.youtubeSignIn = cfg.youtubeSignIn;

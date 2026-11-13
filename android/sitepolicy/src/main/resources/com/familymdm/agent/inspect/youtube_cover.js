@@ -42,7 +42,8 @@
     'yt-lockup-view-model', 'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-grid-video-renderer',
     'ytd-reel-item-renderer', 'ytd-playlist-video-renderer', 'ytd-playlist-panel-video-renderer', 'ytd-compact-radio-renderer',
     'ytd-compact-playlist-renderer', 'ytd-radio-renderer', 'ytd-playlist-renderer', 'ytd-grid-playlist-renderer',
-    'ytd-end-screen-video-renderer'].join(',');
+    'ytd-end-screen-video-renderer', 'ytmusic-responsive-list-item-renderer', 'ytmusic-two-row-item-renderer',
+    'ytmusic-multi-row-list-item-renderer', 'ytmusic-player-queue-item', 'ytmusic-playlist-shelf-renderer'].join(',');
   var CHANNEL_TILE = 'ytm-compact-channel-renderer,ytm-channel-renderer,ytm-grid-channel-renderer,ytd-channel-renderer,ytd-grid-channel-renderer';
   var VIDEO_LINK = 'a[href*="watch?"],a[href*="/shorts/"],a[href*="playlist?list="],a[href*="youtu.be/"]';
   // The video that is playing: its own title and player (and links to its own moments) stay.
