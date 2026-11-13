@@ -352,6 +352,43 @@ final class PhoneRules {
                 rebuild.run();
             }), 8);
         }
+
+        // Turn EVERY restriction off for a while (web filter, blocked apps, screens, time limits, calls...), then back on by itself.
+        LinearLayout allOff = Ui.card(a, root);
+        long offTill = c.optLong("restrictionsOffUntil", 0);
+        boolean allIsOff = offTill > System.currentTimeMillis();
+        allOff.addView(Ui.titleText(a, allIsOff ? "All restrictions are OFF" : "Turn off all restrictions for a while"));
+        allOff.addView(Ui.body(a, allIsOff ? "Until " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(offTill)) + ". Everything comes back on by itself."
+                : "Nothing is blocked or limited for the time you choose, for example while you use the phone yourself. Everything comes back on by itself.", true));
+        if (allIsOff) Ui.add(allOff, Ui.button(a, "Turn everything back on now", Ui.FILLED, v -> {
+            setAllOff(a, 0, 0, "everything back on");
+            rebuild.run();
+        }), 8);
+        else for (int m : new int[]{15, 60, 180}) {
+            Ui.add(allOff, Ui.button(a, m < 60 ? m + " minutes" : (m / 60) + (m == 60 ? " hour" : " hours"), Ui.TONAL, v -> {
+                long now2 = System.currentTimeMillis();
+                setAllOff(a, now2 + m * 60000L, now2, "all restrictions off for " + m + " minutes");
+                rebuild.run();
+            }), 8);
+        }
+
+        // YouTube and YouTube Music
+        LinearLayout yt = Ui.card(a, root);
+        yt.addView(Ui.titleText(a, "YouTube"));
+        choice(a, yt, c, "youtubeMode", "What can be watched", "In the YouTube icon and in our browsers.",
+                new String[]{"auto", "channels", "restricted", "open", "blocked"},
+                new String[]{"Follow the web level", "Only what is allowed", "Search and watch, restricted", "Open", "Off"}, "auto", rebuild);
+        choice(a, yt, c, "musicPictures", "Pictures in YouTube Music", "Song and album pictures.",
+                new String[]{"allowed", "show", "hide"},
+                new String[]{"Only for approved songs", "Show all", "No pictures"}, "allowed", rebuild);
+    }
+
+    /** "All restrictions off" (until, since) in one change; both go to the dashboard together. */
+    private static void setAllOff(Activity a, long until, long since, String what) {
+        try {
+            set(a, new JSONObject().put("restrictionsOffUntil", until).put("restrictionsOffSince", since), what);
+        } catch (Exception ignored) {
+        }
     }
 
     /* ---- Screen time ---- */
