@@ -35,7 +35,7 @@
   // this app's own Downloads screen) and Language & location, and has no Privacy & data or About. Restricted mode, when the parent forces it, is switched on and cannot
   // be changed there. Only popups, dialogs and the side menu are looked at, so a song that happens to be called "Help" is never touched.
   var ROOTS = 'tp-yt-paper-dialog, ytmusic-dialog, ytmusic-popup-container, ytmusic-menu-popup-renderer, tp-yt-iron-dropdown, ytmusic-settings-page, ytmusic-guide-renderer, tp-yt-app-drawer, ytmusic-pivot-bar-renderer';
-  var MENU_GONE = /^(help|send feedback|help (&|and) feedback|terms (&|and) privacy policy|terms of service|privacy policy|get (youtube )?(music )?premium|try (youtube )?(music )?premium|upgrade|explore)$/i;
+  var MENU_GONE = /^(help|send feedback|help (&|and) feedback|terms (&|and) privacy policy|terms of service|privacy policy|get (youtube )?(music )?premium|try (youtube )?(music )?premium|upgrade|explore|open app|open in app|open the app|open youtube music|get the app)$/i;
   var SETTINGS_GONE = /^(privacy (&|and) data|about)$/i;
   function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
   // The whole row a label sits in: the highest ancestor that holds nothing but that label (its icon and arrow carry no text).
