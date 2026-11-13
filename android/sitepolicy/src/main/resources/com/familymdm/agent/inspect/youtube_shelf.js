@@ -41,6 +41,7 @@
       [' .v div', 'font-size:14px;font-weight:500;line-height:20px;margin-top:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden'],
       [' .dl', 'display:inline-block;margin:8px 0 2px;padding:7px 16px;border-radius:18px;background:#4F46E5;color:#fff;text-decoration:none;font-size:14px;font-weight:500'],
       [' .dl.done', 'background:transparent;color:#8a8a8a;border:1px solid #8a8a8a;padding:6px 15px'],
+      [' .dl.del', 'background:transparent;color:#d93025;border:1px solid #d93025;padding:6px 15px;margin-left:8px'],
     ]);
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
   function isHome() { var p = location.pathname; return p === '/' || p === ''; }
@@ -87,9 +88,20 @@
     if (withDownload) { var d = dlButton(v); if (d) w.appendChild(d); }
     return w;
   }
+  // A downloaded item can always be deleted from the phone here, whether or not new downloads are allowed.
+  function delButton(v) {
+    var a = el('a', 'dl del', '🗑  Delete');
+    a.href = 'mdmguard://delete?id=' + v.v;
+    return a;
+  }
+  function downloadedTile(v) {
+    var w = tile(v, 'mdmguard://play?id=' + v.v, false);
+    w.appendChild(delButton(v));
+    return w;
+  }
   function downloadedGrid() {
     var g = el('div', music ? 'vids m' : 'vids');
-    data.downloads.forEach(function (v) { g.appendChild(tile(v, 'mdmguard://play?id=' + v.v, false)); });
+    data.downloads.forEach(function (v) { g.appendChild(downloadedTile(v)); });
     return g;
   }
   function channelsRow() {
@@ -117,7 +129,7 @@
     if (dls.length) {
       box.appendChild(el('h3', null, 'Downloaded'));
       var dgrid = el('div', music ? 'vids m' : 'vids');
-      dls.forEach(function (v) { dgrid.appendChild(tile(v, 'mdmguard://play?id=' + v.v, false)); });
+      dls.forEach(function (v) { dgrid.appendChild(downloadedTile(v)); });
       box.appendChild(dgrid);
     }
     if (vids.length) {
@@ -146,7 +158,7 @@
       var ask = el('a', 'ask', music ? '＋  Ask for a song, album or artist' : '＋  Ask for a channel or video'); ask.href = 'mdmguard://ask';
       box.appendChild(ask);
     }
-    if (dlOn) { // the Downloads screen: what is downloading (progress, Cancel) and what is downloaded
+    if (dlOn || data.downloads.length) { // the Downloads screen: what is downloading (progress, Cancel) and what is downloaded (Play, Delete)
       var dlb = el('a', 'ask', '⬇  Downloads'); dlb.href = 'mdmguard://downloads';
       box.appendChild(dlb);
     }
@@ -173,4 +185,32 @@
   }
   build();
   setInterval(build, 500);
+
+  // YouTube Music, "Only what I allow": playback stays inside the approved songs. When a song ends, or Next / Previous is tapped, the
+  // next approved one plays (the list goes round and round); a song that is not approved is stopped and replaced by an approved one.
+  if (music && data.videos.length) {
+    var ids = data.videos.map(function (v) { return v.v; });
+    var step = function (from, by) { var i = ids.indexOf(from); return ids[((i < 0 ? 0 : i + by) % ids.length + ids.length) % ids.length]; };
+    var play = function (id) { location.replace(location.origin + '/watch?v=' + id); };
+    setInterval(function () {
+      if (location.pathname !== '/watch') return;
+      var cur = playingId();
+      var vid = document.querySelector('video');
+      if (cur && ids.indexOf(cur) < 0) { if (vid && vid.pause) vid.pause(); play(ids[0]); return; }
+      if (vid && !vid.__mdmEnd) {
+        vid.__mdmEnd = true;
+        vid.addEventListener('ended', function (e) {
+          e.stopImmediatePropagation();
+          if (ids.length === 1) { vid.currentTime = 0; vid.play(); } else play(step(playingId(), 1));
+        }, true);
+      }
+    }, 400);
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('.next-button, .previous-button') : null;
+      if (!b || location.pathname !== '/watch') return;
+      e.preventDefault(); e.stopPropagation();
+      var back = b.className.indexOf('previous-button') >= 0;
+      if (ids.length === 1) { var v1 = document.querySelector('video'); if (v1) { v1.currentTime = 0; v1.play(); } } else play(step(playingId(), back ? -1 : 1));
+    }, true);
+  }
 })(__MDM_DATA__);
