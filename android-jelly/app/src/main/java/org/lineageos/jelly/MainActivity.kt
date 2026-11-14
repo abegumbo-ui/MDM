@@ -455,6 +455,7 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
     }
 
     public override fun onPause() {
+        Guard.setPageView(null)
         Guard.pause()
         if (backgroundShortcutId == null) webView.onPause()
         super.onPause()
@@ -463,6 +464,7 @@ class MainActivity : WebViewExtActivity(), SharedPreferences.OnSharedPreferenceC
     override fun onResume() {
         super.onResume()
         Guard.resume(this)
+        Guard.setPageView(webView) // the page on screen: its time counts toward the site's daily allowance
         Updater.maybeCheck(this)
         if (backgroundShortcutId == null) webView.onResume()
         CookieManager.getInstance()

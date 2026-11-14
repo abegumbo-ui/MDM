@@ -955,7 +955,12 @@ final class PolicyApplier {
             JSONArray wordsArr = policy.optJSONArray("blockedWords");
             String[] words = new String[wordsArr == null ? 0 : wordsArr.length()];
             for (int i = 0; i < words.length; i++) words[i] = wordsArr.optString(i);
-            String cacheKey = json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide") + "|" + policy.optBoolean("youtubeSignIn", false) + "|" + policy.optBoolean("downloads", true);
+            // The daily time allowance per site, and until when it is lifted (extra time, or every restriction off): the Browser counts and enforces it.
+            JSONObject stForBrowser = policy.optJSONObject("screenTime");
+            JSONObject siteLimitsNow = stForBrowser == null ? null : stForBrowser.optJSONObject("siteLimits");
+            String siteLimitsStr = siteLimitsNow == null ? "" : siteLimitsNow.toString();
+            long siteFreeUntil = Math.max(Agent.prefs(c).getLong("timeFreeUntil", 0), Agent.prefs(c).getLong("restrictionsOffUntil", 0));
+            String cacheKey = siteLimitsStr + "|" + siteFreeUntil + "|" + json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide") + "|" + policy.optBoolean("youtubeSignIn", false) + "|" + policy.optBoolean("downloads", true);
             // Only skip when the Browser really holds these rules now: it loses them when it is removed and
             // installed again, and then it would look "not connected" (the connect screen) until a rule changed.
             Bundle held = null;
@@ -968,6 +973,8 @@ final class PolicyApplier {
             Bundle b = new Bundle();
             b.putString("sites", json);
             b.putLong("browseUntil", browseUntil);
+            b.putString("siteLimits", siteLimitsStr);
+            b.putLong("siteFreeUntil", siteFreeUntil);
             b.putString("filterTier", filterTier);
             b.putString("filterBase", filterBase);
             b.putString("youtubeMode", youtubeMode);

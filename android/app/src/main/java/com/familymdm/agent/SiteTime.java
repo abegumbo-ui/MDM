@@ -6,7 +6,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.Calendar;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
 
@@ -19,51 +18,30 @@ import java.util.Locale;
  * ("addTime") and "all restrictions off" lift the limit while they last (the time is still counted).
  *
  * The limits come from the dashboard (screenTime.siteLimits: host -> minutes a day).
+ *
+ * The counters live in the Agent's own settings file under "siteTime" ({"day": "yyyy-MM-dd", "ms": {site: milliseconds}}) and are read
+ * and written there every time, never kept in memory: the Browser (com.familymdm.browser.SiteTime, same file, same format) counts
+ * into the same budget, so the YouTube icon and the Browser share one allowance per site. Keep the two classes in step.
  */
 final class SiteTime {
     private SiteTime() {}
 
     private static final String PREF = "siteTime";
-    private static String day = "";
-    private static final HashMap<String, Long> MS = new HashMap<>(); // today's milliseconds per limit entry
-    private static boolean loaded;
 
     private static String today() {
         Calendar c = Calendar.getInstance();
         return String.format(Locale.US, "%04d-%02d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
     }
 
-    /** Loads what was counted so far today, and starts a new day with nothing counted. */
-    private static synchronized void sync(Context c) {
-        if (!loaded) {
-            loaded = true;
-            try {
-                JSONObject o = new JSONObject(Agent.prefs(c).getString(PREF, "{}"));
-                day = o.optString("day", "");
-                JSONObject m = o.optJSONObject("ms");
-                if (m != null && today().equals(day)) {
-                    for (Iterator<String> it = m.keys(); it.hasNext(); ) {
-                        String k = it.next();
-                        MS.put(k, m.optLong(k, 0));
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        String t = today();
-        if (!t.equals(day)) {
-            day = t;
-            MS.clear();
-        }
-    }
-
-    private static void save(Context c) {
+    /** Today's counters ({site: milliseconds}); empty on a new day. */
+    private static JSONObject used(Context c) {
         try {
-            JSONObject m = new JSONObject();
-            for (java.util.Map.Entry<String, Long> e : MS.entrySet()) m.put(e.getKey(), e.getValue());
-            Agent.prefs(c).edit().putString(PREF, new JSONObject().put("day", day).put("ms", m).toString()).apply();
+            JSONObject o = new JSONObject(Agent.prefs(c).getString(PREF, "{}"));
+            JSONObject ms = o.optJSONObject("ms");
+            if (ms != null && today().equals(o.optString("day"))) return ms;
         } catch (Exception ignored) {
         }
+        return new JSONObject();
     }
 
     /** host -> minutes a day, from the dashboard. */
@@ -104,22 +82,23 @@ final class SiteTime {
     static synchronized void add(Context c, String host, long millis) {
         String k = keyFor(c, host);
         if (k == null) return;
-        sync(c);
-        Long had = MS.get(k);
-        MS.put(k, (had == null ? 0 : had) + millis);
-        save(c);
+        try {
+            JSONObject ms = used(c);
+            ms.put(k, ms.optLong(k, 0) + millis);
+            Agent.prefs(c).edit().putString(PREF, new JSONObject().put("day", today()).put("ms", ms).toString()).apply();
+        } catch (Exception ignored) {
+        }
     }
 
     /** True when the day's time for this host is used up (and nothing lifts the limit). */
     static synchronized boolean exhausted(Context c, String host) {
         String k = keyFor(c, host);
         if (k == null || lifted(c)) return false;
-        sync(c);
-        Long used = MS.get(k);
-        return used != null && used >= limits(c).optInt(k, 0) * 60_000L;
+        return used(c).optLong(k, 0) >= limits(c).optInt(k, 0) * 60_000L;
     }
 
     static String words(int minutes) {
+        if (minutes == 1) return "1 minute";
         if (minutes % 60 == 0) return minutes / 60 + (minutes == 60 ? " hour" : " hours");
         if (minutes > 60) return String.format(Locale.US, "%.1f hours", minutes / 60.0);
         return minutes + " minutes";
@@ -136,13 +115,11 @@ final class SiteTime {
     static synchronized JSONArray report(Context c) {
         JSONArray out = new JSONArray();
         try {
-            sync(c);
-            JSONObject l = limits(c);
+            JSONObject l = limits(c), ms = used(c);
             for (Iterator<String> it = l.keys(); it.hasNext(); ) {
                 String k = it.next();
                 if (l.optInt(k, 0) <= 0) continue;
-                Long used = MS.get(k);
-                out.put(new JSONObject().put("h", k).put("m", (int) ((used == null ? 0 : used) / 60_000L)).put("l", l.optInt(k, 0)));
+                out.put(new JSONObject().put("h", k).put("m", (int) (ms.optLong(k, 0) / 60_000L)).put("l", l.optInt(k, 0)));
             }
         } catch (Exception ignored) {
         }
