@@ -167,6 +167,19 @@ public final class Guard {
         return b == null ? 0 : b.getLong("siteFreeUntil", 0);
     }
 
+    /**
+     * Tells the Agent something (a page to ask for, more time). Inside the MDM app (the Browser add-on) the Agent is this very app: an explicit
+     * broadcast to its own receiver, which needs no permission (the permission-protected one below was not being delivered there). From the
+     * separate Browser app it is the broadcast that only something signed with the family key can send.
+     */
+    private static void sendToAgent(Context c, Intent i) {
+        try {
+            if (AGENT_PACKAGE.equals(c.getPackageName())) c.sendBroadcast(i.setClassName(AGENT_PACKAGE, "com.familymdm.agent.SiteRequestReceiver"));
+            else c.sendBroadcast(i.setAction(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE), "com.familymdm.agent.permission.BROWSER");
+        } catch (Exception ignored) {
+        }
+    }
+
     static String timeUpPage(JSONObject limits, String host) {
         return page("Time is up for today", esc(SiteTime.message(limits, host)), "<a class=b href='" + SCHEME + "://moretime'>Ask for more time</a>" + homeButton());
     }
@@ -455,8 +468,7 @@ public final class Guard {
             if (host == null || !reportedHosts.add(host)) return;
         }
         try {
-            c.sendBroadcast(new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", "https://" + host + "/"),
-                    "com.familymdm.agent.permission.BROWSER");
+            sendToAgent(c, new Intent().putExtra("url", "https://" + host + "/"));
         } catch (Exception ignored) {
         }
     }
@@ -754,7 +766,7 @@ public final class Guard {
         Context c = ctx.getApplicationContext();
         if (mode(c) == Mode.AGENT) {
             try {
-                c.sendBroadcast(new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("url", target).putExtra("note", note == null ? "" : note), "com.familymdm.agent.permission.BROWSER");
+                sendToAgent(c, new Intent().putExtra("url", target).putExtra("note", note == null ? "" : note));
             } catch (Exception ignored) {
             }
         } else {
@@ -800,10 +812,7 @@ public final class Guard {
                 return true;
             case "moretime":
                 // "Ask for more time" on the Time is up page: the Agent turns it into a "More screen time" request on the dashboard.
-                try {
-                    c.sendBroadcast(new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("kind", "time"), "com.familymdm.agent.permission.BROWSER");
-                } catch (Exception ignored) {
-                }
+                sendToAgent(c, new Intent().putExtra("kind", "time"));
                 showPage(v, null, page("Sent", "Your parent was asked for more time.", homeButton()));
                 return true;
             case "request": {
