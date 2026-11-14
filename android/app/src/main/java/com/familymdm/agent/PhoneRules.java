@@ -490,6 +490,67 @@ final class PhoneRules {
             }), 8);
         }
         appLimits(a, root, screen, rebuild);
+        siteLimits(a, root, screen, rebuild);
+    }
+
+    /** "youtube.com" from whatever was typed (a link, www., a path), or null when it is not a site name. */
+    private static String cleanSiteName(String raw) {
+        String h = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT).replaceFirst("^[a-z]+://", "").replaceFirst("^www\\.", "").replaceAll("[/?#:].*$", "");
+        return h.length() <= 100 && h.matches("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+") ? h : null;
+    }
+
+    /** A daily time allowance for a site ("YouTube 2 hours a day"): each one with its limit (tap to change or remove), and "Add a site". */
+    private static void siteLimits(Activity a, LinearLayout root, JSONObject screen, Runnable rebuild) {
+        LinearLayout card = Ui.card(a, root);
+        card.addView(Ui.titleText(a, "Time on a site, every day"));
+        card.addView(Ui.body(a, "A daily allowance for a site, for example YouTube 2 hours a day. It starts again every morning (not 2 hours from when it was approved). "
+                + "Counted while the site is on screen in the YouTube icons and the Browser; when it is used up the site shows \"Time is up for today\".", true));
+        JSONObject limits = screen.optJSONObject("siteLimits");
+        final JSONObject cur = limits == null ? new JSONObject() : limits;
+        final int[] mins = {0, 15, 30, 45, 60, 90, 120, 180, 240};
+        final String[] labels = new String[mins.length];
+        for (int i = 0; i < mins.length; i++) labels[i] = mins[i] == 0 ? "No limit (remove)" : fmt(mins[i]) + " a day";
+        java.util.List<String> hosts = new java.util.ArrayList<>();
+        for (Iterator<String> it = cur.keys(); it.hasNext(); ) hosts.add(it.next());
+        java.util.Collections.sort(hosts);
+        for (final String host : hosts) {
+            int m = cur.optInt(host, 0);
+            int sel = 0;
+            for (int i = 0; i < mins.length; i++) if (mins[i] == m) sel = i;
+            final int selected = sel;
+            Ui.add(card, Ui.button(a, host + ":  " + fmt(m) + " a day", Ui.TONAL, v ->
+                    Ui.alertDialog(a).setTitle(host).setSingleChoiceItems(labels, selected, (d, w) -> {
+                        d.dismiss();
+                        try {
+                            if (mins[w] == 0) cur.remove(host); else cur.put(host, mins[w]);
+                            screen.put("siteLimits", cur);
+                        } catch (Exception ignored) {
+                        }
+                        set1(a, "screenTime", screen, host + " " + labels[w]);
+                        rebuild.run();
+                    }).show()), 4);
+        }
+        Ui.add(card, Ui.button(a, "Add a site", Ui.OUTLINED, v -> {
+            final EditText f = new EditText(a);
+            f.setHint("youtube.com");
+            new AlertDialog.Builder(a).setTitle("Which site?").setView(f).setPositiveButton("Next", (d, w) -> {
+                final String host = cleanSiteName(f.getText().toString());
+                if (host == null) {
+                    Toast(a, "Type a site name like youtube.com.");
+                    return;
+                }
+                Ui.alertDialog(a).setTitle(host + ": how long a day?").setSingleChoiceItems(labels, 6, (d2, w2) -> {
+                    d2.dismiss();
+                    try {
+                        if (mins[w2] == 0) cur.remove(host); else cur.put(host, mins[w2]);
+                        screen.put("siteLimits", cur);
+                    } catch (Exception ignored) {
+                    }
+                    set1(a, "screenTime", screen, host + " " + labels[w2]);
+                    rebuild.run();
+                }).show();
+            }).setNegativeButton("Cancel", null).show();
+        }), 8);
     }
 
     /** A daily limit for single apps: each app with an icon, its limit, tap to change. */
