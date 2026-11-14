@@ -151,3 +151,9 @@ Rules as always: branch -> PR -> build check -> merge; never touch the PC's syst
 - On-device picture model: the model and the dashboard setting already existed; the choice and photo alerts are now also on the phone's own Rules screens. No new model added.
 - Parity: blocks made on the phone now sync (screens by name, by title); picture checker, photo alerts, timed all-off, YouTube mode, Music pictures are on the phone's screens.
 - Netspark research: done (see MORNING-SUMMARY).
+
+### Sabbath list, status at 2026-11-13 20:35
+- Verified on the real A16 (new server code reached it through the Cloudflare backup while the Pi stalled its check-ins): screen lookup by name; the Open web level (Facebook opens, ticked News refused in Chrome, list download works); the daily allowance in the YouTube icon and in the Browser (one shared budget, "Time is up", "Ask for more time" reaches the dashboard, extra time lifts it in the YouTube icon); Restricted Mode in Music; Music Back fix; Browser add-on; self-update with browser inspection on.
+- Fixed along the way: inspection-proxy downloads (self-update, filter lists), the Browser add-on's requests to the Agent (were never delivered), the OTG app's ADB library (3 flaws found with a pretend-phone check), "1 minutes" wording, stale "waiting" commands.
+- Added: daily site allowance and the other dashboard settings on the phone's own Rules screens (not looked at on the phone: they need the master code).
+- Still open: UI simplification; Pi runs old server code until the user approves the Tailscale deploy; Knox/Xiaomi sign-ups; OTG app and the real Windows hand-over untested on hardware.
