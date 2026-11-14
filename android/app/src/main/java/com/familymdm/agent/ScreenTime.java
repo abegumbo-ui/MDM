@@ -94,6 +94,10 @@ final class ScreenTime {
         Agent.addEvent(c, "lock", m + " minutes of extra time given (" + by + ")");
         if (lockIsOurs(c) && Actions.timedLockActive(c)) Actions.endTimedLock(c);
         soon();
+        try {
+            PolicyApplier.applyStored(c); // the Browser is told that the site limits are lifted now
+        } catch (Exception ignored) {
+        }
     }
 
     /** What is sent to the dashboard with each check-in: today's total and the most-used apps. */

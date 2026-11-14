@@ -12,6 +12,12 @@ import android.content.Intent;
 public class SiteRequestReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
+        // "Ask for more time" on the Browser's Time is up page: a "More screen time" request, like the one on the lock screen.
+        if ("time".equals(intent.getStringExtra("kind"))) {
+            Agent.addAppRequest(context, "time", null, null);
+            if (Agent.enrolled(context)) AgentService.requestSync();
+            return;
+        }
         String url = intent.getStringExtra("url");
         if (url == null || url.isEmpty()) return;
         Agent.addSiteRequest(context, url, intent.getStringExtra("note"));

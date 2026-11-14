@@ -127,11 +127,82 @@ public final class Guard {
             }
         };
         timer.postDelayed(tick, ONLINE_SYNC_MIN_MS);
+        startSiteTick(c);
     }
 
     public static void pause() {
         if (tick != null) timer.removeCallbacks(tick);
         tick = null;
+        if (siteTick != null) timer.removeCallbacks(siteTick);
+        siteTick = null;
+    }
+
+    // ---------- a daily time allowance per site ("YouTube 2 hours a day"; the Agent passes screenTime.siteLimits in the bundle) ----------
+
+    private static volatile WebView pageView;
+    private static Runnable siteTick;
+
+    /** The page that is on screen (set while the browser is in front), so its time can be counted and a "Time is up" page shown in it. */
+    public static void setPageView(WebView v) {
+        pageView = v;
+    }
+
+    /** host -> minutes a day, or null when this Browser has no limits (always, outside the MDM app). */
+    private static JSONObject siteLimits(Context c) {
+        Bundle b = agentBundle(c);
+        if (b == null) return null;
+        try {
+            String s = b.getString("siteLimits", "");
+            if (s == null || s.isEmpty()) return null;
+            JSONObject o = new JSONObject(s);
+            return o.length() == 0 ? null : o;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Until when the limits are lifted (extra time from the administrator, or every restriction off). */
+    private static long siteFreeUntil(Context c) {
+        Bundle b = agentBundle(c);
+        return b == null ? 0 : b.getLong("siteFreeUntil", 0);
+    }
+
+    static String timeUpPage(JSONObject limits, String host) {
+        return page("Time is up for today", esc(SiteTime.message(limits, host)), "<a class=b href='" + SCHEME + "://moretime'>Ask for more time</a>" + homeButton());
+    }
+
+    /** The "Time is up" answer when this address belongs to a site whose allowance for today is used up; null otherwise. */
+    private static Decision timeCheck(Context c, String url) {
+        JSONObject limits = siteLimits(c);
+        if (limits == null) return null;
+        String host = SitePolicy.hostOf(url);
+        if (host == null || !SiteTime.exhausted(c, limits, siteFreeUntil(c), host)) return null;
+        return Decision.no(timeUpPage(limits, host));
+    }
+
+    /** Every 5 seconds the browser is in front: that time counts for the site on screen; when it is used up the page is replaced. */
+    private static void startSiteTick(final Context c) {
+        siteTick = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    WebView v = pageView;
+                    JSONObject limits = siteLimits(c);
+                    if (v != null && limits != null) {
+                        String u = v.getUrl();
+                        String host = u != null && u.startsWith("http") ? SitePolicy.hostOf(u) : null;
+                        if (host != null) {
+                            SiteTime.add(c, limits, host, 5000);
+                            if (SiteTime.exhausted(c, limits, siteFreeUntil(c), host)) showPage(v, null, timeUpPage(limits, host));
+                        }
+                    }
+                } catch (RuntimeException ignored) {
+                    // a counting problem must never break the page
+                }
+                if (siteTick == this) timer.postDelayed(this, 5000);
+            }
+        };
+        timer.postDelayed(siteTick, 1500);
     }
 
     /** Talks to the dashboard: reports what is happening, sends access requests, gets the settings. */
@@ -297,6 +368,10 @@ public final class Guard {
             return Decision.no(notAllowed(url, null, homeButton()));
         Mode mode = mode(c);
         if (mode == Mode.UNCONFIGURED) return Decision.no(connectPage(null));
+        if (mode == Mode.AGENT) {
+            Decision timeUp = timeCheck(c, url); // the day's allowance for this site is used up
+            if (timeUp != null) return timeUp;
+        }
         // A bad search: "Oh come on, you're better than that." (Strict: explicit words; any level: blocked words)
         String searched = com.familymdm.agent.sitepolicy.BadSearch.query(url);
         if (searched != null && com.familymdm.agent.sitepolicy.BadSearch.isBad(searched, "strict".equals(FilterStore.tier(c)), FilterStore.blockedWords(c)))
@@ -722,6 +797,14 @@ public final class Guard {
                 return true;
             case "ask":
                 showPage(v, null, askPage(u.getQueryParameter("u")));
+                return true;
+            case "moretime":
+                // "Ask for more time" on the Time is up page: the Agent turns it into a "More screen time" request on the dashboard.
+                try {
+                    c.sendBroadcast(new Intent(SITE_REQUEST_ACTION).setPackage(AGENT_PACKAGE).putExtra("kind", "time"), "com.familymdm.agent.permission.BROWSER");
+                } catch (Exception ignored) {
+                }
+                showPage(v, null, page("Sent", "Your parent was asked for more time.", homeButton()));
                 return true;
             case "request": {
                 String target = u.getQueryParameter("u");
