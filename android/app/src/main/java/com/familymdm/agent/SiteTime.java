@@ -120,6 +120,7 @@ final class SiteTime {
     }
 
     static String words(int minutes) {
+        if (minutes == 1) return "1 minute";
         if (minutes % 60 == 0) return minutes / 60 + (minutes == 60 ? " hour" : " hours");
         if (minutes > 60) return String.format(Locale.US, "%.1f hours", minutes / 60.0);
         return minutes + " minutes";
