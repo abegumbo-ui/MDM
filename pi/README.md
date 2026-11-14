@@ -41,6 +41,21 @@ Running it again updates the Pi and keeps the data and the settings.
   and is the main server again. A brand-new Pi starts by taking everything from Cloudflare.
 * `/internal/*` needs the shared `REPLICA_SECRET`; without it (or without the variables) it is switched off.
 
+## It repairs itself (`pi/watch.sh`, installed by `install.sh`)
+
+Added after 2026-11-14, when the router refused the Pi's Wi-Fi login a few times at 00:50, NetworkManager gave up for good
+("secrets are required", nobody to ask), and the Pi sat on with its light lit and no network for 17 hours. Now:
+
+* **Every minute** `mdm-pi-watch` checks the server, the internet (the backup Worker) and the public address.
+  Server silent 3 minutes: restart it. No internet: minute 2, 5, 8 ... bring the Wi-Fi up again (this also clears
+  NetworkManager's "stop trying" block), minute 6 restart NetworkManager, minute 9 restart Tailscale, minute 25 reboot (only if the Pi has
+  been on for 30+ minutes, so it cannot loop). Tailscale or the Funnel address broken 4 minutes: restart Tailscale (at most every 20 minutes).
+* **Hardware watchdog:** systemd feeds the Pi's watchdog chip; if the whole system hangs, the board restarts after 10 seconds.
+* **Saved Wi-Fi networks** are set to retry forever (`connection.autoconnect-retries 0`).
+* What it did, in words: `journalctl -t mdm-watch` (nothing there means nothing was wrong). The one-line-a-minute health note
+  (power, heat, memory, Wi-Fi signal) is `journalctl -t mdm-health`.
+* The weak spot is the network itself: the Pi was on the router's *guest* Wi-Fi, which drops it now and then. The main network is steadier.
+
 ## Checks
 
 * `curl http://127.0.0.1:8787/healthz` on the Pi: `{"ok":true,"role":"main","entries":...,"rssMB":...}`

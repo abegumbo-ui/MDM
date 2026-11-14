@@ -1,6 +1,6 @@
 # Dashboard: where it is crowded, and what I would change
 
-Written 2026-11-13 during the Sabbath run. **Nothing here has been changed.** It is based on the structure of the device page
+Written 2026-11-13 during the Sabbath run. **Update 2026-11-14: items 1 to 7 are now built into the New look** (the New / Legacy switch at the top of every page); the Legacy look is unchanged. Item 8 was not done (see the end). It was based on the structure of the device page
 (`GROUPS` in `src/ui.js`) and on what was built today, not on watching anyone use it, so treat the ranking as a first guess.
 Each item says what it would take. Tell me which ones to do (or "all of the cheap ones") and I will.
 
@@ -38,3 +38,13 @@ Each item says what it would take. Tell me which ones to do (or "all of the chea
 
 ## What I need from you
 Which of 1 to 8 to do. If you only answer "the cheap ones", I do 1 to 5 in one change, test it (the dashboard has a test that opens every page and tab), and ship it.
+
+## Status after 2026-11-14 (New look only; Legacy untouched)
+1. Done. The New look's Browser page has no YouTube tab; the YouTube group is the one place (old links to it open the YouTube group).
+2. Done. Internet > "Website filter" is called "Blocked and allowed addresses" and says it is for single addresses; Browser says where kinds of site are closed.
+3. Done. Browser has 5 tabs: At a glance, Schedule and words, Sites visited, Allowed sites, Advanced (Browser apps and Inspection). Also: the level and safe-browsing choices were shown twice (top of the page and again under More settings); now only at the top.
+4. Done. Apps has 5 tabs; the hidden-system-apps scan sits inside Blocked, folded.
+5. Already true in the New look: "Open: close only what I choose" is first.
+6. Done. The Home page has a "Right now" card: Pause web filter, All restrictions off, Give more time, Internet off, each asking for a time. They are no longer on the New look's status page (Legacy still has them there).
+7. Done. The New look's status page is five lines (Web, Apps, Time, Calls and texts, Safety), each opens to what is set.
+8. Not done: the phone's own Rules screens keep their names. They need the master code to look at, the names must fit a small tab strip, and every Android change reaches the phone by itself, so it was not worth doing blind.

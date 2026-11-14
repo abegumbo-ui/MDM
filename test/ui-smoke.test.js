@@ -129,12 +129,21 @@ test("every dashboard page, group and tab opens without an error", async () => {
   tryRender("badge: Cloudflare page, Pi off", "state.server={runtime:'cloudflare',role:'backup',primary:'https://pi.example',backup:'https://cf.example',primaryUp:false,outage:true};tab='devices';openId=null;render()");
   seen.badgeCfPiDown = reg.get("srv").textContent;  tryRender("back to Cloudflare", "state.server=__s0;piInfo=null;piWifi=null");
   tryRender("back to the phone", "tab='devices';openId=devices[0].id;render()");
-  const groups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,g.subs.map(function(s){return s[0]})]}))", ctx);
+  const groups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,subsFor(g).map(function(s){return s[0]})]}))", ctx);
   for (const [g, subs] of JSON.parse(groups)) {
     for (const sub of subs) {
       seen[g + "/" + sub] = tryRender(g + "/" + sub, `tab='devices';openId=devices[0].id;deviceSection='${g}';subs['${g}']='${sub}';render()`);
     }
   }
+  // The Legacy look keeps every tab it ever had (the New look folds some together): walk them all in Legacy mode.
+  vm.runInContext("uiMode='legacy'", ctx);
+  const legacyGroups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,g.subs.map(function(s){return s[0]})]}))", ctx);
+  for (const [g, subs] of JSON.parse(legacyGroups)) {
+    for (const sub of subs) {
+      seen["L:" + g + "/" + sub] = tryRender("legacy " + g + "/" + sub, `tab='devices';openId=devices[0].id;deviceSection='${g}';subs['${g}']='${sub}';render()`);
+    }
+  }
+  vm.runInContext("uiMode='new'", ctx);
   seen.browserDevice = tryRender("standalone browser page", "tab='devices';openId=null;openBrowserId=browsers[0].id;browserSection='overview';render()");
   for (const s of ["web", "youtube", "pictures", "sites", "settings"]) seen["br/" + s] = tryRender("standalone browser: " + s, `tab='devices';openId=null;openBrowserId=browsers[0].id;browserSection='${s}';render()`);
   await new Promise((r) => setTimeout(r, 150)); // let the cards that fetch their own data finish
@@ -162,18 +171,18 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["apps/store"], /Keep the Play Store closed/);
   assert.match(seen["apps/regular"], /Block games/);
   assert.match(seen["apps/regular"], /On this phone: Puzzle Fun/, "a game is found by the category it declares");
-  assert.match(seen["browser/apps"], /No incognito tabs/);
-  assert.match(seen["browser/apps"], /Also locked in Chrome from the settings above: SafeSearch, YouTube Restricted Mode, no pictures/);
+  assert.match(seen["L:browser/apps"], /No incognito tabs/);
+  assert.match(seen["L:browser/apps"], /Also locked in Chrome from the settings above: SafeSearch, YouTube Restricted Mode, no pictures/);
   assert.match(seen["browser/summary"], /What this phone can open/);
   assert.match(seen["browser/summary"], /Moderate/);
   assert.match(seen["browser/summary"], /He can search YouTube and watch/);
   assert.match(seen["browser/summary"], /browser category filter/, "the phone's own filter log line is shown");
-  assert.match(seen["browser/access"], /What can they open on the web/, "one page: the level, with what each closes");
-  assert.match(seen["browser/access"], /Also close these in every browser/, "the News / Shopping / Games ... boxes are on the Legacy page too");
-  assert.match(seen["browser/access"], /Safe browsing/);
-  assert.match(seen["browser/access"], /SafeSearch/);
-  assert.match(seen["browser/access"], /YouTube Restricted Mode everywhere/);
-  assert.match(seen["browser/access"], /Block pictures on web pages/);
+  assert.match(seen["L:browser/access"], /What can they open on the web/, "one page: the level, with what each closes");
+  assert.match(seen["L:browser/access"], /Also close these in every browser/, "the News / Shopping / Games ... boxes are on the Legacy page too");
+  assert.match(seen["L:browser/access"], /Safe browsing/);
+  assert.match(seen["L:browser/access"], /SafeSearch/);
+  assert.match(seen["L:browser/access"], /YouTube Restricted Mode everywhere/);
+  assert.match(seen["L:browser/access"], /Block pictures on web pages/);
   assert.match(seen["browser/summary"], /SafeSearch is forced on Google, Bing and DuckDuckGo/);
   assert.match(seen["browser/summary"], /YouTube Restricted Mode \(strict\) is forced everywhere/);
   assert.match(seen["browser/summary"], /Hidden on web pages in our browsers, in Chrome, and in other browsers/);
@@ -186,13 +195,13 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.doesNotMatch(seen["br/web"], /On unless you switch it off here/, "a standalone Browser has no phone-wide filter to force it with");
   assert.match(seen["browser/sites"], /Site requests \(4\)/);
   assert.match(seen["browser/sites"], /YouTube channel/);
-  assert.match(seen["browser/apps"], /Make this the only browser/);
-  assert.match(seen["browser/inspect"], /Never look inside these sites/);
+  assert.match(seen["L:browser/apps"], /Make this the only browser/);
+  assert.match(seen["L:browser/inspect"], /Never look inside these sites/);
   assert.match(seen["device/usermenu"], /Open Google Play Store/);
   assert.match(seen["br/web"], /Web access/, "a standalone Browser still has its filter card");
   assert.match(seen.list, /Pixel/);
-  assert.match(seen["browser/access"], /Blocked words \(2\)/);
-  assert.match(seen["browser/access"], /Block image search/);
+  assert.match(seen["L:browser/access"], /Blocked words \(2\)/);
+  assert.match(seen["L:browser/access"], /Block image search/);
   // The new look: a home with what is waiting, quick buttons and one line per part; Browser has its own simple page.
   assert.match(seen.home, /Requests from the phone \(3\)/);
   assert.match(seen.home, /Quick actions/);
@@ -215,6 +224,31 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["browser/summary"], /Approved sites \(1\)/);
   assert.match(seen["browser/summary"], /More settings/);
   assert.match(seen["browser/summary"], /What this phone can open/, "the old tabs are still there under More settings");
+  // New look, simplified: Right now, the five-line status, the folded tabs.
+  for (const t of [/Right now/, /Pause web filter/, /All restrictions off/, /Give more time/, /Internet off/]) assert.match(seen.home, t, "the Right now card: " + t);
+  assert.doesNotMatch(seen.home, /\+15 minutes|Internet off for 1 hour/, "those two buttons moved into Right now");
+  assert.match(seen["overview/status"], /What is on for this phone/);
+  for (const t of [/Web · /, /Apps · /, /Time · /, /Calls and texts · /, /Safety · /]) assert.match(seen["overview/status"], t, "status line " + t);
+  assert.doesNotMatch(seen["overview/status"], /Turn off all restrictions for a while/, "the all-off card is only in Right now in the New look");
+  assert.match(seen["browser/summary"], /At a glance\s+Schedule and words\s+Sites visited\s+Allowed sites\s+Advanced/, "Browser has five tabs");
+  assert.doesNotMatch(seen["browser/summary"], /Inspection \(advanced\)|Browser apps/, "the two rarely used tabs are folded into Advanced");
+  assert.match(seen["browser/advanced"], /Never look inside these sites/, "Advanced holds Inspection");
+  assert.match(seen["browser/advanced"], /Rarely needed/);
+  assert.equal((seen["browser/access"].match(/What can they open on the web\?/g) || []).length, 1, "the level choice is not repeated under More settings");
+  assert.match(seen["browser/access"], /Blocked words \(2\)/, "the extras are still there");
+  assert.match(seen["browser/access"], /Internet, Blocked and allowed addresses/, "it says where single addresses are blocked");
+  assert.match(seen["apps/blocking"], /Hidden system apps \(advanced\)/, "system apps are inside Blocked");
+  assert.match(seen["apps/blocking"], /Scan for hidden system apps/);
+  assert.match(seen["internet/dns"], /Blocked and allowed addresses/);
+  assert.match(seen["internet/dns"], /Browser and web, the level at the top/, "it says where whole kinds of site are closed");
+  assert.equal(vm.runInContext("goTo('browser','inspect');subs['browser']", ctx), "advanced", "an old link to Inspection opens Advanced");
+  assert.equal(vm.runInContext("goTo('apps','system');subs['apps']", ctx), "blocking", "an old link to System apps opens Blocked");
+  vm.runInContext("goTo('browser','youtube')", ctx);
+  assert.equal(vm.runInContext("deviceSection+'/'+subs['youtube']", ctx), "youtube/yt", "the Browser > YouTube link goes to the YouTube group");
+  // Right now, when things are on: it says so and offers to turn them back.
+  const rn = tryRender("right now, all on", "var __c=devices[0].config;__c.pauseUntil=Date.now()+3600000;__c.restrictionsOffUntil=Date.now()+3600000;__c.internetOffUntil=Date.now()+3600000;deviceSection=null;tab='devices';openId=devices[0].id;render()");
+  tryRender("right now, back to normal", "var __c=devices[0].config;__c.pauseUntil=0;__c.restrictionsOffUntil=0;__c.internetOffUntil=0;render()");
+  for (const t of [/Web filter paused until/, /Web filter back on/, /ALL restrictions are off until/, /Turn everything back on/, /Internet off until/, /Internet back on/]) assert.match(rn, t, "Right now while on: " + t);
   assert.match(seen.list, /Add device/);
   assert.match(seen.list, /Screen time today: 2 h 14 min of 3 h/, "the front page is one card for each device");
   assert.match(seen.list, /\d+ requests?/);
@@ -254,6 +288,12 @@ test("every dashboard page, group and tab opens without an error", async () => {
   const legacyOff = tryRender("legacy: everything is off", "devices[0].config.restrictionsOffUntil=Date.now()+3600000;devices[0].config.restrictionsOffSince=Date.now();uiMode='legacy';deviceSection='overview';subs['overview']='status';tab='devices';openId=devices[0].id;render()");
   tryRender("back to the new look", "devices[0].config.restrictionsOffUntil=0;uiMode='new'");
   assert.match(legacy, /Turn off all restrictions for a while/, "the timed all-off card asks how long");
+  assert.match(legacy, /What's on for this phone/, "Legacy keeps its long status card");
+  assert.equal(vm.runInContext("GROUPS.find(function(g){return g.key==='browser'}).subs.length", ctx), 7, "Legacy Browser keeps its 7 tabs");
+  assert.equal(vm.runInContext("GROUPS.find(function(g){return g.key==='apps'}).subs.length", ctx), 6, "Legacy Apps keeps its 6 tabs");
+  assert.match(seen["L:browser/youtube"], /Only what I allow|YouTube/, "Legacy still has Browser > YouTube");
+  assert.match(seen["L:apps/system"], /Scan for hidden system apps/, "Legacy still has the System apps tab");
+  assert.match(seen["L:internet/dns"], /Website filter/, "Legacy keeps the old tab name");
   assert.match(legacyOff, /All restrictions are OFF/);
   assert.match(legacyOff, /Turn everything back on now/);
   assert.match(legacyBrowser, /What can they open on the web/, "Legacy has the one clear web page too");
@@ -294,13 +334,13 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(legacy, /Ready-made setups/);
   assert.match(legacy, /Status/);
   assert.match(seen["overview/status"], /Ready-made setups/);
-  assert.match(seen["overview/status"], /What.s on for this phone/);
+  assert.match(seen["L:overview/status"], /What.s on for this phone/, "Legacy keeps its long status card");
   assert.match(seen["overview/status"], /Websites: Moderate filter/);
   assert.match(seen["overview/status"], /Kosher phone/);
   assert.match(seen["safety/health"], /Health check/);
   assert.match(seen["safety/msgalerts"], /Message alerts/);
   assert.match(seen["safety/screenshots"], /Take a screenshot now/);
-  assert.match(seen["overview/status"], /Pause web filtering/);
+  assert.match(seen["L:overview/status"], /Pause web filtering/, "Legacy keeps the pause card on its status page");
   assert.match(seen["internet/appnet"], /Internet only for chosen apps/);
   assert.match(seen["device/location"], /School · within 200 m/);
   assert.match(seen["calls/rules"], /Mom · \+12125551234/);
@@ -308,7 +348,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen["calls/calllog"], /Send the call log/);
   assert.match(seen["calls/texts"], /Include what the messages say/);
   assert.match(seen["browser/access"], /Filter schedule/);
-  assert.match(seen["browser/apps"], /Web pages inside apps/);
+  assert.match(seen["L:browser/apps"], /Web pages inside apps/);
   assert.match(seen["calls/contacts"], /Show the phone's contacts here/);
   assert.match(seen["apps/regular"], /Close Status/);
   assert.match(seen.settings, /Other parents/);
