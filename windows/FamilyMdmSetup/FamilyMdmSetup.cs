@@ -469,6 +469,21 @@ namespace FamilyMdmSetup
                 return true;
             }
             Log("The phone said: " + direct.Trim());
+            if (direct.IndexOf("already an admin", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                // An earlier failed hand-over (an older version of this program, or the app opened as a plain admin) left the app registered as an
+                // ordinary device admin. Android decided then that it is not a test app and never looks again; only the app itself can drop that.
+                Log("An earlier try left the app registered as an ordinary admin, which Android keeps treating as a normal app. Asking the app to drop that, then trying again...");
+                Adb(serial, "shell am start -n " + Package + "/.MainActivity --ez dropAdmin true", 20000);
+                Thread.Sleep(4000);
+                direct = Adb(serial, "shell dpm set-device-owner " + Admin, 60000);
+                if (direct.IndexOf("Success", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    Log("OK  Family MDM is now the manager of this phone. Nothing was removed or switched off.");
+                    return true;
+                }
+                Log("The phone said: " + direct.Trim());
+            }
             if (toSwitchOff.Count > 0)
             {
                 Log("Trying the older way: " + (toSwitchOff.Contains("com.osp.app.signin") ? "the Samsung account service usually cannot be switched off from a computer; if Android refuses it, this stops with a message before anything is restarted, and the Samsung account would have to be removed on the phone first." : "the account services are switched off for a moment and back on."));

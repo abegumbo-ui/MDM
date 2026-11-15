@@ -21,8 +21,8 @@ $failures = 0
 function Check($ok, $what) { if ($ok) { "PASS  $what" } else { "FAIL  $what"; $script:failures++ } }
 
 function RunExe([string[]]$exeArgs, [hashtable]$envv) {
-    Remove-Item (Join-Path $work 'fake-state.txt'), (Join-Path $work 'fake-adb.log'), (Join-Path $work 'fake-testonly.txt') -ErrorAction SilentlyContinue
-    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE', 'FAKE_TESTONLY') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
+    Remove-Item (Join-Path $work 'fake-state.txt'), (Join-Path $work 'fake-adb.log'), (Join-Path $work 'fake-testonly.txt'), (Join-Path $work 'fake-dropped.txt') -ErrorAction SilentlyContinue
+    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE', 'FAKE_TESTONLY', 'FAKE_STALE') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
     foreach ($k in $envv.Keys) { Set-Item "Env:$k" $envv[$k] }
     Remove-Item (Join-Path $logDir 'setup.log') -ErrorAction SilentlyContinue
     $p = Start-Process -FilePath (Join-Path $work 'FamilyMdmSetup.exe') -ArgumentList $exeArgs -Wait -PassThru -WorkingDirectory $work
@@ -82,6 +82,13 @@ Check ((Idx $r.Calls 'install -t -r') -ge 0) 'test build: the app is installed w
 Check ((Count $r.Calls 'set-device-owner') -eq 1 -and (Idx $r.Calls 'disable-user') -lt 0) 'test build: owner is set the first time and no account service is touched'
 Check ((Idx $r.Calls ' reboot$') -lt 0 -and (Idx $r.Calls '^reboot') -lt 0) 'test build: the phone is not restarted'
 Check ($r.Log -match 'Nothing was removed or switched off' -and (Idx $r.Calls 'am start .*--es code ABC123') -ge 0) 'test build: the log says so and the app starts with the code'
+
+# 5c. A phone an older version of this program already tried (it left the app registered as an ordinary admin): the app is asked to drop that, then owner is set.
+$r = RunExe $common @{ FAKE_SDK = '36'; FAKE_TESTONLY = '1'; FAKE_STALE = '1' }
+$drop = Idx $r.Calls 'am start .*dropAdmin'; $own1 = Idx $r.Calls 'set-device-owner'; $own2 = IdxLast $r.Calls 'set-device-owner'
+Check ($r.Exit -eq 0) 'leftover admin: exits 0'
+Check ($own1 -ge 0 -and $drop -gt $own1 -and $own2 -gt $drop -and (Count $r.Calls 'set-device-owner') -eq 2) 'leftover admin: owner is tried, the app is asked to drop its admin record, owner is tried again'
+Check ((Idx $r.Calls 'disable-user') -lt 0) 'leftover admin: still no account service is touched'
 
 # 5. More than one user on the phone: refused before anything is changed.
 $r = RunExe $common @{ FAKE_USERS = '2' }

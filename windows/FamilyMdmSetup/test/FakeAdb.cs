@@ -3,6 +3,7 @@
 // is asked is written to fake-adb.log next to it. Settings come from environment variables:
 //   FAKE_SDK (default 35), FAKE_OWNER (a package that is already the device owner), FAKE_FAIL=1 (set-device-owner always fails),
 //   FAKE_USERS (number of users, default 1), FAKE_STATE (the file that remembers which packages are switched off),
+//   FAKE_STALE=1 (an earlier failed hand-over left a non-test admin: set-device-owner is refused until "am start ... dropAdmin" is sent),
 //   FAKE_TESTONLY=1 (like Android 16: an app installed with "install -t" may become the device owner even with accounts present).
 using System;
 using System.Collections.Generic;
@@ -80,12 +81,16 @@ public static class FakeAdb
         else if (rest.StartsWith("dpm set-device-owner"))
         {
             bool services = off.Contains("com.google.android.gms") && off.Contains("com.osp.app.signin");
-            bool testOnly = Environment.GetEnvironmentVariable("FAKE_TESTONLY") == "1" && File.Exists(Path.Combine(dir, "fake-testonly.txt"));
-            if (testOnly) Console.WriteLine("Success: Device owner set to package ComponentInfo{com.familymdm.agent/com.familymdm.agent.AdminReceiver}");
+            bool testOnly = Environment.GetEnvironmentVariable("FAKE_TESTONLY") == "1" && File.Exists(Path.Combine(dir, "fake-testonly.txt"))
+                && !(Environment.GetEnvironmentVariable("FAKE_STALE") == "1" && !File.Exists(Path.Combine(dir, "fake-dropped.txt")));
+            if (Environment.GetEnvironmentVariable("FAKE_STALE") == "1" && !File.Exists(Path.Combine(dir, "fake-dropped.txt")) && !services)
+                Console.WriteLine("com.familymdm.agent/.AdminReceiver was already an admin for user 0. No need to set it again.\n\nException occurred while executing 'set-device-owner':\njava.lang.RuntimeException: Can't set package as device owner.");
+            else if (testOnly) Console.WriteLine("Success: Device owner set to package ComponentInfo{com.familymdm.agent/com.familymdm.agent.AdminReceiver}");
             else if (Environment.GetEnvironmentVariable("FAKE_FAIL") == "1") Console.WriteLine("java.lang.IllegalStateException: Not allowed to set the device owner because there are already some accounts on the device");
             else if (!services) Console.WriteLine("java.lang.IllegalStateException: Not allowed to set the device owner because there are already some accounts on the device");
             else Console.WriteLine("Success: Device owner set to package ComponentInfo{com.familymdm.agent/com.familymdm.agent.AdminReceiver}");
         }
+        else if (rest.StartsWith("am start") && rest.Contains("dropAdmin")) { File.WriteAllText(Path.Combine(dir, "fake-dropped.txt"), "d"); Console.WriteLine("Starting: Intent { cmp=com.familymdm.agent/.MainActivity }"); }
         else if (rest.StartsWith("am start")) Console.WriteLine("Starting: Intent { cmp=com.familymdm.agent/.MainActivity }");
         return 0;
     }

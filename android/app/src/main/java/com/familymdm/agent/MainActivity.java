@@ -63,6 +63,11 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (getIntent().getBooleanExtra("dropAdmin", false)) {
+            dropLeftoverAdmin();
+            finish();
+            return;
+        }
         checkAppLock();
         if (locked) return;
         seedDnsDefaultsIfNeeded();
@@ -171,6 +176,24 @@ public class MainActivity extends Activity {
         if (code != null) codeField.setText(code);
         if (server != null && code != null && !Agent.enrolled(this)) enroll();
         askBatteryExemptionOnce();
+    }
+
+    /**
+     * "adb shell am start -n com.familymdm.agent/.MainActivity --ez dropAdmin true" (the Windows phone installer sends it): gives up a
+     * leftover device-admin registration. Android records, when an app is first activated as an admin, whether it was a test-only app, and
+     * never looks again. So an app that an earlier failed hand-over left registered as an ordinary admin stays "not test-only" even after it
+     * is reinstalled as a test build, and Android keeps refusing to make it the manager of a phone with accounts. Only the app itself can
+     * remove its own registration (not "adb shell dpm"), then the next "dpm set-device-owner" registers it afresh. Does nothing once the
+     * app is the manager (device owner or profile owner), so it cannot undo an enrolment.
+     */
+    private void dropLeftoverAdmin() {
+        try {
+            android.app.admin.DevicePolicyManager dpm = Agent.dpm(this);
+            if (dpm.isDeviceOwnerApp(getPackageName()) || dpm.isProfileOwnerApp(getPackageName())) return;
+            android.content.ComponentName admin = Agent.admin(this);
+            if (dpm.isAdminActive(admin)) dpm.removeActiveAdmin(admin);
+        } catch (Exception ignored) {
+        }
     }
 
     /**
