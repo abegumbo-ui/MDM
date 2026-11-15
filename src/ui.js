@@ -819,11 +819,12 @@ function renderDeviceDetail(m,d){
      {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
      'For a timed lock the phone shows your message and a countdown, and nothing else can be opened until time is up (or you unlock it). Emergency calls stay available.');
     if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
-  cmd(lr,'Unlock now','unlock',{},null,lockedNow(d)?'':'outline');
+  cmd(lr,'End timed lock','unlock',{},null,lockedNow(d)?'':'outline');
   cmd(lr,'Set PIN or password','setPin',function(){const pin=prompt('New screen lock. Digits only (4 to 16) make a PIN; letters or symbols (4 to 64 characters) make a password. A pattern cannot be set from here.');return pin?{pin:pin}:null});
   cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
   if(d.info.pinControl===false&&d.info.screenLock!==false)cmd(lr,'Turn on PIN control (shows a prompt on the phone)','askPinControl',{},'This makes a screen appear on the phone asking for its CURRENT lock. Whoever is holding the phone enters it once, and PIN control is on from then. Continue?','tonal');
   lockBox.append(lr);
+  lockBox.append(h('div',{class:'mute small',style:'margin-top:8px'},'End timed lock only ends a lock you started with Lock… (the countdown with your message). It does NOT remove the phone\'s PIN or pattern: use Remove screen lock for that (PIN control must be ON).'));
   lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},(d.info.screenLock===false?'This phone has no screen lock. ':'The lock on it now: '+(d.info.lockStrength||'set')+'. ')+(d.info.pinControl?'PIN control is ready: Set PIN and Remove screen lock work.':'PIN control is not on yet. A phone with no lock gets it by itself. A phone that already has a lock needs its current lock entered ONCE (Android lets nobody else approve this): press "Turn on PIN control" above and the prompt appears on the phone, or on the phone go to LockGuard → Administrator → Security → Lock → Activate PIN Control.')));
   lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Device → Controls.'));
   lk.append(lockBox);
@@ -3636,7 +3637,7 @@ function renderHomeNew(m,d){
    {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
    'A timed lock shows your message and a countdown, and nothing else opens until time is up (or you unlock it). Emergency calls stay available.');
   if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
- if(can('device')&&lockedNow(d))qr.append(btn('Unlock now','tonal',function(){return queue('Unlock','unlock',{})}));
+ if(can('device')&&lockedNow(d))qr.append(btn('End timed lock','tonal',function(){return queue('End timed lock','unlock',{})}));
  if(can('device'))qr.append(btn('Find phone','tonal',function(){return queue('Find phone','locate',{})}));
  q.append(qr);
  // The last place the phone was found, if it has been found.
