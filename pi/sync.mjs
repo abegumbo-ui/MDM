@@ -19,20 +19,46 @@ export const CLOUDFLARE_FREE_LIMITS = { requests: 100000, reads: 100000, writes:
 
 const utcDay = (t) => new Date(t).toISOString().slice(0, 10);
 
+/** What makes a phone record "really changed": who it is, its settings and what the administrator queued for it. */
+const REAL_FIELDS = ['id', 'name', 'tokenHash', 'ownerId', 'config', 'queue', 'enabled', 'filterOn', 'win', 'allowedPrograms'];
+const isPhoneKey = (k) => /^(device|browserDevice|winDevice):/.test(k);
+const fpOf = (d) => crypto.createHash('sha1').update(JSON.stringify(REAL_FIELDS.map((f) => d[f]))).digest('hex');
+
 /**
- * What makes a phone record "really changed" for the copy to Cloudflare: who it is, its settings and what the administrator queued for it.
- * Everything else in the record (last seen, battery, apps, events, results, traffic) is refreshed by the phone itself, whichever server it uses.
- * null = not a phone record: every change of it counts.
+ * What makes a phone record "really changed" for the copy to Cloudflare: see REAL_FIELDS.
+ * Everything else in the record (last seen, battery, apps, events, call and text logs, results, traffic) is refreshed by the phone itself,
+ * whichever server it uses. null = not a phone record: every change of it counts.
  */
 export function fingerprint(key, rec) {
   if (!rec) return 'deleted';
-  if (!/^(device|browserDevice|winDevice):/.test(key) || rec.t !== 's') return null;
+  if (!isPhoneKey(key) || rec.t !== 's') return null;
   try {
-    const d = JSON.parse(rec.v);
-    return crypto.createHash('sha1').update(JSON.stringify([d.id, d.name, d.tokenHash, d.ownerId, d.config, d.queue, d.enabled, d.filterOn, d.win, d.allowedPrograms])).digest('hex');
+    return fpOf(JSON.parse(rec.v));
   } catch {
     return null;
   }
+}
+
+/**
+ * Two versions of one phone's record: the Pi's and the one Cloudflare holds, when the Pi takes back what Cloudflare saved while phones used it.
+ * Cloudflare's copy of a busy phone's routine state (events, logs, last seen) can be hours old, so replacing the Pi's record by it would erase
+ * whatever the phone reported to the Pi since. Two separate questions, one for each half of the record:
+ *  - settings and queue (REAL_FIELDS): Cloudflare's win when they changed there since the Pi last copied the record (an administrator on the
+ *    Cloudflare dashboard, a phone's own update), as before; otherwise this Pi's are kept (it may have changes that are not copied yet);
+ *  - routine state (last seen, events, call and text logs, usage...): whichever record was seen last, because that phone reported to that server.
+ * Returns the JSON text to keep.
+ */
+export function mergePhoneRecords(piText, cfText, lastCopiedFp) {
+  let p, c;
+  try { p = JSON.parse(piText); c = JSON.parse(cfText); } catch { return cfText; }
+  if (!p || !c || typeof p !== 'object' || typeof c !== 'object') return cfText;
+  const cfChangedForReal = !(lastCopiedFp && lastCopiedFp === fpOf(c));
+  const routine = (Number(p.lastSeen) || 0) >= (Number(c.lastSeen) || 0) ? p : c;
+  const settings = cfChangedForReal ? c : p;
+  if (routine === p && settings === p) return piText;
+  const out = { ...routine };
+  for (const f of REAL_FIELDS) { if (f in settings) out[f] = settings[f]; else delete out[f]; }
+  return JSON.stringify(out);
 }
 
 export function startReplication({ kv, vars, log = () => {}, intervalMs = 30 * 60 * 1000, soonMs = 2 * 60 * 1000, volatileRefreshMs = 3 * 3600 * 1000, fetchFn = fetch, now = Date.now, onOutage = null }) {
@@ -108,9 +134,36 @@ export function startReplication({ kv, vars, log = () => {}, intervalMs = 30 * 6
       entries.push(...(r.data.entries || []));
       cursor = r.data.cursor || null;
     } while (cursor);
+    // Cloudflare's copy replaces this Pi's data, except for the phone records: a phone that kept using the Pi while another one used Cloudflare
+    // is fresher here, and a phone that only this Pi knows (just enrolled) must not vanish. See mergePhoneRecords.
+    const byKey = new Map(entries.map((e) => [e.k, e]));
+    const sendBack = [];
+    for (const k of [...kv.map.keys()]) {
+      if (!isPhoneKey(k) || skipKey(k)) continue;
+      const mine = kv.inflate(kv.map.get(k));
+      if (!mine || mine.t !== 's' || typeof mine.v !== 'string') continue;
+      const theirs = byKey.get(k);
+      if (!theirs) { entries.push({ k, r: mine }); sendBack.push(k); continue; }
+      if (!theirs.r || theirs.r.t !== 's' || typeof theirs.r.v !== 'string') continue;
+      const cfText = theirs.r.v;
+      const kept = mergePhoneRecords(mine.v, cfText, (copied.get(k) || {}).fp);
+      if (kept !== cfText) {
+        theirs.r = { ...theirs.r, v: kept };
+        // Cloudflare is only sent the record back when its settings differ from what it holds (a difference in routine state is not worth a save).
+        let differs = true;
+        try { differs = fpOf(JSON.parse(kept)) !== fpOf(JSON.parse(cfText)); } catch { /* send it */ }
+        if (differs) sendBack.push(k);
+      }
+    }
     kv.replaceAll(entries, skipKey);
     dirty.clear();
     copied.clear();
+    const at = now();
+    for (const e of entries) {
+      if (!isPhoneKey(e.k) || sendBack.includes(e.k) || !e.r || e.r.t !== 's') continue;
+      try { copied.set(e.k, { fp: fpOf(JSON.parse(e.r.v)), at }); } catch { /* not a record */ }
+    }
+    for (const k of sendBack) dirty.set(k, kv.inflate(kv.map.get(k))); // Cloudflare gets what only this Pi had, with the next copy
     info.lastImportAt = now();
     info.lastImportCount = entries.length;
     await kv.put('repl:imported', String(now())); // local note: the first copy is done
