@@ -48,6 +48,15 @@ android {
             dimension "variant"
             versionCode Math.max(buildNumber - 1, 1)
         }
+        // "enrollTest" = the "enroll" build marked android:testOnly (see src/enrollTest/AndroidManifest.xml), for the cable installers only
+        // (FamilyMdmSetup.exe installs it with "adb install -t"). Android 16 refuses "dpm set-device-owner" for a normal app while the phone
+        // has any account ("Non test-only owner can't be installed with existing accounts"), and it makes no difference whether the account
+        // services are switched off. A test-only app is allowed, so no account has to be removed. QR enrollment keeps using the plain "enroll"
+        // build. Once it is device owner it self-updates to "full" (an ordinary, not test-only build) like any enroll build.
+        enrollTest {
+            dimension "variant"
+            versionCode Math.max(buildNumber - 1, 1)
+        }
     }
 
     compileOptions {
