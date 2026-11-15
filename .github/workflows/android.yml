@@ -26,6 +26,8 @@ jobs:
       - name: Check the offline policy rules
         run: |
           curl -sSL -o json.jar https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
+          # every script the phones inject into pages must at least parse (a stray comment once broke youtube_cover.js and left YouTube unfiltered)
+          find android android-jelly -path '*/src/main/*' -name '*.js' -print0 | xargs -0 -n1 node --check
           mkdir -p out
           javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockedPage.java android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SitePolicyCheck.java
           java -cp json.jar:out com.familymdm.agent.LocalPolicyCheck
