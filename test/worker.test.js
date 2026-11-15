@@ -701,12 +701,12 @@ test("PIN commands validate the PIN and never echo it back in the device record"
   assert.equal((await cmd("setPin", { pin: "abc" })).status, 400, "too short");
   assert.equal((await cmd("setPin", { pin: " 4821" })).status, 400, "no space at either end");
   assert.equal((await cmd("setPin", { pin: "a".repeat(65) })).status, 400, "too long");
-  assert.equal((await cmd("setPin", { pin: "Pass-word1" })).status, 200, "a password is fine too (digits only make a PIN)");
   assert.equal((await cmd("setPin", { pin: "4821" })).status, 200);
   const sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.commands[0].args.pin, "4821");
   const dev = (await (await req("/api/devices", { headers: { cookie } })).json()).find((d) => d.id === id);
   assert.ok(!JSON.stringify({ ...dev, adminPin: undefined }).includes("4821"), "PIN is not in the queue, log or results once delivered; only the admin-only adminPin field keeps it");
+  assert.equal((await cmd("setPin", { pin: "Pass-word1" })).status, 200, "a password is fine too (digits only make a PIN)");
   assert.equal((await cmd("clearPin", {})).status, 200);
 });
 
