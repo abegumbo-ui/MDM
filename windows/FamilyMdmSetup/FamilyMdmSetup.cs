@@ -71,6 +71,42 @@ namespace FamilyMdmSetup
             return Regex.Matches(pmListUsers, @"UserInfo\{").Count;
         }
 
+        /// <summary>The users of the phone as {id, name}: "UserInfo{150:Secure Folder:4c13}" gives {"150", "Secure Folder"}.</summary>
+        public static List<string[]> UserList(string pmListUsers)
+        {
+            var list = new List<string[]>();
+            if (pmListUsers == null) return list;
+            foreach (Match m in Regex.Matches(pmListUsers, @"UserInfo\{(\d+):([^:}]*):"))
+                list.Add(new string[] { m.Groups[1].Value, m.Groups[2].Value });
+            return list;
+        }
+
+        /// <summary>
+        /// What the extra "users" of a phone usually are, and how to remove them. On a Samsung phone they are not people: Secure Folder, Dual Messenger and
+        /// Private Space are hidden profiles that Android counts as users. Never removed by this program (removing one deletes what is inside it).
+        /// </summary>
+        public static string UsersAdvice(List<string[]> users)
+        {
+            var names = new List<string>();
+            var how = new List<string>();
+            foreach (string[] u in users)
+            {
+                if (u[0] == "0") continue;
+                string n = (u[1] ?? "").ToLowerInvariant();
+                string label = string.IsNullOrEmpty(u[1]) ? "user " + u[0] : "'" + u[1] + "' (user " + u[0] + ")";
+                names.Add(label);
+                if (n.Contains("secure folder")) how.Add("Secure Folder: Settings > Security and privacy > More security settings > Secure Folder > More (the three dots) > Settings > Uninstall");
+                else if (n.Contains("dual")) how.Add("Dual Messenger: Settings > Advanced features > Dual Messenger, and switch every app off");
+                else if (n.Contains("private")) how.Add("Private Space: Settings > Security and privacy > Private Space > Delete");
+                else if (n.Contains("work")) how.Add("a work profile: Settings > Accounts and backup > Manage accounts, or remove it with the app that made it");
+                else how.Add(label + ": Settings > Accounts and backup > Users (or Settings > General management), on a phone that has that menu");
+            }
+            if (names.Count == 0) return "";
+            return "These are not people. On a Samsung phone they are the hidden spaces Samsung adds (Secure Folder, Dual Messenger, Private Space) or a work profile, and Android counts each one as a user. Found: "
+                + string.Join(", ", names.ToArray()) + ". To remove them: " + string.Join("; ", how.ToArray())
+                + ". Removing one deletes what is inside it, so back it up first. This program never removes them itself.";
+        }
+
         /// <summary>"package:com.x" lines to package names.</summary>
         public static List<string> Packages(string pmList)
         {
@@ -120,6 +156,7 @@ namespace FamilyMdmSetup
     /// <summary>The setup itself.</summary>
     public class Setup
     {
+        string usersAdvice = ""; // filled when the phone has more than one "user"; shown if Android then refuses the hand-over
         public const string Package = "com.familymdm.agent";
         public const string Admin = "com.familymdm.agent/.AdminReceiver";
         const string ApkUrl = "https://github.com/abegumbo-ui/MDM/releases/download/latest/mdm-agent-enroll-test.apk";
@@ -391,13 +428,16 @@ namespace FamilyMdmSetup
 
                 if (!ownerIsUs)
                 {
-                    int users = Parse.UserCount(Adb(serial, "shell pm list users", 20000));
+                    string usersOut = Adb(serial, "shell pm list users", 20000);
+                    int users = Parse.UserCount(usersOut);
                     if (users > 1)
                     {
-                        Log("PROBLEM: the phone has " + users + " users (a guest, a second user or a work profile). Android only allows management on a phone with a single user. Remove the extra users in Settings > Accounts and backup > Users (or Settings > General management), then run this again. Nothing was changed.");
-                        return false;
+                        // Not a stop any more: this used to refuse here, but Android may well accept the hand-over with these extra users (the app goes on
+                        // as a test build, which Android treats more kindly), and the advice it gave did not exist on Samsung phones. Try, and explain only if refused.
+                        usersAdvice = Parse.UsersAdvice(Parse.UserList(usersOut));
+                        Log("NOTE: the phone lists " + users + " users. " + usersAdvice + " Android may refuse to hand the phone over while they exist; this tries anyway, changes nothing else, and says so if it is refused.");
                     }
-                    Log("OK  The phone has a single user.");
+                    else Log("OK  The phone has a single user.");
                 }
 
                 string accountDump = Adb(serial, "shell dumpsys account", 30000);
@@ -536,6 +576,7 @@ namespace FamilyMdmSetup
                 Thread.Sleep(25000);
             }
             Log("PROBLEM: the phone would not make Family MDM its manager. Nothing else was changed, and the account services are being put back. If the message above mentions accounts, remove them in Settings > Accounts and run this again; if it mentions 'already provisioned' or 'users', follow what it says.");
+            if (usersAdvice.Length > 0) Log("PROBLEM: the extra users are probably the reason. " + usersAdvice + " Then run this again.");
             return false;
         }
 
@@ -677,6 +718,11 @@ namespace FamilyMdmSetup
             check("no device owner", Parse.DeviceOwner("Current Device Policy Manager state:\n  Immutable state:\n") == "");
             check("one user", Parse.UserCount("Users:\n\tUserInfo{0:null:4c13} running\n") == 1);
             check("two users", Parse.UserCount("Users:\n\tUserInfo{0:Owner:13} running\n\tUserInfo{10:Guest:4} running\n") == 2);
+            List<string[]> ul = Parse.UserList("Users:\n\tUserInfo{0:Owner:c13} running\n\tUserInfo{150:Secure Folder:4c13} running\n\tUserInfo{95:Dual Messenger:4c13} running\n");
+            check("user list", ul.Count == 3 && ul[1][0] == "150" && ul[1][1] == "Secure Folder" && ul[2][1] == "Dual Messenger");
+            string adv = Parse.UsersAdvice(ul);
+            check("users advice names the spaces and where to remove them", adv.Contains("'Secure Folder' (user 150)") && adv.Contains("Dual Messenger") && adv.Contains("Settings > Security and privacy") && adv.Contains("never removes"));
+            check("no advice for one user", Parse.UsersAdvice(Parse.UserList("Users:\n\tUserInfo{0:Owner:c13} running\n")) == "");
             check("package list", string.Join(",", Parse.Packages("package:com.a.b\r\npackage:com.c\r\n").ToArray()) == "com.a.b,com.c");
             List<string[]> devs = Parse.Devices("List of devices attached\nR5GL40JLNTY\tdevice\nABC123\tunauthorized\n\n");
             check("adb devices", devs.Count == 2 && devs[0][0] == "R5GL40JLNTY" && devs[1][1] == "unauthorized");
