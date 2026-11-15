@@ -903,6 +903,7 @@ function renderDeviceDetail(m,d){
  const nMsg=(d.messages||[]).length,nApp=(d.appRequests||[]).length,nSite=(d.siteRequests||[]).length;
  const side=h('nav',{class:'side'});
  for(const g of GROUPS){
+  if(g.key!=='overview'&&!can(g.key))continue;
   const b=h('button',{class:'nav'+(g.key===sec?' on':'')},svgIcon(g.icon,'currentColor'),g.label);
   const nBadge=g.key==='overview'?nMsg+nApp+ytRequestList(d,false).length+ytRequestList(d,true).length:g.key==='youtube'?ytRequestList(d,false).length+ytRequestList(d,true).length:g.key==='browser'?nSite:g.key==='safety'?healthProblems(d).filter(function(x){return x.level==='bad'}).length+(d.msgAlerts||[]).length:0;
   if(nBadge)b.append(h('span',{class:'badge'},String(nBadge)));
@@ -3176,8 +3177,22 @@ function renderClients(m){
  if(!clients.length)list.append(h('div',{class:'mute'},'No clients yet.'));
  for(const c of clients){
   const n=devices.filter(function(d){return d.ownerId===c.id}).length+browsers.filter(function(d){return d.ownerId===c.id}).length;
+  const have=new Set(c.perms||[]);
+  const groups=(state&&state.permGroups)||[];
+  const ctl=h('div',{class:'mute small',style:'margin-top:4px'},have.size>=groups.length?'May control everything':have.size?'May control: '+groups.filter(function(g){return have.has(g.key)}).map(function(g){return g.label}).join(', '):'May not control anything yet');
   list.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},c.name),
-   h('div',{class:'mute small'},'Login: '+c.id+' · '+n+' device(s)')),
+   h('div',{class:'mute small'},'Login: '+c.id+(c.email?' · '+c.email:'')+' · '+n+' device(s)'+(c.via==='signup'?' · signed up':'')),ctl,
+   open['perm-'+c.id]?(function(){
+    const box=h('div',{style:'margin-top:10px'});const boxes={};
+    box.append(h('div',{class:'mute small'},'Tick what '+c.name+' may do on their own phones. The server refuses everything else, even if they try.'));
+    for(const g of groups){
+     const cb=h('input',{type:'checkbox'});cb.checked=have.has(g.key);boxes[g.key]=cb;
+     box.append(h('label',{style:'display:flex;gap:10px;align-items:flex-start;margin:8px 0;cursor:pointer'},cb,h('span',null,h('span',{style:'font-weight:500'},g.label),h('div',{class:'mute small'},g.help))))}
+    box.append(h('div',{class:'row',style:'margin-top:8px'},btn('Save','',async function(){
+     try{await call('PUT','/api/clients/'+c.id+'/perms',{perms:groups.filter(function(g){return boxes[g.key].checked}).map(function(g){return g.key})});snack('Saved. It applies to '+c.name+' at once.');open['perm-'+c.id]=false;clients=await call('GET','/api/clients');render()}catch(e){snack(e.message,1)}}),
+     btn('Cancel','outline',function(){open['perm-'+c.id]=false;render()})));
+    return box})():null),
+   btn('Controls','tonal',function(){open['perm-'+c.id]=!open['perm-'+c.id];render()}),
    btn('Delete','danger',async function(){
     if(!confirm('Delete client "'+c.name+'"? They can no longer log in. Their devices stay exactly as they are -- not deleted, not reassigned -- just invisible to every client until you hand them to a new or recreated account.'))return;
     await call('DELETE','/api/clients/'+c.id);clients=await call('GET','/api/clients');render()})))}
@@ -3381,6 +3396,9 @@ function homeSummary(d){
  out.status='Messages, activity and the phone\'s details';
  return out}
 
+/** What this account may use. The administrator may use everything; a client only the controls they were given (the server enforces it: this only hides what would be refused). */
+function can(group){const s=state&&state.session;if(!s||s.role!=='client')return true;return (s.perms||[]).indexOf(group)>=0}
+const ROW_PERM={time:'time',apps:'apps',browser:'browser',youtube:'youtube',music:'youtube',calls:'calls',location:'device',internet:'internet',safety:'safety',security:'security',device:'device'};
 const HOME_ROWS=[
  ['time','clock','Screen time','time',null],
  ['apps','apps','Apps','apps',null],
@@ -3426,25 +3444,25 @@ function renderRightNow(col,d){
  // 1. Pause the web filter.
  const paused=(c.pauseUntil||0)>now;
  if(paused)say.push('Web filter paused until '+hhmm(c.pauseUntil)+'.');
- row.append(btn(paused?'Web filter back on':'Pause web filter','tonal',async function(){
+ if(can('internet'))row.append(btn(paused?'Web filter back on':'Pause web filter','tonal',async function(){
   if(paused){c.pauseUntil=0;await save('The web filter comes back on at the next check-in.');return}
   const v=await ask('Pause the web filter',[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['60','1 hour'],['180','3 hours']],value:'60'}],'Pause','Every site opens for a while: blocked sites, kinds of site, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked apps stay blocked. It comes back by itself, even if the phone is offline.');
   if(!v)return;c.pauseUntil=Date.now()+Number(v.minutes)*60000;await save('Paused until '+hhmm(c.pauseUntil)+'.')}));
  // 2. All restrictions off.
  const alloff=(c.restrictionsOffUntil||0)>now;
  if(alloff)say.push('ALL restrictions are off until '+hhmm(c.restrictionsOffUntil)+'.');
- row.append(btn(alloff?'Turn everything back on':'All restrictions off',alloff?'':'tonal',async function(){
+ if(can('time'))row.append(btn(alloff?'Turn everything back on':'All restrictions off',alloff?'':'tonal',async function(){
   if(alloff){c.restrictionsOffUntil=0;await save('Restrictions come back on at the phone\'s next check-in.');return}
   const v=await ask('Turn off ALL restrictions',[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours'],['1440','Until I turn it back on (up to 24 hours)']],value:'60',maxMinutes:1440}],'Turn off','The website filter, blocked apps, screen time and bedtime, blocked screens, YouTube limits and internet cut-offs all stand down. The phone stays managed and keeps reporting. Everything comes back by itself when the time is up, even with no internet.');
   if(!v)return;c.restrictionsOffUntil=Date.now()+Number(v.minutes)*60000;c.restrictionsOffSince=Date.now();await save('All restrictions off until '+hhmm(c.restrictionsOffUntil)+'.')}));
  // 3. More time.
- row.append(btn('Give more time','tonal',async function(){
+ if(can('time'))row.append(btn('Give more time','tonal',async function(){
   const v=await ask('Give more screen time',[{key:'minutes',label:'How much',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours']],value:'15'}],'Give time','Added to today, on top of the daily limit and the limits on single apps and sites. It starts at the phone\'s next check-in.');
   if(!v)return;await queue('Extra screen time','addTime',{minutes:Number(v.minutes)})}));
  // 4. Internet off.
  const off=(c.internetOffUntil||0)>now;
  if(off)say.push('Internet off until '+hhmm(c.internetOffUntil)+'.');
- row.append(btn(off?'Internet back on':'Internet off','tonal',async function(){
+ if(can('internet'))row.append(btn(off?'Internet back on':'Internet off','tonal',async function(){
   if(off){c.internetOffUntil=0;await save('The internet comes back on at the next check-in.');return}
   const v=await ask('Turn the internet off',[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['1440','Until tomorrow']],value:'60'}],'Turn off','No app can use the internet for a while. Calls and texts still work, and apps under "Internet only for chosen apps" keep theirs. It comes back by itself.');
   if(!v)return;c.internetOffUntil=Date.now()+Number(v.minutes)*60000;await save('Internet off until '+hhmm(c.internetOffUntil)+'.')}));
@@ -3467,14 +3485,14 @@ function renderHomeNew(m,d){
  const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it at its next check-in.');load()};
  q.append(h('h2',null,'Quick actions'));
  const qr=h('div',{class:'row',style:'margin-top:8px'});
- qr.append(btn('Lock screen','tonal',async function(){
+ if(can('device'))qr.append(btn('Lock screen','tonal',async function(){
   const v=await ask('Lock this phone',[
    {key:'minutes',label:'How long',options:[['0','Just lock the screen'],['5','5 minutes'],['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours']]},
    {key:'message',label:'Message shown on the phone (optional)',placeholder:'e.g. Back at 3 PM. Call me if urgent.',max:140}],'Lock',
    'A timed lock shows your message and a countdown, and nothing else opens until time is up (or you unlock it). Emergency calls stay available.');
   if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
- if(lockedNow(d))qr.append(btn('Unlock now','tonal',function(){return queue('Unlock','unlock',{})}));
- qr.append(btn('Find phone','tonal',function(){return queue('Find phone','locate',{})}));
+ if(can('device')&&lockedNow(d))qr.append(btn('Unlock now','tonal',function(){return queue('Unlock','unlock',{})}));
+ if(can('device'))qr.append(btn('Find phone','tonal',function(){return queue('Find phone','locate',{})}));
  q.append(qr);
  // The last place the phone was found, if it has been found.
  const lastFix=(d.results||[]).slice().reverse().find(function(r){return r.type==='locate'&&r.ok});
@@ -3494,6 +3512,7 @@ function renderHomeNew(m,d){
  // 4. The parts, one line each.
  const list=h('div',{class:'ctls'});
  for(const r of HOME_ROWS){
+  if(ROW_PERM[r[0]]&&!can(ROW_PERM[r[0]]))continue;
   let badge=0;
   if(r[0]==='status')badge=(d.messages||[]).length;
   if(r[0]==='browser')badge=(d.siteRequests||[]).length;

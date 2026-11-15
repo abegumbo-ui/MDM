@@ -5,6 +5,7 @@ import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totp
 import { maybeSendDaily, maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY, alertsOn, validPushEndpoint, vapidKeys, latestForPush, SERVICE_WORKER } from "./alerts.js";
 import { ICON_192, ICON_512 } from "./icons.js";
 import { handleSignupPublic, handleSignupAdmin } from "./signup.js";
+import { PERM_GROUPS, normalizePerms, permsOfClient, deniedConfigKeys, commandAllowed, codeAllowed, describeDenied } from "./perms.js";
 import { youtubeSearch, youtubeChannelVideos, youtubePlaylistVideos } from "./youtube.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -242,13 +243,13 @@ async function getSession(request, env) {
     if (hp.owner === "admin") return { role: "admin", ...extra };
     const oc = await getJSON(env, `client:${hp.owner}`, null);
     if (!oc) return null;
-    return { role: "client", id: hp.owner, name: oc.name, ...extra };
+    return { role: "client", id: hp.owner, name: oc.name, perms: permsOfClient(oc), ...extra };
   }
   const cm = /^client:(.+)$/.exec(tag);
   if (!cm) return null;
   const c = await getJSON(env, `client:${cm[1]}`, null);
   if (!c) return null; // the client account was deleted since this cookie was issued
-  return { role: "client", id: cm[1], name: c.name };
+  return { role: "client", id: cm[1], name: c.name, perms: permsOfClient(c) };
 }
 const isAdmin = (session) => !!session && session.role === "admin";
 /** For the Raspberry Pi's own pages (pi/admin.mjs): the signed-in administrator of this request, or null. */
@@ -257,6 +258,8 @@ export async function adminSessionOf(request, env) {
   return isAdmin(s) ? s : null;
 }
 const isClient = (session) => !!session && session.role === "client";
+/** What this session may change: null for the administrator (everything), otherwise the set of control groups the account was given. See perms.js. */
+const limitsOf = (session) => (isAdmin(session) ? null : new Set(session && session.perms ? session.perms : []));
 
 // ---- KV state ----
 const getJSON = async (env, key, dflt) => (await env.STATE.get(key, "json")) ?? dflt;
@@ -322,7 +325,7 @@ async function listDevices(env) {
 async function listClients(env) {
   return listByPrefix(env, "client");
 }
-const publicClient = (c) => ({ id: c.id, name: c.name, createdAt: c.createdAt });
+const publicClient = (c) => ({ id: c.id, name: c.name, createdAt: c.createdAt, email: c.email || "", via: c.via || "", perms: permsOfClient(c) });
 // True if a client session may see this record at all; always true for the admin.
 const canSee = (session, ownerId) => session.role === "admin" || ownerId === session.id;
 
@@ -795,12 +798,15 @@ async function adminApiInner(request, env, url, session) {
     if (tpl[2] && method === "POST") {
       const ids = (Array.isArray(tb.deviceIds) ? tb.deviceIds : []).filter((x) => /^[0-9a-f]{1,32}$/.test(x)).slice(0, 200);
       let applied = 0;
+      let refused = 0;
       for (const id of ids) {
         const dk = `device:${id}`;
         const d = await getJSON(env, dk, null);
         if (!d || !canSee(session, d.ownerId)) continue;
         const { cfg: before } = await configOf(env, d);
         const next = normalizeConfig({ ...t.config, frpAccounts: before.frpAccounts }); // keep this phone's own reset-protection accounts
+        const limT = limitsOf(session);
+        if (limT && deniedConfigKeys(before, next, limT).length) { refused++; continue; } // this account may not change everything the template changes
         if (next.approveNew && !before.approveNew) d.known = (d.packages || []).map((p) => p.p);
         d.config = next;
         const changes = summarizeConfigChange(before, next);
@@ -808,7 +814,7 @@ async function adminApiInner(request, env, url, session) {
         await putJSON(env, dk, d);
         applied++;
       }
-      return json({ applied });
+      return json({ applied, ...(refused ? { refused } : {}) });
     }
     return json({ error: "Not found" }, 404);
   }
@@ -970,6 +976,18 @@ async function adminApiInner(request, env, url, session) {
     await putJSON(env, `client:${loginName}`, rec);
     return json(publicClient(rec));
   }
+  const clientPerms = /^\/api\/clients\/([a-z0-9_-]{3,32})\/perms$/.exec(path);
+  if (clientPerms && method === "PUT") {
+    // Only the main administrator decides what a client may do (never a client, never another parent's login).
+    if (!isAdmin(session) || session.helper) return json({ error: "Only the main administrator can do this." }, 403);
+    const c = await getJSON(env, `client:${clientPerms[1]}`, null);
+    if (!c) return json({ error: "Not found" }, 404);
+    c.perms = normalizePerms(body.perms);
+    await putJSON(env, `client:${clientPerms[1]}`, c);
+    invalidateListCache(`client:${clientPerms[1]}`);
+    await auditAdd(env, { who: "Administrator", text: `Changed what ${c.name} may control: ${c.perms.length ? c.perms.join(", ") : "nothing"}` });
+    return json(publicClient(c));
+  }
   const clientMatch = /^\/api\/clients\/([a-z0-9_-]{3,32})$/.exec(path);
   if (clientMatch && method === "DELETE") {
     if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
@@ -988,10 +1006,11 @@ async function adminApiInner(request, env, url, session) {
       userMenu: USER_MENU,
       origin: url.origin,
       masterIterations: MASTER_ITERATIONS,
+      permGroups: PERM_GROUPS,
       // Which server is showing this page (the Raspberry Pi, or Cloudflare), for the badge at the top of the dashboard.
       server: await serverInfo(env),
       session: {
-        ...(session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name }),
+        ...(session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name, perms: session.perms || [] }),
         ...(session.helper ? { helper: session.helperName, viewOnly: !!session.viewOnly } : {}),
       },
     });
@@ -1020,6 +1039,11 @@ async function adminApiInner(request, env, url, session) {
       await markAdminActive(env); // phones check in every 30 s for a while
       const { cfg: before } = await configOf(env, d);
       const next = normalizeConfig(body);
+      const lim = limitsOf(session);
+      if (lim) {
+        const denied = deniedConfigKeys(before, next, lim);
+        if (denied.length) return json({ error: `This account may not change: ${describeDenied(denied)}.`, denied }, 403);
+      }
       if (next.approveNew && !before.approveNew) d.known = (d.packages || []).map((p) => p.p); // everything installed now counts as already approved
       d.config = next;
       const changes = summarizeConfigChange(before, next);
@@ -1053,7 +1077,14 @@ async function adminApiInner(request, env, url, session) {
         : await getJSON(env, `device:${body.sourceId}`, null);
       if (!src || !canSee(session, src.ownerId)) return json({ error: "Unknown source" }, 404);
       const { cfg: srcCfg } = await configOf(env, src);
-      d.config = normalizeConfig(body.browser ? { sites: srcCfg.sites } : srcCfg);
+      const nextCfg = normalizeConfig(body.browser ? { sites: srcCfg.sites } : srcCfg);
+      const lim = limitsOf(session);
+      if (lim) {
+        const { cfg: cur } = await configOf(env, d);
+        const denied = deniedConfigKeys(cur, nextCfg, lim);
+        if (denied.length) return json({ error: `This account may not change: ${describeDenied(denied)}.`, denied }, 403);
+      }
+      d.config = nextCfg;
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -1077,8 +1108,14 @@ async function adminApiInner(request, env, url, session) {
     if (brConfig[2] === "config" && method === "PUT") {
       // An omitted browserFilter becomes "off" (allowlist-only), the stricter setting, so a stale
       // dashboard tab can never accidentally open the web.
-      d.config = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages, blockedWords: body.blockedWords, blockImageSearch: body.blockImageSearch,
+      const nextB = normalizeConfig({ sites: body.sites, restrictBrowsing: body.restrictBrowsing, browserFilter: body.browserFilter, youtubeMode: body.youtubeMode, blockImages: body.blockImages, blockedWords: body.blockedWords, blockImageSearch: body.blockImageSearch,
         pictureGuard: body.pictureGuard, openWeb: body.openWeb, safeSearchOff: body.safeSearchOff, adultListOff: body.adultListOff, searchOff: body.searchOff, browserLook: body.browserLook, noPictureSites: body.noPictureSites, skinWho: body.skinWho, blockAds: body.blockAds, youtubeOffMessage: body.youtubeOffMessage, adsCoveredSites: body.adsCoveredSites, adsAutoCoverOff: body.adsAutoCoverOff, youtubeSearchOff: body.youtubeSearchOff, youtubeSearchPictures: body.youtubeSearchPictures, youtubeSignIn: body.youtubeSignIn });
+      const limB = limitsOf(session);
+      if (limB) {
+        const denied = deniedConfigKeys(normalizeConfig(d.config || {}), nextB, limB);
+        if (denied.length) return json({ error: `This account may not change: ${describeDenied(denied)}.`, denied }, 403);
+      }
+      d.config = nextB;
       await putJSON(env, key, d);
       return json({ ok: true });
     }
@@ -1088,13 +1125,21 @@ async function adminApiInner(request, env, url, session) {
         : await getJSON(env, `device:${body.sourceId}`, null);
       if (!src || !canSee(session, src.ownerId)) return json({ error: "Unknown source" }, 404);
       const { cfg: srcCfg } = await configOf(env, src);
-      d.config = normalizeConfig({ sites: srcCfg.sites });
+      const nextC = normalizeConfig({ sites: srcCfg.sites });
+      const limC = limitsOf(session);
+      if (limC) {
+        const denied = deniedConfigKeys(normalizeConfig(d.config || {}), nextC, limC);
+        if (denied.length) return json({ error: `This account may not change: ${describeDenied(denied)}.`, denied }, 403);
+      }
+      d.config = nextC;
       await putJSON(env, key, d);
       return json({ ok: true });
     }
   }
   if (path === "/api/codes" && method === "POST") {
     if (!CODE_TYPES.has(body.type)) return json({ error: "Unknown code type" }, 400);
+    const limK = limitsOf(session);
+    if (limK && !codeAllowed(body.type, limK)) return json({ error: "This account may not make that kind of code." }, 403);
     const code = randomHex(4).toUpperCase();
     const value = { created: Date.now() };
     if (body.type === "freebrowse" || body.type === "playstore") {
@@ -1231,6 +1276,8 @@ async function adminApiInner(request, env, url, session) {
     }
     if (method === "POST" && dev[2]) {
       if (!COMMANDS.has(body.type)) return json({ error: "Unknown command" }, 400);
+      const limCmd = limitsOf(session);
+      if (limCmd && !commandAllowed(body.type, limCmd)) return json({ error: "This account may not do that." }, 403);
       const args = {};
       const given = body.args || {};
       if (body.type === "install") {
@@ -1348,6 +1395,14 @@ async function adminApiInner(request, env, url, session) {
     }
     if (method === "PUT" && wdev[2] === "config") {
       // Each part is optional, so the dashboard can save just the filter or just the programs.
+      const limWc = limitsOf(session);
+      if (limWc) {
+        if (!limWc.has("browser")) return json({ error: "This account may not change the web filter." }, 403);
+        if (body.config && typeof body.config === "object") {
+          const denied = deniedConfigKeys(normalizeConfig(d.config || {}), normalizeConfig(body.config), limWc);
+          if (denied.length) return json({ error: `This account may not change: ${describeDenied(denied)}.`, denied }, 403);
+        }
+      }
       if (typeof body.enabled === "boolean") d.enabled = body.enabled;
       if (Array.isArray(body.allowedPrograms)) d.allowedPrograms = body.allowedPrograms.map((p) => String(p).slice(0, 300)).filter(Boolean).slice(0, 200);
       if (typeof body.filterOn === "boolean") d.filterOn = body.filterOn;
@@ -1374,6 +1429,8 @@ async function adminApiInner(request, env, url, session) {
     }
     if (method === "POST" && wdev[2] === "command") {
       if (body.type !== "uninstall" && body.type !== "screenshot") return json({ error: "Unknown command" }, 400);
+      const limW = limitsOf(session);
+      if (limW && !(limW.has("device") && (body.type !== "uninstall" || limW.has("security")))) return json({ error: "This account may not do that." }, 403);
       d.queue = [...(d.queue || []), { id: randomHex(6), type: body.type }];
       await putJSON(env, key, d);
       return json({ ok: true });

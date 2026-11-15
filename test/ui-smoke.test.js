@@ -308,6 +308,20 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen.list, /Screen time today: 2 h 14 min of 3 h/, "the front page is one card for each device");
   assert.match(seen.list, /\d+ requests?/);
   assert.match(seen.clients, /Sign-ups/, "the Clients page has the sign-ups card (open or close the page, approve or deny)");
+  // Controls per person: a limited client's own dashboard shows only what they may use; the administrator sees and edits each person's controls.
+  const limited = tryRender("a client with only Apps", "var __s=state.session;state.session={role:'client',id:'pat',name:'Pat',perms:['apps']};tab='devices';deviceSection=null;openId=devices[0].id;render()");
+  tryRender("back to the administrator", "state.session=__s;render()");
+  assert.match(limited, /Apps/);
+  assert.doesNotMatch(limited, /Calls and texts|Browser and web|Lock screen|Find phone|Pause web filter|All restrictions off|Give more time|Internet off/, "the controls they may not use are not offered");
+  assert.equal(vm.runInContext("(function(){var s=state.session;state.session={role:'client',perms:['apps']};var r=[can('apps'),can('time')];state.session=s;return JSON.stringify([r,can('time')])})()", ctx), JSON.stringify([[true, false], true]), "the administrator may use everything");
+  const people = tryRender("the Clients page with a person", "clients=[{id:'pat',name:'Pat',createdAt:1,email:'pat@example.com',via:'signup',perms:['apps']}];open['perm-pat']=true;tab='clients';openId=null;render()");
+  tryRender("close the editor", "open['perm-pat']=false;clients=[];tab='devices';openId=devices[0].id;render()");
+  assert.match(people, /May control: Apps/);
+  assert.match(people, /signed up/);
+  assert.match(people, /Controls/);
+  assert.match(people, /Browser and web/, "the editor lists every control");
+  assert.match(people, /Erase or release a phone/);
+  assert.deepEqual(errors, [], "no error in the controls screens");
   assert.match(seen["apps/regular"], /New apps wait for my approval/);
   assert.match(seen["apps/regular"], /Apps on this phone/);
   assert.match(seen["apps/regular"], /Puzzle Fun/);
