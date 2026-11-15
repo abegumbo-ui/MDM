@@ -336,3 +336,12 @@ test("a phone waiting on the Raspberry Pi is woken the moment the dashboard chan
   assert.deepEqual(await r.json(), { wake: false, unsupported: true }, "Cloudflare never holds a phone's request");
   kv.close();
 });
+
+test("the Pi warns when it does not announce itself to the phones (empty PRIMARY_URL): the phones would alternate between the Pi and Cloudflare", async () => {
+  const { configProblems, readEnv } = await import("../pi/server.mjs");
+  assert.equal(configProblems({ ROLE: "main", BACKUP_URL: "https://cf.example", PRIMARY_URL: "https://pi.example" }).length, 0, "fine when both are set");
+  assert.match(configProblems({ ROLE: "main", BACKUP_URL: "https://cf.example" })[0], /PRIMARY_URL is empty/, "main role with a backup but no PRIMARY_URL is a problem");
+  assert.equal(configProblems({ ROLE: "main" }).length, 0, "no backup at all: one server only, nothing to announce");
+  assert.equal(configProblems({ ROLE: "backup", BACKUP_URL: "https://cf.example" }).length, 0, "the backup role has no such problem");
+  assert.match(configProblems(readEnv({ ROLE: "main", BACKUP_URL: "https://cf.example", PRIMARY_URL: "" }))[0], /PRIMARY_URL/, "an empty value in the environment counts as missing");
+});

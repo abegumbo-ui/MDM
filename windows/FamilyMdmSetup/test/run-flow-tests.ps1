@@ -22,7 +22,7 @@ function Check($ok, $what) { if ($ok) { "PASS  $what" } else { "FAIL  $what"; $s
 
 function RunExe([string[]]$exeArgs, [hashtable]$envv) {
     Remove-Item (Join-Path $work 'fake-state.txt'), (Join-Path $work 'fake-adb.log') -ErrorAction SilentlyContinue
-    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
+    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
     foreach ($k in $envv.Keys) { Set-Item "Env:$k" $envv[$k] }
     Remove-Item (Join-Path $logDir 'setup.log') -ErrorAction SilentlyContinue
     $p = Start-Process -FilePath (Join-Path $work 'FamilyMdmSetup.exe') -ArgumentList $exeArgs -Wait -PassThru -WorkingDirectory $work
@@ -64,6 +64,15 @@ Check ((Idx $r.Calls 'am start') -ge 0) 'already ours: the app is started with t
 $r = RunExe $common @{ FAKE_OWNER = 'com.other.mdm' }
 Check ($r.Exit -eq 1 -and (Idx $r.Calls '^(-s FAKE )?install') -lt 0 -and (Idx $r.Calls 'disable-user') -lt 0) 'another manager: refused, nothing installed or switched off'
 
+# 5a. Android refuses to switch one account service off (the Samsung account on a real Samsung tablet): stop BEFORE set-device-owner and BEFORE any restart,
+#     put back what was switched off, and say what to do.
+$r = RunExe $common @{ FAKE_SDK = '35'; FAKE_REFUSE = 'com.osp.app.signin' }
+Check ($r.Exit -eq 1) 'a service Android will not switch off: exits 1'
+Check ((Idx $r.Calls 'set-device-owner') -lt 0) 'a service Android will not switch off: set-device-owner is never tried'
+Check ((Idx $r.Calls ' reboot$') -lt 0 -and (Idx $r.Calls '^reboot') -lt 0) 'a service Android will not switch off: the phone is not restarted for nothing'
+Check ($r.Left.Count -eq 0) 'a service Android will not switch off: the ones that were switched off are put back'
+Check ($r.Log -match 'Samsung account' -and $r.Log -match 'would not let this computer switch off') 'a service Android will not switch off: the log says which one and what to do'
+
 # 5. More than one user on the phone: refused before anything is changed.
 $r = RunExe $common @{ FAKE_USERS = '2' }
 Check ($r.Exit -eq 1 -and (Idx $r.Calls 'disable-user') -lt 0 -and (Idx $r.Calls '^(-s FAKE )?install') -lt 0) 'two users: refused, nothing changed'
@@ -77,7 +86,7 @@ New-Item -ItemType Directory $logDir -Force | Out-Null
 Set-Content $stateFile "FAKE`tcom.google.android.gms`r`nFAKE`tcom.osp.app.signin" -Encoding ascii
 Set-Content (Join-Path $work 'fake-state.txt') "com.google.android.gms`r`ncom.osp.app.signin"
 Remove-Item (Join-Path $work 'fake-adb.log') -ErrorAction SilentlyContinue
-foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
+foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
 $p = Start-Process -FilePath (Join-Path $work 'FamilyMdmSetup.exe') -ArgumentList '--restore' -Wait -PassThru -WorkingDirectory $work
 $left = if (Test-Path (Join-Path $work 'fake-state.txt')) { @(Get-Content (Join-Path $work 'fake-state.txt') | Where-Object { $_.Trim() }) } else { @() }
 Check ($p.ExitCode -eq 0 -and $left.Count -eq 0) 'restore: services left off by an interrupted run are switched back on'

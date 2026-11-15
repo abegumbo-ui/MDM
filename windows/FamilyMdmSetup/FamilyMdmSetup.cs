@@ -401,7 +401,8 @@ namespace FamilyMdmSetup
                 string accountDump = Adb(serial, "shell dumpsys account", 30000);
                 int accounts = Parse.AccountCount(accountDump);
                 List<string> toSwitchOff = ownerIsUs ? new List<string>() : ServicesToSwitchOff(serial, accountDump, accounts);
-                Log(accounts == 0 ? "OK  The phone has no accounts." : "The phone has " + (accounts < 0 ? "some" : accounts.ToString()) + " account(s). For a moment these services will be switched off and then back on: " + (toSwitchOff.Count == 0 ? "(none found)" : string.Join(", ", toSwitchOff.ToArray())));
+                if (toSwitchOff.Contains("com.osp.app.signin")) Log("NOTE: the Samsung account service usually cannot be switched off from a computer. If Android refuses it, the hand-over stops with a message before anything is restarted; the Samsung account would then have to be removed on the phone first.");
+            Log(accounts == 0 ? "OK  The phone has no accounts." : "The phone has " + (accounts < 0 ? "some" : accounts.ToString()) + " account(s). For a moment these services will be switched off and then back on: " + (toSwitchOff.Count == 0 ? "(none found)" : string.Join(", ", toSwitchOff.ToArray())));
 
                 if (o.DryRun)
                 {
@@ -462,7 +463,21 @@ namespace FamilyMdmSetup
             {
                 WriteState(serial, toSwitchOff); // written BEFORE anything is touched
                 Log("Switching off the account services for a moment. Do not unplug the phone.");
-                foreach (string pkg in toSwitchOff) Adb(serial, "shell pm disable-user --user 0 " + pkg, 20000);
+                // Check each answer: Android refuses some (the Samsung account service cannot be switched off from a computer), and then the
+                // hand-over cannot work. Say so now, before the phone is restarted for nothing; the caller puts back what was switched off.
+                var refused = new List<string>();
+                foreach (string pkg in toSwitchOff)
+                {
+                    string answer = Adb(serial, "shell pm disable-user --user 0 " + pkg, 20000);
+                    if (answer.IndexOf("disabled-user", StringComparison.OrdinalIgnoreCase) < 0) refused.Add(pkg);
+                }
+                if (refused.Count > 0)
+                {
+                    Log("PROBLEM: Android would not let this computer switch off: " + string.Join(", ", refused.ToArray()) + ". While an account like that exists, Android refuses to hand the phone over. "
+                        + (refused.Contains("com.osp.app.signin") ? "That one is the Samsung account: remove it on the phone (Settings > Accounts), run this again, and sign in to it again afterwards. " : "Remove that account on the phone (Settings > Accounts), run this again, and add it back afterwards. ")
+                        + "Nothing else was changed and the other account services are being put back.");
+                    return false;
+                }
             }
             for (int attempt = 1; attempt <= 3 && !Cancel; attempt++)
             {
