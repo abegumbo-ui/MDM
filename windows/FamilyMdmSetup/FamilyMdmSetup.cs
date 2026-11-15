@@ -151,6 +151,7 @@ namespace FamilyMdmSetup
         public string ApkPath = "";
         public string Serial = "";
         public bool DryRun;
+        public bool SkipSamsungWait; // --skip-samsung-wait: do not wait for the Samsung account to be removed (the older account-services way is tried instead)
     }
 
     /// <summary>The setup itself.</summary>
@@ -297,7 +298,9 @@ namespace FamilyMdmSetup
                 if (ready.Count == 1) return ready[0];
                 if (ready.Count > 1)
                 {
-                    Log("PROBLEM: more than one phone is plugged in. Unplug the others and try again, so the wrong phone is never changed.");
+                    var named = new List<string>();
+                    foreach (string serialNo in ready) named.Add(Prop(serialNo, "ro.product.model") + " (" + serialNo + ")");
+                    Log("PROBLEM: more than one phone is plugged in: " + string.Join(", ", named.ToArray()) + ". Nothing was changed, so the wrong phone is never touched. Choose the one you mean in the 'Phone' box of the window (or add --serial <number> on the command line), or unplug the others.");
                     return null;
                 }
                 if (i == 0) Log("Waiting for the phone... Plug it in with its USB cable, and switch on Developer options > USB debugging.");
@@ -308,6 +311,16 @@ namespace FamilyMdmSetup
         }
 
         string Prop(string serial, string name) { return Adb(serial, "shell getprop " + name, 15000).Trim(); }
+
+        /// <summary>Every phone adb can see, as {serial, state, model}: for the window's "Phone" box, so the right one can be picked when more than one is plugged in.</summary>
+        public List<string[]> ListPhones()
+        {
+            var list = new List<string[]>();
+            if (!EnsureAdb()) return list;
+            foreach (string[] d in Parse.Devices(Adb(null, "devices", 15000)))
+                list.Add(new string[] { d[0], d[1], d[1] == "device" ? Prop(d[0], "ro.product.model") : "" });
+            return list;
+        }
 
         // ---------------- the "switched off" list (written first, read back to put things right) ----------------
 
@@ -443,7 +456,23 @@ namespace FamilyMdmSetup
                 string accountDump = Adb(serial, "shell dumpsys account", 30000);
                 int accounts = Parse.AccountCount(accountDump);
                 List<string> toSwitchOff = ownerIsUs ? new List<string>() : ServicesToSwitchOff(serial, accountDump, accounts);
-                Log(accounts == 0 ? "OK  The phone has no accounts." : "The phone has " + (accounts < 0 ? "some" : accounts.ToString()) + " account(s). That is fine: nothing is removed from the phone. The app goes on as a test build, which Android lets manage a phone that has accounts.");
+                // A SAMSUNG account stops the hand-over even for the test build (checked on a Galaxy Tab S9 FE with Android 16: "Not allowed to set the device owner
+                // because there are already some accounts on the device"), while Google and every other kind of account do not. Samsung does not let a computer
+                // remove it (it asks the person for their verification), so the phone opens its accounts screen and this waits until the person has removed it.
+                bool samsungRemoved = false;
+                if (!ownerIsUs && !o.SkipSamsungWait && Parse.AccountTypes(accountDump).Contains("com.osp.app.signin"))
+                {
+                    if (o.DryRun) Log("NOTE: the Samsung account is on this phone. Android does not hand a Samsung phone over while it is. The real run opens the accounts screen on the phone, waits while you remove the Samsung account there, and opens its sign-in screen again at the end.");
+                    else if (!WaitForSamsungAccountGone(serial)) return false;
+                    else
+                    {
+                        samsungRemoved = true;
+                        accountDump = Adb(serial, "shell dumpsys account", 30000);
+                        accounts = Parse.AccountCount(accountDump);
+                        toSwitchOff = ServicesToSwitchOff(serial, accountDump, accounts);
+                    }
+                }
+                Log(accounts == 0 ? "OK  The phone has no accounts." : "The phone has " + (accounts < 0 ? "some" : accounts.ToString()) + " account(s). That is fine: Google and the other kinds do not stop the hand-over, and nothing is removed from the phone. The app goes on as a test build.");
 
                 if (o.DryRun)
                 {
@@ -475,6 +504,11 @@ namespace FamilyMdmSetup
                 Adb(serial, "shell cmd appops set " + Package + " RUN_ANY_IN_BACKGROUND allow", 20000);
 
                 StartApp(serial, o);
+                if (samsungRemoved)
+                {
+                    Adb(serial, "shell am start -a android.settings.ADD_ACCOUNT_SETTINGS --esa account_types com.osp.app.signin", 15000);
+                    Log("Sign in to your Samsung account again now: its sign-in screen is open on the phone. (If it says the security policy does not allow it, switch off 'Block adding accounts' on the dashboard, under the phone's Security > Restrictions.)");
+                }
                 Log("DONE. The phone is set up. " + (string.IsNullOrEmpty(o.Code) ? "Open LockGuard on the phone and type the code from your enrollment page." : "It joins the dashboard on its own with the code you gave."));
                 return true;
             }
@@ -487,6 +521,32 @@ namespace FamilyMdmSetup
             {
                 if (serial != null && !o.DryRun) PutBack(serial);
             }
+        }
+
+        /// <summary>Opens the phone's accounts screen and waits until the Samsung account is gone (the person removes it there). False when it is still there after the time is up.</summary>
+        bool WaitForSamsungAccountGone(string serial)
+        {
+            int pollMs, waitMs;
+            if (!int.TryParse(Environment.GetEnvironmentVariable("FMS_POLL_MS"), out pollMs) || pollMs < 10) pollMs = 3000;
+            if (!int.TryParse(Environment.GetEnvironmentVariable("FMS_WAIT_MS"), out waitMs) || waitMs < pollMs) waitMs = 10 * 60 * 1000;
+            Log("The Samsung account is on this phone, and Android will not hand the phone over while it is. Samsung does not let a computer remove it, so it needs one tap on the phone:");
+            Log("  On the phone: Settings > Accounts and backup > Manage accounts > Samsung account > Remove account. Samsung will ask for your verification. Nothing else is touched, and you sign back in at the end.");
+            Adb(serial, "shell am start -a android.settings.SYNC_SETTINGS", 15000);
+            Log("The accounts screen is open on the phone now. Waiting here until the Samsung account is gone (up to " + (waitMs / 60000 > 0 ? (waitMs / 60000) + " minutes" : (waitMs / 1000) + " seconds") + ")...");
+            int waited = 0;
+            while (waited < waitMs && !Cancel)
+            {
+                Thread.Sleep(pollMs);
+                waited += pollMs;
+                string dump = Adb(serial, "shell dumpsys account", 30000);
+                if (!Parse.AccountTypes(dump).Contains("com.osp.app.signin"))
+                {
+                    Log("OK  The Samsung account is off the phone. Continuing.");
+                    return true;
+                }
+            }
+            Log("PROBLEM: the Samsung account is still on the phone, so nothing was installed or changed. Remove it (Settings > Accounts and backup > Manage accounts > Samsung account) and run this again.");
+            return false;
         }
 
         List<string> ServicesToSwitchOff(string serial, string dump, int accounts)
@@ -596,6 +656,9 @@ namespace FamilyMdmSetup
     {
         readonly TextBox server = new TextBox(), code = new TextBox(), log = new TextBox();
         readonly CheckBox dry = new CheckBox();
+        readonly ComboBox phones = new ComboBox();
+        readonly Label phoneLabel = new Label();
+        readonly Button look = new Button();
         readonly Button go = new Button(), back = new Button(), folder = new Button();
         Setup setup;
         Thread worker;
@@ -611,16 +674,20 @@ namespace FamilyMdmSetup
             intro.Text = "Plug the phone into this computer with its USB cable and switch on Developer options > USB debugging, then press the button.\r\n" +
                 "This only installs LockGuard and makes it the manager of the phone. It does not sign the phone in to any dashboard: when it is done, open LockGuard on the phone and type the code from your enrollment page.";
             intro.SetBounds(16, 12, 592, 70);
-            dry.Text = "Only check the phone (change nothing)"; dry.SetBounds(16, 92, 380, 26);
-            go.Text = "Set up the phone"; go.SetBounds(16, 126, 200, 40); go.Click += (s, e) => Start(false);
-            back.Text = "Put things back"; back.SetBounds(226, 126, 160, 40); back.Click += (s, e) => Start(true);
-            folder.Text = "Open the log"; folder.SetBounds(396, 126, 140, 40);
+            phoneLabel.Text = "Phone"; phoneLabel.SetBounds(16, 94, 56, 24);
+            phones.DropDownStyle = ComboBoxStyle.DropDownList; phones.SetBounds(76, 90, 380, 28);
+            look.Text = "Look again"; look.SetBounds(466, 88, 142, 32); look.Click += (s, e) => RefreshPhones();
+            dry.Text = "Only check the phone (change nothing)"; dry.SetBounds(16, 128, 380, 26);
+            go.Text = "Set up the phone"; go.SetBounds(16, 162, 200, 40); go.Click += (s, e) => Start(false);
+            back.Text = "Put things back"; back.SetBounds(226, 162, 160, 40); back.Click += (s, e) => Start(true);
+            folder.Text = "Open the log"; folder.SetBounds(396, 162, 140, 40);
             folder.Click += (s, e) => { try { Process.Start("notepad.exe", Setup.LogFile); } catch (Exception) { } };
-            log.Multiline = true; log.ReadOnly = true; log.ScrollBars = ScrollBars.Vertical; log.SetBounds(16, 180, 592, 412);
+            log.Multiline = true; log.ReadOnly = true; log.ScrollBars = ScrollBars.Vertical; log.SetBounds(16, 216, 592, 376);
             log.Font = new Font("Consolas", 9.5f);
             log.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.AddRange(new Control[] { intro, dry, go, back, folder, log });
+            Controls.AddRange(new Control[] { intro, phoneLabel, phones, look, dry, go, back, folder, log });
             setup = new Setup(Append);
+            Shown += (s, e) => RefreshPhones();
             FormClosing += (s, e) =>
             {
                 if (worker != null && worker.IsAlive)
@@ -637,10 +704,60 @@ namespace FamilyMdmSetup
             log.AppendText(text + "\r\n");
         }
 
+        /// <summary>One line of the "Phone" box.</summary>
+        sealed class PhoneItem
+        {
+            public string Serial, Text;
+            public bool Ready;
+            public override string ToString() { return Text; }
+        }
+
+        /// <summary>Fills the "Phone" box with every phone plugged in (its model and number). With exactly one ready phone it is chosen already.</summary>
+        void RefreshPhones()
+        {
+            phones.Items.Clear();
+            phones.Items.Add(new PhoneItem { Serial = "", Text = "Looking for phones...", Ready = false });
+            phones.SelectedIndex = 0;
+            var t = new Thread(() =>
+            {
+                List<string[]> found;
+                try { found = setup.ListPhones(); } catch (Exception) { found = new List<string[]>(); }
+                try { BeginInvoke(new Action(() => ShowPhones(found))); } catch (InvalidOperationException) { }
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        void ShowPhones(List<string[]> found)
+        {
+            phones.Items.Clear();
+            int ready = 0;
+            foreach (string[] d in found)
+            {
+                bool ok = d[1] == "device";
+                if (ok) ready++;
+                string text = ok ? (string.IsNullOrEmpty(d[2]) ? "Phone" : d[2]) + "  (" + d[0] + ")" : d[0] + "  (look at the phone and tap Allow on 'Allow USB debugging?')";
+                phones.Items.Add(new PhoneItem { Serial = d[0], Text = text, Ready = ok });
+            }
+            if (phones.Items.Count == 0) { phones.Items.Add(new PhoneItem { Serial = "", Text = "No phone found: plug it in, switch on USB debugging, press Look again", Ready = false }); phones.SelectedIndex = 0; return; }
+            if (ready > 1) phones.Items.Insert(0, new PhoneItem { Serial = "", Text = "Choose the phone...", Ready = false });
+            for (int i = 0; i < phones.Items.Count; i++) { if (((PhoneItem)phones.Items[i]).Ready && ready == 1) { phones.SelectedIndex = i; return; } }
+            phones.SelectedIndex = 0;
+        }
+
         void Start(bool restoreOnly)
         {
             if (worker != null && worker.IsAlive) return;
+            var chosen = phones.SelectedItem as PhoneItem;
+            int readyCount = 0;
+            foreach (object it in phones.Items) { PhoneItem pi = it as PhoneItem; if (pi != null && pi.Ready) readyCount++; }
+            if (readyCount > 1 && (chosen == null || !chosen.Ready))
+            {
+                MessageBox.Show("More than one phone is plugged in. Choose the one you mean in the 'Phone' box first.", "Family MDM phone setup", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             var o = new Options();
+            if (chosen != null && chosen.Ready) o.Serial = chosen.Serial;
             o.Code = code.Text.Trim();
             o.Server = server.Text.Trim();
             o.DryRun = dry.Checked;
@@ -677,6 +794,7 @@ namespace FamilyMdmSetup
                 string next = i + 1 < args.Length ? args[i + 1] : "";
                 if (a == "--cli") cli = true;
                 else if (a == "--dry-run") o.DryRun = true;
+                else if (a == "--skip-samsung-wait") o.SkipSamsungWait = true;
                 else if (a == "--restore") { cli = true; restore = true; }
                 else if (a == "--selftest") { cli = true; selftest = true; }
                 else if (a == "--code") { o.Code = next; i++; }
