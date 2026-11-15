@@ -249,6 +249,36 @@ test("every dashboard page, group and tab opens without an error", async () => {
   const rn = tryRender("right now, all on", "var __c=devices[0].config;__c.pauseUntil=Date.now()+3600000;__c.restrictionsOffUntil=Date.now()+3600000;__c.internetOffUntil=Date.now()+3600000;deviceSection=null;tab='devices';openId=devices[0].id;render()");
   tryRender("right now, back to normal", "var __c=devices[0].config;__c.pauseUntil=0;__c.restrictionsOffUntil=0;__c.internetOffUntil=0;render()");
   for (const t of [/Web filter paused until/, /Web filter back on/, /ALL restrictions are off until/, /Turn everything back on/, /Internet off until/, /Internet back on/]) assert.match(rn, t, "Right now while on: " + t);
+  // Which YouTube do they use: regular, regular filtered, or ours; for YouTube and for YouTube Music, in both looks.
+  for (const [page, L] of [["youtube/yt", "YouTube"], ["youtube/music", "YouTube Music"]]) {
+    assert.match(seen[page], new RegExp("Which " + L + " do they use\\?"), page + ": the three-way choice is on the page");
+    assert.match(seen[page], new RegExp("Regular " + L + ", no filter"));
+    assert.match(seen[page], new RegExp("Regular " + L + ", filtered"));
+    assert.match(seen[page], new RegExp("Our " + L));
+  }
+  assert.match(seen["youtube/yt"], /Which YouTube Music do they use\?/, "the New look's YouTube page has both choices");
+  assert.match(seen.home, /YouTube: regular.* · Music: regular/, "the home line says which YouTube each one is");
+  const ytTest = vm.runInContext("(function(){var out={},MU='com.google.android.apps.youtube.music',YT='com.google.android.youtube',c=JSON.parse(JSON.stringify(devices[0].config));" +
+    "c.apps=c.apps||{};delete c.apps[MU];delete c.apps[YT];c.filterSkipApps=[];c.youtubeDns='off';c.youtubeAddon=false;c.youtubeMusicAddon=false;c.networkBlocklist={};" +
+    "out.start=ytWhich(c,'music')+'/'+ytWhich(c,'yt');" +
+    "setYtWhich(c,'music','ours');out.oursMode=c.apps[MU].mode;out.oursAddon=c.youtubeMusicAddon;out.oursWhich=ytWhich(c,'music');out.oursSkip=c.filterSkipApps.indexOf(MU)>=0;out.ytUntouched=!c.apps[YT]&&c.youtubeAddon===false;" +
+    "setYtWhich(c,'music','free');out.freeMode=c.apps[MU].mode;out.freeAddon=c.youtubeMusicAddon;out.freeWhich=ytWhich(c,'music');out.freeSkip=c.filterSkipApps.indexOf(MU)>=0;out.freeDns=c.youtubeDns;" +
+    "setYtWhich(c,'yt','filtered');out.filtMode=c.apps[YT].mode;out.filtWhich=ytWhich(c,'yt');out.filtSkip=c.filterSkipApps.indexOf(YT)>=0;out.filtDns=c.youtubeDns;out.musicStillFree=ytWhich(c,'music');" +
+    "c.youtubeDns='strict';setYtWhich(c,'yt','filtered');out.strictKept=c.youtubeDns;" +
+    "c.networkBlocklist[YT]={paused:false};setYtWhich(c,'yt','free');out.netCleared=!c.networkBlocklist[YT];" +
+    "setYtWhich(c,'yt','ours');out.ytOurs=ytWhich(c,'yt');c.youtubeAddon=false;out.bothOff=ytWhich(c,'yt');" +
+    "return JSON.stringify(out)})()", ctx);
+  const yt = JSON.parse(ytTest);
+  assert.equal(yt.start, "free/free", "a phone with nothing set uses the regular apps");
+  assert.deepEqual([yt.oursMode, yt.oursAddon, yt.oursWhich, yt.oursSkip, yt.ytUntouched], ["block", true, "ours", false, true], "Our YouTube Music: real app blocked, our icon on, YouTube untouched");
+  assert.deepEqual([yt.freeMode, yt.freeAddon, yt.freeWhich, yt.freeSkip], ["allow", false, "free", true], "Regular, no filter: real app allowed, our icon off, the filter skips it");
+  assert.deepEqual([yt.filtMode, yt.filtWhich, yt.filtSkip, yt.filtDns, yt.musicStillFree], ["allow", "filtered", false, "moderate", "free"], "Regular, filtered: Restricted Mode goes on, and the other app keeps its own choice");
+  assert.equal(yt.strictKept, "strict", "a stricter Restricted Mode is never turned down by choosing filtered");
+  assert.equal(yt.netCleared, true, "a leftover no-internet rule is cleared when the real app is chosen");
+  assert.equal(yt.ytOurs, "ours");
+  assert.equal(yt.bothOff, "off", "real app blocked and our icon off is shown as off");
+  assert.match(tryRender("youtube choice, legacy look", "uiMode='legacy';deviceSection='youtube';subs['youtube']='music';tab='devices';openId=devices[0].id;render()"), /Which YouTube Music do they use\?/, "the Legacy look has it too");
+  tryRender("back to the new look", "uiMode='new'");
   assert.match(seen.list, /Add device/);
   assert.match(seen.list, /Screen time today: 2 h 14 min of 3 h/, "the front page is one card for each device");
   assert.match(seen.list, /\d+ requests?/);

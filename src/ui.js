@@ -2074,6 +2074,49 @@ function renderSitesPart(m,dv){
  renderCloneCard(m,dv);
  renderSitesEditor(m,dv);
 }
+/** Which YouTube do they use? The real app as it is, the real app with Restricted Mode, or our own icon. One choice for YouTube and one for YouTube Music.
+ *  It only sets settings that already exist: the real app allowed or blocked (Apps), whether the phone's filter skips it (Internet for apps), Restricted Mode (Browser and web), and our icon. */
+const YT_APPS={yt:{pkg:'com.google.android.youtube',label:'YouTube',addon:'youtubeAddon'},music:{pkg:'com.google.android.apps.youtube.music',label:'YouTube Music',addon:'youtubeMusicAddon'}};
+/** 'free' (real app, no filter), 'filtered' (real app, Restricted Mode), 'ours' (real app off, our icon on) or 'off' (both off). */
+function ytWhich(c,k){
+ const a=YT_APPS[k],ap=(c.apps||{})[a.pkg];
+ if(ap&&ap.mode==='block')return c[a.addon]===true?'ours':'off';
+ const skipped=(c.filterSkipApps||[]).indexOf(a.pkg)>=0;
+ return !skipped&&(c.youtubeDns||'off')!=='off'?'filtered':'free'}
+function ytWhichShort(c,k){return {free:'regular',filtered:'regular, filtered',ours:'ours',off:'off'}[ytWhich(c,k)]}
+/** Changes the settings in c (the caller saves). Restricted Mode is never turned down from here, because it is one setting for the whole phone. */
+function setYtWhich(c,k,v){
+ const a=YT_APPS[k],old=(c.apps||{})[a.pkg]||{};
+ c.apps=c.apps||{};
+ const skip=new Set(c.filterSkipApps||[]),nb=Object.assign({},c.networkBlocklist||{});
+ if(v==='ours'){c.apps[a.pkg]={mode:'block',label:old.label||a.label};skip.delete(a.pkg);c[a.addon]=true}
+ else{
+  c.apps[a.pkg]=Object.assign({mode:'allow',label:old.label||a.label},old.schedule?{schedule:old.schedule}:{});
+  delete nb[a.pkg];c[a.addon]=false;
+  if(v==='free')skip.add(a.pkg);
+  else{skip.delete(a.pkg);if((c.youtubeDns||'off')==='off')c.youtubeDns='moderate'}}
+ c.filterSkipApps=[...skip];c.networkBlocklist=nb}
+function ytWhichCard(m,dv,k){
+ if(dv.isBrowser||dv.isWindows)return;
+ const c=dv.config,a=YT_APPS[k],cur=ytWhich(c,k),L=a.label;
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const card=h('div',{class:'card'},h('h2',null,'Which '+L+' do they use?'));
+ card.append(choiceList([
+  ['free','Regular '+L+', no filter','The real '+L+' app as it is. Nothing is filtered or limited for it.'],
+  ['filtered','Regular '+L+', filtered','The real '+L+' app, with YouTube\'s Restricted Mode turned on for the phone. YouTube itself hides what it thinks is unsuitable; it is not perfect.'],
+  ['ours','Our '+L,'The real app is switched off. They use our '+L+' icon instead: '+(k==='yt'?'only the channels and videos you allow':'only the songs you approve')+', or whatever you choose below.']],cur==='off'?'':cur,function(v){
+  setYtWhich(c,k,v);
+  save(v==='ours'?'Our '+L+' icon goes on the phone and the real app is switched off, at its next check-in.':v==='filtered'?'The real '+L+' is on, with Restricted Mode. Phones apply it within about 5 minutes.':'The real '+L+' is on, with no filter. Phones apply it within about 5 minutes.')}));
+ if(cur==='off')card.append(h('div',{class:'mute',style:'margin-top:8px'},'Right now the real '+L+' and our icon are both off, so they cannot use '+L+'. Pick one above.'));
+ if((cur==='free'||cur==='filtered')&&c[a.addon]===true)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Our '+L+' icon is also on the phone. Choosing one above turns the other off.'));
+ if(cur==='filtered'){
+  const rm=c.youtubeDns==='strict'?'strict':'moderate';
+  const seg=h('div',{class:'seg',style:'margin-top:10px'});
+  for(const o of [['moderate','Moderate'],['strict','Strict']]){const b=h('button',{type:'button',class:rm===o[0]?'on':''},o[1]);b.onclick=function(){c.youtubeDns=o[0];save('Restricted Mode: '+o[1]+'.')};seg.append(b)}
+  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'How strict Restricted Mode is. It is one setting for the whole phone, so it also applies to Chrome and to the other YouTube app. Strict refuses the most videos.'),seg)}
+ if(cur==='free'&&(c.youtubeDns||'off')!=='off')card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Restricted Mode is on for the rest of the phone. This app is exempt from it.'));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The real '+L+' app has to be on the phone for the first two to work.'+(k==='music'?' How well YouTube Music follows Restricted Mode is up to Google; our YouTube Music with approved songs is the strict choice.':'')));
+ m.append(card)}
 /** YouTube: one choice for how it works, and the channels and videos that are allowed. */
 const YT_CHOICES=[
  ['auto','Follow the web level','Moderate: restricted YouTube. Strict or Approved sites only: only the channels and videos below. Open: YouTube as it is.'],
@@ -2085,11 +2128,12 @@ function renderYoutube(m,dv){
  const c=dv.config,cur=c.youtubeMode||'auto';
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
  ytRequestsCard(m,dv,false,true);
- const card=h('div',{class:'card'},h('h2',null,'YouTube'));
+ ytWhichCard(m,dv,'yt');
+ const card=h('div',{class:'card'},h('h2',null,dv.isBrowser?'YouTube':'How our YouTube works'));
  const seg=h('div',{class:'seg'});
  for(const [v,label] of YT_CHOICES){const x=h('button',{class:v===cur?'on':''},label);x.onclick=function(){c.youtubeMode=v;save('YouTube: '+label+'.')};seg.append(x)}
  card.append(seg,h('div',{class:'mute',style:'margin-top:10px'},(YT_CHOICES.find(function(x){return x[0]===cur})||YT_CHOICES[0])[2]));
- card.append(h('div',{class:'mute small',style:'margin-top:8px'},dv.isBrowser?'In this Browser.':'In our Browser, and in Chrome, Samsung Internet and Edge when Inspection is on. The YouTube app itself is not affected: block it under Apps if needed.'));
+ card.append(h('div',{class:'mute small',style:'margin-top:8px'},dv.isBrowser?'In this Browser.':'In our Browser and our YouTube icon, and in Chrome, Samsung Internet and Edge when Inspection is on. Which YouTube they use (the real app or ours) is chosen in the card above.'));
  m.append(card);
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Let them search YouTube and ask for videos'),
   h('div',{class:'mute'},'With "Only what I allow": YouTube search works. Videos that are not allowed show only their title, no picture, with an "Ask for access" button that sends you a request. Off: search is blocked.')),
@@ -2195,7 +2239,8 @@ function renderYoutubeMusic(m,dv){
  const c=dv.config;
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
  const choice=(YT_CHOICES.find(function(x){return x[0]===(c.youtubeMode||'auto')})||YT_CHOICES[0]);
- m.append(h('div',{class:'card'},h('h2',null,'YouTube Music'),
+ ytWhichCard(m,dv,'music');
+ m.append(h('div',{class:'card'},h('h2',null,'Our YouTube Music'),
   h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music icon on the phone'),
    h('div',{class:'mute'},'Its own icon, music only: no YouTube videos or channels in it. It follows the same choice as YouTube (now: '+choice[1]+'). With "Only what I allow", only the music approved below plays; anything else shows "Ask for this song" and sends you a request.')),
    sw(c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'The YouTube Music icon goes on the phone at its next check-in.':'The YouTube Music icon is removed at the next check-in.')})),
@@ -3279,7 +3324,7 @@ function homeSummary(d){
  out.time=st.dailyLimit?fmtMin(st.dailyLimit)+' a day'+(st.bedtime?' · bedtime '+st.bedtime.from:''):(st.bedtime?'Bedtime '+st.bedtime.from+' to '+st.bedtime.to:'No limits set');
  out.apps=([blocked?blocked+(blocked===1?' app':' apps')+' blocked':'',grp?grp+(grp===1?' group':' groups')+' blocked':''].filter(Boolean).join(' · ')||'No apps blocked')+(c.approveNew?' · new apps wait for you':'');
  out.browser=lvl+' · '+nSites+(nSites===1?' site':' sites')+' approved'+(c.safeSearchOff?'':c.safeSearch?' · SafeSearch on':'');
- out.youtube={auto:'Follows the browser level',open:'Open',restricted:'Restricted',channels:'Only what you allow',blocked:'Off'}[c.youtubeMode||'auto']+(nCh?' · '+nCh+(nCh===1?' channel':' channels'):'')+(c.youtubeAddon?' · YouTube icon':'')+(c.youtubeMusicAddon?' · Music icon':'');
+ out.youtube='YouTube: '+ytWhichShort(c,'yt')+' · Music: '+ytWhichShort(c,'music')+(nCh?' · '+nCh+(nCh===1?' channel':' channels'):'');
  const cin=c.callsIn||'all',cout=c.callsOut||'all';
  out.calls=cin==='all'&&cout==='all'?'Anyone can call and be called':(cin==='list'||cout==='list'?'Only the allowed numbers':'Contacts and allowed numbers');
  out.location=c.locationEvery?'Noted every '+c.locationEvery+' minutes':'Find it any time';
@@ -3615,7 +3660,8 @@ function essTime(box,dv){
 function essYoutube(box,dv){
  const c=dv.config,cur=c.youtubeMode||'auto';
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
- const card=h('div',{class:'card'},h('h2',null,'What can they watch on YouTube?'));
+ ytWhichCard(box,dv,'yt');ytWhichCard(box,dv,'music');
+ const card=h('div',{class:'card'},h('h2',null,'What can they watch on YouTube?'),h('div',{class:'mute small'},'For our YouTube and for the browsers. Which YouTube they use (the real app or ours) is chosen above.'));
  card.append(choiceList([
   ['channels','Only what I allow','Only the channels and videos you pick. Everything else is blocked.'],
   ['restricted','Search and watch, restricted','No home feed, Shorts, suggestions or comments.'],

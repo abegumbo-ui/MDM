@@ -364,3 +364,21 @@ test("extra categories (news, shopping...) reach the phone only with a level on,
   const lines = summarizeConfigChange(normalizeConfig({}), normalizeConfig({ filterExtras: ["news", "games"] }));
   assert.ok(lines.some((l) => /Also closed in every browser: news, games/.test(l)), "the change is written to the dashboard log");
 });
+test("YouTube and YouTube Music: regular, regular filtered, or ours (real app off, our icon on) reach the phone as instructions", () => {
+  const MUSIC = "com.google.android.apps.youtube.music", YT = "com.google.android.youtube";
+  const policy = (cfg) => buildAgentPolicy(normalizeConfig(cfg), [MUSIC, YT, "a.b"]);
+  // Ours (Music): the real app is hidden, our icon is on, YouTube is left alone.
+  const ours = policy({ apps: { [MUSIC]: { mode: "block" } }, youtubeMusicAddon: true });
+  assert.ok(ours.hide.includes(MUSIC) && !ours.hide.includes(YT), "the real Music app is hidden, the real YouTube is not");
+  assert.equal(ours.youtubeMusicAddon, true);
+  // Regular, no filter: the real app is shown even when a whole group is blocked, our icon is off, and the filter skips it.
+  const free = policy({ apps: { [YT]: { mode: "allow" } }, blockUnlisted: true, filterSkipApps: [YT], youtubeDns: "moderate" });
+  assert.ok(free.show.includes(YT) && !free.hide.includes(YT), "an explicit Allow beats blocking everything not listed");
+  assert.deepEqual(free.filterSkipApps, [YT], "the phone is told not to filter it");
+  assert.equal(free.youtubeAddon, false);
+  // Regular, filtered: shown, not skipped, Restricted Mode on.
+  const filtered = policy({ apps: { [MUSIC]: { mode: "allow" } }, youtubeDns: "strict" });
+  assert.ok(filtered.show.includes(MUSIC) && !(filtered.filterSkipApps || []).includes(MUSIC));
+  assert.equal(filtered.youtubeDns, "strict");
+  assert.equal(filtered.youtubeMusicAddon, false);
+});
