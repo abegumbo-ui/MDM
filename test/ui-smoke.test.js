@@ -155,6 +155,24 @@ test("every dashboard page, group and tab opens without an error", async () => {
     assert.equal(reg.get("tools").textContent, "", "nothing on the top bar on pages that are not a phone");
     vm.runInContext("tab='devices';openId=devices[0].id;render()", ctx);
   }
+  // Quick buttons on the apps: allow a blocked app, block an allowed one, or schedule it, without opening it.
+  {
+    vm.runInContext("var __snap2=JSON.stringify({p:devices[0].packages,a:devices[0].config.apps})", ctx);
+    vm.runInContext("(function(){var d=devices[0];d.packages=[{p:'com.q.blocked',l:'Blocked App',s:false},{p:'com.q.allowed',l:'Allowed App',s:false}];d.config.apps={'com.q.blocked':{mode:'block',label:'Blocked App'},'com.q.allowed':{mode:'allow',label:'Allowed App'}};appsShow='all';appsView='tiles';appSel=null;tab='devices';openId=d.id;setDeviceSection('apps');subs.apps='regular'})()", ctx);
+    const page = tryRender("apps with quick buttons", "render()");
+    assert.ok(page.includes("✓") && page.includes("✕") && page.includes("🕐"), "a blocked app has a check mark, an allowed app a cross, both a clock");
+    for (const w of ["All (2)", "Allowed (1)", "Blocked (1)"]) assert.ok(page.includes(w), "the sort buttons show " + w);
+    const saved = [];
+    vm.runInContext("var __saved=[];var __save=function(m){__saved.push(m);return Promise.resolve()}", ctx);
+    vm.runInContext("appQuick(devices[0],{p:'com.q.blocked',l:'Blocked App'},'allow',__save)", ctx);
+    assert.equal(vm.runInContext("devices[0].config.apps['com.q.blocked'].mode", ctx), "allow", "the check mark allows a blocked app");
+    vm.runInContext("appQuick(devices[0],{p:'com.q.allowed',l:'Allowed App'},'block',__save)", ctx);
+    assert.equal(vm.runInContext("devices[0].config.apps['com.q.allowed'].mode", ctx), "block", "the cross blocks an allowed app");
+    vm.runInContext("appQuick(devices[0],{p:'com.q.blocked',l:'Blocked App'},'schedule',__save)", ctx);
+    assert.equal(vm.runInContext("JSON.stringify(devices[0].config.apps['com.q.blocked'].schedule.days)", ctx), "[1,2,3,4,5]", "the clock allows it on weekdays to start with");
+    assert.equal(vm.runInContext("appSel", ctx), "com.q.blocked", "and opens its settings to change the hours");
+    vm.runInContext("(function(){var s=JSON.parse(__snap2),d=devices[0];d.packages=s.p;d.config.apps=s.a;appSel=null})()", ctx);
+  }
   // Going into a setting and back lands where you were, not at the top.
   {
     const ys = [];

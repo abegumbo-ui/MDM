@@ -202,6 +202,18 @@ button.tile:hover{background:var(--surface-2)}
 button.tile.sel{border-color:var(--primary);background:var(--primary-container)}
 button.tile .nm{font-size:12.5px;font-weight:500;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 button.tile .st{font-size:11px;color:var(--on-surface-variant);line-height:1.2}
+/* quick buttons under an app: allow / block / schedule, so an app can be changed without opening it */
+.tilewrap{display:flex;flex-direction:column;min-width:0}
+.tilewrap button.tile{flex:1}
+.qa{display:flex;gap:8px;justify-content:center;margin-top:6px}
+.qa button{width:32px;height:32px;border-radius:50%;border:1px solid var(--outline-variant);background:var(--surface-3);color:var(--on-surface);font-size:15px;line-height:1;cursor:pointer;padding:0}
+.qa button:hover{background:var(--surface-2)}
+.qa button.ok{color:var(--ok);border-color:var(--ok)}
+.qa button.no{color:var(--error);border-color:var(--error)}
+.ctlrow{display:flex;align-items:center;gap:8px}
+.ctlrow .ctl{flex:1;min-width:0}
+.ctlrow .qa{margin-top:0;padding-right:6px}
+@media(min-width:720px){.appsbar{position:sticky;top:64px;z-index:4}}
 .st.bad{color:var(--error)!important}.st.ok{color:var(--primary)!important}
 .choices{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 button.choice{display:flex;align-items:flex-start;gap:12px;text-align:left;background:var(--surface-1);border:1px solid var(--outline);border-radius:12px;padding:12px 14px;color:inherit;font:inherit;cursor:pointer}
@@ -3788,6 +3800,24 @@ function appFacts(dv,a){
  if(mode.schedule)out.push(['At set times','']);
  if((c.networkBlocklist||{})[a.p])out.push(['No internet','bad']);else if((c.filterSkipApps||[]).indexOf(a.p)>=0)out.push(['Not filtered','']);
  return out}
+/** The quick buttons on an app's tile or row. kind: 'allow' | 'block' | 'schedule'. Schedule = allowed only at set hours (08:00 to 17:00 on weekdays to start with), and its settings open so the days and hours can be changed. */
+function appQuick(dv,a,kind,save){
+ const c=dv.config;c.apps=c.apps||{};
+ const name=a.l||a.p,now=cur(dv,a.p);
+ if(kind==='allow'){c.apps[a.p]={mode:'allow',label:name};return save(name+': allowed.')}
+ if(kind==='block'){c.apps[a.p]={mode:'block',label:name};return save(name+': blocked.')}
+ const sched=now.schedule||{days:[1,2,3,4,5],from:'08:00',to:'17:00'};
+ c.apps[a.p]={mode:'allow',label:name,schedule:sched};
+ appSel=a.p;
+ return save(name+': allowed only at set times ('+sched.from+' to '+sched.to+'). Change the days and hours below.')}
+/** The little round buttons for one app: a blocked app gets "allow" and "schedule", every other app gets "block" and "schedule". */
+function appQuickButtons(dv,a,save){
+ const box=h('div',{class:'qa'});
+ const mk=function(glyph,cls,title,kind){const b=h('button',{type:'button',class:cls,title:title},glyph);b.onclick=function(){rememberScroll();appQuick(dv,a,kind,save)};return b};
+ if(appCategory(dv,a)==='block')box.append(mk('✓','ok','Allow '+(a.l||a.p),'allow'));
+ else box.append(mk('✕','no','Block '+(a.l||a.p),'block'));
+ box.append(mk('🕐','','Allow only at set times: '+(a.l||a.p),'schedule'));
+ return box}
 /** Which group an app is in on the Apps page: block / time (a daily limit or set hours) / allow / soft / default (no rule of its own). */
 function appCategory(dv,a){
  const c=dv.config,st=c.screenTime||{},m=cur(dv,a.p);
@@ -3867,18 +3897,20 @@ function essApps(box,dv){
  const apps=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE&&(!s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s))}).sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)});
  const cats={};for(const a of apps)(cats[appCategory(dv,a)]=cats[appCategory(dv,a)]||[]).push(a);
  // At the very top: search, and how to show the apps.
- const bar=h('div',{class:'card'},h('h2',null,'Apps on this phone ('+apps.length+')'));
+ const bar=h('div',{class:'card appsbar'},h('h2',null,'Apps on this phone ('+apps.length+')'));
  const q=h('input',{type:'text',placeholder:'Search this phone\'s apps',value:search,style:'flex:1;min-width:160px'});
  q.oninput=function(){search=q.value;const pos=q.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search this phone\'s apps"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
  const seg=h('div',{class:'seg',style:'margin:0'});
  for(const o of [['list','List'],['tiles','Tiles']]){const b=h('button',{type:'button',class:appsView===o[0]?'on':''},o[1]);b.onclick=function(){if(appsView!==o[0])setAppsView(o[0])};seg.append(b)}
- // Show: everything in groups, or only one group.
- const showSel=h('select',{style:'width:auto'});
- showSel.append(new Option('Show: all apps, in groups ('+apps.length+')','all'));
- for(const g of APP_GROUPS_SHOWN)showSel.append(new Option('Show only: '+g[1]+' ('+(cats[g[0]]||[]).length+')',g[0]));
- showSel.value=appsShow;if(showSel.value!==appsShow){appsShow='all';showSel.value='all'}
- showSel.onchange=function(){setAppsShow(showSel.value)};
- bar.append(h('div',{class:'row',style:'flex-wrap:wrap'},q,showSel,seg),h('div',{class:'mute small',style:'margin-top:8px'},'Tap an app to see and change everything for it.'));
+ // Sort: all apps in groups, or just one group. Always visible, with how many apps are in each.
+ if(appsShow!=='all'&&!APP_GROUPS_SHOWN.some(function(g){return g[0]===appsShow}))appsShow='all';
+ const chips=h('div',{class:'seg',style:'flex-wrap:wrap;margin-top:10px'});
+ const chipDefs=[['all','All',apps.length]].concat(APP_GROUPS_SHOWN.map(function(g){return [g[0],g[1],(cats[g[0]]||[]).length]}));
+ for(const o of chipDefs){
+  if(o[0]==='soft'&&!o[2]&&appsShow!=='soft')continue;
+  const b=h('button',{type:'button',class:appsShow===o[0]?'on':''},o[1]+' ('+o[2]+')');
+  b.onclick=function(){if(appsShow!==o[0])setAppsShow(o[0])};chips.append(b)}
+ bar.append(h('div',{class:'row',style:'flex-wrap:wrap'},q,seg),chips,h('div',{class:'mute small',style:'margin-top:8px'},'Tap an app to see and change everything for it. The round buttons under an app allow or block it, or allow it only at set hours, without opening it.'));
  box.append(bar);
  // New apps waiting for you.
  const pend=new Map();
@@ -3895,6 +3927,7 @@ function essApps(box,dv){
  const sel=appSel&&dv.packages.find(function(x){return x.p===appSel});
  if(sel)box.append(appDetailCard(dv,sel,save));else appSel=null;
  // The apps themselves, in groups (or one group), as tiles or a list.
+ const qsave=function(msg){return save(msg)};
  const drawApps=function(list0,into){
   if(appsView==='tiles'){
    const grid=h('div',{class:'tiles',style:'margin-top:0'});
@@ -3902,7 +3935,8 @@ function essApps(box,dv){
     const f=appFacts(dv,a),first=f[0];
     const t=h('button',{type:'button',class:'tile'+(appSel===a.p?' sel':'')},appIconEl(a,52),h('span',{class:'nm'},a.l||a.p),
      h('span',{class:'st '+(first?first[1]:'')},first?first[0]+(f.length>1?' +'+(f.length-1):''):'\u00a0'));
-    t.onclick=function(){rememberScroll();appSel=a.p;render();window.scrollTo(0,0)};grid.append(t)}
+    t.onclick=function(){rememberScroll();appSel=a.p;render();window.scrollTo(0,0)};
+    grid.append(h('div',{class:'tilewrap'},t,appQuickButtons(dv,a,qsave)))}
    into.append(grid)}
   else{
    const list=h('div',{class:'ctls',style:'max-width:none;box-shadow:none'});
@@ -3910,7 +3944,8 @@ function essApps(box,dv){
     const f=appFacts(dv,a);
     const row=h('button',{type:'button',class:'ctl'},appIconEl(a,40),h('span',{class:'grow'},h('span',{class:'ct'},a.l||a.p),
      h('span',{class:'mute small'},f.length?f.map(function(x){return x[0]}).join(' · '):'Default')),h('span',{class:'mute'},'›'));
-    row.onclick=function(){rememberScroll();appSel=a.p;render();window.scrollTo(0,0)};list.append(row)}
+    row.onclick=function(){rememberScroll();appSel=a.p;render();window.scrollTo(0,0)};
+    list.append(h('div',{class:'ctlrow'},row,appQuickButtons(dv,a,qsave)))}
    into.append(list)}};
  if(!apps.length){
   box.append(h('div',{class:'card'},h('div',{class:'mute'},dv.packages.length?'No apps match.':'The phone has not reported its apps yet.')))}
