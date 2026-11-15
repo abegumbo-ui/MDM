@@ -382,3 +382,11 @@ test("YouTube and YouTube Music: regular, regular filtered, or ours (real app of
   assert.equal(filtered.youtubeDns, "strict");
   assert.equal(filtered.youtubeMusicAddon, false);
 });
+
+test("our YouTube Music has its own strictness (musicMode); 'auto' follows YouTube", () => {
+  const policy = (cfg) => buildAgentPolicy(normalizeConfig(cfg), []);
+  assert.equal(policy({ youtubeMode: "restricted" }).musicMode, "restricted", "auto: the same as YouTube");
+  assert.equal(policy({ youtubeMode: "restricted", musicMode: "channels" }).musicMode, "channels", "its own choice wins");
+  assert.equal(policy({ youtubeMode: "restricted", musicMode: "channels" }).youtubeMode, "restricted", "and YouTube keeps its own");
+  assert.equal(normalizeConfig({ musicMode: "nonsense" }).musicMode, "auto", "a wrong value falls back to auto");
+});

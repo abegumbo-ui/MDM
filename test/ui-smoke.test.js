@@ -135,6 +135,8 @@ test("every dashboard page, group and tab opens without an error", async () => {
       seen[g + "/" + sub] = tryRender(g + "/" + sub, `tab='devices';openId=devices[0].id;deviceSection='${g}';subs['${g}']='${sub}';render()`);
     }
   }
+  // In the New look YouTube Music has its own page (the YouTube group only has the YouTube tab).
+  seen["youtube/music"] = tryRender("YouTube Music page (new look)", "tab='devices';openId=devices[0].id;deviceSection='music';subs['music']='music';render()");
   // The Legacy look keeps every tab it ever had (the New look folds some together): walk them all in Legacy mode.
   vm.runInContext("uiMode='legacy'", ctx);
   const legacyGroups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,g.subs.map(function(s){return s[0]})]}))", ctx);
@@ -256,8 +258,13 @@ test("every dashboard page, group and tab opens without an error", async () => {
     assert.match(seen[page], new RegExp("Regular " + L + ", filtered"));
     assert.match(seen[page], new RegExp("Our " + L));
   }
-  assert.match(seen["youtube/yt"], /Which YouTube Music do they use\?/, "the New look's YouTube page has both choices");
-  assert.match(seen.home, /YouTube: regular.* · Music: regular/, "the home line says which YouTube each one is");
+  assert.doesNotMatch(seen["youtube/yt"], /Which YouTube Music do they use\?/, "the YouTube page is only about YouTube");
+  assert.doesNotMatch(seen["youtube/yt"], /YouTube Music icon|Allowed songs/, "no Music switches or links on the YouTube page");
+  assert.match(seen["youtube/music"], /What can they play in our YouTube Music\?/, "YouTube Music has its own page with its own strictness");
+  assert.match(seen["youtube/music"], /Same as YouTube/);
+  assert.doesNotMatch(seen["youtube/music"], /What can they watch on YouTube\?/, "and none of the YouTube page");
+  assert.match(seen["youtube/music"], /Approve music/, "approving songs is on the Music page");
+  assert.match(seen.home, /YouTube\s+Regular, filtered · 1 channel.*YouTube Music\s+Regular, filtered/, "the home page has a row for each, saying which one they use");
   const ytTest = vm.runInContext("(function(){var out={},MU='com.google.android.apps.youtube.music',YT='com.google.android.youtube',c=JSON.parse(JSON.stringify(devices[0].config));" +
     "c.apps=c.apps||{};delete c.apps[MU];delete c.apps[YT];c.filterSkipApps=[];c.youtubeDns='off';c.youtubeAddon=false;c.youtubeMusicAddon=false;c.networkBlocklist={};" +
     "out.start=ytWhich(c,'music')+'/'+ytWhich(c,'yt');" +
@@ -279,6 +286,24 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.equal(yt.bothOff, "off", "real app blocked and our icon off is shown as off");
   assert.match(tryRender("youtube choice, legacy look", "uiMode='legacy';deviceSection='youtube';subs['youtube']='music';tab='devices';openId=devices[0].id;render()"), /Which YouTube Music do they use\?/, "the Legacy look has it too");
   tryRender("back to the new look", "uiMode='new'");
+  // Apps: a list or tiles (switch at the top); tapping an app shows every setting for it.
+  const appsList = tryRender("apps, list", "appsView='list';appSel=null;deviceSection='apps';subs['apps']='regular';tab='devices';openId=devices[0].id;render()");
+  const appsTiles = tryRender("apps, tiles", "appsView='tiles';appSel=null;render()");
+  const appFirst = vm.runInContext("dv=devices[0];dv.packages.filter(function(a){return a.p!==SELF_PACKAGE&&!a.s})[0].p", ctx);
+  const appOpen = tryRender("apps, one app opened", "appSel='" + appFirst + "';render()");
+  tryRender("apps, back to the list", "appSel=null;appsView='list';render()");
+  assert.deepEqual(errors, [], "no error while showing the apps list, tiles and one opened app");
+  assert.match(appsList, /Apps on this phone \(\d+\)/);
+  assert.match(appsList, /List\s*Tiles/, "the layout switch is at the top");
+  assert.match(appsTiles, /Puzzle Fun/, "tiles show the app names");
+  assert.ok(vm.runInContext("document.querySelectorAll?1:1", ctx));
+  for (const t of [/Can they open it\?/, /Time per day/, /Only at set times/, /Internet for this app/, /On, filtered/, /Close/]) assert.match(appOpen, t, "the opened app shows: " + t);
+  // A custom time: a drop-down with a Custom choice, and the app's own time limit offers it.
+  const ts = vm.runInContext("(function(){var n=timeSelect([[0,'No limit'],[60,'1 hour']],90,function(){});var sel=n.children[0],o=[];for(var i=0;i<sel.children.length;i++)o.push(sel.children[i]._text);return JSON.stringify(o)})()", ctx);
+  assert.deepEqual(JSON.parse(ts), ["No limit", "1 hour", "1 h 30 min", "Custom…"], "a drop-down of times ends with Custom, and shows a time that is already set");
+  assert.match(appOpen, /Custom…/, "the app's time per day has a Custom choice");
+  // Music has its own strictness setting, saved as musicMode.
+  assert.equal(vm.runInContext("(function(){var c=devices[0].config;c.musicMode='channels';var r=c.musicMode;delete c.musicMode;return r})()", ctx), "channels");
   assert.match(seen.list, /Add device/);
   assert.match(seen.list, /Screen time today: 2 h 14 min of 3 h/, "the front page is one card for each device");
   assert.match(seen.list, /\d+ requests?/);
