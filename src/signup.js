@@ -10,6 +10,8 @@
 //  * Passwords are stored exactly like client accounts' (salted, slow hash) and must be 10 characters or more.
 //  * Nothing tells a stranger whether a login name already exists.
 
+import { DEFAULT_SIGNUP_PERMS, normalizePerms } from "./perms.js";
+
 export const SIGNUP_SETTINGS_KEY = "signupsettings";
 const PENDING_PREFIX = "signup:";
 const MAX_PENDING = 30;
@@ -130,7 +132,9 @@ export async function handleSignupAdmin(path, method, body, env, session, deps) 
   if (m[2] && method === "POST") {
     // Becomes an ordinary client account (their own dashboard for their own phones), with the password they chose.
     if ((await deps.getJSON(env, `client:${rec.id}`, null)) || (await deps.getJSON(env, `helper:${rec.id}`, null))) return json({ error: "That login name has been taken since." }, 409);
-    const client = { id: rec.id, name: rec.name, email: rec.email || "", createdAt: Date.now(), approvedAt: Date.now(), via: "signup", salt: rec.salt, hash: rec.hash, iterations: rec.iterations };
+    // What they may control: what the administrator ticks when approving, otherwise the ready-made choice (everything except locks and erasing).
+    const perms = body && Array.isArray(body.perms) ? normalizePerms(body.perms) : [...DEFAULT_SIGNUP_PERMS];
+    const client = { id: rec.id, name: rec.name, email: rec.email || "", createdAt: Date.now(), approvedAt: Date.now(), via: "signup", perms, salt: rec.salt, hash: rec.hash, iterations: rec.iterations };
     await deps.putJSON(env, `client:${rec.id}`, client);
     await env.STATE.delete(key);
     if (deps.invalidateClients) deps.invalidateClients(`client:${rec.id}`);
