@@ -1,9 +1,11 @@
 // Family MDM phone setup (Windows).
 //
-// Makes a phone managed by the Family MDM app in one go: installs the app over a USB cable, switches the phone's
-// account services off for a moment (Android refuses to hand over management while accounts exist), makes the app the
-// device owner, and switches the account services back on. What it switched off is written to a file BEFORE it is
-// touched, and put back in every case (success, failure, window closed): "Put things back" does it again by hand.
+// Makes a phone managed by the Family MDM app in one go: installs the app over a USB cable, makes it the device owner,
+// and starts it. The app is installed as a TEST-ONLY build ("adb install -t", the enrollTest flavor): Android lets a test-only
+// app become the manager of a phone that already has accounts (a normal app is refused: "Non test-only owner can't be installed
+// with existing accounts"), so nothing has to be removed from the phone. Only if Android still refuses does it fall back to the
+// older way: switch the phone's account services off for a moment and back on. What it switched off is written to a file BEFORE
+// it is touched, and put back in every case (success, failure, window closed): "Put things back" does it again by hand.
 //
 // Plain C# 5 so the compiler that ships with Windows can build it (see build.ps1). Needs nothing installed.
 using System;
@@ -120,7 +122,7 @@ namespace FamilyMdmSetup
     {
         public const string Package = "com.familymdm.agent";
         public const string Admin = "com.familymdm.agent/.AdminReceiver";
-        const string ApkUrl = "https://github.com/abegumbo-ui/MDM/releases/download/latest/mdm-agent-enroll.apk";
+        const string ApkUrl = "https://github.com/abegumbo-ui/MDM/releases/download/latest/mdm-agent-enroll-test.apk";
         const string VersionUrl = "https://github.com/abegumbo-ui/MDM/releases/download/latest/version.json";
         const string ToolsUrl = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip";
 
@@ -336,17 +338,17 @@ namespace FamilyMdmSetup
         string GetApk(Options o)
         {
             if (!string.IsNullOrEmpty(o.ApkPath) && File.Exists(o.ApkPath)) return o.ApkPath;
-            string beside = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mdm-agent-enroll.apk");
+            string beside = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mdm-agent-enroll-test.apk");
             if (File.Exists(beside)) { Log("Using the app file beside this program."); return beside; }
             Log("Downloading the newest Family MDM app...");
-            string file = Path.Combine(Home, "mdm-agent-enroll.apk");
+            string file = Path.Combine(Home, "mdm-agent-enroll-test.apk");
             Download(ApkUrl, file);
             string want = null;
             try
             {
                 string vf = Path.Combine(Home, "version.json");
                 Download(VersionUrl, vf);
-                Match m = Regex.Match(File.ReadAllText(vf), "\"enrollSha256\"\\s*:\\s*\"([^\"]+)\"");
+                Match m = Regex.Match(File.ReadAllText(vf), "\"enrollTestSha256\"\\s*:\\s*\"([^\"]+)\"");
                 if (m.Success) want = m.Groups[1].Value;
             }
             catch (WebException) { }
@@ -401,8 +403,7 @@ namespace FamilyMdmSetup
                 string accountDump = Adb(serial, "shell dumpsys account", 30000);
                 int accounts = Parse.AccountCount(accountDump);
                 List<string> toSwitchOff = ownerIsUs ? new List<string>() : ServicesToSwitchOff(serial, accountDump, accounts);
-                if (toSwitchOff.Contains("com.osp.app.signin")) Log("NOTE: the Samsung account service usually cannot be switched off from a computer. If Android refuses it, the hand-over stops with a message before anything is restarted; the Samsung account would then have to be removed on the phone first.");
-            Log(accounts == 0 ? "OK  The phone has no accounts." : "The phone has " + (accounts < 0 ? "some" : accounts.ToString()) + " account(s). For a moment these services will be switched off and then back on: " + (toSwitchOff.Count == 0 ? "(none found)" : string.Join(", ", toSwitchOff.ToArray())));
+                Log(accounts == 0 ? "OK  The phone has no accounts." : "The phone has " + (accounts < 0 ? "some" : accounts.ToString()) + " account(s). That is fine: nothing is removed from the phone. The app goes on as a test build, which Android lets manage a phone that has accounts.");
 
                 if (o.DryRun)
                 {
@@ -415,7 +416,7 @@ namespace FamilyMdmSetup
                 if (apk == null) return false;
                 Log("Installing the app on the phone...");
                 int exit;
-                string inst = Adb(serial, "install -r \"" + apk + "\"", 180000, out exit);
+                string inst = Adb(serial, "install -t -r \"" + apk + "\"", 180000, out exit);
                 if (inst.IndexOf("Success", StringComparison.OrdinalIgnoreCase) < 0)
                 {
                     Log("PROBLEM: the phone refused the app: " + inst.Trim());
@@ -459,6 +460,19 @@ namespace FamilyMdmSetup
 
         bool MakeOwner(string serial, int sdk, List<string> toSwitchOff)
         {
+            // First the direct way: the app was just installed as a test build, which Android lets manage a phone that has accounts.
+            Log("Making Family MDM the manager of the phone...");
+            string direct = Adb(serial, "shell dpm set-device-owner " + Admin, 60000);
+            if (direct.IndexOf("Success", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                Log("OK  Family MDM is now the manager of this phone. Nothing was removed or switched off.");
+                return true;
+            }
+            Log("The phone said: " + direct.Trim());
+            if (toSwitchOff.Count > 0)
+            {
+                Log("Trying the older way: " + (toSwitchOff.Contains("com.osp.app.signin") ? "the Samsung account service usually cannot be switched off from a computer; if Android refuses it, this stops with a message before anything is restarted, and the Samsung account would have to be removed on the phone first." : "the account services are switched off for a moment and back on."));
+            }
             if (toSwitchOff.Count > 0)
             {
                 WriteState(serial, toSwitchOff); // written BEFORE anything is touched

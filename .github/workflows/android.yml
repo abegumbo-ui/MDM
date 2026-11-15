@@ -97,19 +97,22 @@ jobs:
         run: |
           cp android/app/build/outputs/apk/full/release/app-full-release.apk mdm-agent.apk
           cp android/app/build/outputs/apk/enroll/release/app-enroll-release.apk mdm-agent-enroll.apk
+          cp android/app/build/outputs/apk/enrollTest/release/app-enrollTest-release.apk mdm-agent-enroll-test.apk
           cp android/lockdown/build/outputs/apk/release/lockdown-release.apk mdm-lockdown.apk
           cp android/otgsetup/build/outputs/apk/release/otgsetup-release.apk mdm-otg-setup.apk
           # URL-safe base64 of the raw SHA-256 digest, no padding -- exactly the format Android's
           # QR-code device-owner provisioning expects for EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM.
           AGENT_SHA256=$(openssl dgst -binary -sha256 mdm-agent.apk | openssl base64 | tr '+/' '-_' | tr -d '=')
           ENROLL_SHA256=$(openssl dgst -binary -sha256 mdm-agent-enroll.apk | openssl base64 | tr '+/' '-_' | tr -d '=')
-          echo "{\"versionCode\": ${{ github.run_number }}, \"sha256\": \"$AGENT_SHA256\", \"enrollSha256\": \"$ENROLL_SHA256\"}" > version.json
+          ENROLL_TEST_SHA256=$(openssl dgst -binary -sha256 mdm-agent-enroll-test.apk | openssl base64 | tr '+/' '-_' | tr -d '=')
+          echo "{\"versionCode\": ${{ github.run_number }}, \"sha256\": \"$AGENT_SHA256\", \"enrollSha256\": \"$ENROLL_SHA256\", \"enrollTestSha256\": \"$ENROLL_TEST_SHA256\"}" > version.json
       - uses: actions/upload-artifact@v4
         with:
           name: mdm-agent
           path: |
             mdm-agent.apk
             mdm-agent-enroll.apk
+            mdm-agent-enroll-test.apk
             mdm-lockdown.apk
             mdm-otg-setup.apk
       - name: Publish to the "latest" release
@@ -126,7 +129,7 @@ jobs:
         run: |
           gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest agent build" --notes "Automatic build of the Android agent, browser, and lockdown setup app." --target "$GITHUB_SHA"
           # mdm-browser.apk comes from browser-jelly.yml (the Browser based on Jelly).
-          gh release upload latest mdm-agent.apk mdm-agent-enroll.apk mdm-lockdown.apk mdm-otg-setup.apk version.json --clobber
+          gh release upload latest mdm-agent.apk mdm-agent-enroll.apk mdm-agent-enroll-test.apk mdm-lockdown.apk mdm-otg-setup.apk version.json --clobber
           # Fixes the flag on every run too, in case an earlier run created this release as a
           # prerelease (this session's own gh token can't edit an already-published release, so
           # that correction has to happen here, with the Actions-provided token, instead).
@@ -140,7 +143,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-agent-enroll.apk mdm-lockdown.apk mdm-otg-setup.apk version.json \
+          gh release create "v${{ github.run_number }}" mdm-agent.apk mdm-agent-enroll.apk mdm-agent-enroll-test.apk mdm-lockdown.apk mdm-otg-setup.apk version.json \
             --title "Agent + Browser + Lockdown build ${{ github.run_number }}" \
             --notes "Android agent, browser, and lockdown setup app, build ${{ github.run_number }}. Commit: ${{ github.sha }}" \
             --target "$GITHUB_SHA"

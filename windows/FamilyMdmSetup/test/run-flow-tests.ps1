@@ -21,8 +21,8 @@ $failures = 0
 function Check($ok, $what) { if ($ok) { "PASS  $what" } else { "FAIL  $what"; $script:failures++ } }
 
 function RunExe([string[]]$exeArgs, [hashtable]$envv) {
-    Remove-Item (Join-Path $work 'fake-state.txt'), (Join-Path $work 'fake-adb.log') -ErrorAction SilentlyContinue
-    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
+    Remove-Item (Join-Path $work 'fake-state.txt'), (Join-Path $work 'fake-adb.log'), (Join-Path $work 'fake-testonly.txt') -ErrorAction SilentlyContinue
+    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE', 'FAKE_TESTONLY') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
     foreach ($k in $envv.Keys) { Set-Item "Env:$k" $envv[$k] }
     Remove-Item (Join-Path $logDir 'setup.log') -ErrorAction SilentlyContinue
     $p = Start-Process -FilePath (Join-Path $work 'FamilyMdmSetup.exe') -ArgumentList $exeArgs -Wait -PassThru -WorkingDirectory $work
@@ -32,14 +32,16 @@ function RunExe([string[]]$exeArgs, [hashtable]$envv) {
     return [pscustomobject]@{ Exit = $p.ExitCode; Log = $log; Calls = $calls; Left = $left }
 }
 function Idx($calls, $pattern) { for ($i = 0; $i -lt $calls.Count; $i++) { if ($calls[$i] -match $pattern) { return $i } }; return -1 }
+function IdxLast($calls, $pattern) { for ($i = $calls.Count - 1; $i -ge 0; $i--) { if ($calls[$i] -match $pattern) { return $i } }; return -1 }
+function Count($calls, $pattern) { return @($calls | Where-Object { $_ -match $pattern }).Count }
 
 Remove-Item $stateFile -ErrorAction SilentlyContinue
 $common = @('--cli', '--apk', (Join-Path $work 'fake.apk'), '--serial', 'FAKE', '--code', 'ABC123')
 
-# 1. The normal hand-over: the account services go off, then owner, then back on, then the app starts with the code.
+# 1. A phone that refuses a test build too (an older Android): the older way. The direct try fails, then the account services go off, then owner, then back on, then the app starts with the code.
 $r = RunExe $common @{ FAKE_SDK = '30' }
 $off1 = Idx $r.Calls 'disable-user .*com\.google\.android\.gms'; $off2 = Idx $r.Calls 'disable-user .*com\.osp\.app\.signin'
-$own = Idx $r.Calls 'set-device-owner'; $on1 = Idx $r.Calls 'pm enable .*com\.google\.android\.gms'; $start = Idx $r.Calls 'am start .*--es code ABC123'
+$own = IdxLast $r.Calls 'set-device-owner'; $on1 = Idx $r.Calls 'pm enable .*com\.google\.android\.gms'; $start = Idx $r.Calls 'am start .*--es code ABC123'
 Check ($r.Exit -eq 0) 'normal hand-over: exits 0'
 Check ($off1 -ge 0 -and $off2 -ge 0 -and $own -gt $off1 -and $own -gt $off2) 'the account services of the two existing accounts are switched off BEFORE set-device-owner'
 Check (-not ($r.Calls -match 'disable-user .*skydrive')) 'a service with no account on the phone (OneDrive) is left alone'
@@ -68,10 +70,18 @@ Check ($r.Exit -eq 1 -and (Idx $r.Calls '^(-s FAKE )?install') -lt 0 -and (Idx $
 #     put back what was switched off, and say what to do.
 $r = RunExe $common @{ FAKE_SDK = '35'; FAKE_REFUSE = 'com.osp.app.signin' }
 Check ($r.Exit -eq 1) 'a service Android will not switch off: exits 1'
-Check ((Idx $r.Calls 'set-device-owner') -lt 0) 'a service Android will not switch off: set-device-owner is never tried'
+Check ((Count $r.Calls 'set-device-owner') -eq 1) 'a service Android will not switch off: set-device-owner is only tried the direct way, never after the refusal'
 Check ((Idx $r.Calls ' reboot$') -lt 0 -and (Idx $r.Calls '^reboot') -lt 0) 'a service Android will not switch off: the phone is not restarted for nothing'
 Check ($r.Left.Count -eq 0) 'a service Android will not switch off: the ones that were switched off are put back'
 Check ($r.Log -match 'Samsung account' -and $r.Log -match 'would not let this computer switch off') 'a service Android will not switch off: the log says which one and what to do'
+
+# 5b. The Android 16 way: the app goes on as a test build, so set-device-owner works at once with accounts present and nothing is switched off.
+$r = RunExe $common @{ FAKE_SDK = '36'; FAKE_TESTONLY = '1' }
+Check ($r.Exit -eq 0) 'test build: exits 0'
+Check ((Idx $r.Calls 'install -t -r') -ge 0) 'test build: the app is installed with -t'
+Check ((Count $r.Calls 'set-device-owner') -eq 1 -and (Idx $r.Calls 'disable-user') -lt 0) 'test build: owner is set the first time and no account service is touched'
+Check ((Idx $r.Calls ' reboot$') -lt 0 -and (Idx $r.Calls '^reboot') -lt 0) 'test build: the phone is not restarted'
+Check ($r.Log -match 'Nothing was removed or switched off' -and (Idx $r.Calls 'am start .*--es code ABC123') -ge 0) 'test build: the log says so and the app starts with the code'
 
 # 5. More than one user on the phone: refused before anything is changed.
 $r = RunExe $common @{ FAKE_USERS = '2' }
@@ -86,7 +96,7 @@ New-Item -ItemType Directory $logDir -Force | Out-Null
 Set-Content $stateFile "FAKE`tcom.google.android.gms`r`nFAKE`tcom.osp.app.signin" -Encoding ascii
 Set-Content (Join-Path $work 'fake-state.txt') "com.google.android.gms`r`ncom.osp.app.signin"
 Remove-Item (Join-Path $work 'fake-adb.log') -ErrorAction SilentlyContinue
-foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
+foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE', 'FAKE_TESTONLY') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
 $p = Start-Process -FilePath (Join-Path $work 'FamilyMdmSetup.exe') -ArgumentList '--restore' -Wait -PassThru -WorkingDirectory $work
 $left = if (Test-Path (Join-Path $work 'fake-state.txt')) { @(Get-Content (Join-Path $work 'fake-state.txt') | Where-Object { $_.Trim() }) } else { @() }
 Check ($p.ExitCode -eq 0 -and $left.Count -eq 0) 'restore: services left off by an interrupted run are switched back on'

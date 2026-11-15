@@ -2,7 +2,8 @@
 // "dpm set-device-owner" only succeeds when the two account services were switched off first (like Android), and everything it
 // is asked is written to fake-adb.log next to it. Settings come from environment variables:
 //   FAKE_SDK (default 35), FAKE_OWNER (a package that is already the device owner), FAKE_FAIL=1 (set-device-owner always fails),
-//   FAKE_USERS (number of users, default 1), FAKE_STATE (the file that remembers which packages are switched off).
+//   FAKE_USERS (number of users, default 1), FAKE_STATE (the file that remembers which packages are switched off),
+//   FAKE_TESTONLY=1 (like Android 16: an app installed with "install -t" may become the device owner even with accounts present).
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -27,7 +28,12 @@ public static class FakeAdb
 
         if (cmd == "start-server" || cmd == "wait-for-device" || cmd == "reboot") return 0;
         if (cmd == "devices") { Console.WriteLine("List of devices attached\nFAKE\tdevice\n"); return 0; }
-        if (cmd == "install") { Console.WriteLine("Performing Streamed Install\nSuccess"); return 0; }
+        if (cmd == "install")
+        {
+            if (list.Contains("-t")) File.WriteAllText(Path.Combine(dir, "fake-testonly.txt"), "t");
+            Console.WriteLine("Performing Streamed Install\nSuccess");
+            return 0;
+        }
         if (cmd != "shell") return 0;
 
         if (rest == "getprop ro.product.model") Console.WriteLine("FakePhone");
@@ -74,7 +80,9 @@ public static class FakeAdb
         else if (rest.StartsWith("dpm set-device-owner"))
         {
             bool services = off.Contains("com.google.android.gms") && off.Contains("com.osp.app.signin");
-            if (Environment.GetEnvironmentVariable("FAKE_FAIL") == "1") Console.WriteLine("java.lang.IllegalStateException: Not allowed to set the device owner because there are already some accounts on the device");
+            bool testOnly = Environment.GetEnvironmentVariable("FAKE_TESTONLY") == "1" && File.Exists(Path.Combine(dir, "fake-testonly.txt"));
+            if (testOnly) Console.WriteLine("Success: Device owner set to package ComponentInfo{com.familymdm.agent/com.familymdm.agent.AdminReceiver}");
+            else if (Environment.GetEnvironmentVariable("FAKE_FAIL") == "1") Console.WriteLine("java.lang.IllegalStateException: Not allowed to set the device owner because there are already some accounts on the device");
             else if (!services) Console.WriteLine("java.lang.IllegalStateException: Not allowed to set the device owner because there are already some accounts on the device");
             else Console.WriteLine("Success: Device owner set to package ComponentInfo{com.familymdm.agent/com.familymdm.agent.AdminReceiver}");
         }
