@@ -80,9 +80,14 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
     const cookies = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : [];
     if (cookies.length) out['set-cookie'] = cookies;
     const bytes = Buffer.from(await response.arrayBuffer());
-    // A phone's request that failed or took long is worth a line in the log (it falls back to Cloudflare when this server fails it).
-    if (url.pathname.startsWith('/agent/') && url.pathname !== '/agent/wait' && (response.status >= 400 || Date.now() - startedAt > 4000)) {
-      log(req.method + ' ' + url.pathname + ' answered ' + response.status + ' in ' + (Date.now() - startedAt) + ' ms (' + body.length + ' bytes in)' + (response.status >= 400 ? ': ' + bytes.toString('utf8').slice(0, 160) : ''));
+    // One line for every phone request (a check-in is one every few minutes, so this stays small), so a stall can be read afterwards:
+    // path, answer, time, bytes in and out. An idle long wait (/agent/wait that ran its full ~40 s) is not worth a line; a wake-up is.
+    if (url.pathname.startsWith('/agent/')) {
+      const ms = Date.now() - startedAt;
+      const idleWait = url.pathname === '/agent/wait' && response.status < 400 && ms >= 35000;
+      if (!idleWait) {
+        log('phone ' + req.method + ' ' + url.pathname + ' answered ' + response.status + ' in ' + ms + ' ms (' + body.length + ' B in, ' + bytes.length + ' B out)' + (response.status >= 400 ? ': ' + bytes.toString('utf8').slice(0, 160) : ''));
+      }
     }
     res.writeHead(response.status, out);
     res.end(req.method === 'HEAD' ? undefined : bytes);
@@ -109,7 +114,11 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
       if (repl) repl.stop();
       const closing = new Promise((r) => server.close(r));
       if (server.closeIdleConnections) server.closeIdleConnections(); // do not wait for browsers that keep a connection open
+      // Phones waiting in /agent/wait hold their connection for up to 40 s (a restart used to take 90 s, until systemd killed the
+      // server). Let normal requests finish for 2 seconds, then drop the long waits: a phone simply asks again.
+      const force = setTimeout(() => { if (server.closeAllConnections) server.closeAllConnections(); }, 2000);
       await closing;
+      clearTimeout(force);
       await Promise.all([...pending]);
       kv.close();
     },
