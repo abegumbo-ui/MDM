@@ -44,7 +44,7 @@ export const COMMAND_GROUPS = {
   screenshot: "safety",
   deleteDownloads: "youtube",
   addWifi: "internet",
-  setPin: "security", clearPin: "security", setAppLockPin: "security", clearAppLockPin: "security", resetAppCode: "security", clearOverrides: "security",
+  setPin: "security", clearPin: "security", askPinControl: "security", setAppLockPin: "security", clearAppLockPin: "security", resetAppCode: "security", clearOverrides: "security",
   wipe: "dangerous", release: "dangerous",
 };
 /** Codes made for one phone. (Enrollment codes for a client's own new phones are always allowed.) */

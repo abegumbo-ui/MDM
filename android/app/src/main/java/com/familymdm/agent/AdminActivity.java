@@ -296,6 +296,8 @@ public class AdminActivity extends Activity {
                 {"Block or allow websites (website filter)", "internet", "filter"},
                 {"No internet for one app (network cutoff)", "internet", "cutoff"},
                 {"Lock the screen, PIN", "security", "lock"},
+                {"PIN control: activate it (lets the dashboard set or remove the screen lock)", "security", "lock"},
+                {"Set a PIN, remove the screen lock, pattern, password", "security", "lock"},
                 {"Restrictions: factory reset, USB debugging, adding accounts", "security", "restrictions"},
                 {"Release the phone, sync with the dashboard", "device", "controls"},
                 {"Recovery code", "overview", "status"}};

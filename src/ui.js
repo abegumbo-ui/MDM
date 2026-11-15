@@ -434,7 +434,7 @@ function render(){
 window.addEventListener('hashchange',function(){if(curViewKey)scrollMem[curViewKey]=window.pageYOffset||0;route();if(tab==='server'){piInfo=null;piWifi=null}render();restoreScroll(scrollMem[viewKey()])});
 
 /* ---------- devices ---------- */
-const NAMES={addTime:'Extra screen time',openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app',screenshot:'Screenshot'};
+const NAMES={addTime:'Extra screen time',askPinControl:'Show PIN-control prompt',openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app',screenshot:'Screenshot'};
 const ICON={hide:'🙈',show:'👁️',app:'📦',error:'⚠️',command:'▶️',restriction:'🔒',local:'🔑',security:'🛡️',update:'⬆️',lock:'🔒',watchdog:'👀'};
 function isOnline(d){return d.lastSeen&&Date.now()-d.lastSeen<12*60000}
 function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
@@ -810,8 +810,9 @@ function renderDeviceDetail(m,d){
   cmd(lr,'Unlock now','unlock',{},null,lockedNow(d)?'':'outline');
   cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
   cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
+  if(d.info.pinControl===false&&d.info.screenLock!==false)cmd(lr,'Turn on PIN control (shows a prompt on the phone)','askPinControl',{},'This makes a screen appear on the phone asking for its CURRENT lock. Whoever is holding the phone enters it once, and PIN control is on from then. Continue?','tonal');
   lockBox.append(lr);
-  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},(d.info.screenLock===false?'This phone has no screen lock. ':'The lock on it now: '+(d.info.lockStrength||'set')+'. ')+(d.info.pinControl?'PIN control is ready: Set PIN and Remove screen lock work.':'PIN control is not ready yet. A phone with no lock gets ready by itself at its next check-in (on a current agent build). A phone that already has a lock needs one tap on the phone: LockGuard, Administrator, Activate PIN control.')));
+  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},(d.info.screenLock===false?'This phone has no screen lock. ':'The lock on it now: '+(d.info.lockStrength||'set')+'. ')+(d.info.pinControl?'PIN control is ready: Set PIN and Remove screen lock work.':'PIN control is not on yet. A phone with no lock gets it by itself. A phone that already has a lock needs its current lock entered ONCE (Android lets nobody else approve this): press "Turn on PIN control" above and the prompt appears on the phone, or on the phone go to LockGuard → Administrator → Security → Lock → Activate PIN Control.')));
   lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Device → Controls.'));
   lk.append(lockBox);
  } else if(lockSub==='applock'){
@@ -3020,6 +3021,7 @@ function healthProblems(d){
  if(needsUpdate(d))add('warn','A newer LockGuard is available.',(c.autoUpdate===true?'It will also update by itself. Tap Update now to do it right away.':'Tap Update now. It installs by itself. (Automatic updates are off for this phone: Device → Updates.)'),'update');
  if(i.battery&&i.battery.pct<=15&&!i.battery.charging)add('warn','The battery is at '+i.battery.pct+'%.','Charge the phone.');
  if(i.screenLock===false)add('warn','The phone has no screen lock, so anyone who picks it up can use it.','Security → Screen lock → Set PIN.');
+ if(i.pinControl===false&&i.screenLock!==false&&i.deviceOwner)add('warn','PIN control is not on, so Set PIN and Remove screen lock from here will not work yet.','Open this phone\'s Security → Lock page and press "Turn on PIN control": a prompt appears on the phone and its current lock is entered once.');
  if(i.filterRunning===undefined&&i.deviceOwner)add('warn','This phone has an older LockGuard that does not report everything the health check looks at.','Tap Update now.','update');
  return out}
 /** "What's on for this phone": every rule in force, one plain line each, each opening its own tab. */
