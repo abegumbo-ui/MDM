@@ -307,6 +307,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(seen.list, /Add device/);
   assert.match(seen.list, /Screen time today: 2 h 14 min of 3 h/, "the front page is one card for each device");
   assert.match(seen.list, /\d+ requests?/);
+  assert.match(seen.clients, /Sign-ups/, "the Clients page has the sign-ups card (open or close the page, approve or deny)");
   assert.match(seen["apps/regular"], /New apps wait for my approval/);
   assert.match(seen["apps/regular"], /Apps on this phone/);
   assert.match(seen["apps/regular"], /Puzzle Fun/);
