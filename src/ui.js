@@ -189,6 +189,13 @@ button.ctl .grow{display:flex;flex-direction:column;gap:2px}
 button.ctl.slim{padding:12px 4px;border-top:1px solid var(--outline-variant)}
 button.ctl.slim:first-child{border-top:0}
 .ctl .badge{background:var(--primary);color:#fff;border-radius:999px;font-size:11px;padding:1px 8px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;margin-top:12px}
+button.tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;background:var(--surface-1);border:1px solid var(--outline-variant);border-radius:14px;color:inherit;font:inherit;cursor:pointer;text-align:center;min-width:0}
+button.tile:hover{background:var(--surface-2)}
+button.tile.sel{border-color:var(--primary);background:var(--primary-container)}
+button.tile .nm{font-size:12.5px;font-weight:500;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+button.tile .st{font-size:11px;color:var(--on-surface-variant);line-height:1.2}
+.st.bad{color:var(--error)!important}.st.ok{color:var(--primary)!important}
 .choices{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 button.choice{display:flex;align-items:flex-start;gap:12px;text-align:left;background:var(--surface-1);border:1px solid var(--outline);border-radius:12px;padding:12px 14px;color:inherit;font:inherit;cursor:pointer}
 button.choice .grow{display:flex;flex-direction:column;gap:2px}
@@ -260,9 +267,10 @@ const GROUPS=[
 const NEW_SUBS={
  apps:[['regular','Apps'],['addons','Add-ons'],['kiosk','Home screen'],['blocking','Blocked'],['store','Play Store']],
  browser:[['summary','At a glance'],['access','Schedule and words'],['history','Sites visited'],['sites','Allowed sites'],['advanced','Advanced']],
+ youtube:[['yt','YouTube']],
  internet:[['network','Wi-Fi'],['dns','Blocked and allowed addresses'],['appnet','Internet for apps'],['traffic','Traffic log']]};
 // A link to a tab that the New look folded away goes to the tab that now holds it.
-const NEW_SUB_MAP={browser:{apps:'advanced',inspect:'advanced',youtube:{g:'youtube',s:'yt'}},apps:{system:'blocking'}};
+const NEW_SUB_MAP={browser:{apps:'advanced',inspect:'advanced',youtube:{g:'youtube',s:'yt'}},apps:{system:'blocking'},youtube:{music:{g:'music',s:'music'}}};
 const NEW_SUB_HELP={
  'browser/access':'Which kinds of site are closed, SafeSearch, pictures and ads are at the top of this page. These are the extras: a different level at set times, pictures on chosen sites, ads, blocked words. To block or allow one single address in every app, use Internet, Blocked and allowed addresses.',
  'browser/advanced':'Rarely needed: web pages that open inside other apps, Chrome settings, and Inspection, which lets the filter look inside Chrome and other browsers.',
@@ -341,16 +349,26 @@ async function putImage(path,blob){const r=await fetch(path,{method:'PUT',body:b
 /* ---------- dialog (resolves to the typed values, or null if cancelled) ---------- */
 function ask(title,fields,okLabel,note){
  return new Promise(function(resolve){
-  const dlg=h('dialog',{class:'m3dlg'});const inputs={};
+  const dlg=h('dialog',{class:'m3dlg'});const inputs={},customs={};
   dlg.append(h('h2',null,title));if(note)dlg.append(h('div',{class:'mute small'},note));
   for(const f of fields){
    dlg.append(h('label',null,f.label));let el;
    if(f.options){el=h('select');for(const o of f.options)el.append(new Option(o[1],o[0]));el.value=String(f.value==null?f.options[0][0]:f.value)}
    else{el=h('input',{type:f.type||'text',placeholder:f.placeholder||'',maxlength:f.max||null});el.value=f.value||''}
-   inputs[f.key]=el;dlg.append(el)}
+   inputs[f.key]=el;dlg.append(el);
+   // A drop-down that asks "how long" also lets you type any amount (minutes, hours or days).
+   if(f.options&&f.custom!==false&&/how long|duration|how much/i.test(f.label||'')){
+    el.append(new Option('Custom…','__custom'));
+    const num=h('input',{type:'number',min:'1',placeholder:'amount',style:'width:110px'}),unit=h('select',{style:'width:auto'});
+    for(const u of [['1','minutes'],['60','hours'],['1440','days']])unit.append(new Option(u[1],u[0]));
+    const cbox=h('div',{class:'row',style:'display:none;justify-content:flex-start;margin-top:8px'},num,unit);dlg.append(cbox);
+    el.onchange=function(){cbox.style.display=el.value==='__custom'?'flex':'none';if(el.value==='__custom')num.focus()};
+    customs[f.key]={num:num,unit:unit,max:f.maxMinutes||10080}}}
   let done=false;const finish=function(v){if(done)return;done=true;dlg.close();dlg.remove();resolve(v)};
   const ok=h('button',{class:'btn'},okLabel||'OK');
-  ok.onclick=function(){const v={};for(const k in inputs)v[k]=inputs[k].value;finish(v)};
+  ok.onclick=function(){const v={};for(const k in inputs){
+   if(customs[k]&&inputs[k].value==='__custom'){const mins=Math.round(Number(customs[k].num.value)*Number(customs[k].unit.value));if(!(mins>=1)){customs[k].num.focus();return}v[k]=String(Math.min(mins,customs[k].max))}
+   else v[k]=inputs[k].value}finish(v)};
   const cancel=h('button',{class:'btn outline'},'Cancel');cancel.onclick=function(){finish(null)};
   dlg.addEventListener('cancel',function(e){e.preventDefault();finish(null)});
   dlg.append(h('div',{class:'row'},cancel,ok));document.body.append(dlg);dlg.showModal();
@@ -767,16 +785,16 @@ function renderDeviceDetail(m,d){
   cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
   cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
   lockBox.append(lr);
-  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},(d.info.screenLock===false?'This phone has no screen lock. ':'The lock on it now: '+(d.info.lockStrength||'set')+'. ')+(d.info.pinControl?'PIN control is ready: Set PIN and Remove screen lock work.':'PIN control is not ready yet. A phone with no lock gets ready by itself at its next check-in (on a current agent build). A phone that already has a lock needs one tap on the phone: MDM Agent, Administrator, Activate PIN control.')));
+  lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},(d.info.screenLock===false?'This phone has no screen lock. ':'The lock on it now: '+(d.info.lockStrength||'set')+'. ')+(d.info.pinControl?'PIN control is ready: Set PIN and Remove screen lock work.':'PIN control is not ready yet. A phone with no lock gets ready by itself at its next check-in (on a current agent build). A phone that already has a lock needs one tap on the phone: LockGuard, Administrator, Activate PIN control.')));
   lockBox.append(h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN or pattern the person chose themselves, not even the phone\'s maker. What you can do: take it off (Remove screen lock) or replace it (Set PIN), which needs PIN control to be ready (Overview). A PIN you set here is shown on the Overview page. To make sure every lock is one you set, switch on \'Only the administrator can set the screen lock\' in Device → Controls.'));
   lk.append(lockBox);
  } else if(lockSub==='applock'){
   const appLockOn=!!d.info.appLock;
   const alBox=h('div',{class:'card'},h('h2',null,'App lock'),
-   h('div',{class:'mute'},appLockOn?'On: opening MDM Agent on the phone needs its own PIN.':'Off: anyone who opens MDM Agent on the phone sees it with no extra check.'));
+   h('div',{class:'mute'},appLockOn?'On: opening LockGuard on the phone needs its own PIN.':'Off: anyone who opens LockGuard on the phone sees it with no extra check.'));
   const alRow=h('div',{class:'row',style:'margin-top:8px'});
   alRow.append(btn(appLockOn?'Change App PIN…':'Turn on App lock…','',async function(){
-    const pin=prompt('New app-lock PIN (4+ characters). Needed to open MDM Agent on the phone.');
+    const pin=prompt('New app-lock PIN (4+ characters). Needed to open LockGuard on the phone.');
     if(!pin)return;await queue('App lock','setAppLockPin',{pin:pin})}));
   if(appLockOn)alRow.append(btn('Turn off App lock','outline',async function(){
     if(!confirm('Turn off App lock on this phone?'))return;await queue('App lock','clearAppLockPin',{})}));
@@ -860,7 +878,7 @@ function renderDeviceDetail(m,d){
   ['Turn the phone\'s own Administrator panel on or off','device','device'],['Disable fingerprint, face or biometric unlock','device','device'],
   ['SafeSearch on or off','browser','access'],['Filter level: Approved sites only, Moderate, Strict (every browser)','browser','access'],['Block ads','browser','access'],['Sites that refuse ad blocking (ads covered in black)','browser','access'],
   ['Pictures: hide nudity, cover skin (men, women), no pictures on some sites','browser','access'],['Blocked words','browser','access'],['Block image search','browser','access'],['Filter schedule','browser','access'],['YouTube Restricted Mode everywhere','browser','access'],
-  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['Let them search YouTube and ask for videos','browser','youtube'],['Allow signing in to YouTube','browser','youtube'],['Let them download videos (yt-dlp)','browser','youtube'],['Blocked screens: remove a screen that was blocked on the phone','apps','blocking'],['Protect the MDM app: its accessibility switch and the certificate can not be turned off or removed in Settings','apps','blocking'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
+  ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['Let them search YouTube and ask for videos','browser','youtube'],['Allow signing in to YouTube','browser','youtube'],['Let them download videos (yt-dlp)','browser','youtube'],['Blocked screens: remove a screen that was blocked on the phone','apps','blocking'],['Protect the LockGuard app: its accessibility switch and the certificate can not be turned off or removed in Settings','apps','blocking'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
   ['Allowed sites, site requests, allow for a while (1 hour, 2 hours, custom)','browser','sites'],['Add-ons: put in or take out YouTube, the Browser add-on, the Browser app','apps','addons'],['YouTube icon on the phone','apps','addons'],['Uninstall an app','apps','regular'],['Browser add-on, make this the only browser, Chrome settings (no incognito)','browser','apps'],['Sites visited, searches list','browser','history'],['Release device, remove management','device','device'],['Check in every 15 seconds while the dashboard is open','device','device']];
  const sWrap=h('div',{class:'search',style:'margin:0;flex:1 1 320px;min-width:220px;max-width:100%'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
@@ -1092,7 +1110,7 @@ function appRow(a,dv,opts){
  const render2=function(){render()};
  const ctl=h('div',{class:'row',style:'margin-top:8px'},seg);
  const installedHere=dv.packages.some(function(x){return x.p===a.p});
- // Never offer to uninstall a protected package (MDM Agent itself included -- it blocks its own
+ // Never offer to uninstall a protected package (LockGuard itself included -- it blocks its own
  // uninstall at the Android level anyway, see PolicyApplier's setUninstallBlocked, so the button
  // would only ever fail) or a system app, which Android won't actually remove either.
  if(!a.s&&!a.prot&&installedHere)ctl.append(btn('Uninstall','danger',async function(){
@@ -1477,7 +1495,7 @@ function renderWhatsApp(m,dv){
  const row=function(key,title,desc){return h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc)),sw(c[key],function(v){c[key]=v;save(v?'Saved. Applies at the next check-in.':'Allowed again.')}))};
  const card=h('div',{class:'card'},h('h2',null,'WhatsApp'),h('div',{class:'mute'},'Chats, groups and calls keep working. These close parts of WhatsApp the moment they open. They work by the name of WhatsApp\'s screens, so a WhatsApp update can stop them working until we adjust; the phone log says "Closed WhatsApp Status" each time it works.'),
   row('blockWaStatus','Close Status','Watching other people\'s statuses.'),row('blockWaChannels','Close Channels','Following and reading channels.'),row('waTextOnly','Text and calls only','No photos, videos or voice messages: WhatsApp\'s media servers are blocked. Test it on the phone first: send yourself a text and a photo.'));
- if((c.blockWaStatus||c.blockWaChannels)&&on===false)card.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--warn)'},'One step left on the phone: tap the notification "Finish setting up: turn on MDM Agent" and switch it on.'));
+ if((c.blockWaStatus||c.blockWaChannels)&&on===false)card.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--warn)'},'One step left on the phone: tap the notification "Finish setting up: turn on LockGuard" and switch it on.'));
  m.append(card)}
 
 /* ---------- Browser: web pages inside apps ---------- */
@@ -1490,7 +1508,7 @@ function renderInAppBrowsers(m,dv){
  for(const [v,l,d] of opts){const r=h('input',{type:'radio',name:'inapp'});r.checked=mode===v;r.onchange=function(){c.inAppBrowsers=v;save(v==='off'?'Links in apps open again.':'Saved. Applies at the next check-in.')};
   card.append(h('label',{class:'setting',style:'cursor:pointer'},r,h('div',{class:'grow',style:'margin-left:10px'},h('div',{style:'font-weight:500'},l),h('div',{class:'mute small'},d))))}
  if(mode!=='off'){
-  if(on===false)card.append(h('div',{class:'card',style:'border-color:var(--warn);margin-top:10px'},h('div',{style:'font-weight:500'},'One step left on the phone'),h('div',{class:'mute small'},'Tap the notification "Finish setting up: turn on MDM Agent", choose MDM Agent and switch it on. Android lets nobody do this from afar. To stop it being switched off again, keep "Block changing apps in Settings" on (Security → Restrictions).')));
+  if(on===false)card.append(h('div',{class:'card',style:'border-color:var(--warn);margin-top:10px'},h('div',{style:'font-weight:500'},'One step left on the phone'),h('div',{class:'mute small'},'Tap the notification "Finish setting up: turn on LockGuard", choose LockGuard and switch it on. Android lets nobody do this from afar. To stop it being switched off again, keep "Block changing apps in Settings" on (Security → Restrictions).')));
   else if(on===undefined)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'The phone has not said yet whether this is switched on (it needs the latest Agent build).'));
   else card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Active on the phone.'));
  }
@@ -1687,13 +1705,13 @@ function renderAddons(m,dv){const c=dv.config;
  const cmd=async function(type,args,msg){try{await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:args});snack(msg)}catch(e){snack(e.message,1)}load()};
  m.append(h('div',{class:'card'},h('h2',null,'Add-ons'),h('div',{class:'mute'},'Put in or take out the extras on this phone. Each works with the same rules as everything else here.')));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube'),
-  h('div',{class:'mute small'},'A YouTube icon on the phone, built into the MDM app. Choose what is allowed in the YouTube tab (left menu): only what you allow, restricted, or off.')),
+  h('div',{class:'mute small'},'A YouTube icon on the phone, built into the LockGuard app. Choose what is allowed in the YouTube tab (left menu): only what you allow, restricted, or off.')),
   sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'YouTube goes on the phone at its next check-in.':'YouTube comes off the phone at its next check-in.')}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music'),
-  h('div',{class:'mute small'},'A YouTube Music icon on the phone, built into the MDM app, under the same rules as YouTube (only what you allow, restricted, or off). Allow songs in the YouTube tab → YouTube Music.')),
+  h('div',{class:'mute small'},'A YouTube Music icon on the phone, built into the LockGuard app, under the same rules as YouTube (only what you allow, restricted, or off). Allow songs in the YouTube tab → YouTube Music.')),
   sw(c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'YouTube Music goes on the phone at its next check-in.':'YouTube Music comes off the phone at its next check-in.')}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Browser'),
-  h('div',{class:'mute small'},'The full Browser (tabs, favorites, history, the Allow list), built into the MDM app with its own icon: not a second app, nothing to connect, nothing separate to uninstall. It follows every rule on this dashboard.')),
+  h('div',{class:'mute small'},'The full Browser (tabs, favorites, history, the Allow list), built into the LockGuard app with its own icon: not a second app, nothing to connect, nothing separate to uninstall. It follows every rule on this dashboard.')),
   sw(c.browserAddonEnabled,function(on){c.browserAddonEnabled=on;save(on?'Browser add-on goes on at the next check-in.':'Browser add-on comes off at the next check-in.')}))));
 }
 /** SafeSearch on or off, on its own (on unless switched off). */
@@ -1760,7 +1778,7 @@ function renderUsage(m,dv){
    h('div',{class:'mute'},limit?'of '+fmtMin(limit)+' allowed today':'on screen so far. No daily limit is set.'));
   if(limit)card.append(h('div',{class:'meter',title:fmtMin(today.total)+' of '+fmtMin(limit)},h('i',{style:'width:'+Math.min(100,Math.round(100*today.total/limit))+'%'})));
   if(today.ok===false)card.append(h('div',{class:'chip warn',style:'margin-top:10px'},'The Agent cannot see app usage on this phone'),
-   h('div',{class:'mute small',style:'margin-top:6px'},'On the phone open MDM Agent → Administrator → Security → App access and turn on usage access. Until then limits cannot count anything.'));
+   h('div',{class:'mute small',style:'margin-top:6px'},'On the phone open LockGuard → Administrator → Security → App access and turn on usage access. Until then limits cannot count anything.'));
   if(today.extraUntil&&today.extraUntil>Date.now())card.append(h('div',{class:'chip warn',style:'margin-top:10px'},'Extra time until '+new Date(today.extraUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
   const apps=today.apps||[];
   if(apps.length){
@@ -1982,7 +2000,7 @@ function renderStore(m,dv){
 /* ---------- which buttons the person sees on the phone's own menu ---------- */
 function renderUserMenu(m,dv){
  const labels=state.userMenu||{};
- const card=h('div',{class:'card'},h('h2',null,'Phone menu'),h('div',{class:'mute'},'The buttons on the phone\'s own "User" screen (open the MDM Agent app, then User). Switch off anything he should not see.'));
+ const card=h('div',{class:'card'},h('h2',null,'Phone menu'),h('div',{class:'mute'},'The buttons on the phone\'s own "User" screen (open the LockGuard app, then User). Switch off anything he should not see.'));
  for(const k in labels){
   const on=!dv.config.userMenu||dv.config.userMenu[k]!==false;
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},labels[k]),sw(on,async function(v){
@@ -2150,7 +2168,7 @@ function renderYoutube(m,dv){
   h('div',{class:'mute'},'Off by default: the Sign in button leads to "This part of YouTube is not allowed". Turn it on only when the child may sign in with their account (in our Browser and the YouTube icon).')),
   sw(c.youtubeSignIn===true,function(on){c.youtubeSignIn=on;save(on?'Signing in to YouTube is allowed.':'Signing in to YouTube is not allowed.')}))));
  if(!dv.isBrowser&&!dv.isWindows)m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube app on the phone'),
-  h('div',{class:'mute'},'A YouTube icon on the phone, built into the MDM app, so YouTube works even when browsers are blocked. It follows everything on this page: the choice above, your channels and videos, ad blocking and picture covering. When YouTube is Off it shows your message below.')),
+  h('div',{class:'mute'},'A YouTube icon on the phone, built into the LockGuard app, so YouTube works even when browsers are blocked. It follows everything on this page: the choice above, your channels and videos, ad blocking and picture covering. When YouTube is Off it shows your message below.')),
   sw(c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears on the phone at its next check-in.':'The YouTube icon is removed at the next check-in.')}))));
  const msg=h('input',{type:'text',class:'grow',maxlength:'200',placeholder:'Sorry, YouTube is not available right now. Ask your administrator to open it.',value:c.youtubeOffMessage||''});
  m.append(h('div',{class:'card'},h('h2',null,'When YouTube is off'),h('div',{class:'mute'},'What the child sees instead of YouTube. Leave empty for the standard message.'),
@@ -2238,7 +2256,7 @@ function renderYoutubeMusic(m,dv){
  if(dv.isWindows||dv.isBrowser)return;
  const c=dv.config;
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
- const choice=(YT_CHOICES.find(function(x){return x[0]===(c.youtubeMode||'auto')})||YT_CHOICES[0]);
+ const choice=(YT_CHOICES.find(function(x){return x[0]===((c.musicMode&&c.musicMode!=='auto')?c.musicMode:(c.youtubeMode||'auto'))})||YT_CHOICES[0]);
  ytWhichCard(m,dv,'music');
  m.append(h('div',{class:'card'},h('h2',null,'Our YouTube Music'),
   h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'YouTube Music icon on the phone'),
@@ -2701,7 +2719,7 @@ function renderWinDetail(m,w){
 
 /* ---------- codes ---------- */
 const CODE_INFO={
- enroll:['With a computer instead (advanced)','Only if you set phones up with a computer and adb, or type a code into the MDM Agent app by hand. The QR code above is easier. Valid 1 hour, one use.'],
+ enroll:['With a computer instead (advanced)','Only if you set phones up with a computer and adb, or type a code into the LockGuard app by hand. The QR code above is easier. Valid 1 hour, one use.'],
  browser:['Browser connect code','Connects a standalone Browser app directly to this dashboard — no agent, no device owner, nothing else installed. Until it\'s connected (or set up on its own with a master code), that Browser allows nothing at all. Valid 1 hour, one use.']};
 function renderCodes(m){
  m.append(h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Add a phone: step by step'),
@@ -2709,7 +2727,7 @@ function renderCodes(m){
    h('li',null,'The phone must be new, or reset to factory settings (Settings → System → Reset → Erase all data). Back up anything on it first.'),
    h('li',null,'Turn it on. On the first "Welcome" screen, tap the same empty spot 6 times quickly. A camera opens to scan a QR code.'),
    h('li',null,'Below, under "Set up with a QR code", type your Wi-Fi name and password, then press "Generate enrollment QR".'),
-   h('li',null,'Scan the QR code with the phone. It downloads MDM Agent and sets itself up. Just tap Next / Accept on the phone.'),
+   h('li',null,'Scan the QR code with the phone. It downloads LockGuard and sets itself up. Just tap Next / Accept on the phone.'),
    h('li',null,'When it is done, the phone shows up on the Devices list (Refresh). Open it, go to Overview → Ready-made setups, and pick one.'),
    h('li',null,'Open Safety → Health check on the dashboard and do anything it shows in red (usually one switch on the phone).')),
   h('div',{class:'mute small',style:'margin-top:8px'},'The tapping step works on almost every Android phone from Android 7 on. If no camera opens, the phone may need its own Wi-Fi first: some phones ask for Wi-Fi before the scanner appears.')));
@@ -2882,8 +2900,8 @@ function renderBlockedScreens(m,dv){
  const c=dv.config,list=c.blockedScreens||[];
  const card=h('div',{class:'card'},h('h2',null,'Blocked screens ('+list.length+')'),
   h('div',{class:'mute'},'Screens picked on the phone with ✓ Block this screen (a Settings page, a screen of an app), or added here by name. Each closes the moment it opens. Everything blocked on the phone shows up here, and removing one here (or on the phone) opens it again at the next check-in.'));
- card.append(h('div',{class:'setting',style:'margin-top:10px'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect the MDM app and the certificate'),
-  h('div',{class:'mute small'},'Closes, the moment they open: the MDM app\'s own Settings pages (its accessibility switch, App info) and the pages that show or remove the phone\'s certificate. So neither can be turned off. Needs the accessibility switch on; not applied during an emergency unlock.')),
+ card.append(h('div',{class:'setting',style:'margin-top:10px'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Protect the LockGuard app and the certificate'),
+  h('div',{class:'mute small'},'Closes, the moment they open: the LockGuard app\'s own Settings pages (its accessibility switch, App info) and the pages that show or remove the phone\'s certificate. So neither can be turned off. Needs the accessibility switch on; not applied during an emergency unlock.')),
   sw(c.protectScreens!==false,async function(on){c.protectScreens=on;try{await saveConfigFor(dv,on?'Those Settings pages are protected.':'Those Settings pages open normally.')}catch(e){snack(e.message,1)}render()})));
  const comps=c.blockedComponents||[];
  if(!list.length&&!comps.length)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'None yet.'));
@@ -2934,27 +2952,27 @@ const GROUP_HELP={
  browser:'Which websites can open, and how strict the filter is.',
  calls:'Who can call the phone and whom it can call, contacts, and the call and text lists.',
  internet:'Wi-Fi, blocking or allowing single sites by name, and which apps may use the internet.',
- security:'Screen lock, a PIN for the MDM app, your administrator code, and restrictions so the phone cannot be changed or reset.',
+ security:'Screen lock, a PIN for the LockGuard app, your administrator code, and restrictions so the phone cannot be changed or reset.',
  device:'Location, buttons on the phone, updates, and controls like restart.'};
 /** What is not working on the phone, in plain words with how to fix it. level: bad (must fix) / warn (should fix). */
 function healthProblems(d){
  const out=[],i=d.info||{},c=d.config||{};
  const add=function(level,what,fix){out.push({level:level,what:what,fix:fix})};
- if(d.syncPaused)add('bad','The phone is not connected to the dashboard (turned off on the phone itself).','On the phone: open MDM Agent → Administrator, and turn the connection back on.');
+ if(d.syncPaused)add('bad','The phone is not connected to the dashboard (turned off on the phone itself).','On the phone: open LockGuard → Administrator, and turn the connection back on.');
  else if(!isOnline(d))add(d.lastSeen&&Date.now()-d.lastSeen<6*3600000?'warn':'bad','The phone has not checked in for '+ago(d.lastSeen).replace(' ago','')+'.','Make sure the phone is on and has Wi-Fi or mobile data. Everything you set keeps working on the phone meanwhile.');
- if(i.deviceOwner===false)add('bad','MDM Agent is not in full control of the phone, so most settings cannot work.','Set the phone up again with the QR code (Add device → step by step).');
+ if(i.deviceOwner===false)add('bad','LockGuard is not in full control of the phone, so most settings cannot work.','Set the phone up again with the QR code (Add device → step by step).');
  const needFilter=(c.browserFilter&&c.browserFilter!=='off')||c.safeSearch||(c.youtubeDns&&c.youtubeDns!=='off')||c.internetOnlyApps;
- if(needFilter&&i.filterRunning===false)add('bad','The website filter is not running on the phone.','Restart the phone. If this stays red, update MDM Agent (Device → Updates).');
+ if(needFilter&&i.filterRunning===false)add('bad','The website filter is not running on the phone.','Restart the phone. If this stays red, update LockGuard (Device → Updates).');
  const needA11y=c.messageAlerts||(c.inAppBrowsers&&c.inAppBrowsers!=='off')||c.blockWaStatus||c.blockWaChannels||(d.shots&&d.shots.length)||(d.config&&d.config.wholeAppBlocklist&&d.config.wholeAppBlocklist.length);
- if(i.accessibility===false&&needA11y)add('bad','One switch on the phone is still off, so message alerts, screenshots, WhatsApp and in-app web page controls cannot work.','On the phone: Settings → Accessibility → MDM Agent (sometimes under "Installed apps" or "Downloaded apps") → turn it on. The phone also shows a notification that opens this screen. Needed once.');
- if(c.locationEvery&&i.locationPerm===false)add('bad','Location is not allowed for MDM Agent, so location history cannot work.','On the phone: Settings → Location → turn on. Then Settings → Apps → MDM Agent → Permissions → Location → Allow all the time.');
+ if(i.accessibility===false&&needA11y)add('bad','One switch on the phone is still off, so message alerts, screenshots, WhatsApp and in-app web page controls cannot work.','On the phone: Settings → Accessibility → LockGuard (sometimes under "Installed apps" or "Downloaded apps") → turn it on. The phone also shows a notification that opens this screen. Needed once.');
+ if(c.locationEvery&&i.locationPerm===false)add('bad','Location is not allowed for LockGuard, so location history cannot work.','On the phone: Settings → Location → turn on. Then Settings → Apps → LockGuard → Permissions → Location → Allow all the time.');
  const stc=c.screenTime||{};
- if(i.usageAccess===false&&(stc.dailyLimit||Object.keys(stc.appLimits||{}).length))add('bad','Usage access is off on the phone, so the daily limit and app limits cannot count minutes.','On the phone: Settings → Apps → Special app access → Usage access → MDM Agent → allow. (Administrator → Rules → Safety on the phone has a Fix it button.)');
- if(i.batteryUnrestricted===false)add('warn','The phone\'s battery saver may put MDM Agent to sleep, so it checks in late.','On the phone: Settings → Apps → MDM Agent → Battery → Unrestricted (or "Don\'t optimize").');
- if(needsUpdate(d))add('warn','A newer MDM Agent is available.','Device → Updates → Update agent. It installs by itself.');
+ if(i.usageAccess===false&&(stc.dailyLimit||Object.keys(stc.appLimits||{}).length))add('bad','Usage access is off on the phone, so the daily limit and app limits cannot count minutes.','On the phone: Settings → Apps → Special app access → Usage access → LockGuard → allow. (Administrator → Rules → Safety on the phone has a Fix it button.)');
+ if(i.batteryUnrestricted===false)add('warn','The phone\'s battery saver may put LockGuard to sleep, so it checks in late.','On the phone: Settings → Apps → LockGuard → Battery → Unrestricted (or "Don\'t optimize").');
+ if(needsUpdate(d))add('warn','A newer LockGuard is available.','Device → Updates → Update agent. It installs by itself.');
  if(i.battery&&i.battery.pct<=15&&!i.battery.charging)add('warn','The battery is at '+i.battery.pct+'%.','Charge the phone.');
  if(i.screenLock===false)add('warn','The phone has no screen lock, so anyone who picks it up can use it.','Security → Screen lock → Set PIN.');
- if(i.filterRunning===undefined&&i.deviceOwner)add('warn','This phone has an older MDM Agent that does not report everything the health check looks at.','Device → Updates → Update agent.');
+ if(i.filterRunning===undefined&&i.deviceOwner)add('warn','This phone has an older LockGuard that does not report everything the health check looks at.','Device → Updates → Update agent.');
  return out}
 /** "What's on for this phone": every rule in force, one plain line each, each opening its own tab. */
 function renderWhatsOn(box,d){
@@ -3016,7 +3034,7 @@ function renderHealth(m,d){
   h('div',{class:'grow'},h('div',{style:'font-weight:500'},x.what),h('div',{class:'mute small'},'How to fix: '+x.fix))));
  const i=d.info||{},okRow=function(on,label){if(on)card.append(h('div',{class:'mute small',style:'margin-top:4px'},'✅ '+label))};
  card.append(h('div',{style:'margin-top:12px;font-weight:500'},'Working'));
- okRow(isOnline(d),'Connected (checked in '+ago(d.lastSeen)+')');okRow(i.deviceOwner,'MDM Agent is in full control');okRow(i.filterRunning,'Website filter running');
+ okRow(isOnline(d),'Connected (checked in '+ago(d.lastSeen)+')');okRow(i.deviceOwner,'LockGuard is in full control');okRow(i.filterRunning,'Website filter running');
  okRow(i.accessibility,'Accessibility switch on');okRow(i.batteryUnrestricted,'Battery saver leaves it alone');okRow(i.screenLock,'Screen lock set');okRow(i.usageAccess,'Usage access on (screen time can count)');
  m.append(card)}
 
@@ -3324,7 +3342,10 @@ function homeSummary(d){
  out.time=st.dailyLimit?fmtMin(st.dailyLimit)+' a day'+(st.bedtime?' · bedtime '+st.bedtime.from:''):(st.bedtime?'Bedtime '+st.bedtime.from+' to '+st.bedtime.to:'No limits set');
  out.apps=([blocked?blocked+(blocked===1?' app':' apps')+' blocked':'',grp?grp+(grp===1?' group':' groups')+' blocked':''].filter(Boolean).join(' · ')||'No apps blocked')+(c.approveNew?' · new apps wait for you':'');
  out.browser=lvl+' · '+nSites+(nSites===1?' site':' sites')+' approved'+(c.safeSearchOff?'':c.safeSearch?' · SafeSearch on':'');
- out.youtube='YouTube: '+ytWhichShort(c,'yt')+' · Music: '+ytWhichShort(c,'music')+(nCh?' · '+nCh+(nCh===1?' channel':' channels'):'');
+ const ytWords={free:'Regular, no filter',filtered:'Regular, filtered',ours:'Our own',off:'Off'};
+ const nSongs=Object.values(c.sites||{}).filter(function(x){return isMusicUrl(x.url||'')}).length;
+ out.youtube=ytWords[ytWhich(c,'yt')]+(nCh?' · '+nCh+(nCh===1?' channel':' channels'):'');
+ out.music=ytWords[ytWhich(c,'music')]+(nSongs?' · '+nSongs+(nSongs===1?' song':' songs'):'');
  const cin=c.callsIn||'all',cout=c.callsOut||'all';
  out.calls=cin==='all'&&cout==='all'?'Anyone can call and be called':(cin==='list'||cout==='list'?'Only the allowed numbers':'Contacts and allowed numbers');
  out.location=c.locationEvery?'Noted every '+c.locationEvery+' minutes':'Find it any time';
@@ -3341,6 +3362,7 @@ const HOME_ROWS=[
  ['apps','apps','Apps','apps',null],
  ['browser','globe','Browser and web','browser',null],
  ['youtube','play','YouTube','youtube',null],
+ ['music','play','YouTube Music','music',null],
  ['calls','phone','Calls and texts','calls',null],
  ['location','pin','Location','device','location'],
  ['internet','wifi','Internet','internet',null],
@@ -3348,7 +3370,7 @@ const HOME_ROWS=[
  ['security','lock','Lock and security','security',null],
  ['device','device','Phone settings','device',null],
  ['status','doc','Status and activity','overview',null]];
-const NEW_TITLES={overview:'Status and activity',safety:'Safety and alerts',apps:'Apps',youtube:'YouTube',time:'Screen time',browser:'Browser and web',calls:'Calls and texts',internet:'Internet',security:'Lock and security',device:'Phone settings'};
+const NEW_TITLES={overview:'Status and activity',safety:'Safety and alerts',apps:'Apps',youtube:'YouTube',music:'YouTube Music',time:'Screen time',browser:'Browser and web',calls:'Calls and texts',internet:'Internet',security:'Lock and security',device:'Phone settings'};
 
 /** Opens a group on one of its "more settings" tabs (the old tabs live inside "More settings" in the new look). */
 function goMore(sec,sub){open['more-'+sec]=true;goTo(sec,sub)}
@@ -3365,7 +3387,7 @@ function siteRequestsCard(m,dv){
  renderRequestsCard(m,(dv.siteRequests||[]).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at,note:r.note}}),dv)}
 
 function renderDeviceNew(m,d,body){
- const sec=GROUPS.some(function(g){return g.key===deviceSection})?deviceSection:null;
+ const sec=(GROUPS.some(function(g){return g.key===deviceSection})||deviceSection==='music')?deviceSection:null;
  if(!sec){renderHomeNew(m,d);return}
  renderGroupNew(m,d,sec,body)}
 
@@ -3389,7 +3411,7 @@ function renderRightNow(col,d){
  if(alloff)say.push('ALL restrictions are off until '+hhmm(c.restrictionsOffUntil)+'.');
  row.append(btn(alloff?'Turn everything back on':'All restrictions off',alloff?'':'tonal',async function(){
   if(alloff){c.restrictionsOffUntil=0;await save('Restrictions come back on at the phone\'s next check-in.');return}
-  const v=await ask('Turn off ALL restrictions',[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours'],['1440','Until I turn it back on (up to 24 hours)']],value:'60'}],'Turn off','The website filter, blocked apps, screen time and bedtime, blocked screens, YouTube limits and internet cut-offs all stand down. The phone stays managed and keeps reporting. Everything comes back by itself when the time is up, even with no internet.');
+  const v=await ask('Turn off ALL restrictions',[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours'],['1440','Until I turn it back on (up to 24 hours)']],value:'60',maxMinutes:1440}],'Turn off','The website filter, blocked apps, screen time and bedtime, blocked screens, YouTube limits and internet cut-offs all stand down. The phone stays managed and keeps reporting. Everything comes back by itself when the time is up, even with no internet.');
   if(!v)return;c.restrictionsOffUntil=Date.now()+Number(v.minutes)*60000;c.restrictionsOffSince=Date.now();await save('All restrictions off until '+hhmm(c.restrictionsOffUntil)+'.')}));
  // 3. More time.
  row.append(btn('Give more time','tonal',async function(){
@@ -3460,21 +3482,22 @@ function renderHomeNew(m,d){
 
 /** One part of a phone, in the new look: the few things that matter on top, everything else under "More settings". */
 function renderGroupNew(m,d,sec,body){
- const G=GROUPS.find(function(g){return g.key===sec});
+ const real=sec==='music'?'youtube':sec; // YouTube Music has its own page in the new look (its tabs live in the YouTube group)
+ const G=GROUPS.find(function(g){return g.key===real});
  const back=h('button',{type:'button',class:'btn tonal'},'‹ Home');back.onclick=backHome;
  m.append(h('div',{class:'row',style:'margin-bottom:14px'},back,h('h1',{class:'ptitle'},NEW_TITLES[sec]||G.label)));
- const ess={overview:essStatus,browser:essBrowser,apps:essApps,time:essTime,youtube:essYoutube}[sec];
- const cur=getSub(sec);
+ const ess={overview:essStatus,browser:essBrowser,apps:essApps,time:essTime,youtube:essYoutube,music:essMusic}[sec];
+ const cur=sec==='music'?'music':getSub(sec);
  const content=h('div',{class:'content'});
  const old=h('div');
  const pills=h('div',{class:'pills'});
- for(const sub of subsFor(G)){
+ for(const sub of (sec==='music'?[['music','YouTube Music']]:subsFor(G))){
   const b=h('button',{class:sub[0]===cur?'on':''},sub[1]);
   b.onclick=function(){subs[sec]=sub[0];saveSubs();render()};pills.append(b)}
  old.append(pills);
  if(GROUP_HELP[sec])old.append(h('div',{class:'mute small',style:'margin:-4px 0 12px'},GROUP_HELP[sec]));
  if(NEW_SUB_HELP[sec+'/'+cur])old.append(h('div',{class:'mute small',style:'margin:-4px 0 12px'},NEW_SUB_HELP[sec+'/'+cur]));
- old.append(typeof body[sec].nodeType==='number'?body[sec]:body[sec][cur]);
+ old.append(typeof body[real].nodeType==='number'?body[real]:body[real][cur]);
  if(ess){
   ess(content,d);
   const det=h('details',{class:'more',open:open['more-'+sec]?'':null});
@@ -3574,7 +3597,7 @@ function essBrowser(box,dv){
  box.append(ap);
  // 5. Our own browser, and the other parts.
  const ob=h('div',{class:'card'},h('h2',null,'Our browser on the phone'));
- ob.append(simpleSwitch('Browser icon in the MDM app','A light browser that opens only the sites on your list.',!!c.browserAddonEnabled,function(on){c.browserAddonEnabled=on;save(on?'The Browser icon is on the phone now.':'The Browser icon is off.')}));
+ ob.append(simpleSwitch('Browser icon in the LockGuard app','A light browser that opens only the sites on your list.',!!c.browserAddonEnabled,function(on){c.browserAddonEnabled=on;save(on?'The Browser icon is on the phone now.':'The Browser icon is off.')}));
  ob.append(simpleSwitch('Make it the only browser','Every link on the phone opens in it. Block Chrome under Apps so it cannot be opened directly.',!!c.restrictBrowsing,function(on){c.restrictBrowsing=on;save(on?'This is now the only browser.':'Chrome and other browsers can be used again.')}));
  box.append(ob);
  const more=h('div',{class:'card'});
@@ -3583,52 +3606,150 @@ function essBrowser(box,dv){
  box.append(more)}
 
 /* ----- Apps, in the new look ----- */
+/* ----- Apps, in the new look: a list or tiles (switch at the top), and every setting of one app when you tap it ----- */
+let appsView='list';try{if(localStorage.getItem('appsView')==='tiles')appsView='tiles'}catch(e){}
+let appSel=null;
+function setAppsView(v){appsView=v;try{localStorage.setItem('appsView',v)}catch(e){}render()}
+function appIconEl(a,size){
+ const st='width:'+size+'px;height:'+size+'px;border-radius:'+Math.round(size/4)+'px;object-fit:cover;flex:none;background:var(--surface-3)';
+ const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy',style:st});
+ img.onerror=function(){img.replaceWith(h('div',{class:'ph',style:st}))};return img}
+/** A few words about what is set for this app: [[text, 'bad'|'ok'|'']]. */
+function appFacts(dv,a){
+ const c=dv.config,st=c.screenTime||{},mode=cur(dv,a.p),out=[];
+ if(mode.mode==='block')out.push(['Blocked','bad']);else if(mode.mode==='allow')out.push(['Allowed','ok']);else if(mode.mode==='soft')out.push(['Soft block','']);
+ if((st.appLimits||{})[a.p])out.push([fmtMin(st.appLimits[a.p])+' a day','']);
+ if(mode.schedule)out.push(['At set times','']);
+ if((c.networkBlocklist||{})[a.p])out.push(['No internet','bad']);else if((c.filterSkipApps||[]).indexOf(a.p)>=0)out.push(['Not filtered','']);
+ return out}
+const APP_LIMITS=[[0,'No limit'],[15,'15 minutes'],[30,'30 minutes'],[45,'45 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours']];
+/** Every setting of one app, in one card. Each change is saved at once. */
+function appDetailCard(dv,a,save){
+ const c=dv.config,st=c.screenTime=c.screenTime||{dailyLimit:0,bedtime:null,appLimits:{},exempt:[]};st.appLimits=st.appLimits||{};c.apps=c.apps||{};
+ const name=a.l||a.p,now=cur(dv,a.p),mode=now.mode,sched=now.schedule;
+ const card=h('div',{class:'card',style:'border-color:var(--primary)'});
+ card.append(h('div',{class:'row',style:'flex-wrap:nowrap;align-items:center'},appIconEl(a,48),
+  h('div',{class:'grow'},h('h2',{style:'margin:0'},name),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p)),
+  btn('Close','outline',function(){appSel=null;render()})));
+ const chips=h('div',{style:'margin-top:8px'});let anyChip=false;
+ if(a.h){chips.append(h('span',{class:'chip warn'},'hidden on the phone now'));anyChip=true}
+ const ov=(dv.overrides||{})[a.p];if(ov){chips.append(h('span',{class:'chip bad'},'set to "'+ov+'" on the phone itself: it overrides this until cleared in Controls'));anyChip=true}
+ if(anyChip)card.append(chips);
+ // 1. Can they open it?
+ const setMode=function(v){
+  if(v==='')delete c.apps[a.p];
+  else if(v==='allow')c.apps[a.p]={mode:'allow',label:name,schedule:sched||undefined};
+  else c.apps[a.p]={mode:v,label:name};
+  save(name+(v===''?': back to the default.':v==='allow'?': allowed.':v==='block'?': blocked.':': soft blocked.'))};
+ const seg=h('div',{class:'seg'});
+ const modes=[['','Default',''],['allow','Allowed','']];if(c.homeScreen)modes.push(['soft','Soft block','']);modes.push(['block','Blocked','block']);
+ for(const o of modes){const b=h('button',{type:'button',class:(mode===o[0]?'on ':'')+o[2]},o[1]);b.onclick=function(){if(mode!==o[0])setMode(o[0])};seg.append(b)}
+ card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Can they open it?'),h('div',{class:'mute'},'Blocked: it disappears from the phone. Default: whatever your general rules say.')),seg));
+ if(mode!=='block'){
+  // 2. Time per day, with a custom amount.
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Time per day'),h('div',{class:'mute'},'When it is used up the app closes until tomorrow. Pick a time or choose Custom.')),
+   timeSelect(APP_LIMITS,st.appLimits[a.p]||0,function(m){if(m)st.appLimits[a.p]=m;else delete st.appLimits[a.p];save('Time limit for '+name+(m?': '+fmtMin(m)+' a day.':' removed.'))},1440)));
+  // 3. Only at set times.
+  card.append(simpleSwitch('Only at set times','Allowed only on these days and hours (the phone\'s own time). Hidden the rest of the time.',!!sched,function(on){
+   if(on)c.apps[a.p]={mode:'allow',label:name,schedule:{days:[1,2,3,4,5],from:'08:00',to:'17:00'}};
+   else c.apps[a.p]={mode:'allow',label:name};
+   save(on?name+': allowed Monday to Friday 08:00 to 17:00. Change the days and hours below.':name+': no schedule.')}));
+  if(sched){
+   const days=h('div',{class:'days'});
+   DAYS.forEach(function(L,i){const b=h('button',{type:'button',class:(sched.days||[]).includes(i)?'on':''},L);
+    b.onclick=function(){const set=new Set(sched.days||[]);set.has(i)?set.delete(i):set.add(i);sched.days=[...set].sort();save('Days saved.')};days.append(b)});
+   const from=h('input',{type:'time',value:sched.from||'08:00'}),to=h('input',{type:'time',value:sched.to||'17:00'});
+   from.onchange=function(){sched.from=from.value||'08:00';save('Hours saved.')};to.onchange=function(){sched.to=to.value||'17:00';save('Hours saved.')};
+   card.append(days,h('div',{class:'row',style:'margin:6px 0 10px'},h('span',{class:'mute'},'From'),from,h('span',{class:'mute'},'to'),to))}}
+ // 4. Internet for this app.
+ if(!a.prot&&a.p!==SELF_PACKAGE&&!dv.isWindows&&!dv.isBrowser){
+  const nb0=(c.networkBlocklist||{})[a.p],skip0=(c.filterSkipApps||[]).indexOf(a.p)>=0,curNet=nb0?'nonet':skip0?'skip':'normal';
+  const ns=h('div',{class:'seg'});
+  for(const o of [['normal','On, filtered',''],['skip','On, not filtered',''],['nonet','Off','block']]){
+   const b=h('button',{type:'button',class:(curNet===o[0]?'on ':'')+o[2]},o[1]);
+   b.onclick=function(){
+    if(curNet===o[0])return;
+    const s2=new Set(c.filterSkipApps||[]),nb=Object.assign({},c.networkBlocklist||{});
+    s2.delete(a.p);delete nb[a.p];if(o[0]==='skip')s2.add(a.p);if(o[0]==='nonet')nb[a.p]={paused:false};
+    c.filterSkipApps=[...s2];c.networkBlocklist=nb;
+    save(o[0]==='nonet'?'Internet off for '+name+'.':'Internet on for '+name+'.')};
+   ns.append(b)}
+  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Internet for this app'),h('div',{class:'mute'},'Filtered: the web filter applies to it. Not filtered: it skips the filter. Off: it cannot reach the internet.')),ns))}
+ // 5. Uninstall.
+ if(!a.s&&!a.prot&&dv.packages.some(function(x){return x.p===a.p}))card.append(h('div',{class:'row',style:'margin-top:10px'},btn('Uninstall','danger',async function(){
+  if(!confirm('Uninstall '+name+' from '+dv.name+'? This removes the app and its data from the phone.'))return;
+  await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:a.p}});
+  snack('Uninstall queued. The phone does it at its next check-in.');load()})));
+ return card}
 function essApps(box,dv){
  const c=dv.config;
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ const s=search.toLowerCase();
+ const apps=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE&&!a.s&&(!s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s))}).sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)});
+ // At the very top: search, and how to show the apps.
+ const bar=h('div',{class:'card'},h('h2',null,'Apps on this phone ('+apps.length+')'));
+ const q=h('input',{type:'text',placeholder:'Search this phone\'s apps',value:search,style:'flex:1;min-width:160px'});
+ q.oninput=function(){search=q.value;const pos=q.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search this phone\'s apps"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
+ const seg=h('div',{class:'seg',style:'margin:0'});
+ for(const o of [['list','List'],['tiles','Tiles']]){const b=h('button',{type:'button',class:appsView===o[0]?'on':''},o[1]);b.onclick=function(){if(appsView!==o[0])setAppsView(o[0])};seg.append(b)}
+ bar.append(h('div',{class:'row',style:'flex-wrap:wrap'},q,seg),h('div',{class:'mute small',style:'margin-top:8px'},'Tap an app to see and change everything for it.'));
+ box.append(bar);
  // New apps waiting for you.
  const pend=new Map();
  for(const p of ((dv.applied&&dv.applied.pending)||[])){const a=dv.packages.find(function(x){return x.p===p});pend.set(p,(a&&a.l)||p)}
  if(pend.size){
   const pc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Waiting for your approval ('+pend.size+')'),h('div',{class:'mute'},'New apps stay hidden on the phone until you decide.'));
   for(const [pkg,label] of pend){
-   pc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},label),h('div',{class:'mute small mono'},pkg),
+   pc.append(h('div',{class:'app'},appIconEl({p:pkg},40),h('div',{class:'grow'},h('div',{style:'font-weight:500'},label),h('div',{class:'mute small mono'},pkg),
     h('div',{class:'row',style:'margin-top:8px'},
      btn('Allow','',async function(){c.apps[pkg]={mode:'allow',label:label};await save('Allowed '+label+'. It appears on the phone within about 5 minutes.')}),
      btn('Block','danger',async function(){c.apps[pkg]={mode:'block',label:label};await save('Blocked '+label+'.')})))))}
   box.append(pc)}
- // The rules.
+ // The app that was tapped: all its settings.
+ const sel=appSel&&dv.packages.find(function(x){return x.p===appSel});
+ if(sel)box.append(appDetailCard(dv,sel,save));else appSel=null;
+ // The apps themselves.
+ const holder=h('div',{class:'card'});
+ if(!apps.length)holder.append(h('div',{class:'mute'},dv.packages.length?'No apps match.':'The phone has not reported its apps yet.'));
+ if(appsView==='tiles'){
+  const grid=h('div',{class:'tiles',style:'margin-top:0'});
+  for(const a of apps){
+   const f=appFacts(dv,a),first=f[0];
+   const t=h('button',{type:'button',class:'tile'+(appSel===a.p?' sel':'')},appIconEl(a,52),h('span',{class:'nm'},a.l||a.p),
+    h('span',{class:'st '+(first?first[1]:'')},first?first[0]+(f.length>1?' +'+(f.length-1):''):'\u00a0'));
+   t.onclick=function(){appSel=a.p;render();window.scrollTo(0,0)};grid.append(t)}
+  holder.append(grid)}
+ else{
+  const list=h('div',{class:'ctls',style:'max-width:none;box-shadow:none'});
+  for(const a of apps){
+   const f=appFacts(dv,a);
+   const row=h('button',{type:'button',class:'ctl'},appIconEl(a,40),h('span',{class:'grow'},h('span',{class:'ct'},a.l||a.p),
+    h('span',{class:'mute small'},f.length?f.map(function(x){return x[0]}).join(' · '):'Default')),h('span',{class:'mute'},'›'));
+   row.onclick=function(){appSel=a.p;render();window.scrollTo(0,0)};list.append(row)}
+  holder.append(list)}
+ box.append(holder);
+ // The general rules, below the apps.
  const rules=h('div',{class:'card'},h('h2',null,'Rules'));
  rules.append(simpleSwitch('New apps wait for my approval','A new app stays hidden until you allow it.',!!c.approveNew,function(on){c.approveNew=on;save(on?'New apps will wait for you.':'New apps appear by themselves.')}));
  box.append(rules);
  renderAppGroups(box,dv);
- // Every app, with a switch and a time limit.
- const st=c.screenTime=c.screenTime||{dailyLimit:0,bedtime:null,appLimits:{},exempt:[]};st.appLimits=st.appLimits||{};
- const card=h('div',{class:'card'},h('h2',null,'Apps on this phone'),h('div',{class:'mute'},'Allowed or Blocked, and how long each may be used a day. Tap the chosen one again to go back to the default.'));
- const q=h('input',{type:'text',placeholder:'Search this phone\'s apps',value:search,style:'width:100%;margin-top:8px'});
- q.oninput=function(){search=q.value;const pos=q.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search this phone\'s apps"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
- card.append(q);
- const s=search.toLowerCase();
- const apps=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE&&!a.s&&(!s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s))}).sort(function(a,b){
-  const aa=cur(dv,a.p).mode==='allow'?0:1,ab=cur(dv,b.p).mode==='allow'?0:1;return aa!==ab?aa-ab:(a.l||a.p).localeCompare(b.l||b.p)});
- if(!apps.length)card.append(h('div',{class:'mute',style:'margin-top:10px'},dv.packages.length?'No apps match.':'The phone has not reported its apps yet.'));
- for(const a of apps){
-  const mode=cur(dv,a.p).mode;
-  const img=h('img',{src:'/api/icon/'+a.p+'?v='+(iconVer[a.p]||0),alt:'',loading:'lazy'});img.onerror=function(){img.replaceWith(h('div',{class:'ph'}))};
-  const setMode=function(v){
-   const old=c.apps[a.p]||{};
-   if(mode===v){delete c.apps[a.p]}else c.apps[a.p]=v==='allow'?{mode:'allow',label:a.l,schedule:old.schedule||undefined}:{mode:'block',label:a.l};
-   save((a.l||a.p)+(mode===v?': back to the default.':v==='allow'?': allowed.':': blocked.'))};
-  const seg=h('div',{class:'seg',style:'margin-top:0'});
-  for(const o of [['allow','Allowed',''],['block','Blocked','block']]){const b=h('button',{type:'button',class:(mode===o[0]?'on ':'')+o[2]},o[1]);b.onclick=function(){setMode(o[0])};seg.append(b)}
-  const lim=h('select');for(const o of [[0,'No limit'],[15,'15 min a day'],[30,'30 min a day'],[45,'45 min a day'],[60,'1 h a day'],[90,'1.5 h a day'],[120,'2 h a day']])lim.append(new Option(o[1],String(o[0])));
-  lim.value=String(st.appLimits[a.p]||0);if(lim.value!==String(st.appLimits[a.p]||0)){lim.append(new Option(fmtMin(st.appLimits[a.p])+' a day',String(st.appLimits[a.p])));lim.value=String(st.appLimits[a.p])}
-  lim.onchange=function(){const v=parseInt(lim.value,10);if(v)st.appLimits[a.p]=v;else delete st.appLimits[a.p];save('Time limit for '+(a.l||a.p)+' saved.')};
-  card.append(h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},a.l||a.p),
-   a.h?h('div',null,h('span',{class:'chip warn'},'hidden on the phone now')):null,
-   h('div',{class:'row',style:'margin-top:8px'},seg,mode==='block'?null:lim))))}
- card.append(h('div',{class:'row',style:'margin-top:10px'},btn('System apps and everything else','outline',function(){goMore('apps','system')})));
- box.append(card)}
+ box.append(h('div',{class:'card'},h('div',{class:'row'},btn('System apps and everything else','outline',function(){goMore('apps','system')}))))}
+
+/** A drop-down of times with a Custom choice: type any amount in minutes, hours or days. presets = [[minutes,label],...]; onset gets minutes. */
+function timeSelect(presets,value,onset,maxMin){
+ const wrap=h('span',{style:'display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center'});
+ const sel=h('select');for(const o of presets)sel.append(new Option(o[1],String(o[0])));
+ sel.append(new Option('Custom…','__custom'));
+ const v=Number(value)||0;
+ if(!presets.some(function(o){return Number(o[0])===v})){sel.insertBefore(new Option(fmtMin(v),String(v)),sel.lastChild)}
+ sel.value=String(v);
+ const num=h('input',{type:'number',min:'1',placeholder:'amount',style:'width:90px;display:none'}),unit=h('select',{style:'width:auto;display:none'});
+ for(const u of [['1','minutes'],['60','hours'],['1440','days']])unit.append(new Option(u[1],u[0]));
+ const go=btn('Set','tonal',function(){const m=Math.round(Number(num.value)*Number(unit.value));if(!(m>=1)){num.focus();return}onset(Math.min(m,maxMin||1440))});go.style.display='none';
+ sel.onchange=function(){
+  if(sel.value==='__custom'){num.style.display=unit.style.display=go.style.display='';num.focus()}
+  else{num.style.display=unit.style.display=go.style.display='none';onset(parseInt(sel.value,10))}};
+ wrap.append(sel,num,unit,go);return wrap}
 
 /* ----- Screen time, in the new look ----- */
 function essTime(box,dv){
@@ -3636,9 +3757,7 @@ function essTime(box,dv){
  const st=dv.config.screenTime=dv.config.screenTime||{dailyLimit:0,bedtime:null,appLimits:{},exempt:[]};
  const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,'Limits'));
- const dl=h('select');for(const o of [[0,'No limit'],[30,'30 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours'],[300,'5 hours'],[360,'6 hours'],[480,'8 hours']])dl.append(new Option(o[1],String(o[0])));
- dl.value=String(st.dailyLimit||0);if(dl.value!==String(st.dailyLimit||0)){dl.append(new Option(fmtMin(st.dailyLimit),String(st.dailyLimit)));dl.value=String(st.dailyLimit)}
- dl.onchange=function(){st.dailyLimit=parseInt(dl.value,10);save()};
+ const dl=timeSelect([[0,'No limit'],[30,'30 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours'],[300,'5 hours'],[360,'6 hours'],[480,'8 hours']],st.dailyLimit||0,function(m){st.dailyLimit=m;save()},1440);
  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Screen time per day'),h('div',{class:'mute'},'When it is used up the phone locks until midnight. Emergency calls still work.')),dl));
  const bt=st.bedtime;
  card.append(simpleSwitch('Bedtime','The phone locks at night.',!!bt,function(on){st.bedtime=on?{days:[0,1,2,3,4,5,6],from:'21:00',to:'07:00'}:null;save(on?'Bedtime 21:00 to 07:00. Change the times below.':'Bedtime is off.')}));
@@ -3660,7 +3779,8 @@ function essTime(box,dv){
 function essYoutube(box,dv){
  const c=dv.config,cur=c.youtubeMode||'auto';
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
- ytWhichCard(box,dv,'yt');ytWhichCard(box,dv,'music');
+ ytRequestsCard(box,dv,false,false);
+ ytWhichCard(box,dv,'yt');
  const card=h('div',{class:'card'},h('h2',null,'What can they watch on YouTube?'),h('div',{class:'mute small'},'For our YouTube and for the browsers. Which YouTube they use (the real app or ours) is chosen above.'));
  card.append(choiceList([
   ['channels','Only what I allow','Only the channels and videos you pick. Everything else is blocked.'],
@@ -3678,15 +3798,44 @@ function essYoutube(box,dv){
   row.append(btn('Turn Restricted Mode off','outline',function(){c.youtubeDns='off';return save('YouTube Restricted Mode is off. Allowed videos play normally.')}));
   note.append(row);box.append(note)}
  const sw2=h('div',{class:'card'},h('h2',null,'On the phone'));
- sw2.append(simpleSwitch('YouTube icon','A YouTube built into the MDM app. It follows the choice above.',!!c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears at the next check-in.':'The YouTube icon is removed at the next check-in.')}));
- sw2.append(simpleSwitch('YouTube Music icon','Its own music-only icon.',c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'The YouTube Music icon appears at the next check-in.':'The YouTube Music icon is removed at the next check-in.')}));
+ sw2.append(simpleSwitch('YouTube icon','A YouTube built into the LockGuard app. It follows the choice above.',!!c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears at the next check-in.':'The YouTube icon is removed at the next check-in.')}));
  sw2.append(simpleSwitch('Let them search and ask','With "Only what I allow", search works and they can ask for a video or song.',!c.youtubeSearchOff,function(on){c.youtubeSearchOff=!on;save(on?'They can search and ask.':'Search is blocked.')}));
- sw2.append(simpleSwitch('Let them download','Videos and songs are saved on the phone and play with no internet.',c.downloadsOff!==true,function(on){c.downloadsOff=!on;save(on?'Downloads are on.':'Downloads are off.')}));
+ sw2.append(simpleSwitch('Let them download','Videos are saved on the phone and play with no internet. The same switch is on the YouTube Music page: it covers songs too.',c.downloadsOff!==true,function(on){c.downloadsOff=!on;save(on?'Downloads are on.':'Downloads are off.')}));
  sw2.append(simpleSwitch('Allow signing in to YouTube','Only if the child may use their own account.',c.youtubeSignIn===true,function(on){c.youtubeSignIn=on;save(on?'Signing in is allowed.':'Signing in is not allowed.')}));
  box.append(sw2);
  const sites=c.sites||{},nCh=Object.values(sites).filter(function(x){return x.type==='youtube'}).length;
  const more=h('div',{class:'card'});
- for(const r of [['Allowed channels and videos',nCh+(nCh===1?' channel':' channels')+' · find one and allow it',function(){goMore('youtube','yt')}],['Allowed songs','YouTube Music: find a song and allow it',function(){goMore('youtube','music')}]]){
+ for(const r of [['Allowed channels and videos',nCh+(nCh===1?' channel':' channels')+' · find one and allow it',function(){goMore('youtube','yt')}]]){
+  const b=h('button',{type:'button',class:'ctl slim'},h('span',{class:'grow'},h('span',{class:'ct'},r[0]),h('span',{class:'mute'},r[1])),h('span',{class:'mute'},'›'));b.onclick=r[2];more.append(b)}
+ box.append(more)}
+
+/* ----- YouTube Music, in the new look: its own page ----- */
+const MUSIC_CHOICES=[
+ ['auto','Same as YouTube','Follows the choice on the YouTube page.'],
+ ['channels','Only the songs I approve','Only the music you approve plays. Anything else shows "Ask for this song" and sends you a request.'],
+ ['restricted','Search and play, restricted','Search and play with YouTube\'s own filtering. Music only: no videos or channels.'],
+ ['open','Open','Our YouTube Music as it is, with no limits from here.'],
+ ['blocked','Off','Our YouTube Music does not open at all.']];
+function essMusic(box,dv){
+ const c=dv.config,cur=c.musicMode||'auto';
+ const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
+ ytRequestsCard(box,dv,true,false);
+ ytWhichCard(box,dv,'music');
+ const card=h('div',{class:'card'},h('h2',null,'What can they play in our YouTube Music?'),h('div',{class:'mute small'},'Only for our YouTube Music icon. Which YouTube Music they use (the real app or ours) is chosen above. Needs the latest LockGuard on the phone.'));
+ card.append(choiceList(MUSIC_CHOICES,cur,function(v){c.musicMode=v;save('YouTube Music: '+(MUSIC_CHOICES.find(function(x){return x[0]===v})||[0,v])[1]+'.')}));
+ box.append(card);
+ const sw2=h('div',{class:'card'},h('h2',null,'On the phone'));
+ sw2.append(simpleSwitch('YouTube Music icon','Our own music-only icon.',c.youtubeMusicAddon===true,function(on){c.youtubeMusicAddon=on;save(on?'The YouTube Music icon appears at the next check-in.':'The YouTube Music icon is removed at the next check-in.')}));
+ sw2.append(simpleSwitch('Let them download songs','Songs are saved on the phone as sound only and play with no internet. The same switch is on the YouTube page: it covers videos too.',c.downloadsOff!==true,function(on){c.downloadsOff=!on;save(on?'Downloads are on.':'Downloads are off.')}));
+ box.append(sw2);
+ const mpSel=h('select');
+ for(const o of [['allowed','Only for songs you approved (recommended)'],['show','Always show'],['hide','Never show']])mpSel.append(new Option(o[1],o[0]));
+ mpSel.value=c.musicPictures||'allowed';
+ mpSel.onchange=function(){c.musicPictures=mpSel.value;save(mpSel.value==='allowed'?'Album art shows for approved songs only.':mpSel.value==='show'?'Song pictures are shown everywhere.':'Song pictures are hidden everywhere.')};
+ box.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Song pictures'),h('div',{class:'mute'},'Album art in our YouTube Music icon.')),mpSel)));
+ const nSongs=Object.values(c.sites||{}).filter(function(x){return isMusicUrl(x.url||'')}).length;
+ const more=h('div',{class:'card'});
+ for(const r of [['Approve music',nSongs+(nSongs===1?' song':' songs')+' allowed · find a song, an artist or an album',function(){goMore('music','music')}]]){
   const b=h('button',{type:'button',class:'ctl slim'},h('span',{class:'grow'},h('span',{class:'ct'},r[0]),h('span',{class:'mute'},r[1])),h('span',{class:'mute'},'›'));b.onclick=r[2];more.append(b)}
  box.append(more)}
 

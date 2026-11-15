@@ -854,13 +854,13 @@ final class PhoneRules {
         } catch (Exception ignored) {
         }
         boolean location = a.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-        healthRow(a, card, Agent.isOwner(a), "MDM Agent is in full control", "Set the phone up again with the QR code.", null);
+        healthRow(a, card, Agent.isOwner(a), "LockGuard is in full control", "Set the phone up again with the QR code.", null);
         healthRow(a, card, DnsFilterVpnService.filterRunning || !needsFilter(a), "Website filter running", "Restart the phone.", null);
         healthRow(a, card, a11y, "Accessibility switch on (message alerts, screenshots, WhatsApp, web pages in apps)",
-                "Tap: Accessibility → MDM Agent → on.", new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
-        healthRow(a, card, battery, "Battery saver leaves MDM Agent alone", "Tap: Battery → Unrestricted.",
+                "Tap: Accessibility → LockGuard → on.", new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        healthRow(a, card, battery, "Battery saver leaves LockGuard alone", "Tap: Battery → Unrestricted.",
                 new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-        healthRow(a, card, Agent.usageAccessOn(a), "Usage access on (screen time)", "Tap: MDM Agent → allow.",
+        healthRow(a, card, Agent.usageAccessOn(a), "Usage access on (screen time)", "Tap: LockGuard → allow.",
                 new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS));
         healthRow(a, card, location, "Location allowed (location history, \"I need help\")", "Tap: Permissions → Location → Allow all the time.",
                 new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + a.getPackageName())));
@@ -899,7 +899,7 @@ final class PhoneRules {
         toggle(a, card, c, "freezeUpdates", "Freeze system updates", "Android system updates wait (they can reset settings).", rebuild);
         toggle(a, card, c, "disableBiometricUnlock", "No fingerprint or face unlock", "Only the PIN unlocks the screen.", rebuild);
         if (!off) {
-            toggle(a, card, c, "autoUpdate", "Keep MDM Agent up to date by itself", "Installs new versions of this app automatically.", rebuild);
+            toggle(a, card, c, "autoUpdate", "Keep LockGuard up to date by itself", "Installs new versions of this app automatically.", rebuild);
             toggle(a, card, c, "reportWifi", "Show the Wi-Fi name on the dashboard", "Needs Location on.", rebuild);
             toggle(a, card, c, "recordSites", "Keep a list of sites visited", "Shown on the dashboard (Browser → Sites visited).", rebuild);
         }

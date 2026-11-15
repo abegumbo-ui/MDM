@@ -598,6 +598,7 @@ export function normalizeConfig(input) {
     // "moderate" and "strict" open the web but block whole categories (see tools/build-blocklists.mjs).
     browserFilter: BROWSER_FILTERS.includes(c.browserFilter) ? c.browserFilter : "off",
     youtubeMode: YOUTUBE_MODES.includes(c.youtubeMode) ? c.youtubeMode : "auto",
+    musicMode: YOUTUBE_MODES.includes(c.musicMode) ? c.musicMode : "auto", // our YouTube Music's own choice; "auto" = the same as YouTube
     screenTime: normalizeScreenTime(c.screenTime),
     chromePolicy: normalizeChromePolicy(c.chromePolicy),
     blockedWords: normalizeBlockedWords(c.blockedWords),
@@ -625,14 +626,14 @@ export function normalizeConfig(input) {
     browserLook: c.browserLook === "chrome" ? "chrome" : "classic",
     // Ad servers blocked phone-wide (with Moderate or Strict): the "+ads" lists.
     blockAds: c.blockAds === true,
-    // The YouTube add-on (its own icon in the MDM app) and what YouTube shows when it is turned off.
+    // The YouTube add-on (its own icon in the LockGuard app) and what YouTube shows when it is turned off.
     youtubeAddon: c.youtubeAddon === true,
     // The YouTube Music icon on the phone (same rules as YouTube).
     youtubeMusicAddon: c.youtubeMusicAddon === true,
     // Pictures in the YouTube Music icon (album art, thumbnails, video frames): "allowed" = only for songs the parent approved (the default),
     // "show" = everywhere, "hide" = nowhere.
     musicPictures: c.musicPictures === "show" ? "show" : c.musicPictures === "hide" ? "hide" : "allowed",
-    // Downloading YouTube videos (yt-dlp, in the MDM app): on unless switched off.
+    // Downloading YouTube videos (yt-dlp, in the LockGuard app): on unless switched off.
     downloadsOff: c.downloadsOff === true,
     // "Only what I allow": the child may search YouTube and ask for videos (on unless switched off).
     youtubeSearchOff: c.youtubeSearchOff === true,
@@ -640,7 +641,7 @@ export function normalizeConfig(input) {
     youtubeSearchPictures: c.youtubeSearchPictures === "skin" ? "skin" : "hide",
     // Signing in to YouTube (and Google's sign-in page) opens only when the parent allowed it.
     youtubeSignIn: c.youtubeSignIn === true,
-    // The phone closes the Settings pages of the MDM app (accessibility switch, App info) and the certificate pages.
+    // The phone closes the Settings pages of the LockGuard app (accessibility switch, App info) and the certificate pages.
     protectScreens: c.protectScreens !== false,
     // Whole screens of apps closed the moment they open (picked on the phone with ✓ Block this screen).
     blockedScreens: normalizeBlockedScreens(c.blockedScreens),
@@ -935,6 +936,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.blockAds = cfg.blockAds;
   out.youtubeAddon = cfg.youtubeAddon;
   out.youtubeMusicAddon = cfg.youtubeMusicAddon;
+  out.musicMode = cfg.musicMode === "auto" ? out.youtubeMode : cfg.musicMode; // the phone's Music icon reads this (older builds read youtubeMode)
   out.musicPictures = cfg.musicPictures;
   out.downloads = !cfg.downloadsOff;
   out.youtubeSearch = !cfg.youtubeSearchOff;
@@ -1041,7 +1043,7 @@ export function summarizeConfigChange(before, after) {
   if (JSON.stringify(before.blockedComponents || []) !== JSON.stringify(after.blockedComponents || [])) lines.push("Blocked app screens (by name of the screen): " + (after.blockedComponents || []).length);
   if (JSON.stringify(before.blockedScreens || []) !== JSON.stringify(after.blockedScreens || [])) lines.push("Blocked whole screens of apps: " + (after.blockedScreens || []).length);
   if (!!before.blockVideos !== !!after.blockVideos) lines.push("Videos on web pages: " + (after.blockVideos ? "blocked" : "shown"));
-  if (!!before.protectScreens !== !!after.protectScreens) lines.push("Protected Settings pages (MDM app, certificate): " + (after.protectScreens ? "on" : "off"));
+  if (!!before.protectScreens !== !!after.protectScreens) lines.push("Protected Settings pages (LockGuard app, certificate): " + (after.protectScreens ? "on" : "off"));
   if (!!before.youtubeSignIn !== !!after.youtubeSignIn) lines.push("Signing in to YouTube: " + (after.youtubeSignIn ? "allowed" : "not allowed"));
   if (!!before.messageAlerts !== !!after.messageAlerts) lines.push("Message alerts: " + (after.messageAlerts ? "on" : "off"));
   if (JSON.stringify(before.messageWords || []) !== JSON.stringify(after.messageWords || []) || JSON.stringify(before.messageGroups || null) !== JSON.stringify(after.messageGroups || null)) lines.push("Message alert words changed");
@@ -1089,6 +1091,7 @@ export function summarizeConfigChange(before, after) {
   if (!!before.tlsInspection !== !!after.tlsInspection) lines.push("Browser inspection: " + (after.tlsInspection ? "on" : "off"));
   if (!!before.inspectSkipGoogle !== !!after.inspectSkipGoogle) lines.push("Inspecting Google: " + (after.inspectSkipGoogle ? "skipped" : "on"));
   if ((before.youtubeMode || "auto") !== (after.youtubeMode || "auto")) lines.push("YouTube in the browsers: " + (after.youtubeMode || "auto"));
+  if ((before.musicMode || "auto") !== (after.musicMode || "auto")) lines.push("Our YouTube Music: " + (after.musicMode || "auto"));
   if (JSON.stringify(before.frpAccounts) !== JSON.stringify(after.frpAccounts)) lines.push("Factory Reset Protection accounts changed");
   if (JSON.stringify(Object.keys(before.sites || {})) !== JSON.stringify(Object.keys(after.sites || {}))) lines.push("Sites list changed");
   if (JSON.stringify(Object.keys(before.wholeAppBlocklist || {}).sort()) !== JSON.stringify(Object.keys(after.wholeAppBlocklist || {}).sort()))

@@ -164,9 +164,9 @@ final class SettingsMenu {
 
     /**
      * What was last on screen in Settings, looking back 15 minutes -- for Learn: already sitting on
-     * the target screen, then pressing Learn, or coming back from Settings into MDM Agent itself.
+     * the target screen, then pressing Learn, or coming back from Settings into LockGuard itself.
      * Tracks the most recent settings-ish event specifically, not just the single most recent
-     * foreground event of any kind: switching back into MDM Agent to finish the capture is itself a
+     * foreground event of any kind: switching back into LockGuard to finish the capture is itself a
      * foreground event, for com.familymdm.agent, and it would otherwise be the last one seen,
      * overwriting the real answer with "myself" every single time. Returns "pkg/cls", or null if
      * nothing settings-ish happened in the last 15 minutes at all.
