@@ -535,6 +535,9 @@ public class AgentService extends Service {
                 case "setPin":
                     msg = Actions.setPin(this, args.optString("pin"));
                     break;
+                case "askPinControl":
+                    msg = Actions.askPinControl(this);
+                    break;
                 case "clearPin":
                     msg = Actions.clearPin(this);
                     break;

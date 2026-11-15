@@ -199,6 +199,23 @@ final class Actions {
         }
     }
 
+    /**
+     * From the dashboard ("Show the PIN-control prompt on the phone"): makes Android's own "confirm your screen lock" screen appear on the
+     * phone. Whoever is holding it enters the CURRENT lock once; that is what switches PIN control on (Android lets nobody else approve it,
+     * not even the manager of the phone). A phone with no lock needs nothing: it is ready at once.
+     */
+    static String askPinControl(Context c) {
+        prepareTokenQuietly(c);
+        if (!hasScreenLock(c)) return "this phone has no screen lock, so PIN control is ready already";
+        if (pinControlActive(c)) return "PIN control is already on";
+        KeyguardManager km = c.getSystemService(KeyguardManager.class);
+        Intent i = km.createConfirmDeviceCredentialIntent("Turn on PIN control", "Enter the current screen lock once. This lets the dashboard set or remove the lock.");
+        if (i == null) return "there is nothing to confirm on this phone";
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        c.startActivity(i);
+        return "the prompt is showing on the phone: enter the current screen lock there once to turn PIN control on";
+    }
+
     private static byte[] token(Context c) {
         String stored = Agent.prefs(c).getString("rpToken", null);
         if (stored != null) return Base64.decode(stored, Base64.NO_WRAP);
