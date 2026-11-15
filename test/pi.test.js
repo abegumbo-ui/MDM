@@ -256,6 +256,58 @@ test("the Pi keeps an outage history: whole-Pi restarts, long stops, and phones 
   assert.equal(typeof got.now, "number");
   await app.stop();
 });
+test("taking back after an outage keeps what a phone told the Pi meanwhile and phones only the Pi knows; Cloudflare's real changes still win", async () => {
+  const secret = "s3cret-for-the-test";
+  const backup = await createApp({ dataDir: tmp(), vars: { ADMIN_PASSWORD: "x", ROLE: "backup", REPLICA_SECRET: secret }, replication: false, scheduleMs: 0 });
+  const backupPort = await listen(backup);
+  const vars = { ADMIN_PASSWORD: "y", ROLE: "main", REPLICA_SECRET: secret, BACKUP_URL: `http://127.0.0.1:${backupPort}`, PRIMARY_URL: "https://pi.example" };
+  const pi = await createApp({ dataDir: tmp(), vars, scheduleMs: 0 });
+  await pi.repl.first;
+  const phone = (extra = {}) => JSON.stringify({ id: "p1", name: "Phone", tokenHash: "h", config: { browserFilter: "strict" }, lastSeen: 1000, events: [], calls: [], ...extra });
+  const down = () => noteBackupUse({ ROLE: "backup", STATE: backup.kv }, { viaBackup: true });
+
+  await pi.kv.put("device:p1", phone());
+  let r = await pi.repl.flush();
+  assert.equal(r.sent, 1, "the phone is on Cloudflare");
+  // The phone keeps checking in to the Pi (routine state only: not copied), and a new phone is enrolled on the Pi.
+  await pi.kv.put("device:p1", phone({ lastSeen: 5000, events: ["a", "b"], calls: [{ number: "+1" }] }));
+  await pi.kv.put("device:p9", JSON.stringify({ id: "p9", name: "Brand new", tokenHash: "n" }));
+  // Meanwhile a different phone could not reach the Pi and used Cloudflare.
+  await backup.kv.put("device:p2", JSON.stringify({ id: "p2", name: "Other", tokenHash: "o", lastSeen: 9000 }));
+  await down();
+  const writesBefore = pi.repl.status().usage.writes;
+  r = await pi.repl.flush();
+  assert.equal(r.tookBack, true);
+  const p1 = await pi.kv.get("device:p1", "json");
+  assert.deepEqual(p1.events, ["a", "b"], "what the phone reported to the Pi is not erased by Cloudflare's older copy");
+  assert.deepEqual(p1.calls, [{ number: "+1" }], "its call log too");
+  assert.equal(p1.lastSeen, 5000);
+  assert.ok(await pi.kv.get("device:p9"), "a phone only the Pi knew is kept");
+  assert.equal((await pi.kv.get("device:p2", "json")).lastSeen, 9000, "what Cloudflare saved for the other phone is here");
+  assert.ok(await backup.kv.get("device:p9"), "and Cloudflare gets the new phone in the same copy");
+  assert.equal(pi.repl.status().usage.writes - writesBefore, 1, "only the new phone was saved on Cloudflare, not every phone");
+  assert.equal(await backup.kv.get("repl:outage"), null, "the outage is over");
+
+  // An administrator changed this phone's settings on Cloudflare during an outage, while the Pi kept its fresher routine state.
+  await backup.kv.put("device:p1", phone({ config: { browserFilter: "moderate" }, lastSeen: 2000 }));
+  await down();
+  await pi.kv.put("device:p1", phone({ lastSeen: 7000, events: ["a", "b", "c"], calls: [{ number: "+1" }, { number: "+2" }] }));
+  r = await pi.repl.flush();
+  assert.equal(r.tookBack, true);
+  const p1b = await pi.kv.get("device:p1", "json");
+  assert.equal(p1b.config.browserFilter, "moderate", "Cloudflare's change of the settings wins");
+  assert.deepEqual(p1b.events, ["a", "b", "c"], "and the Pi's fresher routine state stays");
+  assert.equal(p1b.lastSeen, 7000);
+
+  // The phone that was last seen on Cloudflare has the fresher routine state there: that one is kept.
+  await backup.kv.put("device:p2", JSON.stringify({ id: "p2", name: "Other", tokenHash: "o", lastSeen: 20000, events: ["only-on-cloudflare"] }));
+  await down();
+  r = await pi.repl.flush();
+  assert.equal(r.tookBack, true);
+  assert.deepEqual((await pi.kv.get("device:p2", "json")).events, ["only-on-cloudflare"]);
+  await pi.stop();
+  await backup.stop();
+});
 test("the backup answers /internal only with the shared secret, and tells phones which servers to use", async () => {
   const app = await createApp({ dataDir: tmp(), vars: { ADMIN_PASSWORD: "x", ROLE: "backup", REPLICA_SECRET: "abc", PRIMARY_URL: "https://pi.example/", BACKUP_URL: "https://mdm.example" }, replication: false, scheduleMs: 0 });
   const port = await listen(app);
