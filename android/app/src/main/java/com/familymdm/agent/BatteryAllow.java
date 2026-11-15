@@ -25,6 +25,30 @@ final class BatteryAllow {
         return pm != null && pm.isIgnoringBatteryOptimizations(c.getPackageName());
     }
 
+    /**
+     * As the device owner on Android 14 and newer, Android lets the manager exempt an app from standby, hibernation and power restrictions
+     * (DevicePolicyManager.setApplicationExemptions) with no question to anybody. Done by reflection: the call is not in every build, and when it is
+     * missing or refused nothing happens and the question below is asked instead.
+     */
+    static void exemptAsOwner(Context c, android.app.admin.DevicePolicyManager dpm) {
+        if (android.os.Build.VERSION.SDK_INT < 34 || dpm == null) return;
+        try {
+            java.util.Set<Integer> which = new java.util.HashSet<>();
+            for (String name : new String[] {"EXEMPT_FROM_APP_STANDBY", "EXEMPT_FROM_APP_HIBERNATION", "EXEMPT_FROM_POWER_RESTRICTIONS"}) {
+                try {
+                    which.add(android.app.admin.DevicePolicyManager.class.getField(name).getInt(null));
+                } catch (Exception ignored) {
+                    // this Android does not have that one
+                }
+            }
+            if (which.isEmpty()) return;
+            java.lang.reflect.Method m = android.app.admin.DevicePolicyManager.class.getMethod("setApplicationExemptions", String.class, java.util.Set.class);
+            m.invoke(dpm, c.getPackageName(), which);
+        } catch (Exception e) {
+            android.util.Log.w("MdmAgent", "setApplicationExemptions not possible here: " + e);
+        }
+    }
+
     /** Shows Android's "Allow app to always run in the background?" question, when it is needed and not asked lately. */
     static void ask(Context c) {
         if (unrestricted(c)) return;

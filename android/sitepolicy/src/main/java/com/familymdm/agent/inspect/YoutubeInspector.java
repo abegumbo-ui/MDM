@@ -55,6 +55,9 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     private volatile String channelScripts;
     private volatile Set<String> allowedHandles = java.util.Collections.emptySet();
     private volatile Set<String> allowedVideos = java.util.Collections.emptySet();
+    /** The songs of YouTube Music (music.youtube.com), kept apart from the videos of YouTube. */
+    private volatile Set<String> allowedSongs = java.util.Collections.emptySet();
+    private volatile String musicScripts;
 
     /**
      * "Only what I allow" in every browser that goes through Inspection: YouTube's home page (its feed
@@ -64,13 +67,31 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
      * &lt;script&gt; tags for its pages (the panel and the cover/guard script).
      */
     public void setYoutubeChannels(Set<String> handles, Set<String> videos, String pageScripts) {
+        // One list for both (what an older caller means): the same videos and scripts on YouTube Music too.
+        setYoutubeChannels(handles, videos, videos, pageScripts, pageScripts);
+    }
+
+    /**
+     * The same with YouTube Music kept apart: videos and pageScripts are for YouTube (youtube.com, m.youtube.com, youtu.be), songs and
+     * musicScripts for YouTube Music (music.youtube.com). A song never opens on YouTube and a video never opens on YouTube Music, and each
+     * home page lists only its own.
+     */
+    public void setYoutubeChannels(Set<String> handles, Set<String> videos, Set<String> songs, String pageScripts, String musicPageScripts) {
         if (handles == null) {
             channelScripts = null;
+            musicScripts = null;
             return;
         }
         allowedHandles = handles;
         allowedVideos = videos == null ? java.util.Collections.<String>emptySet() : videos;
+        allowedSongs = songs == null ? java.util.Collections.<String>emptySet() : songs;
         channelScripts = pageScripts == null ? "" : pageScripts;
+        musicScripts = musicPageScripts == null ? "" : musicPageScripts;
+    }
+
+    /** The scripts for this YouTube address: Music's own on music.youtube.com. */
+    private String scriptsFor(String host) {
+        return SitePolicy.isMusicHost(host) ? musicScripts : channelScripts;
     }
 
     private boolean channels(String host) {
@@ -121,6 +142,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     boolean channelPageAllowed(String url, String html) {
         String vid = SitePolicy.youtubeVideoId(url);
         if (vid != null) {
+            if (SitePolicy.isMusicHost(SitePolicy.hostOf(url))) return allowedSongs.contains(vid); // a song: only the approved ones (channels are not Music's)
             if (allowedVideos.contains(vid)) return true;
             String owner = ownerOf(html);
             return owner != null && allowedHandles.contains(owner);
@@ -300,7 +322,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         if (perSite) return true;
         // The picture of a song or video the parent approved always shows, even with "No pictures" on.
         String picId = thumbnailId(r.path);
-        if (picId != null && allowedVideos.contains(picId)) return false;
+        if (picId != null && (allowedVideos.contains(picId) || allowedSongs.contains(picId))) return false;
         // YouTube Music's own art (which pictures show is decided on the page).
         if (musicPictures && "music.youtube.com".equals(SitePolicy.hostOf(r.headers.get("Referer")))) return false;
         // Allowed if the page showing it, or the picture's own site, is on the "show pictures" list.
@@ -419,7 +441,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         if (ch && !channelPageAllowed(r.url(), html)) return notAllowedYoutube(r.url()).getBytes(StandardCharsets.UTF_8);
         String tag = (ads != null ? "<script>" + ads + "</script>" : "")
                 + (yt ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" + restrictedCover() : "")
-                + (ch ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" + channelScripts : "")
+                + (ch ? "<style>" + YoutubeRestricted.HIDE_CSS + "</style><script>" + YoutubeRestricted.HIDE_SCRIPT + "</script>" + scriptsFor(r.host) : "")
                 + (js != null ? "<script>" + js + "</script>" : "")
                 + (noVideo ? NO_VIDEO_TAG : "");
         int head = html.toLowerCase(java.util.Locale.ROOT).indexOf("<head");

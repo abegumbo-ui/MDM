@@ -119,8 +119,8 @@ final class TlsInspection {
             return;
         }
         try {
-            Set<String> handles = new HashSet<>(), videos = new HashSet<>();
-            JSONArray ch = new JSONArray(), vids = new JSONArray();
+            Set<String> handles = new HashSet<>(), videos = new HashSet<>(), songs = new HashSet<>();
+            JSONArray ch = new JSONArray(), vids = new JSONArray(), songList = new JSONArray();
             JSONArray raw = policy.optJSONArray("sites");
             for (int i = 0; raw != null && i < raw.length(); i++) {
                 JSONObject s = raw.optJSONObject(i);
@@ -137,14 +137,21 @@ final class TlsInspection {
                     boolean yt = host != null && (com.familymdm.agent.sitepolicy.SitePolicy.isYoutubeHost(host) || "youtu.be".equals(host));
                     String id = yt ? com.familymdm.agent.sitepolicy.SitePolicy.youtubeVideoId(u) : null;
                     if (id == null) continue;
-                    videos.add(id);
                     String t = s.optString("label", "");
-                    vids.put(new JSONObject().put("v", id).put("t", "YouTube video".equals(t) ? "" : t).put("i", thumb));
+                    JSONObject item = new JSONObject().put("v", id).put("t", "YouTube video".equals(t) ? "" : t).put("i", thumb);
+                    // Songs (music.youtube.com) and videos are kept apart: each page lists and opens only its own.
+                    if (com.familymdm.agent.sitepolicy.SitePolicy.isMusicHost(host)) { songs.add(id); songList.put(item); }
+                    else { videos.add(id); vids.put(item); }
                 }
             }
             String shelf = com.familymdm.agent.sitepolicy.YoutubeScripts.shelf(new JSONObject().put("channels", ch).put("videos", vids).put("ask", false).toString());
             String cover = com.familymdm.agent.sitepolicy.YoutubeScripts.cover(new JSONObject().put("channels", ch).put("videos", vids).put("cover", "channels").put("guard", true).toString());
-            rules.setYoutubeChannels(handles, videos, (shelf != null ? "<script>" + shelf + "</script>" : "") + (cover != null ? "<script>" + cover + "</script>" : ""));
+            // YouTube Music's own pair: only the songs, no channels.
+            String mShelf = com.familymdm.agent.sitepolicy.YoutubeScripts.shelf(new JSONObject().put("channels", new JSONArray()).put("videos", songList).put("ask", false).put("music", true).toString());
+            String mCover = com.familymdm.agent.sitepolicy.YoutubeScripts.cover(new JSONObject().put("channels", new JSONArray()).put("videos", songList).put("cover", "channels").put("guard", true).toString());
+            rules.setYoutubeChannels(handles, videos, songs,
+                    (shelf != null ? "<script>" + shelf + "</script>" : "") + (cover != null ? "<script>" + cover + "</script>" : ""),
+                    (mShelf != null ? "<script>" + mShelf + "</script>" : "") + (mCover != null ? "<script>" + mCover + "</script>" : ""));
         } catch (Exception e) {
             rules.setYoutubeChannels(java.util.Collections.<String>emptySet(), java.util.Collections.<String>emptySet(), "");
         }

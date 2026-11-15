@@ -403,9 +403,11 @@ public final class Guard {
             return Decision.no(page("YouTube is off", esc(FilterStore.youtubeOffMessage(c)), askButton("https://www.youtube.com/", "Ask to open YouTube") + homeButton()));
         // A single allowed video opens in every mode, whatever extras its link carries (start time, share code).
         String videoId = SitePolicy.isYoutubeHost(SitePolicy.hostOf(url)) || "youtu.be".equals(SitePolicy.hostOf(url)) ? SitePolicy.youtubeVideoId(url) : null;
-        if (videoId != null && allowedVideoIds(c).contains(videoId)) return Decision.trustedYes();
-        // A video from an allowed channel (already known): shown as it is too.
-        if (videoId != null) {
+        // YouTube Music and YouTube are separate: a song opens on music.youtube.com only, a video everywhere else.
+        boolean musicPage = SitePolicy.isMusicHost(SitePolicy.hostOf(url));
+        if (videoId != null && allowedVideoIds(c, musicPage).contains(videoId)) return Decision.trustedYes();
+        // A video from an allowed channel (already known): shown as it is too. (Channels are YouTube's, not YouTube Music's.)
+        if (videoId != null && !musicPage) {
             String known = YoutubeLookup.cached(c, videoId);
             if (known != null && !known.isEmpty() && SitePolicy.youtubeChannelAllowed(known, sites(c))) return Decision.trustedYes();
         }
@@ -602,17 +604,23 @@ public final class Guard {
         Context c = ctx.getApplicationContext();
         String m = FilterStore.youtubeMode(c);
         if (url == null || !isYoutubeAddress(url) || !("restricted".equals(m) || "channels".equals(m))) return null;
-        String shelf = shelfScript(c);
-        String cover = coverScript(c, m);
+        boolean music = SitePolicy.isMusicHost(SitePolicy.hostOf(url));
+        String shelf = shelfScript(c, music);
+        String cover = coverScript(c, m, music);
         return YoutubeRestricted.HIDE_SCRIPT + (shelf != null ? shelf : "") + (cover != null ? cover : "");
     }
 
     /** Covers the videos that may not be watched (every page in "Only what I allow"; suggestions in Restricted). */
     static String coverScript(Context c, String mode) {
+        return coverScript(c, mode, false);
+    }
+
+    /** The same for YouTube Music (music = true: only the songs are let through, and no channel is) or for YouTube (only the videos). */
+    static String coverScript(Context c, String mode, boolean music) {
         try {
             JSONArray ch = new JSONArray(), vids = new JSONArray();
-            for (SitePolicy.Site s : sites(c)) if ("youtube".equals(s.type) && s.live()) ch.put(new JSONObject().put("h", s.id));
-            for (String id : allowedVideoIds(c)) vids.put(new JSONObject().put("v", id));
+            if (!music) for (SitePolicy.Site s : sites(c)) if ("youtube".equals(s.type) && s.live()) ch.put(new JSONObject().put("h", s.id));
+            for (String id : allowedVideoIds(c, music)) vids.put(new JSONObject().put("v", id));
             return com.familymdm.agent.sitepolicy.YoutubeScripts.cover(new JSONObject().put("cover", mode).put("channels", ch).put("videos", vids)
                     .put("askSearch", "channels".equals(mode) && FilterStore.youtubeSearch(c) && mode(c) != Mode.UNCONFIGURED)
                     .put("askPictures", FilterStore.youtubeSearchPictures(c)).toString());
@@ -658,8 +666,15 @@ public final class Guard {
         return m.find() && allowedVideoIds(c).contains(m.group(1));
     }
 
-    /** Ids of the single YouTube videos on the allowed list. */
+    /** Ids of every song and video on the allowed list (for a picture of either). */
     static Set<String> allowedVideoIds(Context c) {
+        Set<String> out = allowedVideoIds(c, false);
+        out.addAll(allowedVideoIds(c, true));
+        return out;
+    }
+
+    /** Ids of the single YouTube videos on the allowed list; music = true: the songs (music.youtube.com) instead of the videos. */
+    static Set<String> allowedVideoIds(Context c, boolean music) {
         Set<String> out = new HashSet<>();
         JSONArray a = rawSites(c);
         for (int i = 0; i < a.length(); i++) {
@@ -668,6 +683,7 @@ public final class Guard {
             String u = s.optString("url", "");
             String h = SitePolicy.hostOf(u);
             if (h == null || !(SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h))) continue;
+            if (SitePolicy.isMusicHost(h) != music) continue; // songs for Music, videos for YouTube
             String id = SitePolicy.youtubeVideoId(u);
             if (id != null) out.add(id);
         }
@@ -675,7 +691,7 @@ public final class Guard {
     }
 
     /** What the MDM app has downloaded (its files/downloads/downloads.json), for YouTube's home page. */
-    private static JSONArray downloadedForPages(Context c) {
+    private static JSONArray downloadedForPages(Context c, boolean music) {
         JSONArray out = new JSONArray();
         if (mode(c) != Mode.AGENT) return out;
         try {
@@ -686,6 +702,7 @@ public final class Guard {
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.optJSONObject(i);
                 if (o == null || !new java.io.File(dir, o.optString("file")).exists()) continue;
+                if ("music".equals(o.optString("k")) != music) continue; // downloaded songs for Music, downloaded videos for YouTube
                 out.put(new JSONObject().put("v", o.optString("id")).put("t", o.optString("t")).put("i", o.optString("i")));
             }
         } catch (Exception ignored) {
@@ -704,6 +721,11 @@ public final class Guard {
 
     /** "Your channels" and "Your videos" on YouTube's home page (assets/youtube_shelf.js), or null if none. */
     static String shelfScript(Context c) {
+        return shelfScript(c, false);
+    }
+
+    /** The same for YouTube Music's page (music = true: the songs, "Your music") or YouTube's (the channels and videos). */
+    static String shelfScript(Context c, boolean music) {
         try {
             JSONArray channels = new JSONArray(), videos = new JSONArray();
             JSONArray a = rawSites(c);
@@ -713,12 +735,14 @@ public final class Guard {
                 String thumb = s.optString("thumb", "");
                 if (!thumb.startsWith("https://")) thumb = "";
                 if ("youtube".equals(s.optString("type"))) {
+                    if (music) continue; // channels are YouTube's, not Music's
                     String handle = s.optString("id", "");
                     if (!handle.matches("@[a-z0-9._-]{3,30}")) continue;
                     channels.put(new JSONObject().put("h", handle).put("t", s.optString("label", handle).replaceFirst("^YouTube channel ", "")).put("i", thumb));
                 } else {
                     String h = SitePolicy.hostOf(s.optString("url", ""));
                     if (h == null || !(SitePolicy.isYoutubeHost(h) || "youtu.be".equals(h))) continue;
+                    if (SitePolicy.isMusicHost(h) != music) continue; // Music lists songs, YouTube lists videos
                     String id = SitePolicy.youtubeVideoId(s.optString("url", ""));
                     if (id == null) continue;
                     String t = s.optString("label", "");
@@ -726,9 +750,9 @@ public final class Guard {
                 }
             }
             boolean ask = "channels".equals(FilterStore.youtubeMode(c)) && mode(c) != Mode.UNCONFIGURED;
-            JSONArray downloads = downloadedForPages(c);
+            JSONArray downloads = downloadedForPages(c, music);
             if (channels.length() == 0 && videos.length() == 0 && !ask && downloads.length() == 0) return null;
-            return com.familymdm.agent.sitepolicy.YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads).toString());
+            return com.familymdm.agent.sitepolicy.YoutubeScripts.shelf(new JSONObject().put("channels", channels).put("videos", videos).put("ask", ask).put("downloads", downloads).put("music", music).toString());
         } catch (Exception e) {
             return null;
         }

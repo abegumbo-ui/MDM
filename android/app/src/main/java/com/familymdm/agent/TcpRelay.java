@@ -123,6 +123,23 @@ final class TcpRelay {
         Tcb tcb = tcbs.get(key);
         if (tcb == null) return; // unknown/already-closed connection -- nothing to do with it
         tcb.lastActivity = System.currentTimeMillis();
+        // "Turn the internet off" has to cut connections that were already open too: an app keeps one connection to Google or YouTube open for
+        // minutes and reuses it for every search, and the check at the connection's start (above) was made before the internet was switched off.
+        // Once per connection for each off period.
+        long offUntil = Protection.internetOffUntil(context);
+        if (offUntil != 0 && tcb.offCheckedFor != offUntil) {
+            tcb.offCheckedFor = offUntil;
+            if (tcb.pkg == null) {
+                int ownerUid = uidResolver.uidFor(NetUtil.IPPROTO_TCP, new InetSocketAddress(ipToInet(srcIp), srcPort), new InetSocketAddress(ipToInet(dstIp), dstPort));
+                tcb.pkg = uidResolver.packageFor(ownerUid);
+            }
+            if (!Protection.internetAllowed(context, tcb.pkg)) {
+                tcb.networkBlocked = true;
+                TrafficLog.add(context, TrafficLog.KIND_NET, ipString(dstIp) + ":" + dstPort, -1, tcb.pkg == null ? "Unknown app" : tcb.pkg, true);
+                resetAndRemove(tcb);
+                return;
+            }
+        }
 
         if (payloadLen > 0) {
             byte[] payload = new byte[payloadLen];
@@ -326,6 +343,8 @@ final class TcpRelay {
         volatile long lastActivity = System.currentTimeMillis();
         volatile String pkg; // only resolved when NetworkBlocklist is non-empty -- see handle()
         volatile boolean networkBlocked;
+        /** The "internet off" period (its end time) this connection was last checked against; see handle(). */
+        volatile long offCheckedFor;
         Socket socket;
         OutputStream socketOut;
         final java.io.ByteArrayOutputStream pending = new java.io.ByteArrayOutputStream();

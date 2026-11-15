@@ -74,7 +74,7 @@ test("every dashboard page, group and tab opens without an error", async () => {
   const { call, cookie } = await setUp();
   const reg = new Map();
   const mk = (tag) => new El(tag, reg);
-  for (const id of ["main", "snack", "crumbs", "who", "tabs", "srv", "mode"]) mk("div").setAttribute("id", id);
+  for (const id of ["main", "snack", "crumbs", "who", "tabs", "srv", "mode", "tools"]) mk("div").setAttribute("id", id);
   const errors = [];
   const store = new Map();
   const ctx = vm.createContext({
@@ -129,6 +129,56 @@ test("every dashboard page, group and tab opens without an error", async () => {
   tryRender("badge: Cloudflare page, Pi off", "state.server={runtime:'cloudflare',role:'backup',primary:'https://pi.example',backup:'https://cf.example',primaryUp:false,outage:true};tab='devices';openId=null;render()");
   seen.badgeCfPiDown = reg.get("srv").textContent;  tryRender("back to Cloudflare", "state.server=__s0;piInfo=null;piWifi=null");
   tryRender("back to the phone", "tab='devices';openId=devices[0].id;render()");
+  // The Apps page lists every app, built-in ones too, in groups; "Show" picks one group.
+  {
+    vm.runInContext("var __snap=JSON.stringify({p:devices[0].packages,a:devices[0].config.apps,l:(devices[0].config.screenTime||{}).appLimits})", ctx); // put back afterwards: the other checks use the same phone
+    vm.runInContext("tab='devices';openId=devices[0].id;setDeviceSection('apps');subs.apps='regular';appSel=null", ctx);
+    const probe = vm.runInContext("(function(){var d=devices[0];d.packages=[{p:'com.user.app',l:'User App',s:false},{p:'com.google.android.youtube',l:'YouTube',s:true},{p:'com.sec.cal',l:'Calendar',s:true},{p:'com.sec.clock',l:'Clock',s:true}];d.config.apps={'com.google.android.youtube':{mode:'block',label:'YouTube'},'com.sec.cal':{mode:'allow',label:'Calendar'}};d.config.screenTime=d.config.screenTime||{};d.config.screenTime.appLimits={'com.sec.clock':30};return JSON.stringify([appCategory(d,d.packages[0]),appCategory(d,d.packages[1]),appCategory(d,d.packages[2]),appCategory(d,d.packages[3])])})()", ctx);
+    assert.deepEqual(JSON.parse(probe), ["default", "block", "allow", "time"], "each app is in the group its rule puts it in, built-in apps included");
+    const page = tryRender("apps page, all groups", "appsShow='all';appsView='tiles';render()");
+    for (const w of ["YouTube", "Calendar", "Clock", "User App", "Blocked (1)", "Allowed (1)", "Time controlled (1)"]) assert.ok(page.includes(w), "the apps page shows " + w);
+    const only = tryRender("apps page, only blocked", "appsShow='block';render()");
+    const onlyApps = only.split("Rules")[0];
+    assert.ok(onlyApps.includes("YouTube") && !onlyApps.includes("Calendar") && !onlyApps.includes("User App"), "Show only Blocked lists just the blocked apps");
+    vm.runInContext("appsShow='all'", ctx);
+    vm.runInContext("(function(){var s=JSON.parse(__snap),d=devices[0];d.packages=s.p;d.config.apps=s.a;if(d.config.screenTime)d.config.screenTime.appLimits=s.l})()", ctx);
+  }
+  // The pause/play button and the search sit on the top bar while a phone is open.
+  {
+    tryRender("top bar: phone open", "tab='devices';openId=devices[0].id;render()");
+    const tools = reg.get("tools").textContent;
+    assert.match(tools, /Pause/, "the pause button is on the top bar");
+    assert.ok(reg.get("tools").children.length >= 2, "the settings search sits beside it on the top bar, not down in the page");
+    vm.runInContext("devices[0].config.restrictionsOffUntil=Date.now()+600000;render()", ctx);
+    assert.match(reg.get("tools").textContent, /Resume/, "while paused the same button says Resume");
+    vm.runInContext("devices[0].config.restrictionsOffUntil=0;devices[0].config.pauseUntil=0;tab='codes';openId=null;render()", ctx);
+    assert.equal(reg.get("tools").textContent, "", "nothing on the top bar on pages that are not a phone");
+    vm.runInContext("tab='devices';openId=devices[0].id;render()", ctx);
+  }
+  // Going into a setting and back lands where you were, not at the top.
+  {
+    const ys = [];
+    ctx.scrollTo = (x, y) => ys.push(y);
+    tryRender("scroll: phone home", "tab='devices';openId=devices[0].id;setDeviceSection(null);subs={};render()");
+    ctx.pageYOffset = 640; // scrolled down on the home page
+    tryRender("scroll: open a setting", "goTo('time')");
+    ctx.pageYOffset = 0; // the setting's page starts at the top
+    ys.length = 0;
+    tryRender("scroll: back home", "backHome()");
+    assert.equal(ys[0], 640, "back from a setting returns to where the home page was scrolled");
+    // an app opened from the apps list, then closed
+    ctx.pageYOffset = 900;
+    tryRender("scroll: apps list", "goTo('apps');appSel=null;render()");
+    ctx.pageYOffset = 300;
+    tryRender("scroll: open an app", "rememberScroll();appSel=(devices[0].apps||[{p:'x'}])[0].p||'x';render()");
+    ctx.pageYOffset = 0;
+    ys.length = 0;
+    tryRender("scroll: close the app", "appSel=null;render();restoreScroll(scrollMem[viewKey()])");
+    assert.equal(ys[0], 300, "closing an app returns to where the list was scrolled");
+    ctx.scrollTo = () => {};
+    ctx.pageYOffset = 0;
+    tryRender("scroll: tidy", "setDeviceSection(null);tab='devices';openId=devices[0].id;render()");
+  }
   const groups = vm.runInContext("JSON.stringify(GROUPS.map(function(g){return [g.key,subsFor(g).map(function(s){return s[0]})]}))", ctx);
   for (const [g, subs] of JSON.parse(groups)) {
     for (const sub of subs) {

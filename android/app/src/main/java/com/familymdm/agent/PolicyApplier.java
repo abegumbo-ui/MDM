@@ -1071,6 +1071,7 @@ final class PolicyApplier {
     private static void protectSelf(Context c, DevicePolicyManager dpm, ComponentName admin) {
         try {
             dpm.setUninstallBlocked(admin, c.getPackageName(), true);
+            BatteryAllow.exemptAsOwner(c, dpm); // no question asked, where Android allows it
             if (Build.VERSION.SDK_INT >= 30) {
                 List<String> pkgs = new ArrayList<>();
                 pkgs.add(c.getPackageName());

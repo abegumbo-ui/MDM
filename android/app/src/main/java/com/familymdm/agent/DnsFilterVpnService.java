@@ -203,6 +203,18 @@ public class DnsFilterVpnService extends VpnService {
         int udpLength = ((buf[udpOffset + 4] & 0xFF) << 8) | (buf[udpOffset + 5] & 0xFF);
 
         if (dstPort != 53) {
+            // "Turn the internet off" covers every other UDP flow too, QUIC above all: it is how Chrome and our Browser reach Google and YouTube,
+            // and it has no hostname to check, so it is simply dropped for every app that may not use the internet right now.
+            if (Protection.internetOff(this)) {
+                String owner = null;
+                try {
+                    owner = uidResolver.packageFor(uidResolver.uidFor(NetUtil.IPPROTO_UDP,
+                            new InetSocketAddress(InetAddress.getByAddress(srcIp), srcPort),
+                            new InetSocketAddress(InetAddress.getByAddress(dstIp), dstPort)));
+                } catch (Exception ignored) {
+                }
+                if (!Protection.internetAllowed(this, owner)) return;
+            }
             // Not a DNS query -- plain NAT relay (QUIC on :443 is the common case).
             // QUIC hides the site's name, so while category filtering is on it is dropped: browsers then
             // fall back to the ordinary connection the filter can see.

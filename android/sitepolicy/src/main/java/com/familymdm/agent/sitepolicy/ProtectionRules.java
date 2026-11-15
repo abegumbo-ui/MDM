@@ -32,6 +32,15 @@ public final class ProtectionRules {
         return chosen != null && chosen.contains(pkg);
     }
 
+    /**
+     * While "Turn the internet off" is on: only Android's essentials and the "internet only" apps may use it. Unlike internetAllowed above, an
+     * app that cannot be identified is NOT let through (a connection nobody can name could be any app, and "off" has to mean off).
+     */
+    public static boolean internetAllowedWhileOff(String pkg, Set<String> chosen) {
+        if (pkg == null) return false;
+        return ALWAYS_ONLINE.contains(pkg) || (chosen != null && chosen.contains(pkg));
+    }
+
     /** Is this address an image search (Google, Bing, DuckDuckGo)? */
     public static boolean isImageSearch(String url) {
         if (url == null) return false;

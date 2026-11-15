@@ -222,6 +222,26 @@ test("normalizeSite: validates, normalizes host, fills defaults", () => {
   assert.equal(d.blockImages, false);
   assert.equal(d.installable, true);
   assert.equal(d.label, "nytimes.com");
+  // YouTube Music and YouTube are separate: the same id as a song and as a video are two entries, and each matches only its own address.
+  {
+    const sites = normalizeSites({
+      a: { type: "exact", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+      b: { type: "exact", url: "https://music.youtube.com/watch?v=dQw4w9WgXcQ" },
+      c: { type: "exact", url: "https://youtu.be/dQw4w9WgXcQ" }, // the same video as a (just written differently)
+    });
+    assert.equal(sites.length, 2, "one video and one song; the youtu.be link is the same video");
+    const songOnly = [sites.find((s) => s.url.includes("music.youtube.com"))];
+    const videoOnly = [sites.find((s) => !s.url.includes("music.youtube.com"))];
+    assert.equal(siteAllowed("https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=x", songOnly), true);
+    assert.equal(siteAllowed("https://www.youtube.com/watch?v=dQw4w9WgXcQ", songOnly), false, "a song does not open on YouTube");
+    assert.equal(siteAllowed("https://m.youtube.com/watch?v=dQw4w9WgXcQ", videoOnly), true);
+    assert.equal(siteAllowed("https://music.youtube.com/watch?v=dQw4w9WgXcQ", videoOnly), false, "a video does not open on YouTube Music");
+  }
+  // The search-result pictures have a plain choice too: hide, skin covered, or as they are.
+  assert.equal(normalizeConfig({ youtubeSearchPictures: "show" }).youtubeSearchPictures, "show");
+  assert.equal(normalizeConfig({ youtubeSearchPictures: "skin" }).youtubeSearchPictures, "skin");
+  assert.equal(normalizeConfig({ youtubeSearchPictures: "junk" }).youtubeSearchPictures, "hide");
+  assert.equal(normalizeConfig({}).youtubeSearchPictures, "hide");
   const e = normalizeSite({ type: "exact", url: "https://example.com/a/b/", label: "Page B", blockImages: true });
   assert.equal(e.label, "Page B");
   assert.equal(e.blockImages, true);
