@@ -162,9 +162,26 @@ public class AgentService extends Service {
         NoBadge.install(nm, "agent3", "LockGuard", NotificationManager.IMPORTANCE_MIN, "agent2");
         return new Notification.Builder(this, "agent3")
                 .setContentTitle("LockGuard")
-                .setContentText("Connected to your dashboard")
+                .setContentText(noteText)
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .build();
+    }
+
+    private volatile String noteText = "Connected to your dashboard";
+
+    /** While a timer runs (internet off, web filtering paused, all restrictions off) the notification says how long is left. */
+    private void refreshNotification() {
+        try {
+            JSONObject p = new JSONObject(Agent.prefs(this).getString("policy", "{}"));
+            String t = com.familymdm.agent.sitepolicy.TimerText.describe(System.currentTimeMillis(),
+                    p.optLong("internetOffUntil", 0), p.optLong("pauseUntil", 0), p.optLong("restrictionsOffUntil", 0));
+            if (t == null) t = "Connected to your dashboard";
+            if (t.equals(noteText)) return;
+            noteText = t;
+            getSystemService(NotificationManager.class).notify(1, notification());
+        } catch (Exception ignored) {
+            // the notification is only a courtesy; never let it get in the way of a check-in
+        }
     }
 
     private void loop() {
@@ -173,6 +190,7 @@ public class AgentService extends Service {
             try {
                 sleepSeconds = Agent.syncPaused(this) ? 1800 : Agent.standalone(this) ? standaloneOnce() : syncOnce();
                 if (ranCommands) sleepSeconds = 3; // report what a command did right away
+                refreshNotification();
             } catch (Api.HttpException e) {
                 Log.w(TAG, "sync failed: " + e.getMessage());
                 if (e.code == 401) {
