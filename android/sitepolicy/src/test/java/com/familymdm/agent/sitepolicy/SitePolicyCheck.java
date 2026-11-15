@@ -69,7 +69,16 @@ public class SitePolicyCheck {
         check(!SitePolicy.sameSiteAs("www.foxnews.com", "foxnews.com.attacker.example"), "same site: a look-alike longer name is not");
         check(!SitePolicy.sameSiteAs(null, "foxnews.com") && !SitePolicy.sameSiteAs("foxnews.com", null), "same site: nothing approved, nothing allowed");
         check(!SitePolicy.sameSiteAs("com", "evil.com"), "same site: a bare ending like com never counts");
-        check(SitePolicy.isBlockedAdult("https://pornhub.com/video"), "a known adult site is blocked");
+        // The files an approved page loads from its own site's other hosts (the filter sees who asked in the Referer header).
+        java.util.List<SitePolicy.Site> approvedPages = SitePolicy.parse(new org.json.JSONArray("[{\"type\":\"exact\",\"url\":\"https://www.foxnews.com/politics/x\"},{\"type\":\"youtube\",\"kind\":\"channel\",\"id\":\"@nasa\",\"url\":\"https://www.youtube.com/@nasa\"}]"));
+        check(SitePolicy.approvedSiteFor(approvedPages, "https://static.foxnews.com/static/a.css"), "approved page: its style host counts as asked by it");
+        check(SitePolicy.approvedSiteFor(approvedPages, "https://www.foxnews.com/"), "approved page: a Referer that is only the site's name counts");
+        check(SitePolicy.approvedSiteFor(approvedPages, "https://www.foxnews.com/politics/x"), "approved page: its own address counts");
+        check(!SitePolicy.approvedSiteFor(approvedPages, "https://www.cnn.com/world"), "approved page: another site's address is not covered");
+        check(!SitePolicy.approvedSiteFor(approvedPages, "https://notfoxnews.com/"), "approved page: a look-alike name is not covered");
+        check(!SitePolicy.approvedSiteFor(approvedPages, "https://www.youtube.com/watch?v=abcdefghijk"), "an approved YouTube channel does not make all of YouTube an approved source");
+        check(!SitePolicy.approvedSiteFor(approvedPages, null) && !SitePolicy.approvedSiteFor(null, "https://foxnews.com/"), "nothing approved or no address: never covered (and never throws)");
+        check(SitePolicy.allowed("https://www.foxnews.com/politics/x", approvedPages) && !SitePolicy.allowed("https://www.foxnews.com/politics/y", approvedPages), "the page itself is allowed, another page of the site is not");        check(SitePolicy.isBlockedAdult("https://pornhub.com/video"), "a known adult site is blocked");
         check(SitePolicy.isBlockedAdult("https://www.pornhub.com/"), "...even with a www. prefix");
         check(SitePolicy.isBlockedAdult("https://sub.pornhub.com/"), "...and any subdomain");
         check(!SitePolicy.isBlockedAdult("https://notpornhub.com/"), "a look-alike domain is not swept in");

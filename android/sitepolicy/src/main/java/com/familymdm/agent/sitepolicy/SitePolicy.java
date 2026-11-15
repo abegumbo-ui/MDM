@@ -158,6 +158,20 @@ public final class SitePolicy {
         return null;
     }
 
+    /**
+     * Does any approved page or site (not a YouTube channel) belong to the same site as this address? Used for the files an approved page loads
+     * (its own style and script hosts, like static.foxnews.com for www.foxnews.com): the filter looks at who asked for them (the Referer).
+     */
+    public static boolean approvedSiteFor(List<Site> sites, String url) {
+        String host = hostOf(url);
+        if (host == null || sites == null) return false;
+        for (Site s : sites) {
+            if (s == null || !s.live() || "youtube".equals(s.type) || s.host == null) continue;
+            if (sameSiteAs(s.host, host)) return true;
+        }
+        return false;
+    }
+
     // ---------- YouTube ----------
 
     private static final Set<String> YOUTUBE_HOSTS = new HashSet<>(Arrays.asList(
