@@ -458,7 +458,7 @@ public class BrowserActivity extends Activity {
         if (mode == Mode.AGENT && browseWindowActive()) {
             RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
             Bundle b = rm == null ? null : rm.getApplicationRestrictions();
-            long until = b == null ? 0 : b.getLong("browseUntil", 0);
+            long until = b == null ? 0 : SitePolicy.asLong(b.get("browseUntil"));
             TextView notice = body("Free browsing until " + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(until)));
             notice.setTextColor(getColor(R.color.m3_on_surface_variant)); // this one sits on the dark menu, not a white page
             notice.setPadding(0, dp(4), 0, dp(12));
@@ -940,7 +940,7 @@ public class BrowserActivity extends Activity {
         try {
             RestrictionsManager rm = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
             Bundle b = rm == null ? null : rm.getApplicationRestrictions();
-            return b != null && b.getLong("browseUntil", 0) > System.currentTimeMillis();
+            return b != null && SitePolicy.asLong(b.get("browseUntil")) > System.currentTimeMillis();
         } catch (Exception e) {
             return false;
         }

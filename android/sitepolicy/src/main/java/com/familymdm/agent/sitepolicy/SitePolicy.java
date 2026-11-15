@@ -77,6 +77,20 @@ public final class SitePolicy {
         }
     }
 
+    /** A number out of a managed-settings value: this agent writes it as text now (Android's policy file cannot hold a long there); an older agent wrote a long. */
+    public static long asLong(Object v) {
+        if (v instanceof Long) return (Long) v;
+        if (v instanceof Integer) return (Integer) v;
+        if (v instanceof String) {
+            try {
+                return Long.parseLong(((String) v).trim());
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
     /** True for YouTube Music's own address (what the parent allows there are songs; on every other YouTube address, videos). */
     public static boolean isMusicHost(String host) {
         return "music.youtube.com".equals(host);

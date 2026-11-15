@@ -698,7 +698,10 @@ test("PIN commands validate the PIN and never echo it back in the device record"
   const { auth, id } = await enrolledDevice(cookie);
   const cmd = (type, args) => post(`/api/devices/${id}/command`, { type, args }, { cookie });
   assert.equal((await cmd("setPin", { pin: "12" })).status, 400);
-  assert.equal((await cmd("setPin", { pin: "abcd" })).status, 400);
+  assert.equal((await cmd("setPin", { pin: "abc" })).status, 400, "too short");
+  assert.equal((await cmd("setPin", { pin: " 4821" })).status, 400, "no space at either end");
+  assert.equal((await cmd("setPin", { pin: "a".repeat(65) })).status, 400, "too long");
+  assert.equal((await cmd("setPin", { pin: "Pass-word1" })).status, 200, "a password is fine too (digits only make a PIN)");
   assert.equal((await cmd("setPin", { pin: "4821" })).status, 200);
   const sync = await (await post("/agent/sync", {}, auth)).json();
   assert.equal(sync.commands[0].args.pin, "4821");

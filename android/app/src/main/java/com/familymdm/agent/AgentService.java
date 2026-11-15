@@ -220,6 +220,12 @@ public class AgentService extends Service {
         Actions.prepareTokenQuietly(this);
         o.put("pinControl", Actions.pinControlActive(this));
         o.put("lockStrength", Actions.lockStrength(this));
+        boolean lockByAgent = Agent.prefs(this).getBoolean("lockByAgent", false);
+        if (lockByAgent && !Actions.lockStrength(this).equals(Agent.prefs(this).getString("lockByAgentStrength", ""))) {
+            lockByAgent = false; // the lock was changed on the phone since the dashboard set it
+            Agent.prefs(this).edit().putBoolean("lockByAgent", false).apply();
+        }
+        o.put("lockByAgent", lockByAgent);
         o.put("appLock", Agent.prefs(this).getBoolean("appLock", false));
         o.put("masterSet", Master.isSet(this));
         o.put("restrictions", new JSONArray(Agent.getSet(this, "restrictions")));
