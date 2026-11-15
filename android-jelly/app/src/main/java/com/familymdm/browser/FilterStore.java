@@ -381,7 +381,7 @@ final class FilterStore {
 
     /** Search results that are not allowed: "hide" their pictures, or show them with "skin" covered. */
     static void setYoutubeSearchPictures(Context c, String v) {
-        prefs(c).edit().putString("youtubeSearchPictures", "skin".equals(v) ? "skin" : "hide").apply();
+        prefs(c).edit().putString("youtubeSearchPictures", "skin".equals(v) ? "skin" : "show".equals(v) ? "show" : "hide").apply();
     }
 
     static String youtubeSearchPictures(Context c) {

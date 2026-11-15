@@ -83,6 +83,15 @@ public class SitePolicyCheck {
         check(!SitePolicy.allowed("https://www.youtube.com/watch?v=AAAAAAAAAAA", yt), "a different video is NOT allowed by that entry");
         check(!SitePolicy.allowed("https://www.youtube.com/@aishdotcom", yt), "a channel entry never matches by address (the Browser decides)");
         check(SitePolicy.hasYoutubeChannels(yt), "the channel entry is noticed");
+        // YouTube Music and YouTube are separate: a song and a video with the same id are not the same entry.
+        List<SitePolicy.Site> video = SitePolicy.parse(sites("{\"type\":\"exact\",\"url\":\"https://www.youtube.com/watch?v=" + v + "\"}"));
+        List<SitePolicy.Site> song = SitePolicy.parse(sites("{\"type\":\"exact\",\"url\":\"https://music.youtube.com/watch?v=" + v + "\"}"));
+        check(SitePolicy.allowed("https://m.youtube.com/watch?v=" + v, video) && SitePolicy.allowed("https://youtu.be/" + v, video), "an allowed video opens on every YouTube address");
+        check(!SitePolicy.allowed("https://music.youtube.com/watch?v=" + v, video), "an allowed video does NOT open on YouTube Music");
+        check(SitePolicy.allowed("https://music.youtube.com/watch?v=" + v + "&list=RDAMVM" + v, song), "an allowed song opens on YouTube Music, whatever else the link carries");
+        check(!SitePolicy.allowed("https://www.youtube.com/watch?v=" + v, song) && !SitePolicy.allowed("https://youtu.be/" + v, song), "an allowed song does NOT open on YouTube");
+        check(!"youtube.com/watch?v=x".equals(SitePolicy.pathKeyOf("https://music.youtube.com/watch?v=" + v)) && "music.youtube.com/watch?v=".concat(v).equals(SitePolicy.pathKeyOf("https://music.youtube.com/watch?v=" + v)), "a song's key names YouTube Music");
+        check(SitePolicy.isMusicHost("music.youtube.com") && !SitePolicy.isMusicHost("youtube.com") && !SitePolicy.isMusicHost("m.youtube.com") && !SitePolicy.isMusicHost(null), "which address is YouTube Music's");
         check(SitePolicy.youtubeChannelAllowed("@AishDotCom", yt) && !SitePolicy.youtubeChannelAllowed("@someoneelse", yt), "only the listed channel is allowed");
         check(!SitePolicy.youtubeChannelAllowed(null, yt), "no channel is never allowed");
         check(SitePolicy.parse(sites("{\"type\":\"youtube\",\"kind\":\"channel\",\"id\":\"nohandle\"}")).isEmpty(), "a channel entry without a real @handle is dropped");

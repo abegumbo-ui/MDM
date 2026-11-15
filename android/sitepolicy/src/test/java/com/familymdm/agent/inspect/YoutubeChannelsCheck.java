@@ -39,6 +39,22 @@ public class YoutubeChannelsCheck {
         InspectProxy.Headers addon = new InspectProxy.Headers();
         addon.set("User-Agent", "Mozilla/5.0 (Linux; Android 16) Chrome/130 Mobile Safari/537.36 MDMAddon/1");
         InspectProxy.Request inChrome = new InspectProxy.Request("GET", "m.youtube.com", 443, true, "/", plain);
+        // YouTube and YouTube Music kept apart (songs and videos are different lists; each page gets only its own scripts).
+        YoutubeInspector sep = new YoutubeInspector(false, new HashSet<String>());
+        sep.setYoutubeChannels(new HashSet<>(Arrays.asList("@allowedch")), new HashSet<>(Arrays.asList("VIDEOONLY01")), new HashSet<>(Arrays.asList("SONGONLY001")), "<script>videos</script>", "<script>songs</script>");
+        String maker = "\"ownerProfileUrl\":\"http://www.youtube.com/@AllowedCh\"";
+        check(sep.channelPageAllowed("https://www.youtube.com/watch?v=VIDEOONLY01", "<html></html>"), "separate: an allowed video opens on YouTube");
+        check(!sep.channelPageAllowed("https://music.youtube.com/watch?v=VIDEOONLY01", "<html></html>"), "separate: an allowed video does NOT open on YouTube Music");
+        check(sep.channelPageAllowed("https://music.youtube.com/watch?v=SONGONLY001", "<html></html>"), "separate: an allowed song opens on YouTube Music");
+        check(!sep.channelPageAllowed("https://www.youtube.com/watch?v=SONGONLY001", "<html></html>") && !sep.channelPageAllowed("https://m.youtube.com/watch?v=SONGONLY001", "<html></html>"), "separate: an allowed song does NOT open on YouTube");
+        check(!sep.channelPageAllowed("https://music.youtube.com/watch?v=OTHER000001", maker), "separate: an allowed channel's video is not a song (channels are YouTube's)");
+        check(sep.channelPageAllowed("https://www.youtube.com/watch?v=OTHER000001", maker), "separate: an allowed channel's video opens on YouTube");
+        InspectProxy.Request ytDoc = new InspectProxy.Request("GET", "www.youtube.com", 443, true, "/", new InspectProxy.Headers());
+        InspectProxy.Request musicDoc = new InspectProxy.Request("GET", "music.youtube.com", 443, true, "/", new InspectProxy.Headers());
+        String ytOut = new String(sep.rewrite(ytDoc, "<html><head></head></html>".getBytes(java.nio.charset.StandardCharsets.UTF_8)), java.nio.charset.StandardCharsets.UTF_8);
+        String musicOut = new String(sep.rewrite(musicDoc, "<html><head></head></html>".getBytes(java.nio.charset.StandardCharsets.UTF_8)), java.nio.charset.StandardCharsets.UTF_8);
+        check(ytOut.contains("<script>videos</script>") && !ytOut.contains("<script>songs</script>"), "separate: YouTube's page gets the videos' scripts only");
+        check(musicOut.contains("<script>songs</script>") && !musicOut.contains("<script>videos</script>"), "separate: YouTube Music's page gets the songs' scripts only");
         InspectProxy.Request inIcon = new InspectProxy.Request("GET", "music.youtube.com", 443, true, "/", addon);
         byte[] page = "<html><head></head><body>x</body></html>".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         check(y.rewrites(inChrome, "text/html"), "Chrome and the other browsers: the page is rewritten");

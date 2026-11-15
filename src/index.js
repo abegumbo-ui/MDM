@@ -273,7 +273,7 @@ const putJSON = (env, key, val, opts) => {
 // there, like a sideloaded tool) must never show up as a starting default on an unrelated phone.
 async function configOf(env, d) {
   if (d.config) return { cfg: normalizeConfig(d.config), seeded: false };
-  const cfg = normalizeConfig({});
+  const cfg = normalizeConfig(d.seedAutoUpdate ? { autoUpdate: true } : {});
   d.config = cfg;
   return { cfg, seeded: true };
 }
@@ -633,6 +633,16 @@ async function latestAgent(env) {
     return null;
   }
 }
+
+// The newest build, remembered for 10 minutes so that many phones checking in never mean many requests to GitHub (a failure is remembered for 2).
+let latestSeen = { at: 0, value: null };
+async function latestAgentCached(env, now = Date.now()) {
+  if (now - latestSeen.at < 10 * 60 * 1000) return latestSeen.value;
+  const value = await latestAgent(env);
+  latestSeen = { at: value ? now : now - 8 * 60 * 1000, value };
+  return value;
+}
+const AUTO_UPDATE_EVERY_MS = 3 * 3600 * 1000; // a phone that is behind is told again at most this often
 
 // {package: revision} of the custom icons, so phones in home-screen mode know which to download.
 async function setIconRev(env, pkg, rev) {
@@ -1009,17 +1019,33 @@ async function adminApiInner(request, env, url, session) {
       permGroups: PERM_GROUPS,
       // Which server is showing this page (the Raspberry Pi, or Cloudflare), for the badge at the top of the dashboard.
       server: await serverInfo(env),
+      // How fast a phone picks up a change, so the dashboard can say so truthfully: on the Raspberry Pi a waiting phone is woken at once.
+      polling: {
+        instant: env.RUNTIME === "pi",
+        idle: secondsFrom(env.POLL_SECONDS, POLL_SECONDS),
+        open: secondsFrom(env.FAST_POLL_SECONDS, FAST_POLL_SECONDS),
+        burst: secondsFrom(env.BURST_POLL_SECONDS, BURST_POLL_SECONDS),
+      },
       session: {
         ...(session.role === "admin" ? { role: "admin" } : { role: "client", id: session.id, name: session.name, perms: session.perms || [] }),
         ...(session.helper ? { helper: session.helperName, viewOnly: !!session.viewOnly } : {}),
       },
     });
   }
-  const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from|owner)$/.exec(path);
+  const devConfig = /^\/api\/devices\/([0-9a-f]+)\/(config|master|clone-from|owner|name)$/.exec(path);
   if (devConfig) {
     const d = await getJSON(env, `device:${devConfig[1]}`, null);
     if (!d || !canSee(session, d.ownerId)) return json({ error: "Unknown device" }, 404);
     const key = `device:${devConfig[1]}`;
+    // A name you give a phone ("Dovid's phone"), so you can tell whose it is. Shown everywhere the phone's name is.
+    if (devConfig[2] === "name") {
+      if (method !== "PUT") return json({ error: "Method not allowed" }, 405);
+      const nm = String(body.name || "").trim().slice(0, 60);
+      if (!nm) return json({ error: "Name can't be empty" }, 400);
+      d.name = nm;
+      await putJSON(env, key, d);
+      return json({ ok: true });
+    }
     if (devConfig[2] === "owner" && method === "PUT") {
       // Admin-only reassignment: hand an existing (or ownerless) device to a client account, or
       // take it back to admin-only. Separate from enrollment-time ownership (see /agent/enroll) --
@@ -1479,6 +1505,8 @@ async function agentApi(request, env, url, ctx) {
     await putJSON(env, `device:${id}`, {
       id,
       name: [info.manufacturer, info.model].filter(Boolean).join(" ") || id,
+      // A phone enrolled from now on starts with automatic updates on. Phones enrolled before keep exactly what they have (this flag is never set on them).
+      seedAutoUpdate: true,
       tokenHash: await sha256(secret),
       lastSeen: Date.now(),
       info,
@@ -1961,6 +1989,16 @@ async function agentApi(request, env, url, ctx) {
     if ((d.inflight || []).some((c) => now - (c.at || 0) > 3600 * 1000)) {
       d.inflight = d.inflight.filter((c) => now - (c.at || 0) <= 3600 * 1000);
       dirty = true;
+    }
+    // Automatic updates, for the phones that have them switched on (new phones do; older ones keep what they have): a phone that is behind
+    // the newest build is told to update, so a fix reaches it even when nobody presses Update and its own timer has not fired.
+    if (config.autoUpdate === true && d.info && Number.isInteger(d.info.versionCode) && !(d.queue || []).some((c) => c.type === "updateAgent") && now - (d.autoUpdateAt || 0) > AUTO_UPDATE_EVERY_MS) {
+      const lv = await latestAgentCached(env, now);
+      if (lv && d.info.versionCode < lv.versionCode) {
+        d.queue = [...(d.queue || []), { id: randomHex(6), type: "updateAgent", args: {}, auto: true }];
+        d.autoUpdateAt = now;
+        dirty = true;
+      }
     }
     const commands = d.queue || [];
     if (commands.length) {

@@ -30,6 +30,12 @@ public class ProtectionRulesCheck {
         check(ProtectionRules.internetAllowed("com.familymdm.agent", true, chosen), "the Agent itself always (to reach the dashboard)");
         check(ProtectionRules.internetAllowed(null, true, chosen), "an app that cannot be identified is not cut off by this rule");
         check(!ProtectionRules.internetAllowed("com.android.chrome", true, null), "nothing chosen: only the essentials");
+        // "Turn the internet off": the same, except that an app nobody can name is cut off too.
+        check(!ProtectionRules.internetAllowedWhileOff("com.android.chrome", new java.util.HashSet<String>()), "internet off: a browser has none");
+        check(!ProtectionRules.internetAllowedWhileOff("com.google.android.youtube", chosen), "internet off: YouTube has none");
+        check(ProtectionRules.internetAllowedWhileOff("com.whatsapp", chosen), "internet off: a chosen 'internet only' app keeps its internet");
+        check(ProtectionRules.internetAllowedWhileOff("com.google.android.gms", new java.util.HashSet<String>()) && ProtectionRules.internetAllowedWhileOff("com.familymdm.agent", null), "internet off: the essentials and the Agent keep theirs");
+        check(!ProtectionRules.internetAllowedWhileOff(null, chosen) && !ProtectionRules.internetAllowedWhileOff(null, null), "internet off: a connection nobody can name is cut off too");
 
         for (String yes : new String[] {
                 "https://www.google.com/search?q=cats&tbm=isch", "https://www.google.co.il/search?udm=2&q=cats", "https://google.com/search?q=x&udm=2",

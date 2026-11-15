@@ -190,7 +190,14 @@ function pathKeyOf(u) {
   // Every YouTube video shares the address "youtube.com/watch": only ?v= tells them apart. Without
   // this, allowing one video "page" would quietly allow every video.
   const video = youtubeVideoId(u);
-  if (video) return "youtube.com/watch?v=" + video;
+  if (video) {
+    // A song on YouTube Music and a video on YouTube are different things even when they share an id: separate keys.
+    let host = "";
+    try {
+      host = new URL(u.includes("://") ? u : "https://" + u).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {}
+    return (host === "music.youtube.com" ? "music.youtube.com" : "youtube.com") + "/watch?v=" + video;
+  }
   try {
     const url = new URL(u.includes("://") ? u : "https://" + u);
     const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -638,7 +645,7 @@ export function normalizeConfig(input) {
     // "Only what I allow": the child may search YouTube and ask for videos (on unless switched off).
     youtubeSearchOff: c.youtubeSearchOff === true,
     // Search results that are not allowed: "hide" their pictures, or show them with "skin" covered.
-    youtubeSearchPictures: c.youtubeSearchPictures === "skin" ? "skin" : "hide",
+    youtubeSearchPictures: c.youtubeSearchPictures === "skin" ? "skin" : c.youtubeSearchPictures === "show" ? "show" : "hide",
     // Signing in to YouTube (and Google's sign-in page) opens only when the parent allowed it.
     youtubeSignIn: c.youtubeSignIn === true,
     // The phone closes the Settings pages of the LockGuard app (accessibility switch, App info) and the certificate pages.

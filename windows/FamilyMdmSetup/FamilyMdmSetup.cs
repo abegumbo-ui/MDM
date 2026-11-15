@@ -430,8 +430,12 @@ namespace FamilyMdmSetup
 
                 if (!ownerIsUs && !MakeOwner(serial, sdk, toSwitchOff)) return false;
 
+                // Keep the app out of battery optimisation: the one thing Android otherwise asks the person on the phone about. Over the cable it can be done without asking.
+                Adb(serial, "shell dumpsys deviceidle whitelist +" + Package, 20000);
+                Adb(serial, "shell cmd appops set " + Package + " RUN_ANY_IN_BACKGROUND allow", 20000);
+
                 StartApp(serial, o);
-                Log("DONE. The phone is set up. If you typed a code it joins the dashboard on its own; otherwise open the app on the phone and enter the code.");
+                Log("DONE. The phone is set up. " + (string.IsNullOrEmpty(o.Code) ? "Open LockGuard on the phone and type the code from your enrollment page." : "It joins the dashboard on its own with the code you gave."));
                 return true;
             }
             catch (Exception e)
@@ -563,22 +567,18 @@ namespace FamilyMdmSetup
             MinimumSize = new Size(560, 520);
             Font = new Font("Segoe UI", 10f);
             var intro = new Label();
-            intro.Text = "Plug the phone into this computer with its USB cable and switch on Developer options > USB debugging.\r\n" +
-                "Then type the code from the dashboard (Codes > Enrollment code) and press the button.";
-            intro.SetBounds(16, 12, 592, 56);
-            var l1 = new Label(); l1.Text = "Code from the dashboard"; l1.SetBounds(16, 76, 250, 22);
-            code.SetBounds(16, 100, 250, 28);
-            var l2 = new Label(); l2.Text = "Dashboard address (leave empty if the app already has it)"; l2.SetBounds(280, 76, 330, 22);
-            server.SetBounds(280, 100, 328, 28);
-            dry.Text = "Only check the phone (change nothing)"; dry.SetBounds(16, 138, 380, 26);
-            go.Text = "Set up the phone"; go.SetBounds(16, 172, 200, 40); go.Click += (s, e) => Start(false);
-            back.Text = "Put things back"; back.SetBounds(226, 172, 160, 40); back.Click += (s, e) => Start(true);
-            folder.Text = "Open the log"; folder.SetBounds(396, 172, 140, 40);
+            intro.Text = "Plug the phone into this computer with its USB cable and switch on Developer options > USB debugging, then press the button.\r\n" +
+                "This only installs LockGuard and makes it the manager of the phone. It does not sign the phone in to any dashboard: when it is done, open LockGuard on the phone and type the code from your enrollment page.";
+            intro.SetBounds(16, 12, 592, 70);
+            dry.Text = "Only check the phone (change nothing)"; dry.SetBounds(16, 92, 380, 26);
+            go.Text = "Set up the phone"; go.SetBounds(16, 126, 200, 40); go.Click += (s, e) => Start(false);
+            back.Text = "Put things back"; back.SetBounds(226, 126, 160, 40); back.Click += (s, e) => Start(true);
+            folder.Text = "Open the log"; folder.SetBounds(396, 126, 140, 40);
             folder.Click += (s, e) => { try { Process.Start("notepad.exe", Setup.LogFile); } catch (Exception) { } };
-            log.Multiline = true; log.ReadOnly = true; log.ScrollBars = ScrollBars.Vertical; log.SetBounds(16, 226, 592, 366);
+            log.Multiline = true; log.ReadOnly = true; log.ScrollBars = ScrollBars.Vertical; log.SetBounds(16, 180, 592, 412);
             log.Font = new Font("Consolas", 9.5f);
             log.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.AddRange(new Control[] { intro, l1, code, l2, server, dry, go, back, folder, log });
+            Controls.AddRange(new Control[] { intro, dry, go, back, folder, log });
             setup = new Setup(Append);
             FormClosing += (s, e) =>
             {

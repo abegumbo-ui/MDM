@@ -82,6 +82,7 @@ Check ((Idx $r.Calls 'install -t -r') -ge 0) 'test build: the app is installed w
 Check ((Count $r.Calls 'set-device-owner') -eq 1 -and (Idx $r.Calls 'disable-user') -lt 0) 'test build: owner is set the first time and no account service is touched'
 Check ((Idx $r.Calls ' reboot$') -lt 0 -and (Idx $r.Calls '^reboot') -lt 0) 'test build: the phone is not restarted'
 Check ($r.Log -match 'Nothing was removed or switched off' -and (Idx $r.Calls 'am start .*--es code ABC123') -ge 0) 'test build: the log says so and the app starts with the code'
+Check ((Idx $r.Calls 'deviceidle whitelist \+com\.familymdm\.agent') -ge 0) 'the app is put outside battery optimisation over the cable (no question on the phone)'
 
 # 5c. A phone an older version of this program already tried (it left the app registered as an ordinary admin): the app is asked to drop that, then owner is set.
 $r = RunExe $common @{ FAKE_SDK = '36'; FAKE_TESTONLY = '1'; FAKE_STALE = '1' }

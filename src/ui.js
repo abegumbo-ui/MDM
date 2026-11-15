@@ -35,6 +35,13 @@ header.bar{position:sticky;top:0;z-index:5;background:var(--surface-1);border-bo
 .crumbs .sep{opacity:.5}.crumbs a{color:var(--on-surface-variant);text-decoration:none;cursor:pointer}.crumbs a:hover{color:var(--on-surface)}
 .crumbs b{color:var(--on-surface);font-weight:500;overflow:hidden;text-overflow:ellipsis}
 .bar .who{color:var(--on-surface-variant);font-size:13px}
+/* what stays on top while a phone is open: pause/play and the settings search */
+#tools{display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:0}
+#tools .search{position:relative;flex:0 1 260px;min-width:120px;margin:0}
+#tools .search-results{position:absolute;left:0;right:0;top:100%;z-index:20;max-height:60vh;overflow:auto}
+.pp{border:1px solid var(--outline-variant);background:var(--surface-3);color:var(--on-surface);border-radius:999px;padding:6px 12px;font:500 13px/1 inherit;cursor:pointer;white-space:nowrap}
+.pp.on{background:var(--warn);border-color:var(--warn);color:#1b1b1b}
+@media(max-width:720px){.pp .t{display:none}#tools .search{flex-basis:140px}}
 .bar a.out{color:var(--on-surface-variant);text-decoration:none;font-size:13px;padding:6px 10px;border-radius:8px}
 .bar a.out:hover{background:var(--surface-3);color:var(--on-surface)}
 main{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
@@ -235,7 +242,7 @@ export const dashboardPage = () => String.raw`<!doctype html><html lang="en"><he
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>${STYLE}</style></head>
 <body>
-<header class="bar"><div class="top"><a class="brand" href="#devices"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z"/></svg></span>MDM</a><div class="crumbs" id="crumbs"></div><span id="srv"></span><span id="mode"></span><span class="who" id="who"></span><a class="out" href="/logout">Sign out</a></div></header>
+<header class="bar"><div class="top"><a class="brand" href="#devices"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12L21,5l-9,-4z"/></svg></span>MDM</a><div class="crumbs" id="crumbs"></div><span id="tools"></span><span id="srv"></span><span id="mode"></span><span class="who" id="who"></span><a class="out" href="/logout">Sign out</a></div></header>
 <main id="main">Loading…</main>
 <div id="snack"></div>
 <script>
@@ -245,6 +252,11 @@ const DAYS=['S','M','T','W','T','F','S'];
 // throws this whole tab away and reloads it fresh when you switch back, which looked like "it just
 // goes back to Overview on its own" with nothing actually wrong.
 let deviceSection=sessionStorage.getItem('deviceSection')||null,lastOpenId=sessionStorage.getItem('lastOpenId')||null;
+/** Where the page was scrolled in each view, so going back lands where you were instead of at the top. */
+const scrollMem={};let curViewKey='';
+function viewKey(){return (location.hash||'')+'|'+(deviceSection||'')+'|'+(deviceSection&&subs?subs[deviceSection]||'':'')+'|'+(typeof appSel!=='undefined'&&appSel?appSel:'')}
+function rememberScroll(){try{scrollMem[viewKey()]=window.pageYOffset||0}catch(e){}}
+function restoreScroll(y){const go=function(){try{window.scrollTo(0,y||0)}catch(e){}};go();setTimeout(go,60);setTimeout(go,250)}
 function setDeviceSection(v){deviceSection=v;try{v?sessionStorage.setItem('deviceSection',v):sessionStorage.removeItem('deviceSection')}catch(e){}}
 let deviceSearch='';
 // A device page has 5 groups in a side menu, and each group has a few tabs along the top. Both the
@@ -277,7 +289,7 @@ const NEW_SUB_HELP={
  'internet/dns':'Block or allow single addresses by name (like example.com) in every app, not only in browsers. To close whole kinds of site (adult, gambling and so on) use Browser and web, the level at the top of that page.'};
 function subsFor(G){return uiMode==='new'&&NEW_SUBS[G.key]?NEW_SUBS[G.key]:G.subs}
 function getSub(g){const G=GROUPS.find(function(x){return x.key===g});const v=subs[g];const L=subsFor(G);return L.some(function(x){return x[0]===v})?v:L[0][0]}
-function goTo(g,sub){if(uiMode==='new'&&sub){const t=(NEW_SUB_MAP[g]||{})[sub];if(t&&typeof t==='object'){g=t.g;sub=t.s}else if(t)sub=t}setDeviceSection(g);if(sub){subs[g]=sub;saveSubs()}render()}
+function goTo(g,sub){rememberScroll();if(uiMode==='new'&&sub){const t=(NEW_SUB_MAP[g]||{})[sub];if(t&&typeof t==='object'){g=t.g;sub=t.s}else if(t)sub=t}setDeviceSection(g);if(sub){subs[g]=sub;saveSubs()}render()}
 let state=null,devices=[],browsers=[],windevices=[],clients=[],latest=null,tab='devices',openId=null,openBrowserId=null,openWinId=null,search='',sysAppSearch='';
 function route(){const x=(location.hash||'#devices').slice(1);
  if(x.indexOf('device/')===0){tab='devices';openId=x.slice(7);openBrowserId=null;openWinId=null}
@@ -383,7 +395,7 @@ async function load(){
  call('GET','/api/latest-agent').then(function(r){if(JSON.stringify(r.latest)!==JSON.stringify(latest)){latest=r.latest;render()}}).catch(function(){})}
 async function saveConfigFor(d,msg){
  if(d.isWindows){const r=await call('PUT','/api/windevices/'+d.id+'/config',{config:d.config,filterOn:d.filterOn,win:d.win});snack(msg||'Saved. The computer applies it within a minute.');return r}
- const r=await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update within about 5 minutes.');return r}
+ const r=await call('PUT',(d.isBrowser?'/api/browsers/':'/api/devices/')+d.id+'/config',d.config);snack(msg||'Saved. Phones update '+pickup()+'.');return r}
 
 /* ---------- shell ---------- */
 // Everything is sandboxed to its own thing: the top bar only ever says "Devices". Apps and Sites
@@ -398,7 +410,9 @@ function setCrumbs(parts){
 function pageHead(m,title,sub){m.append(h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,title),sub?h('div',{class:'sub'},sub):null)))}
 function render(){
  if(!state)return; // still loading: load() draws the page once the data is in
+ curViewKey=viewKey();
  renderBar();
+ const toolsBox=document.getElementById('tools');if(toolsBox)toolsBox.textContent=''; // the phone's page puts pause/play and the search here
  const m=document.getElementById('main');m.textContent='';
  const who=document.getElementById('who');if(who&&state&&state.session)who.textContent=state.session.helper?state.session.helper+(state.session.viewOnly?' (view only)':''):state.session.role==='admin'?'Administrator':'Client account';
  if(tab==='devices'&&openId){const d=devices.find(function(x){return x.id===openId});if(d){setCrumbs([['Devices','devices'],[d.name]]);renderDeviceDetail(m,d);return}openId=null}
@@ -417,7 +431,7 @@ function render(){
   return}
  setCrumbs([['Devices']]);
  renderDevices(m)}
-window.addEventListener('hashchange',function(){route();if(tab==='server'){piInfo=null;piWifi=null}window.scrollTo(0,0);render()});
+window.addEventListener('hashchange',function(){if(curViewKey)scrollMem[curViewKey]=window.pageYOffset||0;route();if(tab==='server'){piInfo=null;piWifi=null}render();restoreScroll(scrollMem[viewKey()])});
 
 /* ---------- devices ---------- */
 const NAMES={addTime:'Extra screen time',openStore:'Open Play Store',closeStore:'Close Play Store',lock:'Lock screen',reboot:'Reboot',wipe:'Wipe',release:'Release device',install:'Install APK',uninstall:'Uninstall app',sync:'Sync','install-result':'Install result','code:install':'Install code used','code:uninstall':'Removal code used',setPin:'Set screen PIN',clearPin:'Remove screen lock',unlock:'Unlock',addWifi:'Add Wi-Fi',resetAppCode:'Reset app code',updateAgent:'Update agent','uninstall-result':'Uninstall result',listSystemApps:'Scan for hidden system apps',locate:'Find location',checkUpdates:'Check for app updates',updateApp:'Update app',screenshot:'Screenshot'};
@@ -427,6 +441,17 @@ function lockedNow(d){const lk=d.info.lock;return lk&&lk.until>Date.now()}
 function storeOpen(d){const u=d.info&&d.info.storeUntil;return u===-1||(u>0&&u>Date.now())}
 function browsingFreely(d){return d.info.browseUntil&&d.info.browseUntil>Date.now()}
 function needsUpdate(d){return latest&&d.info.versionCode&&d.info.versionCode<latest.versionCode}
+/** How long until a phone has picked up a change, from the server's real numbers (the texts used to say "'+pickup()+'" everywhere).
+ * On the Raspberry Pi a phone is waiting for news and is woken at once; on Cloudflare it checks in on its own timer. */
+function pickup(){
+ const p=(state&&state.polling)||{};
+ if(p.instant)return 'within a few seconds';
+ const s=p.idle||300;
+ return 'within about '+(s<120?s+' seconds':Math.round(s/60)+' minutes')}
+function pickupNext(){return (state&&state.polling&&state.polling.instant)?'within a few seconds':'at its next check-in ('+pickup()+')'}
+/** Asks the phone to update LockGuard now (the same as Device → Updates → Update agent), for the Update button beside the health check's warning. */
+async function updateNow(d){
+ try{await call('POST','/api/devices/'+d.id+'/command',{type:'updateAgent',args:{}});snack('Update started. The phone installs it '+pickup()+' and LockGuard restarts by itself.');load()}catch(e){snack(e.message,1)}}
 function pendingApps(d){const want=new Set(d.applied.hide);return d.packages.filter(function(p){return want.has(p.p)!==p.h})}
 function pendingCount(d){return pendingApps(d).length}
 function chipsFor(d,full){
@@ -596,10 +621,10 @@ function buildAppsHub(m,dv){
    if(f.size>24*1024*1024){snack('That file is '+Math.round(f.size/1048576)+' MB. The limit is 24 MB. Use a download link for bigger apps.',1);return}
    snack('Uploading '+f.name+'…');
    try{const r=await fetch('/api/apk?name='+encodeURIComponent(f.name),{method:'PUT',body:f});const j=await r.json();if(!r.ok)throw new Error(j.error||'Upload failed');
-    await call('POST','/api/devices/'+dv.id+'/command',{type:'install',args:{apkId:j.id}});snack('Install queued. The phone runs it at its next check-in (within about 5 minutes).');load()}catch(e){snack(e.message,1)}};
+    await call('POST','/api/devices/'+dv.id+'/command',{type:'install',args:{apkId:j.id}});snack('Install queued. The phone runs it '+pickupNext()+'.');load()}catch(e){snack(e.message,1)}};
   ar.append(file,btn('Upload APK from this computer…','',async function(){file.click()}));
-  ar.append(btn('Install from link…','',async function(){const url=prompt('Direct https:// link to an APK file');if(!url)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'install',args:{url:url}});snack('Install queued. The phone runs it at its next check-in (within about 5 minutes).');load()}));
-  ar.append(btn('Uninstall by package…','',async function(){const p=prompt('Package name to uninstall');if(!p)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:p}});snack('Uninstall queued. The phone runs it at its next check-in (within about 5 minutes).');load()}));
+  ar.append(btn('Install from link…','',async function(){const url=prompt('Direct https:// link to an APK file');if(!url)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'install',args:{url:url}});snack('Install queued. The phone runs it '+pickupNext()+'.');load()}));
+  ar.append(btn('Uninstall by package…','',async function(){const p=prompt('Package name to uninstall');if(!p)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'uninstall',args:{packageName:p}});snack('Uninstall queued. The phone runs it '+pickupNext()+'.');load()}));
   appBox.append(ar,h('div',{class:'mute small',style:'margin-top:8px'},'Uploads are kept for a week and limited to 24 MB. For bigger apps use a link, or let the person install from the Play Store with approval mode (Device → Controls).'));
   m.append(appBox);
 
@@ -628,10 +653,10 @@ function buildAppsHub(m,dv){
     // Soft block only means anything while this switch is on; off a leftover "soft" app would be
     // stuck invisible in App rules (no button shows it as selected) instead of back at Default.
     if(!on)for(const pkg in dv.config.apps)if(dv.config.apps[pkg].mode==='soft')delete dv.config.apps[pkg];
-    try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches within about 5 minutes.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()})));
+    try{await saveConfigFor(dv,on?'Home screen mode on. The phone switches '+pickup()+'.':'Home screen mode off.')}catch(e){snack(e.message,1)}render()})));
   hsCard.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Hide the Administrator button'),
    h('div',{class:'mute'},'Home screen mode always shows an "Administrator" button below the allowed apps, to get back in. Hiding it removes that button for everyone who picks up the phone -- dialing *#*#636#*#* on the phone itself, or turning this back off from here, both still work.')),
-   sw(dv.config.hideKioskAdmin,async function(on){dv.config.hideKioskAdmin=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
+   sw(dv.config.hideKioskAdmin,async function(on){dv.config.hideKioskAdmin=on;try{await saveConfigFor(dv,'Saved. The phone applies it '+pickup()+'.')}catch(e){snack(e.message,1)}render()})));
   m.append(hsCard);
   const smCard=h('div',{class:'card'},h('h2',null,'Settings Menu'),
    h('div',{class:'mute'},'The disguised "Settings" tile home screen mode always shows, whatever the Allow list says -- the only way to reach any part of Settings while it\'s on. Which categories it shows and where each one links to is set up on the phone itself (most need no setup at all; a few manufacturer-only screens need a one-time "Learn" there). Same place as Device → Settings menu, shown here too since it\'s part of how home screen mode actually works.'));
@@ -664,7 +689,7 @@ function renderSystemApps(m,dv){
    h('div',{class:'mute'},'Apps built into the phone with no icon of their own -- not what shows in "Apps on this phone". Scanning asks the phone directly; it is not kept in sync automatically. Blocking one of these needs extra confirmation: it can break a part of the phone.'));
   sal.append(h('div',{style:'margin-top:8px'},btn('Scan for hidden system apps','tonal',async function(){
    await call('POST','/api/devices/'+dv.id+'/command',{type:'listSystemApps',args:{}});
-   snack('Scanning. The phone reports back at its next check-in (within about 5 minutes) -- tap Refresh after a moment.');load()})));
+   snack('Scanning. The phone reports back '+pickupNext()+' -- tap Refresh after a moment.');load()})));
   const lastScan=dv.results.slice().reverse().find(function(r){return r.type==='listSystemApps'});
   if(!lastScan)sal.append(h('div',{class:'mute small',style:'margin-top:8px'},'Not scanned yet.'));
   else if(!lastScan.ok)sal.append(h('div',{class:'mute small',style:'margin-top:8px'},'Last scan failed: '+lastScan.msg));
@@ -700,11 +725,12 @@ function buildDeviceGroup(m,dv){
 
 function renderDeviceDetail(m,d){
  if(d.id!==lastOpenId){lastOpenId=d.id;try{sessionStorage.setItem('lastOpenId',d.id)}catch(e){}setDeviceSection(null);subs={};saveSubs()}
- const headBox=h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('device','currentColor')),h('div',{class:'grow'},h('h1',null,d.name),chipsFor(d,true)),btn('Refresh','tonal',load));
+ const headBox=h('div',{class:'pagehead'},h('div',{class:'avatar'},svgIcon('device','currentColor')),h('div',{class:'grow'},h('h1',null,d.name),chipsFor(d,true)),
+   btn('Rename','tonal',async function(){const nm=prompt('Name for this phone, so you can tell whose it is (for example "Dovid\'s phone")',d.name);if(!nm||!nm.trim())return;try{await call('PUT','/api/devices/'+d.id+'/name',{name:nm.trim()});snack('Renamed.');load()}catch(e){snack(e.message,1)}}),btn('Refresh','tonal',load));
  m.append(headBox);
  if(state.session&&state.session.viewOnly)m.append(h('div',{class:'card',style:'border-color:var(--warn)'},h('div',{class:'mute'},'This login can only look. Changes have to be made from a full login.')));
 
- const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it at its next check-in (within about 5 minutes).');load()};
+ const queue=async function(label,type,args){await call('POST','/api/devices/'+d.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone runs it '+pickupNext()+'.');load()};
  const cmd=function(box,label,type,args,confirmMsg,cls){box.append(btn(label,cls||'tonal',async function(){
    if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}await queue(label,type,a)}))};
 
@@ -727,7 +753,7 @@ function renderDeviceDetail(m,d){
   kv('Screen lock',d.info.screenLock===undefined?'unknown':d.info.screenLock?'On'+(d.info.lockStrength&&d.info.lockStrength!=='set'?' · '+d.info.lockStrength:''):'Off'),
   kv('PIN control',d.info.pinControl===undefined?'unknown':d.info.pinControl?'Ready: you can set or remove the lock':'Not active yet (see Lock)'),
   kv('Apps',d.packages.length+' ('+d.packages.filter(function(p){return p.h}).length+' hidden)'),
-  kv('Sync',pendingCount(d)?pendingApps(d).map(function(p){const want=new Set(d.applied.hide);return (p.l||p.p)+(want.has(p.p)?' (hiding)':' (showing)')}).join(', ')+' — applies within about 5 minutes':'In sync'));
+  kv('Sync',pendingCount(d)?pendingApps(d).map(function(p){const want=new Set(d.applied.hide);return (p.l||p.p)+(want.has(p.p)?' (hiding)':' (showing)')}).join(', ')+' — applies '+pickup()+'':'In sync'));
  if(d.adminPin&&d.adminPin.ok){
   const pinV=h('b',null,'••••');const showPin=h('button',{class:'btn outline',style:'padding:2px 10px;margin-left:8px'},'Show');showPin.onclick=function(){pinV.textContent=d.adminPin.pin};
   info.append(h('div',{class:'kv'},h('span',{class:'mute'},'PIN you set'),h('span',null,pinV,showPin)))}
@@ -739,7 +765,7 @@ function renderDeviceDetail(m,d){
   h('div',{class:'mute'},'Finds the phone once, right now. For a history of where it has been, and alerts for places like home or school, see Device → Location.'));
  locCard.append(h('div',{style:'margin-top:8px'},btn('Find now','tonal',async function(){
   await call('POST','/api/devices/'+d.id+'/command',{type:'locate',args:{}});
-  snack('Asked the phone to find itself. It reports back at its next check-in (within about 5 minutes) -- tap Refresh after a moment.');load()})));
+  snack('Asked the phone to find itself. It reports back '+pickupNext()+' -- tap Refresh after a moment.');load()})));
  const lastFix=d.results.slice().reverse().find(function(r){return r.type==='locate'});
  if(!lastFix)locCard.append(h('div',{class:'mute small',style:'margin-top:8px'},'Not found yet.'));
  else if(!lastFix.ok)locCard.append(h('div',{class:'mute small',style:'margin-top:8px'},'Last attempt failed: '+lastFix.msg));
@@ -798,7 +824,7 @@ function renderDeviceDetail(m,d){
     if(!pin)return;await queue('App lock','setAppLockPin',{pin:pin})}));
   if(appLockOn)alRow.append(btn('Turn off App lock','outline',async function(){
     if(!confirm('Turn off App lock on this phone?'))return;await queue('App lock','clearAppLockPin',{})}));
-  alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Needs an agent build that knows setAppLockPin/clearAppLockPin -- if the phone replies "unknown command", update the agent first (Device → Controls → Update agent) and try again once it has checked in. Applies within about 5 minutes.'));
+  alBox.append(alRow,h('div',{class:'mute small',style:'margin-top:10px'},'Nobody can read a PIN the person chose themselves, not even the phone\'s maker -- same as the screen lock PIN above. Setting one here replaces whatever was set on the phone itself. Needs an agent build that knows setAppLockPin/clearAppLockPin -- if the phone replies "unknown command", update the agent first (Device → Controls → Update agent) and try again once it has checked in. Applies '+pickup()+'.'));
   lk.append(alBox);
  } else if(lockSub==='restrictions'){
   renderPermissions(lk,d);
@@ -843,7 +869,7 @@ function renderDeviceDetail(m,d){
 
  // ----- Log (dashboard-only -- the phone app has no log viewer of its own) -----
  const lg=h('section');
- const pl=h('div',{class:'card'},h('h2',null,'Dashboard log'),h('div',{class:'mute'},'What was sent from here. Compare against Phone log below to see whether it actually arrived -- it should, within about 5 minutes.'));
+ const pl=h('div',{class:'card'},h('h2',null,'Dashboard log'),h('div',{class:'mute'},'What was sent from here. Compare against Phone log below to see whether it actually arrived -- it should, '+pickup()+'.'));
  if(!d.pushLog.length)pl.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing sent yet.'));
  for(const p of d.pushLog.slice().reverse()){
   const row=h('div',{class:'act'},'📤 '+ago(p.at));
@@ -894,7 +920,8 @@ function renderDeviceDetail(m,d){
  sInput.oninput=function(){deviceSearch=sInput.value;renderSResults()};
  renderSResults();
  sWrap.append(h('div',{class:'ico'},svgIcon('search','currentColor')),sInput,sResults);
- headBox.insertBefore(sWrap,headBox.lastChild);
+ const toolsSlot=document.getElementById('tools');
+ if(toolsSlot){sWrap.style.cssText='';toolsSlot.append(pauseButton(d),sWrap)}else headBox.insertBefore(sWrap,headBox.lastChild);
 
  if(uiMode==='new'){renderDeviceNew(m,d,body);return}
  // ----- side menu (5 groups) + tabs along the top of the chosen group -----
@@ -966,7 +993,7 @@ function renderWholeAppBlocklist(m,dv){
   if(!pkg)return;
   if(!confirm('Block "'+pkg+'" entirely? This hides the whole app at the Android level -- it won\'t open or run at all until you Pause or Remove it here.'))return;
   dv.config.wholeAppBlocklist=dv.config.wholeAppBlocklist||{};dv.config.wholeAppBlocklist[pkg]={paused:false};
-  try{await saveConfigFor(dv,'Blocked. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()})));
+  try{await saveConfigFor(dv,'Blocked. The phone applies it '+pickup()+'.')}catch(e){snack(e.message,1)}render()})));
  m.append(card);
 
  const list=h('div',{class:'card'});
@@ -989,14 +1016,14 @@ function renderWholeAppBlocklist(m,dv){
 // DNS filter (DnsFilterVpnService on the phone).
 function renderDnsBlocklist(m,dv){
  const card=h('div',{class:'card'},h('h2',null,'DNS Hostname Block'),
-  h('div',{class:'mute'},'Blocks specific hostnames for the whole phone at the network level -- not a per-app block, and not the Browser\'s own site allowlist. One hostname per line; each one also blocks every subdomain of it. Example, to block photos/Street View/video in Google Maps while leaving the map itself working: streetviewpixels-pa.googleapis.com blocks Street View imagery specifically (Maps-only, no side effects elsewhere). lh3.googleusercontent.com, lh4.googleusercontent.com, lh5.googleusercontent.com and lh6.googleusercontent.com block business/user photos -- but those same servers also serve images in Gmail, Drive and Photos, so this affects those too. googlevideo.com blocks in-app video -- but also every YouTube video on the phone, everywhere, not just inside Maps. Turning this on starts the agent\'s own local VPN (always-on, so it can\'t just be disconnected from Settings) -- the phone shows a permanent VPN notification icon the whole time any hostname is listed here. Takes effect within about 5 minutes of saving.'));
+  h('div',{class:'mute'},'Blocks specific hostnames for the whole phone at the network level -- not a per-app block, and not the Browser\'s own site allowlist. One hostname per line; each one also blocks every subdomain of it. Example, to block photos/Street View/video in Google Maps while leaving the map itself working: streetviewpixels-pa.googleapis.com blocks Street View imagery specifically (Maps-only, no side effects elsewhere). lh3.googleusercontent.com, lh4.googleusercontent.com, lh5.googleusercontent.com and lh6.googleusercontent.com block business/user photos -- but those same servers also serve images in Gmail, Drive and Photos, so this affects those too. googlevideo.com blocks in-app video -- but also every YouTube video on the phone, everywhere, not just inside Maps. Turning this on starts the agent\'s own local VPN (always-on, so it can\'t just be disconnected from Settings) -- the phone shows a permanent VPN notification icon the whole time any hostname is listed here. Takes effect '+pickup()+' of saving.'));
  const ta=h('textarea',{style:'width:100%;min-height:120px;font-family:monospace'},(dv.config.dnsBlocklist||[]).join('\n'));
  card.append(h('div',{style:'margin-top:8px'},ta));
  card.append(h('div',{style:'margin-top:8px'},btn('Save','tonal',async function(){
   const typed=ta.value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
   dv.config.dnsBlocklist=typed;
   try{
-   const r=await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.');
+   const r=await saveConfigFor(dv,'Saved. The phone applies it '+pickup()+'.');
    const acceptedCount=r&&Array.isArray(r.dnsBlocklist)?r.dnsBlocklist.length:null;
    // A hostname-looking regex silently drops anything that doesn't match -- a "*" wildcard, a
    // "https://" prefix, AdBlock-style "||...^" syntax -- with no error from the save itself, so a
@@ -1013,14 +1040,14 @@ function renderDnsBlocklist(m,dv){
 // is deliberately broad (a whole CDN domain) but one specific host under it is still needed.
 function renderDnsAllowlist(m,dv){
  const card=h('div',{class:'card'},h('h2',null,'DNS Hostname Allow'),
-  h('div',{class:'mute'},'Overrides DNS Hostname Block above for whatever\'s listed here -- a hostname (or any subdomain of one) that matches both lists is let through. Use this when a block entry is deliberately broad but one specific host under it is still needed. Same format as the block list: one hostname per line. Takes effect within about 5 minutes of saving.'));
+  h('div',{class:'mute'},'Overrides DNS Hostname Block above for whatever\'s listed here -- a hostname (or any subdomain of one) that matches both lists is let through. Use this when a block entry is deliberately broad but one specific host under it is still needed. Same format as the block list: one hostname per line. Takes effect '+pickup()+' of saving.'));
  const ta=h('textarea',{style:'width:100%;min-height:80px;font-family:monospace'},(dv.config.dnsAllowlist||[]).join('\n'));
  card.append(h('div',{style:'margin-top:8px'},ta));
  card.append(h('div',{style:'margin-top:8px'},btn('Save','tonal',async function(){
   const typed=ta.value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
   dv.config.dnsAllowlist=typed;
   try{
-   const r=await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.');
+   const r=await saveConfigFor(dv,'Saved. The phone applies it '+pickup()+'.');
    const acceptedCount=r&&Array.isArray(r.dnsAllowlist)?r.dnsAllowlist.length:null;
    if(acceptedCount!==null&&acceptedCount<typed.length){
     snack('Only '+acceptedCount+' of '+typed.length+' line(s) looked like plain hostnames and were kept -- the rest were dropped (no "*", "https://", or AdBlock-style syntax; just the bare hostname, one per line).',1)
@@ -1053,7 +1080,7 @@ function renderApps(m,dv){
    const img=h('img',{src:'/api/icon/'+pkg,alt:'',style:'width:40px;height:40px;border-radius:10px'});img.onerror=function(){img.replaceWith(h('div',{class:'ph',style:'width:40px;height:40px;border-radius:10px;background:var(--surface-3)'}))};
    pc.append(h('div',{class:'app'},img,h('div',{class:'grow'},h('div',{style:'font-weight:500'},label),h('div',{class:'mute small mono'},pkg),
     h('div',{class:'row',style:'margin-top:8px'},
-     btn('Approve','',async function(){dv.config.apps[pkg]={mode:'allow',label:label};await saveConfigFor(dv,'Approved '+label+'. It appears on the phone within about 5 minutes.');render()}),
+     btn('Approve','',async function(){dv.config.apps[pkg]={mode:'allow',label:label};await saveConfigFor(dv,'Approved '+label+'. It appears on the phone '+pickup()+'.');render()}),
      btn('Block','danger',async function(){dv.config.apps[pkg]={mode:'block',label:label};await saveConfigFor(dv,'Blocked '+label+'.');render()})))))}
   m.append(pc)}
  const top=h('div',{class:'card'});
@@ -1097,7 +1124,7 @@ function appRow(a,dv,opts){
    if(!confirm('Second check: if this breaks something, undoing it may need "Release device" or a factory reset. Still want to do this?'))return;
    if(!confirm('Final check: block "'+name+'" on '+dv.name+' now?'))return;}
   if(d.mode)dv.config.apps[a.p]={mode:d.mode,label:a.l,schedule:d.schedule||undefined};else delete dv.config.apps[a.p];
-  await saveConfigFor(dv,'Saved '+(a.l||a.p)+'. The phone applies it within about 5 minutes.');delete draft[a.p];render()});
+  await saveConfigFor(dv,'Saved '+(a.l||a.p)+'. The phone applies it '+pickup()+'.');delete draft[a.p];render()});
  saveBtn.disabled=!dirty();
  const refresh=function(){saveBtn.disabled=!dirty()};
  const seg=h('div',{class:'seg'});
@@ -1327,6 +1354,25 @@ function renderAllOff(box,d){
    save('All restrictions off until '+hhmm(c.restrictionsOffUntil)+'.')});
   card.append(h('div',{class:'row',style:'margin-top:10px'},h('span',{class:'mute'},'For how long?'),sel,custom,go))}
  box.append(card)}
+/** The pause/play button on the top bar, next to the search: pauses EVERYTHING on this phone (web filter, blocked apps, screen time, bedtime, internet cut-offs) for a time you pick, or turns it all back on. */
+function pauseButton(d){
+ const c=d.config,now=Date.now();
+ const paused=(c.restrictionsOffUntil||0)>now||(c.pauseUntil||0)>now;
+ const left=Math.max(c.restrictionsOffUntil||0,c.pauseUntil||0);
+ const b=h('button',{type:'button',class:'pp'+(paused?' on':''),title:paused?'Everything is paused until '+hhmm(left)+'. Tap to turn it all back on.':'Pause every restriction on this phone for a while'},
+  paused?'▶':'⏸',h('span',{class:'t'},paused?' Resume (until '+hhmm(left)+')':' Pause'));
+ if(!can('time')&&!can('internet'))return h('span');
+ b.onclick=async function(){
+  try{
+   if(paused){c.restrictionsOffUntil=0;c.pauseUntil=0;await saveConfigFor(d,'Everything is back on. The phone applies it '+pickup()+'.');render();return}
+   const v=await ask('Pause everything on '+d.name,[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours']],value:'60',maxMinutes:1440}],'Pause',
+    'The website filter, blocked apps, screen time, bedtime and internet cut-offs all stand down. The phone stays managed and keeps reporting. Everything comes back by itself when the time is up.');
+   if(!v)return;
+   const mins=Math.max(1,Math.min(1440,parseInt(v.minutes,10)||60));
+   c.restrictionsOffUntil=Date.now()+mins*60000;c.restrictionsOffSince=Date.now();c.pauseUntil=c.restrictionsOffUntil;
+   await saveConfigFor(d,'Paused until '+hhmm(c.restrictionsOffUntil)+'. The phone applies it '+pickup()+'.');render()
+  }catch(e){snack(e.message,1)}};
+ return b}
 function renderInternetOff(box,d){
  if(d.isBrowser)return;
  const c=d.config,on=(c.internetOffUntil||0)>Date.now();
@@ -1366,7 +1412,7 @@ function renderLevels(box,d){
  for(const k of Object.keys(LEVELS)){const L=LEVELS[k];
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},L.label),h('div',{class:'mute small'},L.desc)),btn('Use this','tonal',async function(){
    if(!confirm('Set this phone to "'+L.label+'"?\n\n'+L.desc))return;
-   applyLevel(d.config,L.set);try{await saveConfigFor(d,'Set to '+L.label+'. The phone picks it up within about 5 minutes.')}catch(e){snack(e.message,1)}render()})))}
+   applyLevel(d.config,L.set);try{await saveConfigFor(d,'Set to '+L.label+'. The phone picks it up '+pickup()+'.')}catch(e){snack(e.message,1)}render()})))}
  box.append(card)}
 
 /** "Images" tab of Google, Bing and DuckDuckGo. */
@@ -1644,7 +1690,7 @@ function renderTemplateCard(m,dv){
  const apply=btn('Apply to this phone','tonal',async function(){
   if(!pick.value){snack('Choose a template first.',1);return}
   if(!confirm('Replace this phone\'s settings with the template "'+pick.options[pick.selectedIndex].text+'"? Its current settings are overwritten.'))return;
-  await call('POST','/api/templates/'+pick.value+'/apply',{deviceIds:[dv.id]});snack('Applied. The phone picks it up within about 5 minutes.');load()});
+  await call('POST','/api/templates/'+pick.value+'/apply',{deviceIds:[dv.id]});snack('Applied. The phone picks it up '+pickup()+'.');load()});
  card.append(h('div',{class:'row',style:'margin-top:10px'},pick,apply));
  call('GET','/api/templates').then(function(list){pick.textContent='';
   if(!list.length){pick.append(new Option('No templates yet',''));return}
@@ -1679,7 +1725,7 @@ function renderTemplates(m){
      const ids=[...picks.querySelectorAll('input:checked')].map(function(x){return x.value});
      if(!ids.length){snack('Choose at least one phone.',1);return}
      if(!confirm('Replace the settings of '+ids.length+' phone(s) with "'+t.name+'"?'))return;
-     const r=await call('POST','/api/templates/'+t.id+'/apply',{deviceIds:ids});snack('Applied to '+r.applied+' phone(s). They pick it up within about 5 minutes.');load()}),
+     const r=await call('POST','/api/templates/'+t.id+'/apply',{deviceIds:ids});snack('Applied to '+r.applied+' phone(s). They pick it up '+pickup()+'.');load()}),
     btn('Delete template','danger',async function(){if(!confirm('Delete the template "'+t.name+'"? Phones it was applied to keep their settings.'))return;await call('DELETE','/api/templates/'+t.id);render()})));
    box.append(card)}
  }).catch(function(e){box.textContent='';box.append(h('div',{class:'card'},h('div',{class:'mute'},e.message)))})}
@@ -1687,7 +1733,7 @@ function renderTemplates(m){
 /** Chrome's own settings, locked by the Agent (no certificate needed). */
 function renderChromeLock(m,dv){
  const cp=dv.config.chromePolicy=dv.config.chromePolicy||{};
- const save=async function(){try{await saveConfigFor(dv,'Saved. Chrome picks it up within about 5 minutes (the next time it starts).')}catch(e){snack(e.message,1)}render()};
+ const save=async function(){try{await saveConfigFor(dv,'Saved. Chrome picks it up '+pickup()+' (the next time it starts).')}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,'Chrome'),h('div',{class:'mute'},'Locks settings inside Chrome itself, the way companies manage Chrome on work phones. He cannot change them in Chrome. To check on the phone, open chrome://policy in Chrome.'));
  const row=function(k,title,text){card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute'},text)),sw(cp[k],function(v){cp[k]=v;save()})))};
  row('noIncognito','No incognito tabs','Removes "New incognito tab", so everything opened in Chrome stays in its history.');
@@ -1770,7 +1816,7 @@ function usageRows(box,rows,max){
 function renderUsage(m,dv){
  renderAppRequests(m,dv);
  const usage=dv.usage||{},days=Object.keys(usage).sort().reverse(),st=dv.config.screenTime||{};
- const send=function(minutes){return btn('Give '+minutes+' minutes','tonal',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:'addTime',args:{minutes:minutes}});snack('Extra time queued. It starts at the phone\'s next check-in (within about 5 minutes).');load()})};
+ const send=function(minutes){return btn('Give '+minutes+' minutes','tonal',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:'addTime',args:{minutes:minutes}});snack('Extra time queued. It starts at the phone\'s next check-in ('+pickup()+').');load()})};
  if(!days.length){
   m.append(h('div',{class:'card'},h('h2',null,'Screen time'),h('div',{class:'mute'},'Nothing reported yet. The phone sends its screen time with each check-in once it is on a build that has this feature.')));
  }else{
@@ -1799,7 +1845,7 @@ function renderUsage(m,dv){
 function renderTimeLimits(m,dv){
  const st=dv.config.screenTime=dv.config.screenTime||{dailyLimit:0,bedtime:null,appLimits:{},exempt:[]};
  st.appLimits=st.appLimits||{};st.exempt=st.exempt||[];
- const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}};
+ const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. The phone applies it '+pickup()+'.')}catch(e){snack(e.message,1)}};
  const pick=function(value,options,onchange){const el=h('select');for(const o of options)el.append(new Option(o[1],String(o[0])));el.value=String(value);el.onchange=function(){onchange(parseInt(el.value,10))};return el};
  // daily limit
  const dl=h('div',{class:'card'},h('h2',null,'Daily limit'));
@@ -1873,7 +1919,7 @@ function renderSiteLimits(m,dv,st,save){
   const sel=h('select');for(const t of times)sel.append(new Option(t[1]+' a day',String(t[0])));
   if(!times.some(function(t){return t[0]===st.siteLimits[host]}))sel.append(new Option(words(st.siteLimits[host])+' a day',String(st.siteLimits[host])));
   sel.value=String(st.siteLimits[host]);
-  sel.onchange=function(){st.siteLimits[host]=parseInt(sel.value,10);save('Saved. The phone applies it within about 5 minutes.')};
+  sel.onchange=function(){st.siteLimits[host]=parseInt(sel.value,10);save('Saved. The phone applies it '+pickup()+'.')};
   const u=used[host];
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},host),
    h('div',{class:'mute small'},u==null?'Not used yet today, or the phone has not reported yet.':'Used today: '+words(u).replace(/^0 minutes$/,'0 minutes')+(u>=st.siteLimits[host]?' · time is up':''))),
@@ -1954,7 +2000,7 @@ function renderAppRequests(m,dv){
    const open=function(label,minutes){return btn(label,'',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:'openStore',args:{minutes:minutes}});snack('The Play Store opens at the phone\'s next check-in.');await dismiss()})};
    row.append(open('Open for 1 hour',60),open('Open for 15 minutes',15),open('Open until I close it',0));
   }else{
-   row.append(btn('Allow this app','',async function(){dv.config.apps[r.pkg]={mode:'allow',label:r.label||r.pkg};await saveConfigFor(dv,'Allowed. It appears on the phone within about 5 minutes.');await dismiss()}));
+   row.append(btn('Allow this app','',async function(){dv.config.apps[r.pkg]={mode:'allow',label:r.label||r.pkg};await saveConfigFor(dv,'Allowed. It appears on the phone '+pickup()+'.');await dismiss()}));
   }
   row.append(btn('Dismiss','outline',dismiss));
   rc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},r.kind==='time'?'More screen time':r.kind==='store'?'Open the Google Play Store':'App: '+(r.label||r.pkg)),
@@ -1972,7 +2018,7 @@ function renderAppGroups(m,dv){
    h('div',{class:'mute'},(here.length?'On this phone: '+here.join(', ')+'.':'None of them are installed on this phone right now. If one is installed later, it is blocked.')+((groups[g].categories||[]).length?' Also catches any app that tells Android it is one of these.':''))),
    sw(on,async function(v){
     const set=new Set(dv.config.blockAppGroups||[]);v?set.add(g):set.delete(g);dv.config.blockAppGroups=[...set];
-    try{await saveConfigFor(dv,v?'Blocked. Applies within about 5 minutes.':'No longer blocked as a group.')}catch(e){snack(e.message,1)}render()})))}
+    try{await saveConfigFor(dv,v?'Blocked. Applies '+pickup()+'.':'No longer blocked as a group.')}catch(e){snack(e.message,1)}render()})))}
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Messaging apps such as WhatsApp are in none of these groups. Games and video apps are recognised by the kind of app they tell Android they are, plus a list of well-known names; other groups go by the list only.'));
  m.append(card)}
 
@@ -1985,8 +2031,8 @@ function renderStore(m,dv){
   h('div',{class:'mute'},'Hides the Play Store on this phone. App updates you send from here still work.')),
   sw(blocked,async function(v){
    if(v)dv.config.apps[PKG]={mode:'block',label:'Google Play Store'};else delete dv.config.apps[PKG];
-   try{await saveConfigFor(dv,v?'The Play Store closes within about 5 minutes.':'The Play Store is no longer blocked.')}catch(e){snack(e.message,1)}render()})));
- const send=function(label,type,args){return btn(label,'tonal',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone does it at its next check-in (within about 5 minutes).');load()})};
+   try{await saveConfigFor(dv,v?'The Play Store closes '+pickup()+'.':'The Play Store is no longer blocked.')}catch(e){snack(e.message,1)}render()})));
+ const send=function(label,type,args){return btn(label,'tonal',async function(){await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:args||{}});snack(label+' queued. The phone does it '+pickupNext()+'.');load()})};
  card.append(h('div',{style:'font-weight:500;margin-top:12px'},'Open it for a while'),
   h('div',{class:'row',style:'margin-top:8px'},send('15 minutes','openStore',{minutes:15}),send('1 hour','openStore',{minutes:60}),send('2 hours','openStore',{minutes:120}),send('Until I close it','openStore',{minutes:0}),send('Close now','closeStore')));
  const out=h('div',{style:'margin-top:10px'});
@@ -2006,7 +2052,7 @@ function renderUserMenu(m,dv){
   const on=!dv.config.userMenu||dv.config.userMenu[k]!==false;
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},labels[k]),sw(on,async function(v){
    dv.config.userMenu=dv.config.userMenu||{};dv.config.userMenu[k]=v;
-   try{await saveConfigFor(dv,'Saved. The phone\'s menu changes within about 5 minutes.')}catch(e){snack(e.message,1)}})))}
+   try{await saveConfigFor(dv,'Saved. The phone\'s menu changes '+pickup()+'.')}catch(e){snack(e.message,1)}})))}
  card.append(h('div',{class:'mute small',style:'margin-top:8px'},'"Refresh" always shows. Requests he sends arrive on this phone\'s Overview and, if alerts are set up, on your own phone.'));
  m.append(card)}
 
@@ -2084,7 +2130,7 @@ function renderSites(m,dv,part){
   sw(dv.config.browserAddonEnabled,async function(on){dv.config.browserAddonEnabled=on;try{await saveConfigFor(dv,on?'Browser add-on on. Its icon is on the phone now.':'Browser add-on off.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
   h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the App rules box so it can\'t be opened directly.')),
-  sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it within about 5 minutes.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
+  sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it '+pickup()+'.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
  if(part==='apps'){renderChromeLock(m,dv);return}
  renderSitesPart(m,dv);
 }
@@ -2125,7 +2171,7 @@ function ytWhichCard(m,dv,k){
   ['filtered','Regular '+L+', filtered','The real '+L+' app, with YouTube\'s Restricted Mode turned on for the phone. YouTube itself hides what it thinks is unsuitable; it is not perfect.'],
   ['ours','Our '+L,'The real app is switched off. They use our '+L+' icon instead: '+(k==='yt'?'only the channels and videos you allow':'only the songs you approve')+', or whatever you choose below.']],cur==='off'?'':cur,function(v){
   setYtWhich(c,k,v);
-  save(v==='ours'?'Our '+L+' icon goes on the phone and the real app is switched off, at its next check-in.':v==='filtered'?'The real '+L+' is on, with Restricted Mode. Phones apply it within about 5 minutes.':'The real '+L+' is on, with no filter. Phones apply it within about 5 minutes.')}));
+  save(v==='ours'?'Our '+L+' icon goes on the phone and the real app is switched off, at its next check-in.':v==='filtered'?'The real '+L+' is on, with Restricted Mode. Phones apply it '+pickup()+'.':'The real '+L+' is on, with no filter. Phones apply it '+pickup()+'.')}));
  if(cur==='off')card.append(h('div',{class:'mute',style:'margin-top:8px'},'Right now the real '+L+' and our icon are both off, so they cannot use '+L+'. Pick one above.'));
  if((cur==='free'||cur==='filtered')&&c[a.addon]===true)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Our '+L+' icon is also on the phone. Choosing one above turns the other off.'));
  if(cur==='filtered'){
@@ -2158,9 +2204,10 @@ function renderYoutube(m,dv){
   h('div',{class:'mute'},'With "Only what I allow": YouTube search works. Videos that are not allowed show only their title, no picture, with an "Ask for access" button that sends you a request. Off: search is blocked.')),
   sw(!c.youtubeSearchOff,function(on){c.youtubeSearchOff=!on;save(on?'They can search YouTube and ask for videos.':'YouTube search is blocked.')})),
   c.youtubeSearchOff?null:(function(){const seg=h('div',{class:'seg',style:'margin-top:10px'});
-   for(const [v,l] of [['hide','Hide their pictures'],['skin','Show pictures with skin covered']]){const b=h('button',{type:'button',class:(c.youtubeSearchPictures||'hide')===v?'on':''},l);
-    b.onclick=function(){c.youtubeSearchPictures=v;save(v==='skin'?'Search pictures show with skin covered.':'Search pictures are hidden.')};seg.append(b)}
-   return h('div',null,h('div',{class:'mute small',style:'margin-top:10px'},'Pictures of the videos in search results that are not allowed:'),seg)})()));
+   for(const [v,l] of YT_SEARCH_PICS){const b=h('button',{type:'button',class:(c.youtubeSearchPictures||'hide')===v?'on':''},l);
+    b.onclick=function(){c.youtubeSearchPictures=v;save(YT_SEARCH_PICS_SAVED[v])};seg.append(b)}
+   return h('div',null,h('div',{class:'mute small',style:'margin-top:10px'},'Pictures (thumbnails) of the videos in search results that are not allowed yet:'),seg,
+    h('div',{class:'mute small',style:'margin-top:6px'},'"Show them as they are" is plain YouTube search: every result shows its normal picture and title. A video that is not allowed still cannot be played; it has an "Ask for access" button.'))})()));
  if(!dv.isWindows&&!dv.isBrowser)m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Let them download videos'),
   h('div',{class:'mute'},'A Download button on every YouTube video (in the Browser and the YouTube icon). The video is saved on the phone with yt-dlp, listed under "Downloaded" on YouTube\'s home page, and plays with no internet. Only YouTube videos; only while YouTube is not Off.')),
   sw(c.downloadsOff!==true,function(on){c.downloadsOff=!on;if(!on)offerDeleteDownloads(dv);save(on?'They can download videos.':'Downloads are off.')}))));
@@ -2218,7 +2265,7 @@ async function allowSongs(dv,songs,group){
   if(group)e.group=group;if(until)e.until=until;
   dv.config.sites['exact:music.youtube.com:'+stamp+'-'+n]=e;n++}
  if(!n){snack('They are all allowed already.');return}
- try{await saveConfigFor(dv,'Allowed '+n+' song'+(n===1?'':'s')+(group?' from '+group:'')+(until?', '+untilText(until):'')+'. Phones pick it up within about 5 minutes.')}catch(e){snack(e.message,1)}
+ try{await saveConfigFor(dv,'Allowed '+n+' song'+(n===1?'':'s')+(group?' from '+group:'')+(until?', '+untilText(until):'')+'. Phones pick it up '+pickup()+'.')}catch(e){snack(e.message,1)}
  render()}
 function songRow(dv,r,have,group){
  return h('div',{class:'row',style:'margin:10px 0;align-items:flex-start'},h('img',{src:r.thumb,alt:'',loading:'lazy',style:'width:96px;height:54px;border-radius:8px;object-fit:cover;flex:none'}),
@@ -2411,7 +2458,7 @@ async function addSite(dv,entry){
  dv.config.sites=dv.config.sites||{};
  dv.config.sites[key]=entry.type==='youtube'?{type:'youtube',kind:'channel',id:entry.id,url:entry.url,label:entry.label,blockImages:false,installable:false,thumb:entry.thumb}:{type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true,thumb:entry.thumb};
  if(until)dv.config.sites[key].until=until;
- await saveConfigFor(dv,'Added '+(entry.label||entry.url)+(until?', '+untilText(until):'')+'. Phones pick it up within about 5 minutes.');
+ await saveConfigFor(dv,'Added '+(entry.label||entry.url)+(until?', '+untilText(until):'')+'. Phones pick it up '+pickup()+'.');
 }
 /** Copies another device's (or browser's) whole config -- or just its sites, into a browser -- over this one's. */
 function renderCloneCard(m,dv){
@@ -2425,7 +2472,7 @@ function renderCloneCard(m,dv){
   if(!confirm('Replace this '+(dv.isBrowser?'browser\'s sites':'device\'s settings')+' with a copy of the selected one\'s? This cannot be undone.'))return;
   const [rawId,kind]=sel.value.split('|');
   await call('POST',(dv.isBrowser?'/api/browsers/':'/api/devices/')+dv.id+'/clone-from',{sourceId:rawId,browser:kind==='browser'});
-  snack('Cloned. Phones pick up the change within about 5 minutes.');load()})));
+  snack('Cloned. Phones pick up the change '+pickup()+'.');load()})));
  m.append(card);
 }
 const BROWSER_GROUPS=[
@@ -2958,7 +3005,7 @@ const GROUP_HELP={
 /** What is not working on the phone, in plain words with how to fix it. level: bad (must fix) / warn (should fix). */
 function healthProblems(d){
  const out=[],i=d.info||{},c=d.config||{};
- const add=function(level,what,fix){out.push({level:level,what:what,fix:fix})};
+ const add=function(level,what,fix,act){out.push({level:level,what:what,fix:fix,act:act||null})};
  if(d.syncPaused)add('bad','The phone is not connected to the dashboard (turned off on the phone itself).','On the phone: open LockGuard → Administrator, and turn the connection back on.');
  else if(!isOnline(d))add(d.lastSeen&&Date.now()-d.lastSeen<6*3600000?'warn':'bad','The phone has not checked in for '+ago(d.lastSeen).replace(' ago','')+'.','Make sure the phone is on and has Wi-Fi or mobile data. Everything you set keeps working on the phone meanwhile.');
  if(i.deviceOwner===false)add('bad','LockGuard is not in full control of the phone, so most settings cannot work.','Set the phone up again with the QR code (Add device → step by step).');
@@ -2970,10 +3017,10 @@ function healthProblems(d){
  const stc=c.screenTime||{};
  if(i.usageAccess===false&&(stc.dailyLimit||Object.keys(stc.appLimits||{}).length))add('bad','Usage access is off on the phone, so the daily limit and app limits cannot count minutes.','On the phone: Settings → Apps → Special app access → Usage access → LockGuard → allow. (Administrator → Rules → Safety on the phone has a Fix it button.)');
  if(i.batteryUnrestricted===false)add('warn','The phone\'s battery saver may put LockGuard to sleep, so it checks in late.','On the phone: Settings → Apps → LockGuard → Battery → Unrestricted (or "Don\'t optimize").');
- if(needsUpdate(d))add('warn','A newer LockGuard is available.','Device → Updates → Update agent. It installs by itself.');
+ if(needsUpdate(d))add('warn','A newer LockGuard is available.',(c.autoUpdate===true?'It will also update by itself. Tap Update now to do it right away.':'Tap Update now. It installs by itself. (Automatic updates are off for this phone: Device → Updates.)'),'update');
  if(i.battery&&i.battery.pct<=15&&!i.battery.charging)add('warn','The battery is at '+i.battery.pct+'%.','Charge the phone.');
  if(i.screenLock===false)add('warn','The phone has no screen lock, so anyone who picks it up can use it.','Security → Screen lock → Set PIN.');
- if(i.filterRunning===undefined&&i.deviceOwner)add('warn','This phone has an older LockGuard that does not report everything the health check looks at.','Device → Updates → Update agent.');
+ if(i.filterRunning===undefined&&i.deviceOwner)add('warn','This phone has an older LockGuard that does not report everything the health check looks at.','Tap Update now.','update');
  return out}
 /** "What's on for this phone": every rule in force, one plain line each, each opening its own tab. */
 function renderWhatsOn(box,d){
@@ -3026,17 +3073,20 @@ function renderHealthSummary(box,d){
  const p=healthProblems(d);if(!p.length)return;
  const bad=p.filter(function(x){return x.level==='bad'}).length;
  box.append(h('div',{class:'card',style:'border-color:var(--'+(bad?'error':'warn')+')'},h('h2',null,bad?bad+(bad===1?' thing needs fixing':' things need fixing'):'Something to look at'),
-  h('div',{class:'mute'},p[0].what),h('div',{style:'margin-top:8px'},btn('Open the health check','tonal',function(){goTo('safety','health')}))))}
+  h('div',{class:'mute'},p[0].what),h('div',{class:'row',style:'margin-top:8px'},btn('Open the health check','tonal',function(){goTo('safety','health')}),
+   p.some(function(x){return x.act==='update'})&&can('device')&&!d.isBrowser?btn('Update now','',function(){updateNow(d)}):null)))}
 function renderHealth(m,d){
  const p=healthProblems(d);
  const card=h('div',{class:'card'},h('h2',null,'Health check'),h('div',{class:'mute'},'Everything that has to work on the phone for your settings to work. Anything red needs fixing; it says how.'));
  if(!p.length)card.append(h('div',{style:'margin-top:10px;font-weight:500;color:var(--ok)'},'✅ Everything is working.'));
  for(const x of p)card.append(h('div',{class:'setting',style:'align-items:flex-start'},h('div',{style:'font-size:20px;margin-right:8px'},x.level==='bad'?'🔴':'🟡'),
-  h('div',{class:'grow'},h('div',{style:'font-weight:500'},x.what),h('div',{class:'mute small'},'How to fix: '+x.fix))));
+  h('div',{class:'grow'},h('div',{style:'font-weight:500'},x.what),h('div',{class:'mute small'},'How to fix: '+x.fix)),
+  x.act==='update'&&can('device')&&!d.isBrowser?btn('Update now','',function(){updateNow(d)}):null));
  const i=d.info||{},okRow=function(on,label){if(on)card.append(h('div',{class:'mute small',style:'margin-top:4px'},'✅ '+label))};
  card.append(h('div',{style:'margin-top:12px;font-weight:500'},'Working'));
  okRow(isOnline(d),'Connected (checked in '+ago(d.lastSeen)+')');okRow(i.deviceOwner,'LockGuard is in full control');okRow(i.filterRunning,'Website filter running');
- okRow(i.accessibility,'Accessibility switch on');okRow(i.batteryUnrestricted,'Battery saver leaves it alone');okRow(i.screenLock,'Screen lock set');okRow(i.usageAccess,'Usage access on (screen time can count)');
+ okRow((d.config||{}).autoUpdate===true,'Updates itself (automatic updates on)');okRow(i.accessibility,'Accessibility switch on');okRow(i.batteryUnrestricted,'Battery saver leaves it alone');okRow(i.screenLock,'Screen lock set');okRow(i.usageAccess,'Usage access on (screen time can count)');
+ if(!d.isBrowser&&!d.isWindows)card.append(h('div',{style:'margin-top:14px;border-top:1px solid var(--outline-variant);padding-top:10px'},simpleSwitch('Update this phone by itself','New LockGuard versions (security fixes too) install on their own within a few hours, even if nobody presses Update. Switch this off for a phone you do not want updated: it then changes only when you press Update now.',(d.config||{}).autoUpdate===true,async function(on){d.config.autoUpdate=on;try{await saveConfigFor(d,on?'Automatic updates are on for this phone.':'Automatic updates are off for this phone. It updates only when you press Update now.')}catch(e){snack(e.message,1)}render()})));
  m.append(card)}
 
 /** Photo alerts: new photos are checked on the phone; only a line of text comes here, never the photo. */
@@ -3124,7 +3174,7 @@ function renderSettings(m){
   h('div',{class:'mute'},'Shown on the timed-lock screen and at the top of the agent app, on every phone. A square or wide PNG/JPG works; it is shrunk automatically.'));
  const prev=h('img',{src:'/api/logo?v='+(iconVer.__logo||0),alt:'',style:'max-height:80px;max-width:100%;margin-top:10px;border-radius:8px;display:block'});prev.onerror=function(){prev.replaceWith(h('div',{class:'mute small',style:'margin-top:10px'},'No logo set.'))};
  logoCard.append(prev,h('div',{class:'row',style:'margin-top:10px'},
-  btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up within about 5 minutes.');render()}),
+  btn('Upload logo…','',async function(){const blob=await pickImage(256,false);if(!blob)return;await putImage('/api/logo',blob);iconVer.__logo=Date.now();snack('Logo saved. Phones pick it up '+pickup()+'.');render()}),
   btn('Remove logo','outline',async function(){await call('DELETE','/api/logo');iconVer.__logo=Date.now();snack('Logo removed.');render()})));
  m.append(logoCard);
  if(state.session.role==='admin'){if(!state.session.helper)renderTwoStep(m);renderAlerts(m)}
@@ -3201,7 +3251,7 @@ function renderClients(m){
 /** Everything that used to be shared by every phone, now that specific phone's own. */
 /* ---------- Settings hub: Permissions / Network / Updates / Device (Settings Menu is phone-only) ---------- */
 function renderPermissions(m,dv){
- const card=h('div',{class:'card'},h('h2',null,'Restrictions'),h('div',{class:'mute'},'Each switch saves immediately. The phone picks changes up within about 5 minutes.'));
+ const card=h('div',{class:'card'},h('h2',null,'Restrictions'),h('div',{class:'mute'},'Each switch saves immediately. The phone picks changes up '+pickup()+'.'));
  for(const k in state.restrictions){
   card.append(h('div',{class:'setting'},h('div',{class:'grow'},state.restrictions[k].label),
    sw(dv.config.restrictions[k],async function(on){dv.config.restrictions[k]=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}})))}
@@ -3217,7 +3267,7 @@ function renderNetworkSection(m,dv){
  wl.append(h('div',{class:'mute small',style:'margin-top:8px'},'Android does not let apps read saved Wi-Fi passwords, so networks you add here are remembered for you.'));
  wl.append(h('div',{style:'margin-top:8px'},btn('Add Wi-Fi network…','',async function(){
    const v=await ask('Add a Wi-Fi network',[{key:'ssid',label:'Network name',max:32},{key:'password',label:'Password (leave empty for an open network)',max:63}],'Add to phone');
-   if(!v||!v.ssid)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'addWifi',args:{ssid:v.ssid,password:v.password}});snack('Add Wi-Fi queued. The phone runs it at its next check-in (within about 5 minutes).');load()})));
+   if(!v||!v.ssid)return;await call('POST','/api/devices/'+dv.id+'/command',{type:'addWifi',args:{ssid:v.ssid,password:v.password}});snack('Add Wi-Fi queued. The phone runs it '+pickupNext()+'.');load()})));
  m.append(wl);
 }
 function renderUpdatesSection(m,dv){
@@ -3225,7 +3275,7 @@ function renderUpdatesSection(m,dv){
   h('div',{class:'mute'},'Checks only the apps already on this phone that aren\'t blocked, plus whatever Waze, Google Maps and Android Auto need to keep working -- never the whole Play Store.'));
  card.append(h('div',{style:'margin-top:8px'},btn('Check for updates','tonal',async function(){
   await call('POST','/api/devices/'+dv.id+'/command',{type:'checkUpdates',args:{}});
-  snack('Checking. The phone reports back at its next check-in (within about 5 minutes) -- tap Refresh after a moment.');load()})));
+  snack('Checking. The phone reports back '+pickupNext()+' -- tap Refresh after a moment.');load()})));
  const lastCheck=dv.results.slice().reverse().find(function(r){return r.type==='checkUpdates'});
  if(!lastCheck)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Not checked yet.'));
  else if(!lastCheck.ok)card.append(h('div',{class:'mute small',style:'margin-top:8px'},'Last check failed: '+lastCheck.msg));
@@ -3237,22 +3287,22 @@ function renderUpdatesSection(m,dv){
     h('div',{class:'mute small'},'build '+u.installed+' → '+u.available)),
     btn('Update','tonal',async function(){
      await call('POST','/api/devices/'+dv.id+'/command',{type:'updateApp',args:{packageName:u.p}});
-     snack('Update queued for '+(u.l||u.p)+'. Runs at the phone\'s next check-in (within about 5 minutes).');load()}));
+     snack('Update queued for '+(u.l||u.p)+'. Runs at the phone\'s next check-in ('+pickup()+').');load()}));
    card.append(row)}}
  m.append(card);
  m.append(h('div',{class:'card'},h('h2',null,'Agent updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Update the agent automatically'),
   h('div',{class:'mute'},'The phone checks GitHub for a newer build every 6 hours and installs it itself. You can always update it yourself from Device → Controls, or from the phone\'s admin panel.')),
-  sw(dv.config.autoUpdate,async function(on){dv.config.autoUpdate=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));
+  sw(dv.config.autoUpdate===true,async function(on){dv.config.autoUpdate=on;try{await saveConfigFor(dv,on?'Automatic updates are on for this phone.':'Automatic updates are off for this phone.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('h2',null,'System updates'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Freeze Android system updates'),
   h('div',{class:'mute'},'Android will not let any app block OTA updates completely -- a freeze can only last up to 90 days at a time, with a mandatory 60-day gap before the next one. This sets the most freeze Android allows, back to back, which covers most of the year but leaves about two months of it open to an update landing. There is no setting that closes that gap; this is a limit of Android itself, not this app.')),
-  sw(dv.config.freezeUpdates,async function(on){dv.config.freezeUpdates=on;try{await saveConfigFor(dv,on?'Freeze scheduled. The phone applies it within about 5 minutes.':'Freeze removed; the phone can update normally again.')}catch(e){snack(e.message,1)}}))));
+  sw(dv.config.freezeUpdates,async function(on){dv.config.freezeUpdates=on;try{await saveConfigFor(dv,on?'Freeze scheduled. The phone applies it '+pickup()+'.':'Freeze removed; the phone can update normally again.')}catch(e){snack(e.message,1)}}))));
 }
 function renderDeviceCard(m,dv){
  const nOv=Object.keys(dv.overrides||{}).length;
  const dr=h('div',{class:'row'});
  const cmdHere=function(label,type,args,confirmMsg,cls){dr.append(btn(label,cls||'tonal',async function(){
   if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}
-  await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:a||{}});snack(label+' queued. The phone runs it at its next check-in (within about 5 minutes).');load()}))};
+  await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:a||{}});snack(label+' queued. The phone runs it '+pickupNext()+'.');load()}))};
  const devBox=h('div',{class:'card'},h('h2',null,'Phone'));
  cmdHere('Sync now','sync');cmdHere('Reboot','reboot');
  if(needsUpdate(dv))cmdHere('Update agent to build '+latest.versionCode,'updateAgent',{});else cmdHere('Update agent','updateAgent',{},null,'outline');
@@ -3261,7 +3311,7 @@ function renderDeviceCard(m,dv){
  const dd=h('div',{class:'row',style:'margin-top:12px'});
  const cmdDd=function(label,type,args,confirmMsg,cls){dd.append(btn(label,cls||'tonal',async function(){
   if(confirmMsg&&!confirm(confirmMsg))return;let a=args;if(typeof args==='function'){a=args();if(!a)return}
-  await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:a||{}});snack(label+' queued. The phone runs it at its next check-in (within about 5 minutes).');load()}))};
+  await call('POST','/api/devices/'+dv.id+'/command',{type:type,args:a||{}});snack(label+' queued. The phone runs it '+pickupNext()+'.');load()}))};
  cmdDd('Release device','release',{uninstall:false},'Release this device? It stops being managed and every restriction is removed.','outline');
  cmdDd('Release & remove app','release',{uninstall:true},'Release the device AND start removing the agent app? The phone will ask to confirm.','outline');
  cmdDd('Wipe','wipe',null,'ERASE this device completely?','danger');
@@ -3280,7 +3330,7 @@ function renderDeviceCard(m,dv){
   btn('Save','',async function(){
    const list=ids.value.split(/[ ,\n]+/).filter(Boolean);
    if(list.some(function(x){return !/^(people\/)?[0-9]{15,25}$/.test(x)})){snack('That is not a Google account ID. It is a number of about 21 digits (see the steps below), not an email address.',1);return}
-   dv.config.frpAccounts=list;await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.');await load()}),
+   dv.config.frpAccounts=list;await saveConfigFor(dv,'Saved. The phone applies it '+pickup()+'.');await load()}),
   btn('Turn off','outline',async function(){dv.config.frpAccounts=[];await saveConfigFor(dv,'Reset protection removed.');await load()})));
  frp.append(h('div',{class:'mute small',style:'margin-top:10px'},'How to get your Google account ID:'),
   h('ol',{class:'mute small',style:'margin:4px 0 0 18px;padding:0'},
@@ -3293,11 +3343,11 @@ function renderDeviceCard(m,dv){
   h('div',{class:'mute'},'A sideloaded app can ask for an accessibility service and use it to read the screen and tap things on the person\'s behalf -- a known way around app controls. Turning this on switches off every accessibility service on the phone, including ones used for real accessibility needs, so leave it off if anyone here relies on one.')),
   sw(dv.config.blockAccessibility,async function(on){
    if(on&&!confirm('Turn off every accessibility service on this phone? Do this only if nobody here needs one for real accessibility use.'))return;
-   dv.config.blockAccessibility=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()}))));
+   dv.config.blockAccessibility=on;try{await saveConfigFor(dv,'Saved. The phone applies it '+pickup()+'.')}catch(e){snack(e.message,1)}render()}))));
  m.append(h('div',{class:'card'},h('h2',null,'Fingerprint / face unlock'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Disable fingerprint/face at the lock screen'),
   h('div',{class:'mute'},'The "Block enrolling fingerprint or face unlock" restriction (App rules) only stops a new one from being set up -- it does nothing to a fingerprint or face already enrolled, which keeps right on working. This is the actual off switch: forces PIN/pattern/password at the lock screen, whatever is already enrolled.')),
   sw(dv.config.disableBiometricUnlock,async function(on){
-   dv.config.disableBiometricUnlock=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()}))));
+   dv.config.disableBiometricUnlock=on;try{await saveConfigFor(dv,'Saved. The phone applies it '+pickup()+'.')}catch(e){snack(e.message,1)}render()}))));
  m.append(h('div',{class:'card'},h('h2',null,'Phone info'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Show which Wi-Fi the phone is on'),
   h('div',{class:'mute'},'Android only reveals the network name when its Location setting is on, so this switch turns that on for the phone. The dashboard shows the network name and signal, never where the phone is. Battery level is always shown.')),
   sw(dv.config.reportWifi,async function(on){dv.config.reportWifi=on;try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}}))));
@@ -3305,12 +3355,12 @@ function renderDeviceCard(m,dv){
   h('div',{class:'mute'},'While this is on, entering the master code on the phone itself does nothing -- every change has to come from here instead. Turning it back off also has to happen from here, so only use this if you expect the phone to stay able to reach this dashboard.')),
   sw(dv.config.phoneAdminLocked,async function(on){
    if(on&&!confirm('Turn off this phone\'s own Administrator panel? You\'ll only be able to turn it back on from this dashboard -- make sure the phone can still reach it.'))return;
-   dv.config.phoneAdminLocked=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()}))));
+   dv.config.phoneAdminLocked=on;try{await saveConfigFor(dv,'Saved. The phone applies it '+pickup()+'.')}catch(e){snack(e.message,1)}render()}))));
  m.append(h('div',{class:'card'},h('h2',null,'App icon'),h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Hide the app icon'),
   h('div',{class:'mute'},'Removes the agent\'s icon from the launcher and app drawer. Nothing else changes -- it keeps running and enforcing everything exactly the same. Two ways back: turn this off here again, or dial *#*#636#*#* right on the phone (works even offline; a few phone brands\' own dialer apps don\'t support this standard Android feature).')),
   sw(dv.config.hideAppIcon,async function(on){
    if(on&&!confirm('Hide the app icon on this phone? Turn it back on here, or dial *#*#636#*#* on the phone itself.'))return;
-   dv.config.hideAppIcon=on;try{await saveConfigFor(dv,'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()}))));
+   dv.config.hideAppIcon=on;try{await saveConfigFor(dv,'Saved. The phone applies it '+pickup()+'.')}catch(e){snack(e.message,1)}render()}))));
  const notif=h('div',{class:'card'},h('h2',null,'Notification text'),
   h('div',{class:'mute'},'The DNS filter\'s notification (required by Android for any running foreground service -- it can\'t be hidden entirely). Can also be changed right on the phone (Settings → Device); whichever was changed more recently wins.'));
  const notifTitle=h('input',{type:'text',placeholder:'Title',value:dv.config.dnsFilterNotifTitle||'',style:'width:100%;margin-top:8px'});
@@ -3414,12 +3464,16 @@ const HOME_ROWS=[
  ['safety','bell','Safety and alerts','safety',null],
  ['security','lock','Lock and security','security',null],
  ['device','device','Phone settings','device',null],
- ['status','doc','Status and activity','overview',null]];
+ ['status','doc','Status and activity','overview',null],
+ ['log','doc','Phone log: what it saw and did','overview','log']];
 const NEW_TITLES={overview:'Status and activity',safety:'Safety and alerts',apps:'Apps',youtube:'YouTube',music:'YouTube Music',time:'Screen time',browser:'Browser and web',calls:'Calls and texts',internet:'Internet',security:'Lock and security',device:'Phone settings'};
 
 /** Opens a group on one of its "more settings" tabs (the old tabs live inside "More settings" in the new look). */
 function goMore(sec,sub){open['more-'+sec]=true;goTo(sec,sub)}
-function backHome(){setDeviceSection(null);window.scrollTo(0,0);render()}
+function backHome(){setDeviceSection(null);render();restoreScroll(scrollMem[viewKey()])}
+/** What the pictures of search results may do (also used by the New look's YouTube page). hide = nothing shows; skin = shows with skin covered; show = as they are. */
+const YT_SEARCH_PICS=[['hide','Hide their pictures'],['skin','Show with skin covered'],['show','Show them as they are']];
+const YT_SEARCH_PICS_SAVED={hide:'Search pictures are hidden.',skin:'Search pictures show with skin covered.',show:'Search pictures show as they are.'};
 /** Every parental control and every filter of one phone, with what is switched on now. Each item: {title, on, text, group (who may change it), go}. */
 function controlsList(d){
  const c=d.config||{},st=c.screenTime||{},now=Date.now();
@@ -3585,7 +3639,7 @@ function renderHomeNew(m,d){
   if(r[0]==='browser')badge=(d.siteRequests||[]).length;
   if(r[0]==='safety')badge=healthProblems(d).filter(function(x){return x.level==='bad'}).length+(d.msgAlerts||[]).length;
   const row=h('button',{type:'button',class:'ctl'},h('span',{class:'avatar'},svgIcon(r[1],'currentColor')),h('span',{class:'grow'},h('span',{class:'ct'},r[2]),h('span',{class:'mute'},sum[r[0]]||'')),badge?h('span',{class:'badge'},String(badge)):null,h('span',{class:'mute'},'›'));
-  row.onclick=function(){goTo(r[3],r[4]);window.scrollTo(0,0)};
+  row.onclick=function(){if(r[0]==='log')goMore(r[3],r[4]);else goTo(r[3],r[4]);window.scrollTo(0,0)};
   list.append(row)}
  m.append(list);
  m.append(h('div',{class:'mute small',style:'margin-top:14px'},'Want the old screen? Use the New / Legacy switch at the top.'))}
@@ -3732,6 +3786,18 @@ function appFacts(dv,a){
  if(mode.schedule)out.push(['At set times','']);
  if((c.networkBlocklist||{})[a.p])out.push(['No internet','bad']);else if((c.filterSkipApps||[]).indexOf(a.p)>=0)out.push(['Not filtered','']);
  return out}
+/** Which group an app is in on the Apps page: block / time (a daily limit or set hours) / allow / soft / default (no rule of its own). */
+function appCategory(dv,a){
+ const c=dv.config,st=c.screenTime||{},m=cur(dv,a.p);
+ if(m.mode==='block')return 'block';
+ if((st.appLimits||{})[a.p]||m.schedule)return 'time';
+ if(m.mode==='allow')return 'allow';
+ if(m.mode==='soft')return 'soft';
+ return 'default'}
+/** The groups, in the order they are shown. */
+const APP_GROUPS_SHOWN=[['allow','Allowed','Apps you allowed.'],['time','Time controlled','Apps with a daily limit or set hours.'],['block','Blocked','Apps that are switched off on the phone.'],['soft','Soft blocked','Not shown on the home screen, but still there.'],['default','No rule of their own','The general rules decide.']];
+let appsShow='all';try{appsShow=localStorage.getItem('appsShow')||'all'}catch(e){}
+function setAppsShow(v){appsShow=v;try{localStorage.setItem('appsShow',v)}catch(e){}render()}
 const APP_LIMITS=[[0,'No limit'],[15,'15 minutes'],[30,'30 minutes'],[45,'45 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours']];
 /** Every setting of one app, in one card. Each change is saved at once. */
 function appDetailCard(dv,a,save){
@@ -3740,7 +3806,7 @@ function appDetailCard(dv,a,save){
  const card=h('div',{class:'card',style:'border-color:var(--primary)'});
  card.append(h('div',{class:'row',style:'flex-wrap:nowrap;align-items:center'},appIconEl(a,48),
   h('div',{class:'grow'},h('h2',{style:'margin:0'},name),h('div',{class:'mute small mono',style:'word-break:break-all'},a.p)),
-  btn('Close','outline',function(){appSel=null;render()})));
+  btn('Close','outline',function(){appSel=null;render();restoreScroll(scrollMem[viewKey()])})));
  const chips=h('div',{style:'margin-top:8px'});let anyChip=false;
  if(a.h){chips.append(h('span',{class:'chip warn'},'hidden on the phone now'));anyChip=true}
  const ov=(dv.overrides||{})[a.p];if(ov){chips.append(h('span',{class:'chip bad'},'set to "'+ov+'" on the phone itself: it overrides this until cleared in Controls'));anyChip=true}
@@ -3795,14 +3861,22 @@ function essApps(box,dv){
  const c=dv.config;
  const save=async function(msg){try{await saveConfigFor(dv,msg)}catch(e){snack(e.message,1)}render()};
  const s=search.toLowerCase();
- const apps=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE&&!a.s&&(!s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s))}).sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)});
+ // Every app the phone shows an icon for, built-in ones too (YouTube, Chrome and so on are built in on most phones).
+ const apps=dv.packages.filter(function(a){return a.p!==SELF_PACKAGE&&(!s||(a.l||'').toLowerCase().includes(s)||a.p.toLowerCase().includes(s))}).sort(function(a,b){return (a.l||a.p).localeCompare(b.l||b.p)});
+ const cats={};for(const a of apps)(cats[appCategory(dv,a)]=cats[appCategory(dv,a)]||[]).push(a);
  // At the very top: search, and how to show the apps.
  const bar=h('div',{class:'card'},h('h2',null,'Apps on this phone ('+apps.length+')'));
  const q=h('input',{type:'text',placeholder:'Search this phone\'s apps',value:search,style:'flex:1;min-width:160px'});
  q.oninput=function(){search=q.value;const pos=q.selectionStart;render();const n=document.querySelector('#main input[placeholder="Search this phone\'s apps"]');if(n){n.focus();n.setSelectionRange(pos,pos)}};
  const seg=h('div',{class:'seg',style:'margin:0'});
  for(const o of [['list','List'],['tiles','Tiles']]){const b=h('button',{type:'button',class:appsView===o[0]?'on':''},o[1]);b.onclick=function(){if(appsView!==o[0])setAppsView(o[0])};seg.append(b)}
- bar.append(h('div',{class:'row',style:'flex-wrap:wrap'},q,seg),h('div',{class:'mute small',style:'margin-top:8px'},'Tap an app to see and change everything for it.'));
+ // Show: everything in groups, or only one group.
+ const showSel=h('select',{style:'width:auto'});
+ showSel.append(new Option('Show: all apps, in groups ('+apps.length+')','all'));
+ for(const g of APP_GROUPS_SHOWN)showSel.append(new Option('Show only: '+g[1]+' ('+(cats[g[0]]||[]).length+')',g[0]));
+ showSel.value=appsShow;if(showSel.value!==appsShow){appsShow='all';showSel.value='all'}
+ showSel.onchange=function(){setAppsShow(showSel.value)};
+ bar.append(h('div',{class:'row',style:'flex-wrap:wrap'},q,showSel,seg),h('div',{class:'mute small',style:'margin-top:8px'},'Tap an app to see and change everything for it.'));
  box.append(bar);
  // New apps waiting for you.
  const pend=new Map();
@@ -3812,38 +3886,45 @@ function essApps(box,dv){
   for(const [pkg,label] of pend){
    pc.append(h('div',{class:'app'},appIconEl({p:pkg},40),h('div',{class:'grow'},h('div',{style:'font-weight:500'},label),h('div',{class:'mute small mono'},pkg),
     h('div',{class:'row',style:'margin-top:8px'},
-     btn('Allow','',async function(){c.apps[pkg]={mode:'allow',label:label};await save('Allowed '+label+'. It appears on the phone within about 5 minutes.')}),
+     btn('Allow','',async function(){c.apps[pkg]={mode:'allow',label:label};await save('Allowed '+label+'. It appears on the phone '+pickup()+'.')}),
      btn('Block','danger',async function(){c.apps[pkg]={mode:'block',label:label};await save('Blocked '+label+'.')})))))}
   box.append(pc)}
  // The app that was tapped: all its settings.
  const sel=appSel&&dv.packages.find(function(x){return x.p===appSel});
  if(sel)box.append(appDetailCard(dv,sel,save));else appSel=null;
- // The apps themselves.
- const holder=h('div',{class:'card'});
- if(!apps.length)holder.append(h('div',{class:'mute'},dv.packages.length?'No apps match.':'The phone has not reported its apps yet.'));
- if(appsView==='tiles'){
-  const grid=h('div',{class:'tiles',style:'margin-top:0'});
-  for(const a of apps){
-   const f=appFacts(dv,a),first=f[0];
-   const t=h('button',{type:'button',class:'tile'+(appSel===a.p?' sel':'')},appIconEl(a,52),h('span',{class:'nm'},a.l||a.p),
-    h('span',{class:'st '+(first?first[1]:'')},first?first[0]+(f.length>1?' +'+(f.length-1):''):'\u00a0'));
-   t.onclick=function(){appSel=a.p;render();window.scrollTo(0,0)};grid.append(t)}
-  holder.append(grid)}
- else{
-  const list=h('div',{class:'ctls',style:'max-width:none;box-shadow:none'});
-  for(const a of apps){
-   const f=appFacts(dv,a);
-   const row=h('button',{type:'button',class:'ctl'},appIconEl(a,40),h('span',{class:'grow'},h('span',{class:'ct'},a.l||a.p),
-    h('span',{class:'mute small'},f.length?f.map(function(x){return x[0]}).join(' · '):'Default')),h('span',{class:'mute'},'›'));
-   row.onclick=function(){appSel=a.p;render();window.scrollTo(0,0)};list.append(row)}
-  holder.append(list)}
- box.append(holder);
+ // The apps themselves, in groups (or one group), as tiles or a list.
+ const drawApps=function(list0,into){
+  if(appsView==='tiles'){
+   const grid=h('div',{class:'tiles',style:'margin-top:0'});
+   for(const a of list0){
+    const f=appFacts(dv,a),first=f[0];
+    const t=h('button',{type:'button',class:'tile'+(appSel===a.p?' sel':'')},appIconEl(a,52),h('span',{class:'nm'},a.l||a.p),
+     h('span',{class:'st '+(first?first[1]:'')},first?first[0]+(f.length>1?' +'+(f.length-1):''):'\u00a0'));
+    t.onclick=function(){rememberScroll();appSel=a.p;render();window.scrollTo(0,0)};grid.append(t)}
+   into.append(grid)}
+  else{
+   const list=h('div',{class:'ctls',style:'max-width:none;box-shadow:none'});
+   for(const a of list0){
+    const f=appFacts(dv,a);
+    const row=h('button',{type:'button',class:'ctl'},appIconEl(a,40),h('span',{class:'grow'},h('span',{class:'ct'},a.l||a.p),
+     h('span',{class:'mute small'},f.length?f.map(function(x){return x[0]}).join(' · '):'Default')),h('span',{class:'mute'},'›'));
+    row.onclick=function(){rememberScroll();appSel=a.p;render();window.scrollTo(0,0)};list.append(row)}
+   into.append(list)}};
+ if(!apps.length){
+  box.append(h('div',{class:'card'},h('div',{class:'mute'},dv.packages.length?'No apps match.':'The phone has not reported its apps yet.')))}
+ for(const g of APP_GROUPS_SHOWN){
+  if(appsShow!=='all'&&appsShow!==g[0])continue;
+  const mine=cats[g[0]]||[];
+  if(!mine.length&&appsShow==='all')continue;
+  const holder=h('div',{class:'card'},h('h2',null,g[1]+' ('+mine.length+')'),h('div',{class:'mute small',style:'margin-bottom:8px'},g[2]));
+  if(!mine.length)holder.append(h('div',{class:'mute'},'No apps here.'));else drawApps(mine,holder);
+  box.append(holder)}
  // The general rules, below the apps.
  const rules=h('div',{class:'card'},h('h2',null,'Rules'));
  rules.append(simpleSwitch('New apps wait for my approval','A new app stays hidden until you allow it.',!!c.approveNew,function(on){c.approveNew=on;save(on?'New apps will wait for you.':'New apps appear by themselves.')}));
  box.append(rules);
  renderAppGroups(box,dv);
- box.append(h('div',{class:'card'},h('div',{class:'row'},btn('System apps and everything else','outline',function(){goMore('apps','system')}))))}
+ box.append(h('div',{class:'card'},h('div',{class:'row'},btn('Other built-in packages (no icon on the phone)','outline',function(){goMore('apps','system')}))))}
 
 /** A drop-down of times with a Custom choice: type any amount in minutes, hours or days. presets = [[minutes,label],...]; onset gets minutes. */
 function timeSelect(presets,value,onset,maxMin){
@@ -3865,7 +3946,7 @@ function timeSelect(presets,value,onset,maxMin){
 function essTime(box,dv){
  renderUsage(box,dv);
  const st=dv.config.screenTime=dv.config.screenTime||{dailyLimit:0,bedtime:null,appLimits:{},exempt:[]};
- const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. The phone applies it within about 5 minutes.')}catch(e){snack(e.message,1)}render()};
+ const save=async function(msg){try{await saveConfigFor(dv,msg||'Saved. The phone applies it '+pickup()+'.')}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,'Limits'));
  const dl=timeSelect([[0,'No limit'],[30,'30 minutes'],[60,'1 hour'],[90,'1.5 hours'],[120,'2 hours'],[180,'3 hours'],[240,'4 hours'],[300,'5 hours'],[360,'6 hours'],[480,'8 hours']],st.dailyLimit||0,function(m){st.dailyLimit=m;save()},1440);
  card.append(h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Screen time per day'),h('div',{class:'mute'},'When it is used up the phone locks until midnight. Emergency calls still work.')),dl));
@@ -3904,12 +3985,16 @@ function essYoutube(box,dv){
   const note=h('div',{class:'card',style:'border-color:var(--warn)'},h('h2',null,'YouTube Restricted Mode is on ('+rm+')'),
    h('div',{class:'mute'},'It is forced on the whole phone (Browser and web, Safe browsing). YouTube itself then refuses some videos, even ones you allowed: they do not play and cannot be downloaded ("This video is restricted").'+(rm==='strict'?' Strict refuses the most.':'')));
   const row=h('div',{class:'row',style:'margin-top:8px'});
-  if(rm==='strict')row.append(btn('Use Moderate instead','tonal',function(){c.youtubeDns='moderate';return save('YouTube Restricted Mode is now Moderate. Phones apply it within about 5 minutes.')}));
+  if(rm==='strict')row.append(btn('Use Moderate instead','tonal',function(){c.youtubeDns='moderate';return save('YouTube Restricted Mode is now Moderate. Phones apply it '+pickup()+'.')}));
   row.append(btn('Turn Restricted Mode off','outline',function(){c.youtubeDns='off';return save('YouTube Restricted Mode is off. Allowed videos play normally.')}));
   note.append(row);box.append(note)}
  const sw2=h('div',{class:'card'},h('h2',null,'On the phone'));
  sw2.append(simpleSwitch('YouTube icon','A YouTube built into the LockGuard app. It follows the choice above.',!!c.youtubeAddon,function(on){c.youtubeAddon=on;save(on?'The YouTube icon appears at the next check-in.':'The YouTube icon is removed at the next check-in.')}));
  sw2.append(simpleSwitch('Let them search and ask','With "Only what I allow", search works and they can ask for a video or song.',!c.youtubeSearchOff,function(on){c.youtubeSearchOff=!on;save(on?'They can search and ask.':'Search is blocked.')}));
+ if(!c.youtubeSearchOff){
+  const pic=h('div',{class:'card'},h('h2',null,'Pictures in search results'),h('div',{class:'mute small'},'Search results are videos that are not allowed yet. They show a title and an "Ask for access" button. Choose what their picture (thumbnail) does.'));
+  pic.append(choiceList([['hide','Hide the picture','A plain placeholder instead of the picture.'],['skin','Show it with skin covered','The picture shows, with any skin covered.'],['show','Show it as it is','Plain YouTube search: every result shows its normal picture. Nothing is covered.']],c.youtubeSearchPictures||'hide',function(v){c.youtubeSearchPictures=v;save(YT_SEARCH_PICS_SAVED[v])}));
+  box.append(pic)}
  sw2.append(simpleSwitch('Let them download','Videos are saved on the phone and play with no internet. The same switch is on the YouTube Music page: it covers songs too.',c.downloadsOff!==true,function(on){c.downloadsOff=!on;save(on?'Downloads are on.':'Downloads are off.')}));
  sw2.append(simpleSwitch('Allow signing in to YouTube','Only if the child may use their own account.',c.youtubeSignIn===true,function(on){c.youtubeSignIn=on;save(on?'Signing in is allowed.':'Signing in is not allowed.')}));
  box.append(sw2);
@@ -3969,7 +4054,7 @@ function renderDevicesNew(m){
   const bat=d.info&&d.info.battery;
   const st=(d.config||{}).screenTime||{},usage=d.usage||{},days=Object.keys(usage).sort().reverse();
   const today=days.length?usage[days[0]].total:null;
-  grid.append(deviceCardNew('device',d.name,(state.session.role==='admin'&&d.ownerId)?d.ownerId:'Android phone','device/'+d.id,[
+  grid.append(deviceCardNew('device',d.name,[((d.info&&[d.info.manufacturer,d.info.model].filter(Boolean).join(' '))||'Android phone'),(state.session.role==='admin'&&d.ownerId)?d.ownerId:''].filter(Boolean).join(' · '),'device/'+d.id,[
    d.syncPaused?h('span',{class:'chip warn'},'Paused'):h('span',{class:'chip '+(isOnline(d)?'ok':'bad')},h('span',{class:'dot'}),isOnline(d)?'Online':'Offline'),
    bat?h('span',{class:'chip '+(bat.pct<=15&&!bat.charging?'bad':'')},bat.pct+'%'+(bat.charging?' · charging':'')):null,
    lockedNow(d)?h('span',{class:'chip warn'},'Locked'):null,
@@ -3981,7 +4066,13 @@ function renderDevicesNew(m){
    'Last seen '+ago(d.lastSeen)]))}
  for(const b of browsers)grid.append(deviceCardNew('globe','Browser',b.name+' · no MDM on this phone','browser/'+b.id,[h('span',{class:'chip'},'Browser')],[b.lastSeen?'Last seen '+ago(b.lastSeen):null]));
  for(const w of windevices)grid.append(deviceCardNew('device',w.name,(w.info.hostname||'LockGuard')+' · Windows','win/'+w.id,[h('span',{class:'chip '+(w.filterOn||w.enabled?'ok':'')},w.filterOn?'Filter on':w.enabled?'Locked down':'No filter')],[w.lastSeen?'Last seen '+ago(w.lastSeen):null]));
+ // Search: by name, owner or model; hides cards in place so typing never loses its place.
+ const dq=h('input',{type:'text',placeholder:'Search devices by name, owner or model…',value:devSearch,style:'flex:1;min-width:200px'});
+ const applyDq=function(){const w=dq.value.toLowerCase().trim();for(const el of grid.children){const hit=!w||String(el.textContent||'').toLowerCase().indexOf(w)>=0;el.style.display=hit?'':'none'}};
+ dq.oninput=function(){devSearch=dq.value;applyDq()};
+ if(total>1)m.append(h('div',{class:'filters',style:'margin-bottom:12px'},dq));
  m.append(grid);
+ applyDq();
  // Less used pages: quiet links, not buttons.
  const links=h('div',{class:'quietlinks'});
  const link=function(label,hash){const a=h('a',{href:'#'+hash},label);links.append(a)};

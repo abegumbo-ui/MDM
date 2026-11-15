@@ -182,11 +182,11 @@ test("every route that takes an id refuses someone else's id (a sweep)", async (
   const victims = [{ phone: ids.b, browser: ids.bb }, { phone: ids.admin, browser: ids.bb }];
   const probes = [];
   for (const v of victims) {
-    for (const suffix of ["", "/config", "/master", "/clone-from", "/owner", "/command", "/site-requests", "/app-requests", "/messages", "/msg-alerts", "/shots/aaaaaaaaaaaa"]) probes.push(`/api/devices/${v.phone}${suffix}`);
+    for (const suffix of ["", "/config", "/master", "/clone-from", "/owner", "/name", "/command", "/site-requests", "/app-requests", "/messages", "/msg-alerts", "/shots/aaaaaaaaaaaa"]) probes.push(`/api/devices/${v.phone}${suffix}`);
     for (const suffix of ["", "/config", "/clone-from", "/owner", "/site-requests"]) probes.push(`/api/browsers/${v.browser}${suffix}`);
     for (const suffix of ["", "/config", "/command", "/removal-code", "/site-requests", "/shots/aaaaaaaaaaaa"]) probes.push(`/api/windevices/${v.phone}${suffix}`);
   }
-  const bodies = { "/config": { blockedWords: ["pwned"] }, "/owner": { ownerId: "alice" }, "/clone-from": { sourceId: ids.a }, "/command": { type: "lock", args: {} }, "/master": { master: "x" } };
+  const bodies = { "/config": { blockedWords: ["pwned"] }, "/owner": { ownerId: "alice" }, "/name": { name: "pwned" }, "/clone-from": { sourceId: ids.a }, "/command": { type: "lock", args: {} }, "/master": { master: "x" } };
   const failures = [];
   for (const path of probes) {
     const suffix = Object.keys(bodies).find((k) => path.endsWith(k));

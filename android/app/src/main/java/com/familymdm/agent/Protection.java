@@ -133,12 +133,18 @@ final class Protection {
         return Agent.prefs(c).getLong("internetOffUntil", 0) > System.currentTimeMillis();
     }
 
+    /** When the current "internet off" ends (0 = not on): a connection checked for one period is checked again for the next. */
+    static long internetOffUntil(Context c) {
+        long until = Agent.prefs(c).getLong("internetOffUntil", 0);
+        return until > System.currentTimeMillis() ? until : 0;
+    }
+
     static boolean needsUid(Context c) {
         return internetOff(c) || Agent.prefs(c).getBoolean("internetOnlyApps", false) || !Agent.prefs(c).getString("filterSkipApps", "").isEmpty();
     }
 
     static boolean internetAllowed(Context c, String pkg) {
-        if (internetOff(c)) return ProtectionRules.internetAllowed(pkg, true, Agent.prefs(c).getBoolean("internetOnlyApps", false) ? apps(c) : new HashSet<>());
+        if (internetOff(c)) return ProtectionRules.internetAllowedWhileOff(pkg, Agent.prefs(c).getBoolean("internetOnlyApps", false) ? apps(c) : new HashSet<>());
         boolean on = Agent.prefs(c).getBoolean("internetOnlyApps", false);
         if (!on) return true;
         return ProtectionRules.internetAllowed(pkg, true, apps(c));

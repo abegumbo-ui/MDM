@@ -77,6 +77,11 @@ public final class SitePolicy {
         }
     }
 
+    /** True for YouTube Music's own address (what the parent allows there are songs; on every other YouTube address, videos). */
+    public static boolean isMusicHost(String host) {
+        return "music.youtube.com".equals(host);
+    }
+
     /** host + normalized path, ignoring query string, fragment and a trailing slash. */
     public static String pathKeyOf(String u) {
         String host = hostOf(u);
@@ -84,7 +89,8 @@ public final class SitePolicy {
         // Every YouTube video shares the address "youtube.com/watch" -- only the ?v= part tells them apart.
         // Without this, allowing one video "page" would quietly allow every video.
         String video = youtubeVideoId(u);
-        if (video != null) return "youtube.com/watch?v=" + video;
+        // A song on YouTube Music and a video on YouTube are different things even when they share an id: separate keys.
+        if (video != null) return (isMusicHost(host) ? "music.youtube.com" : "youtube.com") + "/watch?v=" + video;
         try {
             URI uri = new URI(u.contains("://") ? u : "https://" + u);
             String path = uri.getPath();
