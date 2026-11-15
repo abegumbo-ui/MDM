@@ -125,9 +125,10 @@ final class TcpRelay {
         tcb.lastActivity = System.currentTimeMillis();
         // "Turn the internet off" has to cut connections that were already open too: an app keeps one connection to Google or YouTube open for
         // minutes and reuses it for every search, and the check at the connection's start (above) was made before the internet was switched off.
-        // Once per connection for each off period.
+        // Once per connection for each off period. Never for the dashboard itself (isDashboard, set by the SNI check in onData() below): a
+        // connection to it must keep working even after "internet off" starts partway through it.
         long offUntil = Protection.internetOffUntil(context);
-        if (offUntil != 0 && tcb.offCheckedFor != offUntil) {
+        if (!tcb.isDashboard && offUntil != 0 && tcb.offCheckedFor != offUntil) {
             tcb.offCheckedFor = offUntil;
             if (tcb.pkg == null) {
                 int ownerUid = uidResolver.uidFor(NetUtil.IPPROTO_TCP, new InetSocketAddress(ipToInet(srcIp), srcPort), new InetSocketAddress(ipToInet(dstIp), dstPort));
@@ -190,7 +191,12 @@ final class TcpRelay {
                 tcb.sniChecked = true;
                 String hostname = r.status == TlsSni.Status.FOUND ? r.hostname : null;
                 boolean blocked;
-                if (tcb.networkBlocked) {
+                if (hostname != null && DashboardHost.isDashboardHost(context, hostname)) {
+                    // The dashboard itself: never blocked by any rule, whatever else is on or off (see DashboardHost/DashboardMatch). Marked
+                    // on the connection so the "already open" re-check above leaves it alone too, for as long as it stays open.
+                    tcb.isDashboard = true;
+                    blocked = false;
+                } else if (tcb.networkBlocked) {
                     // A network-blocked app only ever gets what's on its own allow list -- the
                     // device-wide DnsAllowlist does NOT apply here, on purpose (see
                     // PerAppDnsAllowlist). No SNI at all means no hostname to check, so blocked.
@@ -345,6 +351,8 @@ final class TcpRelay {
         volatile boolean networkBlocked;
         /** The "internet off" period (its end time) this connection was last checked against; see handle(). */
         volatile long offCheckedFor;
+        /** True once the TLS SNI check (onData) has recognised this connection as going to the dashboard itself; see handle() and onData(). */
+        volatile boolean isDashboard;
         Socket socket;
         OutputStream socketOut;
         final java.io.ByteArrayOutputStream pending = new java.io.ByteArrayOutputStream();
