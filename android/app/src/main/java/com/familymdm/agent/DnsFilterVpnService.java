@@ -189,6 +189,7 @@ public class DnsFilterVpnService extends VpnService {
 
         byte[] srcIp = {buf[12], buf[13], buf[14], buf[15]};
         byte[] dstIp = {buf[16], buf[17], buf[18], buf[19]};
+        DashboardHost.refresh(this); // cheap: does nothing until 90 s have passed since the last try
 
         if (protocol == NetUtil.IPPROTO_TCP) {
             tcpRelay.handle(buf, ihl, len, srcIp, dstIp);
@@ -204,8 +205,10 @@ public class DnsFilterVpnService extends VpnService {
 
         if (dstPort != 53) {
             // "Turn the internet off" covers every other UDP flow too, QUIC above all: it is how Chrome and our Browser reach Google and YouTube,
-            // and it has no hostname to check, so it is simply dropped for every app that may not use the internet right now.
-            if (Protection.internetOff(this)) {
+            // and it has no hostname to check, so it is simply dropped for every app that may not use the internet right now -- except the
+            // dashboard itself, which this phone must always be able to reach, whatever else is off (see DashboardHost). QUIC's destination
+            // hostname is hidden inside encryption, so this goes by IP instead of by name.
+            if (Protection.internetOff(this) && !DashboardHost.isDashboardIp(dstIp)) {
                 String owner = null;
                 try {
                     owner = uidResolver.packageFor(uidResolver.uidFor(NetUtil.IPPROTO_UDP,
@@ -243,6 +246,9 @@ public class DnsFilterVpnService extends VpnService {
         }
         boolean blocked;
         if (qname == null) {
+            blocked = false;
+        } else if (DashboardHost.isDashboardHost(this, qname)) {
+            // The dashboard itself: never blocked by any rule on this list, whatever else is on or off (see DashboardHost/DashboardMatch).
             blocked = false;
         } else if (NetworkBlocklist.isBlocked(this, pkg) || !Protection.internetAllowed(this, pkg)) {
             // A network-blocked app only ever gets what's on its own allow list -- the
