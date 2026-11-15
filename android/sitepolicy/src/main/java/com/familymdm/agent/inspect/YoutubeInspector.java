@@ -249,8 +249,39 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         pictureFilter = f;
     }
 
+    // ---- "Filter" chosen for one site: its pictures and its videos are checked even when no filter is on everywhere (each is chosen on its own) ----
+    private volatile Set<String> filterPictureSites = java.util.Collections.emptySet();
+    private volatile Set<String> filterVideoSites = java.util.Collections.emptySet();
+    private volatile PictureFilter sitePictureFilter;
+    private volatile String siteVideoScript;
+
+    /** pictureSites / videoSites: the sites with Filter chosen for their pictures / their videos; picturesFilter and videoScript do the checking there. */
+    public void setSiteFilters(Set<String> pictureSites, Set<String> videoSites, PictureFilter picturesFilter, String videoScript) {
+        filterPictureSites = pictureSites == null ? java.util.Collections.<String>emptySet() : pictureSites;
+        filterVideoSites = videoSites == null ? java.util.Collections.<String>emptySet() : videoSites;
+        sitePictureFilter = picturesFilter;
+        siteVideoScript = videoScript;
+    }
+
+    /** The filter for a picture on (or from) a site with Filter chosen, else the general one (null: the picture is left as it is). */
+    PictureFilter pictureFilterFor(InspectProxy.Request r) {
+        if (!filterPictureSites.isEmpty() && sitePictureFilter != null) {
+            String referer = SitePolicy.hostOf(r.headers.get("Referer"));
+            if (inList(filterPictureSites, referer) || inList(filterPictureSites, r.host)) return sitePictureFilter;
+        }
+        return pictureFilter;
+    }
+
+    /** The page script for a page: the general one (skin covered in videos everywhere), or the video skin script on a site with Filter chosen for its videos. */
+    String pageScriptFor(InspectProxy.Request r) {
+        String general = pageScript;
+        if (general != null) return general;
+        if (siteVideoScript != null && !filterVideoSites.isEmpty() && inList(filterVideoSites, r.host)) return siteVideoScript;
+        return null;
+    }
+
     private boolean filtersPicture(InspectProxy.Request r, String contentType) {
-        if (pictureFilter == null || !r.method.equals("GET")) return false;
+        if (pictureFilterFor(r) == null || !r.method.equals("GET")) return false;
         String ct = contentType.toLowerCase(java.util.Locale.ROOT);
         return ct.startsWith("image/") && !ct.contains("svg");
     }
@@ -400,7 +431,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
     public boolean wantsIdentity(InspectProxy.Request r) {
         if (isAddon(r)) return false;
         if (isDocument(r) && videosBlockedOn(r.host)) return true;
-        return isDocument(r) && (((restricted || youtubeAdScript != null || channelScripts != null) && isYoutube(r.host)) || pageScript != null);
+        return isDocument(r) && (((restricted || youtubeAdScript != null || channelScripts != null) && isYoutube(r.host)) || pageScriptFor(r) != null);
     }
 
     @Override
@@ -408,7 +439,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         if (filtersPicture(r, contentType)) return true;
         if (isAddon(r) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return false;
         if (videosBlockedOn(r.host) && isDocument(r) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return true;
-        if (pageScript != null && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return true;
+        if (pageScriptFor(r) != null && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) return true;
         return (restricted || youtubeAdScript != null || channelScripts != null) && isYoutube(r.host) && contentType.toLowerCase(java.util.Locale.ROOT).startsWith("text/html");
     }
 
@@ -420,7 +451,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
 
     @Override
     public byte[] rewrite(InspectProxy.Request r, byte[] body) {
-        PictureFilter pf = pictureFilter;
+        PictureFilter pf = pictureFilterFor(r);
         if (pf != null && looksLikePicture(body)) {
             try {
                 byte[] changed = pf.filter(body);
@@ -432,7 +463,7 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         if (isAddon(r)) return body; // the icon's own scripts do all of this
         boolean yt = restricted && isYoutube(r.host);
         String ads = youtubeAdScript != null && isYoutube(r.host) ? youtubeAdScript : null;
-        String js = pageScript;
+        String js = pageScriptFor(r);
         boolean ch = channels(r.host);
         boolean noVideo = isDocument(r) && videosBlockedOn(r.host);
         if (!yt && !ch && js == null && ads == null && !noVideo) return body;

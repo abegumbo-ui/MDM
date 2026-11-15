@@ -1251,10 +1251,10 @@ function renderRequestsCard(m,reqs,dv,title,help){
     const host=hostOfUrl(r.url),pick={pictures:'',videos:''};
     const choice=function(label,help,fn,cls){return h('div',{style:'margin-top:10px'},btn(label,cls||'',fn),h('div',{class:'mute small',style:'margin-top:3px'},help))};
     const one=function(label,field,opts){
-     const sg=h('div',{class:'seg',style:'margin-top:0'});
-     opts.forEach(function(o){const b=h('button',{type:'button',class:pick[field]===o[0]?'on'+(o[2]?' block':''):''},o[1]);
-      b.onclick=function(){pick[field]=o[0];[].slice.call(sg.children).forEach(function(x,i){x.className=pick[field]===opts[i][0]?'on'+(opts[i][2]?' block':''):''})};sg.append(b)});
-     return h('div',{class:'row',style:'margin-top:8px;gap:10px;align-items:center'},h('span',{class:'small',style:'min-width:64px'},label),sg)};
+     const sel=h('select',null);
+     opts.forEach(function(o){sel.append(new Option(o[1],o[0]))});
+     sel.onchange=function(){pick[field]=sel.value};
+     return h('div',{class:'row',style:'margin-top:8px;gap:10px;align-items:center'},h('span',{class:'small',style:'min-width:64px'},label),sel)};
     const settle=function(type){return async function(){
      await addSite(dv,type==='exact'?{type:'exact',url:r.url,label:host}:{type:'domain',url:host,label:host},pick);await dismiss()}};
     rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,
@@ -1263,8 +1263,9 @@ function renderRequestsCard(m,reqs,dv,title,help){
      choice('Allow all of '+host,'Every page on '+host+' opens, and its sub-sites too (like news.'+host+').',settle('domain')),
      choice('No, keep it blocked','Takes this request away. They can ask again.',dismiss,'outline'),
      h('div',{class:'mute small',style:'margin-top:12px'},'On the site you allow:'),
-     one('Pictures','pictures',[['','Normal'],['allow','Show'],['block','Hide','b']]),
-     one('Videos','videos',[['','Normal'],['allow','Allow'],['block','Block','b']]))))}
+     one('Pictures','pictures',SITE_PICTURE_CHOICES),
+     one('Videos','videos',SITE_VIDEO_CHOICES),
+     h('div',{class:'mute small',style:'margin-top:6px'},'Pictures and videos are separate: you can filter the pictures and block the videos on the same site. '+SITE_FILTER_HELP))))}
    if(isVideo){
     call('GET','/api/youtube-info?url='+encodeURIComponent(r.url)).then(function(i){
      info=i;
@@ -2145,6 +2146,10 @@ function renderInspection(m,dv){
    await saveConfigFor(dv,'Saved. The Agent picks it up at its next check-in.');render()})));
  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Needs the phone to be managed by the Agent (device owner). Check Activity → Phone log for "Browser inspection turned on". If browsing ever fails on the phone, turn this off.'));
  m.append(card)}
+/** What can be chosen for the pictures and, separately, the videos of one allowed site. Filter = checked on the phone before it shows, skin covered. */
+const SITE_PICTURE_CHOICES=[['','Normal (the phone\'s general setting)'],['allow','Show as they are'],['filter','Filter (skin covered)'],['block','Hide']];
+const SITE_VIDEO_CHOICES=[['','Normal (the phone\'s general setting)'],['allow','Allow as they are'],['filter','Filter (skin covered)'],['block','Block']];
+const SITE_FILTER_HELP='Filter checks each picture (or video) on the phone first and covers skin before it shows. Hide and Block show nothing.';
 function renderSitesEditor(m,dv){
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
@@ -2176,12 +2181,14 @@ function renderSitesEditor(m,dv){
    // One box for each choice, right here on the site: choosing "Allow" clears "Block" and the other way round.
    const media=function(field,label,opts){
     const cur=s[field]||(field==='pictures'&&s.blockImages?'block':'');
-    const sg=h('div',{class:'seg',style:'margin-top:0'});
-    opts.forEach(function(o){const b=h('button',{type:'button',class:cur===o[0]?'on'+(o[2]?' block':''):''},o[1]);
-     b.onclick=async function(){s[field]=o[0];if(field==='pictures')s.blockImages=o[0]==='block';
-      try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}render()};sg.append(b)});
-    return h('div',{style:'display:flex;flex-direction:column;align-items:flex-end;gap:2px'},h('span',{class:'mute small'},label),sg)};
-   col.append(media('pictures','Pictures on this site',[['','Normal'],['allow','Show'],['block','Hide','b']]),media('videos','Videos on this site',[['','Normal'],['allow','Allow'],['block','Block','b']]))}
+    const sel=h('select',null);
+    opts.forEach(function(o){const op=new Option(o[1],o[0]);if(o[0]===cur)op.selected=true;sel.append(op)});
+    sel.value=cur;
+    sel.onchange=async function(){s[field]=sel.value;if(field==='pictures')s.blockImages=sel.value==='block';
+     try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}render()};
+    return h('div',{style:'display:flex;flex-direction:column;align-items:flex-end;gap:2px'},h('span',{class:'mute small'},label),sel)};
+   col.append(media('pictures','Pictures on this site',SITE_PICTURE_CHOICES),media('videos','Videos on this site',SITE_VIDEO_CHOICES),
+    h('div',{class:'mute small',style:'max-width:260px;text-align:right'},SITE_FILTER_HELP))}
   if(s.type!=='youtube')col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.installable===false?false:true,onchange:async function(e){s.installable=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Allow home-screen shortcut'));
   col.append(btn('Remove','danger',async function(){if(!confirm('Remove '+(s.label||s.url)+' from the allowlist?'))return;delete dv.config.sites[key];await saveConfigFor(dv,'Removed.')}));
   row.append(col);list.append(row)}
