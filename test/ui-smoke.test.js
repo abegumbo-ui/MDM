@@ -209,6 +209,19 @@ test("every dashboard page, group and tab opens without an error", async () => {
     assert.ok(!list.includes("Allow pictures") && !list.includes("Block pictures"), "the four confusing tick boxes are gone");
     await vm.runInContext("(function(){devices[0].config.sites=JSON.parse(__sites0);return saveConfigFor(devices[0],'x')})()", ctx);
   }
+  // The strictest option sits on the calls and texts pages and forces the two logs on.
+  {
+    vm.runInContext("tab='devices';openId=devices[0].id;setDeviceSection('calls');subs.calls='texts'", ctx);
+    const off = tryRender("texts page, strict off", "devices[0].config.strictComms=false;render()");
+    for (const w of ["Read every text and call (the strictest option)", "only every 5 minutes", "within seconds of a new text or call"]) assert.ok(off.includes(w), "the texts page says: " + w);
+    assert.ok(!off.includes("On because \"Read every text and call\" is on"), "nothing is forced while it is off");
+    const on = tryRender("texts page, strict on", "devices[0].config.strictComms=true;devices[0].via='cloudflare';render()");
+    assert.ok(on.includes("On because \"Read every text and call\" is on"), "the logs below say why they are on");
+    assert.ok(on.includes("This phone is using Cloudflare right now, so its texts and calls arrive every 5 minutes."), "on Cloudflare it says the 5-minute rule applies now");
+    vm.runInContext("subs.calls='calllog';render()", ctx);
+    assert.ok(reg.get("main").textContent.includes("Read every text and call (the strictest option)"), "the same option on the calls page");
+    vm.runInContext("devices[0].config.strictComms=false;devices[0].via='pi';subs.calls='texts'", ctx);
+  }
   // Every timer shows how long is left.
   {
     assert.equal(vm.runInContext("leftTxt(Date.now()-5000)", ctx), "", "nothing for a time that has passed");

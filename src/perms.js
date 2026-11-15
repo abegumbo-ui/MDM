@@ -27,7 +27,7 @@ export const KEY_GROUPS = {
   ...G("time", "screenTime restrictionsOffUntil restrictionsOffSince"),
   ...G("browser", "adsAutoCoverOff adsCoveredSites adultListOff blockAds blockImageSearch blockImages blockVideos blockedWords browserAddonEnabled browserFilter browserLook chromePolicy filterExtras filterKinds filterSchedule imagesAllow inAppBrowsers inAppExceptions inspectBypass inspectSkipGoogle noPictureSites openWeb pictureGuard restrictBrowsing safeSearch safeSearchOff searchOff skinWho tlsInspection tlsInspectionOff"),
   ...G("youtube", "youtubeMode musicMode youtubeAddon youtubeMusicAddon youtubeOffMessage youtubeSearchOff youtubeSearchPictures youtubeSignIn downloadsOff musicPictures"),
-  ...G("calls", "callLog callNumbers callsIn callsOut reportContacts syncContacts textContent textLog"),
+  ...G("calls", "callLog callNumbers callsIn callsOut reportContacts strictComms syncContacts textContent textLog"),
   ...G("internet", "dnsAllowTimed dnsAllowlist dnsBlocklist filterSkipApps internetApps internetOffUntil internetOnlyApps networkBlocklist pauseUntil perAppDnsAllowlist"),
   ...G("safety", "messageAlerts messageGroups messageWords nudityAlerts recordSearches recordSites recordVideos waTextOnly"),
   ...G("security", "blockAccessibility disableBiometricUnlock frpAccounts hideAppIcon phoneAdminLocked protectScreens restrictions"),

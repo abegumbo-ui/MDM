@@ -410,3 +410,33 @@ test("our YouTube Music has its own strictness (musicMode); 'auto' follows YouTu
   assert.equal(policy({ youtubeMode: "restricted", musicMode: "channels" }).youtubeMode, "restricted", "and YouTube keeps its own");
   assert.equal(normalizeConfig({ musicMode: "nonsense" }).musicMode, "auto", "a wrong value falls back to auto");
 });
+
+test("the strictest option (read every text and call) is off by default, forces the call log and the texts log with the words on, and leaves their own switches alone", () => {
+  const plain = normalizeConfig({});
+  assert.equal(plain.strictComms, false);
+  const off = buildAgentPolicy(plain, [], {});
+  assert.equal(off.strictComms, false);
+  assert.equal(off.callLog, false);
+  assert.equal(off.textLog, false);
+  assert.equal(off.textContent, false);
+
+  const cfg = normalizeConfig({ strictComms: true });
+  assert.equal(cfg.strictComms, true);
+  assert.equal(cfg.callLog, false, "the plain switches keep their own values underneath");
+  assert.equal(cfg.textLog, false);
+  const on = buildAgentPolicy(cfg, [], {});
+  assert.equal(on.strictComms, true);
+  assert.equal(on.callLog, true, "the phone is told to read every call");
+  assert.equal(on.textLog, true, "and every text");
+  assert.equal(on.textContent, true, "with the words");
+
+  assert.equal(normalizeConfig({ strictComms: "yes" }).strictComms, false, "only a real true switches it on");
+  // Turning it off again puts the phone back to what the plain switches say.
+  const back = buildAgentPolicy(normalizeConfig({ strictComms: false, textLog: true }), [], {});
+  assert.equal(back.callLog, false);
+  assert.equal(back.textLog, true);
+  assert.equal(back.textContent, false);
+
+  const lines = summarizeConfigChange(plain, cfg);
+  assert.ok(lines.some((l) => /Read every text and call: on/.test(l)), "the audit log says it: " + JSON.stringify(lines));
+});

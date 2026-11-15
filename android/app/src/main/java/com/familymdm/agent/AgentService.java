@@ -327,7 +327,12 @@ public class AgentService extends Service {
         body.put("trafficLog", trafficLog);
         JSONArray locations = Whereabouts.peek(this);
         Calls.collect(this);
-        JSONArray calls = Calls.peekCalls(this), texts = Calls.peekTexts(this);
+        // "Read every text and call": sent at once on the Raspberry Pi (and a new one makes the phone check in within seconds, see CommsWatch),
+        // but through Cloudflare, whose free plan is small, at most once every 5 minutes. What waits is kept on the phone, not lost.
+        boolean strictComms = CommsWatch.strict(this);
+        CommsWatch.ensure(this, strictComms);
+        boolean holdComms = strictComms && Api.onBackup && System.currentTimeMillis() - Agent.prefs(this).getLong("commsSentAt", 0) < 5 * 60 * 1000L;
+        JSONArray calls = holdComms ? new JSONArray() : Calls.peekCalls(this), texts = holdComms ? new JSONArray() : Calls.peekTexts(this);
         if (calls.length() > 0) body.put("calls", calls);
         if (texts.length() > 0) body.put("texts", texts);
         JSONArray contacts = ContactSync.ifChanged(this);
@@ -449,6 +454,7 @@ public class AgentService extends Service {
         PhotoWatch.drop(this, nudity.length());
         Calls.dropCalls(this, calls.length());
         Calls.dropTexts(this, texts.length());
+        if (calls.length() + texts.length() > 0) Agent.prefs(this).edit().putLong("commsSentAt", System.currentTimeMillis()).apply();
         if (contacts != null) ContactSync.sent(this);
         if (downloaded != null) Downloads.sent(this);
         Agent.adoptOverrides(this, reply.optJSONObject("overrides"), reply.optLong("overridesRev", 0), sentOverridesRev);
