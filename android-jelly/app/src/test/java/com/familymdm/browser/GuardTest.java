@@ -11,6 +11,8 @@ import android.webkit.WebView;
 
 import androidx.test.core.app.ApplicationProvider;
 
+import com.familymdm.agent.sitepolicy.SitePolicy;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Before;
@@ -175,6 +177,20 @@ public class GuardTest {
         connected("off");
         Guard.Decision d = Guard.check(c, "https://example.com/<script>alert(1)</script>", null);
         assertFalse(d.html.contains("<script>alert"));
+    }
+
+    @Test
+    public void onePageApprovedOnABlockedSite_opens_whileTheRestOfThatSiteStaysClosed() throws Exception {
+        connected("off");
+        BrowserState.setCachedSites(c, new JSONArray().put(new JSONObject().put("type", "exact").put("url", "https://www.foxnews.com/politics/the-one-story").put("host", "www.foxnews.com").put("label", "foxnews.com")));
+        Guard.forgetCache();
+        assertTrue("the approved page opens", Guard.check(c, "https://www.foxnews.com/politics/the-one-story", null).allow);
+        assertFalse("another page on the same site stays closed", Guard.check(c, "https://www.foxnews.com/politics/another-story", null).allow);
+        assertFalse("so does the front page", Guard.check(c, "https://www.foxnews.com/", null).allow);
+        assertTrue("a closed page still names its kind", Guard.check(c, "https://www.foxnews.com/", null).html.contains(">News<"));
+        // Its own site's files load with it (the page needs its scripts and styles), another site's do not.
+        assertTrue(SitePolicy.sameSiteAs("www.foxnews.com", "static.foxnews.com"));
+        assertFalse(SitePolicy.sameSiteAs("www.foxnews.com", "www.cnn.com"));
     }
 
     @Test
