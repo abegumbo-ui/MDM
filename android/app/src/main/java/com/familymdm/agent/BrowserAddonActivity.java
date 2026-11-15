@@ -4,7 +4,9 @@ import android.app.Activity;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.webkit.WebView;
@@ -14,6 +16,7 @@ import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.familymdm.agent.sitepolicy.SitePolicy;
@@ -71,6 +74,7 @@ public class BrowserAddonActivity extends Activity {
                     if (host == null || !WebFilter.blocks(BrowserAddonActivity.this, host)) return null;
                     // In a blocked category: still fine if it is on the approved list or during a free-browsing window.
                     if (SitePolicy.allowed(url, currentSites()) || browseWindowActive()) return null;
+                    if (SitePolicy.sameSiteAs(approvedPageHost, host)) return null; // a page approved by itself still gets its own site's files
                     if (request.isForMainFrame()) runOnUiThread(() -> navigateTo(url));
                     return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new java.util.HashMap<String, String>(),
                             new java.io.ByteArrayInputStream(new byte[0]));
@@ -91,6 +95,14 @@ public class BrowserAddonActivity extends Activity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                // The main page only (not a frame inside it): which pictures apply here, and whose files an approved page may load.
+                applyPictures(url);
+                if (url != null && !SitePolicy.sameSiteAs(approvedPageHost, SitePolicy.hostOf(url))) approvedPageHost = null;
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 if (url != null && WebFilter.youtubeRestricted(BrowserAddonActivity.this) && isYoutubeAddress(url)) {
                     view.evaluateJavascript(YoutubeRestricted.HIDE_SCRIPT, null);
@@ -100,6 +112,7 @@ public class BrowserAddonActivity extends Activity {
         });
         contentHost.addView(webView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setUpPullToRefresh();
 
         setContentView(root);
         load(HOME_URL);
@@ -113,9 +126,7 @@ public class BrowserAddonActivity extends Activity {
             WebFilter.setExtras(this, policy.optJSONArray("filterExtras"));
             WebFilter.setPolicy(this, policy.optString("browserFilter", "off"), policy.optString("browserFilterBase", ""));
             WebFilter.setYoutubeMode(this, policy.optString("youtubeMode", "channels"));
-            boolean noPictures = policy.optBoolean("blockImages", false);
-            webView.getSettings().setBlockNetworkImage(noPictures);
-            webView.getSettings().setLoadsImagesAutomatically(!noPictures);
+            applyPictures(webView.getUrl());
         } catch (Exception e) {
             WebFilter.setPolicy(this, "off", "");
             WebFilter.setYoutubeMode(this, "channels");
@@ -220,6 +231,70 @@ public class BrowserAddonActivity extends Activity {
         }
     }
 
+    // ---------- pull down to refresh, like every other browser ----------
+
+    private float pullFromY = -1;
+    private TextView pullHint;
+
+    /** Pulling the page down while it is at its top reloads it. A small label says what will happen; the page itself still gets every touch. */
+    private void setUpPullToRefresh() {
+        float density = getResources().getDisplayMetrics().density;
+        final float show = 40 * density, go = 120 * density;
+        pullHint = new TextView(this);
+        pullHint.setTextColor(0xFFFFFFFF);
+        pullHint.setTextSize(14);
+        pullHint.setGravity(Gravity.CENTER);
+        pullHint.setBackgroundColor(0xCC37474F);
+        pullHint.setPadding((int) (16 * density), (int) (8 * density), (int) (16 * density), (int) (8 * density));
+        pullHint.setVisibility(View.GONE);
+        contentHost.addView(pullHint, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        webView.setOnTouchListener((v, ev) -> {
+            switch (ev.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    pullFromY = webView.getScrollY() == 0 ? ev.getY() : -1;
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    if (pullFromY >= 0 && webView.getScrollY() == 0) {
+                        float pulled = ev.getY() - pullFromY;
+                        if (pulled > show) {
+                            pullHint.setText(pulled > go ? "Let go to refresh" : "Pull down to refresh");
+                            pullHint.setVisibility(View.VISIBLE);
+                        } else {
+                            pullHint.setVisibility(View.GONE);
+                        }
+                    } else {
+                        pullFromY = -1;
+                        pullHint.setVisibility(View.GONE);
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                    if (pullFromY >= 0 && webView.getScrollY() == 0 && ev.getY() - pullFromY > go && webView.getUrl() != null && webView.getUrl().startsWith("http")) webView.reload();
+                    pullFromY = -1;
+                    pullHint.setVisibility(View.GONE);
+                    break;
+                default:
+                    pullFromY = -1;
+                    pullHint.setVisibility(View.GONE);
+            }
+            return false; // the page still gets the touch
+        });
+    }
+
+    /** The site of the approved page now on screen (set when a page is allowed, read on the network thread). */
+    private volatile String approvedPageHost;
+
+    /** Pictures: the global "No pictures on web pages" does not apply on YouTube and YouTube Music (they have their own choices); other pages keep it. */
+    private void applyPictures(String url) {
+        boolean noPictures = false;
+        try {
+            noPictures = new JSONObject(Agent.prefs(this).getString("policy", "{}")).optBoolean("blockImages", false);
+        } catch (Exception ignored) {
+        }
+        if (noPictures && url != null && !SitePolicy.globalNoPicturesApplies(url)) noPictures = false;
+        webView.getSettings().setBlockNetworkImage(noPictures);
+        webView.getSettings().setLoadsImagesAutomatically(!noPictures);
+    }
+
     /** Returns true (meaning "I handled it, don't load it") when the page is blocked. */
     private boolean navigateTo(String url) {
         if (HOME_URL.equals(url)) {
@@ -266,6 +341,7 @@ public class BrowserAddonActivity extends Activity {
         }
         List<SitePolicy.Site> sites = currentSites();
         if (SitePolicy.allowed(url, sites)) {
+            approvedPageHost = SitePolicy.hostOf(url);
             hideOverlay();
             return false;
         }

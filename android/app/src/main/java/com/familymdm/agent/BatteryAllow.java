@@ -30,8 +30,10 @@ final class BatteryAllow {
      * (DevicePolicyManager.setApplicationExemptions) with no question to anybody. Done by reflection: the call is not in every build, and when it is
      * missing or refused nothing happens and the question below is asked instead.
      */
+    private static volatile boolean exemptTried;
+
     static void exemptAsOwner(Context c, android.app.admin.DevicePolicyManager dpm) {
-        if (android.os.Build.VERSION.SDK_INT < 34 || dpm == null) return;
+        if (android.os.Build.VERSION.SDK_INT < 34 || dpm == null || exemptTried) return;
         try {
             java.util.Set<Integer> which = new java.util.HashSet<>();
             for (String name : new String[] {"EXEMPT_FROM_APP_STANDBY", "EXEMPT_FROM_APP_HIBERNATION", "EXEMPT_FROM_POWER_RESTRICTIONS"}) {
@@ -44,7 +46,9 @@ final class BatteryAllow {
             if (which.isEmpty()) return;
             java.lang.reflect.Method m = android.app.admin.DevicePolicyManager.class.getMethod("setApplicationExemptions", String.class, java.util.Set.class);
             m.invoke(dpm, c.getPackageName(), which);
+            exemptTried = true;
         } catch (Exception e) {
+            exemptTried = true; // once per run: a phone that refuses it refuses it every time (this was logged every few seconds)
             android.util.Log.w("MdmAgent", "setApplicationExemptions not possible here: " + e);
         }
     }

@@ -29,12 +29,14 @@ jobs:
           # every script the phones inject into pages must at least parse (a stray comment once broke youtube_cover.js and left YouTube unfiltered)
           find android android-jelly -path '*/src/main/*' -name '*.js' -print0 | xargs -0 -n1 node --check
           mkdir -p out
-          javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockedPage.java android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SitePolicyCheck.java
+          javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockedPage.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SiteCategory.java android/app/src/main/java/com/familymdm/agent/LocalPolicy.java android/app/src/test/java/com/familymdm/agent/LocalPolicyCheck.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SitePolicyCheck.java
           java -cp json.jar:out com.familymdm.agent.LocalPolicyCheck
           java -cp json.jar:out com.familymdm.agent.sitepolicy.SitePolicyCheck
+          javac -cp json.jar:out -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SiteCategory.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SiteCategoryCheck.java
+          java -cp json.jar:out com.familymdm.agent.sitepolicy.SiteCategoryCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SkinMask.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/NudeDetect.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SkinMaskCheck.java
           java -cp out com.familymdm.agent.sitepolicy.SkinMaskCheck
-          javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BadSearch.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockedPage.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/BadSearchCheck.java
+          javac -cp json.jar -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BadSearch.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockedPage.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SiteCategory.java android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SitePolicy.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/BadSearchCheck.java
           java -cp json.jar:out com.familymdm.agent.sitepolicy.BadSearchCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/BlockList.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/BlockListCheck.java
           java -cp out com.familymdm.agent.sitepolicy.BlockListCheck
