@@ -64,7 +64,7 @@
     var d = window.__mdmCoverData || {}, v = {}, c = {};
     (d.videos || []).forEach(function (x) { if (x && x.v) v[x.v] = 1; });
     (d.channels || []).forEach(function (x) { if (x && x.h) c[String(x.h).toLowerCase()] = 1; });
-    return { mode: d.cover, guard: !!d.guard, askSearch: !!d.askSearch, askSkin: d.askPictures === 'skin' || d.askPictures === 'show', // 'show': the picture shows as it is (no skin covering is added where the guard is off) v: v, c: c };
+    return { mode: d.cover, guard: !!d.guard, askSearch: !!d.askSearch, askSkin: d.askPictures === 'skin' || d.askPictures === 'show', v: v, c: c }; // askSkin: 'show' = the picture shows as it is (nothing is covered)
   }
 
   // ---- guard: who made each video, and which @handle each channel id has (from YouTube's own data) ----
