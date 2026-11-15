@@ -87,7 +87,7 @@ final class TlsInspection {
         public byte[] rewrite(InspectProxy.Request r, byte[] body) { return rules.rewrite(r, body); }
     };
 
-    /** A made-up web address the blocked page's buttons point at: the filter answers it itself, nothing leaves the phone. */
+    /** A made-up web address the blocked page's buttons point at (https): the filter answers it itself, nothing leaves the phone. */
     private static final String ASK_HOST = "ask.mdm.invalid";
 
     /** "Ask for this site" under a blocked page: just this page, or the whole site (never offered for YouTube, which is asked for one channel or video at a time). */
@@ -96,8 +96,10 @@ final class TlsInspection {
             String host = com.familymdm.agent.sitepolicy.SitePolicy.hostOf(url);
             if (host == null || url == null || !url.startsWith("http") || com.familymdm.agent.sitepolicy.SitePolicy.isYoutubeHost(host)) return null;
             String enc = android.net.Uri.encode(url);
-            return "<a class='b o' href='http://" + ASK_HOST + "/ask?s=page&u=" + enc + "'>Ask for just this page</a>"
-                    + "<a class='b o' href='http://" + ASK_HOST + "/ask?s=site&u=" + enc + "'>Ask for the whole site (" + com.familymdm.agent.sitepolicy.BlockedPage.esc(host) + ")</a>";
+            // https, not http: the browser engine inside apps refuses plain http links (ERR_CLEARTEXT_NOT_PERMITTED, seen on the A16); the filter
+            // inspects https and answers this made-up address itself, so it works the same in Chrome and in our Browser.
+            return "<a class='b o' href='https://" + ASK_HOST + "/ask?s=page&u=" + enc + "'>Ask for just this page</a>"
+                    + "<a class='b o' href='https://" + ASK_HOST + "/ask?s=site&u=" + enc + "'>Ask for the whole site (" + com.familymdm.agent.sitepolicy.BlockedPage.esc(host) + ")</a>";
         } catch (RuntimeException e) {
             return null;
         }
