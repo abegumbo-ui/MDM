@@ -22,7 +22,7 @@ function Check($ok, $what) { if ($ok) { "PASS  $what" } else { "FAIL  $what"; $s
 
 function RunExe([string[]]$exeArgs, [hashtable]$envv) {
     Remove-Item (Join-Path $work 'fake-state.txt'), (Join-Path $work 'fake-adb.log'), (Join-Path $work 'fake-testonly.txt'), (Join-Path $work 'fake-dropped.txt') -ErrorAction SilentlyContinue
-    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE', 'FAKE_TESTONLY', 'FAKE_STALE') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
+    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE', 'FAKE_TESTONLY', 'FAKE_STALE', 'FAKE_USERS_OK') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
     foreach ($k in $envv.Keys) { Set-Item "Env:$k" $envv[$k] }
     Remove-Item (Join-Path $logDir 'setup.log') -ErrorAction SilentlyContinue
     $p = Start-Process -FilePath (Join-Path $work 'FamilyMdmSetup.exe') -ArgumentList $exeArgs -Wait -PassThru -WorkingDirectory $work
@@ -92,8 +92,13 @@ Check ($own1 -ge 0 -and $drop -gt $own1 -and $own2 -gt $drop -and (Count $r.Call
 Check ((Idx $r.Calls 'disable-user') -lt 0) 'leftover admin: still no account service is touched'
 
 # 5. More than one user on the phone: refused before anything is changed.
-$r = RunExe $common @{ FAKE_USERS = '2' }
-Check ($r.Exit -eq 1 -and (Idx $r.Calls 'disable-user') -lt 0 -and (Idx $r.Calls '^(-s FAKE )?install') -lt 0) 'two users: refused, nothing changed'
+# Several users (a Samsung S25 lists Secure Folder, Dual Messenger, Private Space): no longer a stop. It tries; if Android refuses, the log names the spaces and where to remove them.
+$r = RunExe $common @{ FAKE_USERS = '4'; FAKE_TESTONLY = '1' }
+Check ($r.Exit -eq 1 -and (Idx $r.Calls 'set-device-owner') -ge 0) 'several users: it tries anyway, and exits 1 when Android refuses'
+Check ($r.Log -match 'Secure Folder' -and $r.Log -match 'Dual Messenger' -and $r.Log -match 'Private Space' -and $r.Log -match 'Settings > Security and privacy') 'several users: the log names the spaces and says where to remove them'
+Check ($r.Log -match 'never removes' -and (Idx $r.Calls 'remove-user') -lt 0) 'several users: nothing is ever removed by the program'
+$r = RunExe $common @{ FAKE_USERS = '4'; FAKE_TESTONLY = '1'; FAKE_USERS_OK = '1' }
+Check ($r.Exit -eq 0) 'several users, and Android accepts it: the hand-over goes through'
 
 # 6. Only checking: no install, nothing switched off.
 $r = RunExe @('--cli', '--dry-run', '--serial', 'FAKE') @{}
