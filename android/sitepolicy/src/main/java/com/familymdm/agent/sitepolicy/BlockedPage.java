@@ -54,9 +54,19 @@ public final class BlockedPage {
         return page.replace("<h1>" + esc(title) + "</h1>", "<h1>" + esc(title) + "</h1>" + (bodyHtml == null ? "" : bodyHtml));
     }
 
-    /** "This site is not allowed. Contact your administrator..." with the address and the reason (optional). */
+    /** The small label under the title that says what kind of site was tried ("News", "Social media"...). Empty when there is none. */
+    public static String categoryHtml(String category) {
+        if (category == null || category.isEmpty()) return "";
+        return "<p style='margin:2px 0 10px'><span style='display:inline-block;border-radius:999px;padding:3px 12px;background:rgba(79,70,229,.14);color:var(--p);font-size:13px;font-weight:600'>"
+                + esc(category) + "</span></p>";
+    }
+
+    /** "This site is not allowed. Contact your administrator..." with its kind, the address and the reason (optional). */
     public static String notAllowed(String address, String reason, String extraHtml) {
-        return html(NOT_ALLOWED, new String[]{CONTACT, reason, address}, extraHtml);
+        String category = address != null && address.startsWith("http") ? SiteCategory.labelFor(address) : null;
+        StringBuilder body = new StringBuilder(categoryHtml(category));
+        for (String l : new String[]{CONTACT, reason, address}) if (l != null && !l.isEmpty()) body.append("<p>").append(esc(l)).append("</p>");
+        return raw(NOT_ALLOWED, body.toString(), extraHtml);
     }
 
     public static String esc(String s) {

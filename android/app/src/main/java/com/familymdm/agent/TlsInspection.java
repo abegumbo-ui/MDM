@@ -70,13 +70,14 @@ final class TlsInspection {
         public InspectProxy.Response onRequest(InspectProxy.Request r) {
             // Android's internet check (a 204 from www.google.com and friends) goes straight through: no category, word or YouTube rule applies to it.
             if (com.familymdm.agent.sitepolicy.ConnectivityProbe.isProbe(r.host, r.path)) return null;
+            if (ASK_HOST.equals(r.host)) return askAnswer(r);
             Context c = appContext;
             String why = c == null ? null : BrowserCategoryFilter.refusalViaProxy(c, r.host);
             if (why != null) {
                 String dest = r.headers.get("Sec-Fetch-Dest");
                 String accept = r.headers.get("Accept");
                 boolean page = dest != null ? dest.equals("document") : accept != null && accept.startsWith("text/html");
-                if (page) return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), why, null));
+                if (page) return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), why, askLinks(r.url())));
                 return new InspectProxy.Response(403, "text/plain", "Closed on this phone.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
             return rules.onRequest(r);
@@ -85,6 +86,43 @@ final class TlsInspection {
         public boolean wantsIdentity(InspectProxy.Request r) { return rules.wantsIdentity(r); }
         public byte[] rewrite(InspectProxy.Request r, byte[] body) { return rules.rewrite(r, body); }
     };
+
+    /** A made-up web address the blocked page's buttons point at: the filter answers it itself, nothing leaves the phone. */
+    private static final String ASK_HOST = "ask.mdm.invalid";
+
+    /** "Ask for this site" under a blocked page: just this page, or the whole site (never offered for YouTube, which is asked for one channel or video at a time). */
+    private static String askLinks(String url) {
+        try {
+            String host = com.familymdm.agent.sitepolicy.SitePolicy.hostOf(url);
+            if (host == null || url == null || !url.startsWith("http") || com.familymdm.agent.sitepolicy.SitePolicy.isYoutubeHost(host)) return null;
+            String enc = android.net.Uri.encode(url);
+            return "<a class='b o' href='http://" + ASK_HOST + "/ask?s=page&u=" + enc + "'>Ask for just this page</a>"
+                    + "<a class='b o' href='http://" + ASK_HOST + "/ask?s=site&u=" + enc + "'>Ask for the whole site (" + com.familymdm.agent.sitepolicy.BlockedPage.esc(host) + ")</a>";
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** The page after a button on a blocked page was pressed: the request goes to the dashboard like any other. */
+    private static InspectProxy.Response askAnswer(InspectProxy.Request r) {
+        Context c = appContext;
+        try {
+            android.net.Uri u = android.net.Uri.parse("http://" + ASK_HOST + r.path);
+            String target = u.getQueryParameter("u");
+            String host = com.familymdm.agent.sitepolicy.SitePolicy.hostOf(target);
+            if (c == null || host == null || !(target.startsWith("http://") || target.startsWith("https://")))
+                return InspectProxy.Response.html(400, com.familymdm.agent.sitepolicy.BlockedPage.html("Not sent", new String[]{"That did not work. Go back and try again."}, null));
+            String note = "Asked from a blocked page.";
+            if ("site".equals(u.getQueryParameter("s"))) {
+                target = "https://" + host + "/";
+                note = "Wants the whole site.";
+            }
+            Agent.addSiteRequest(c, target, note);
+            return InspectProxy.Response.html(200, com.familymdm.agent.sitepolicy.BlockedPage.html("Sent to your parent", new String[]{"They will see " + target + " on the dashboard."}, null));
+        } catch (RuntimeException e) {
+            return InspectProxy.Response.html(400, com.familymdm.agent.sitepolicy.BlockedPage.html("Not sent", new String[]{"That did not work. Go back and try again."}, null));
+        }
+    }
 
     /** Brings the phone in line with the policy. Never throws: a problem here must not stop other policy applying. */
     static synchronized void apply(Context c, DevicePolicyManager dpm, ComponentName admin, JSONObject policy) {

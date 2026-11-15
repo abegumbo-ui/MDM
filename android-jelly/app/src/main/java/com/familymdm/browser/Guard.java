@@ -374,7 +374,8 @@ public final class Guard {
 
     private static Decision decide(Context ctx, String url, Runnable recheck) {
         Context c = ctx.getApplicationContext();
-        boolean noPics = FilterStore.blockImages(c) || FilterStore.noPicturesFor(c, SitePolicy.hostOf(url));
+        // YouTube and YouTube Music have their own picture choices, so the global "No pictures" does not apply there; a per-site entry still does.
+        boolean noPics = (FilterStore.blockImages(c) && SitePolicy.globalNoPicturesApplies(url)) || FilterStore.noPicturesFor(c, SitePolicy.hostOf(url));
         if (url == null || url.startsWith("about:") || url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("javascript:"))
             return Decision.yes(noPics);
         if (FilterStore.adultBlock(c) && SitePolicy.isBlockedAdult(url))
@@ -456,7 +457,7 @@ public final class Guard {
             FilterStore.refreshAsync(c, true);
             note = "<p class=n>The filter lists are still downloading. Until they are ready, only approved sites open. Try again in a minute.</p>";
         }
-        return Decision.no(notAllowed(url, null, note + askButton(url, "Ask for access") + homeButton()));
+        return Decision.no(notAllowed(url, null, note + askButton(url, "Ask for this site") + homeButton()));
     }
 
     private static boolean isYoutubeAddress(String url) {
@@ -581,7 +582,8 @@ public final class Guard {
             String host = SitePolicy.hostOf(url);
             boolean covered = FilterStore.adsCovered(c, pageHost);
             boolean filterBlocks = FilterStore.active(c) && host != null && (covered ? FilterStore.blocksExceptAds(c, host) : FilterStore.blocks(c, host))
-                    && SitePolicy.matching(url, sites(c)) == null && !(mode(c) == Mode.AGENT && browseWindow(c));
+                    && SitePolicy.matching(url, sites(c)) == null && !(mode(c) == Mode.AGENT && browseWindow(c))
+                    && !SitePolicy.sameSiteAs(pageHost, host); // a page that was allowed to open (approved by itself, say) still gets its own site's files
             if (filterBlocks) return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
             if (!covered && FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
             String guard = FilterStore.pictureGuard(c);
@@ -926,10 +928,18 @@ public final class Guard {
         String field = known
                 ? "<p>" + esc(url) + "</p><input type=hidden name=w value='x'>"
                 : "<input name=w autocomplete=off placeholder='A link, or the name of a channel or video' style='font-size:17px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px'>";
+        // Which do they want: this one page, or the whole site? (Not offered on YouTube: its pages are asked for one channel or video at a time.)
+        String host = known ? SitePolicy.hostOf(url) : null;
+        boolean ytHost = host != null && (SitePolicy.isYoutubeHost(host) || "youtu.be".equals(host));
+        String scope = known && host != null && url.startsWith("http") && !ytHost
+                ? "<p style='margin-bottom:2px'>Which do you want to open?</p><select name=s style='font-size:16px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px;background:transparent;color:inherit'>"
+                + "<option value=page>Just this page</option><option value=site>The whole site (" + esc(host) + ")</option></select><input type=hidden name=h value='" + esc(host) + "'>"
+                : "<input type=hidden name=s value=page><input type=hidden name=h value=''>";
         return page(known ? "Ask your parent" : "Ask for a channel or video", known ? "Your parent gets this on the dashboard." : "Paste a link, or write what you are looking for.",
                 "<form onsubmit=\"var v=this.w.value.trim();if(!v)return false;var u=this.u.value||(/youtu\\.?be|youtube\\.com|^https?:/i.test(v)?(v.indexOf('://')<0?'https://'+v:v):'https://www.youtube.com/results?search_query='+encodeURIComponent(v));"
-                        + "location.href='" + SCHEME + "://request?u='+encodeURIComponent(u)+'&note='+encodeURIComponent(this.n.value.trim());return false\">"
-                        + "<input type=hidden name=u value='" + (known ? esc(url) : "") + "'>" + field
+                        + "var nn=this.n.value.trim();if(this.s.value=='site'&&this.h.value){u='https://'+this.h.value+'/';nn='Wants the whole site. '+nn}"
+                        + "location.href='" + SCHEME + "://request?u='+encodeURIComponent(u)+'&note='+encodeURIComponent(nn);return false\">"
+                        + "<input type=hidden name=u value='" + (known ? esc(url) : "") + "'>" + field + scope
                         + "<textarea name=n rows=3 placeholder='Message to your parent (optional)' style='margin-top:12px;font-size:16px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #999;border-radius:12px'></textarea>"
                         + "<button class=b style='border:0;width:100%'>Send</button></form>" + homeButton());
     }
@@ -945,7 +955,8 @@ public final class Guard {
     /** The family's "This site is not allowed" page (logo behind it), with the reason and the address. */
     static String notAllowed(String url, String reason, String extraHtml) {
         extraHtml = backButton() + (extraHtml == null ? "" : extraHtml.replace("class=b href='" + SCHEME + "://ask", "class='b o' href='" + SCHEME + "://ask"));
-        String body = "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>"
+        String body = (url != null && url.startsWith("http") ? com.familymdm.agent.sitepolicy.BlockedPage.categoryHtml(com.familymdm.agent.sitepolicy.SiteCategory.labelFor(url)) : "")
+                + "<p>" + esc(com.familymdm.agent.sitepolicy.BlockedPage.CONTACT) + "</p>"
                 + (reason != null ? "<p>" + esc(reason) + "</p>" : "")
                 + (url != null && url.startsWith("http") ? "<p style='font-size:13px'>" + esc(url) + "</p>" : "");
         return com.familymdm.agent.sitepolicy.BlockedPage.raw(com.familymdm.agent.sitepolicy.BlockedPage.titleFor(url), body, extraHtml);

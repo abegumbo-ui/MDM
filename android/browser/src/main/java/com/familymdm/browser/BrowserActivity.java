@@ -731,6 +731,7 @@ public class BrowserActivity extends Activity {
                     // Something in a blocked category: still allowed if it is on the approved list, or during a free-browsing window.
                     Mode m = mode();
                     if (SitePolicy.matching(url, interceptSitesNow(m)) != null) return null;
+                    if (SitePolicy.sameSiteAs(approvedPageHost, host)) return null; // a page approved by itself still gets its own site's files
                     if (m == Mode.AGENT && browseWindowActive()) return null;
                     if (request.isForMainFrame()) runOnUiThread(() -> allowedOrBlock(t, url));
                     return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<String, String>(), new ByteArrayInputStream(new byte[0]));
@@ -820,8 +821,8 @@ public class BrowserActivity extends Activity {
                 return false;
             }
             if (SitePolicy.youtubeRestrictedAllows(url)) {
-                t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
-                t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
+                t.webView.getSettings().setBlockNetworkImage(noPicsFor(url));
+                t.webView.getSettings().setLoadsImagesAutomatically(!noPicsFor(url));
                 return true;
             }
             showNotAvailable(t, "This part of YouTube isn't available.");
@@ -829,25 +830,26 @@ public class BrowserActivity extends Activity {
         }
         List<SitePolicy.Site> sitesNow = currentSites(mode);
         SitePolicy.Site match = SitePolicy.matching(url, sitesNow);
+        if (match != null) approvedPageHost = SitePolicy.hostOf(url); // the approved page's own site's files must load too (see shouldInterceptRequest)
         if (match == null) {
             // Allowed YouTube channels: their pages and their videos open, the rest of YouTube does not.
             int yt = youtubeCheck(t, url, sitesNow);
             if (yt == YT_PENDING) return false;
             if (yt == YT_ALLOW) {
-                t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
-                t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
+                t.webView.getSettings().setBlockNetworkImage(noPicsFor(url));
+                t.webView.getSettings().setLoadsImagesAutomatically(!noPicsFor(url));
                 return true;
             }
             if (mode == Mode.AGENT && browseWindowActive()) {
                 reportNewHostOnce(url);
-                t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
-                t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
+                t.webView.getSettings().setBlockNetworkImage(noPicsFor(url));
+                t.webView.getSettings().setLoadsImagesAutomatically(!noPicsFor(url));
                 return true;
             }
             // "Open: no filter" from the dashboard: everything opens.
             if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.open(this)) {
-                t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
-                t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
+                t.webView.getSettings().setBlockNetworkImage(noPicsFor(url));
+                t.webView.getSettings().setLoadsImagesAutomatically(!noPicsFor(url));
                 return true;
             }
             // Moderate / Strict filter: everything is open except the blocked categories. Only once the
@@ -855,8 +857,8 @@ public class BrowserActivity extends Activity {
             if ((mode == Mode.AGENT || mode == Mode.ONLINE) && FilterStore.active(this)) {
                 String host = SitePolicy.hostOf(url);
                 if (host != null && !FilterStore.blocks(this, host)) {
-                    t.webView.getSettings().setBlockNetworkImage(FilterStore.blockImages(this));
-                    t.webView.getSettings().setLoadsImagesAutomatically(!FilterStore.blockImages(this));
+                    t.webView.getSettings().setBlockNetworkImage(noPicsFor(url));
+                    t.webView.getSettings().setLoadsImagesAutomatically(!noPicsFor(url));
                     return true;
                 }
             }
@@ -867,9 +869,17 @@ public class BrowserActivity extends Activity {
             showBlocked(t, url, mode);
             return false;
         }
-        t.webView.getSettings().setBlockNetworkImage(match.blockImages || FilterStore.blockImages(this));
-        t.webView.getSettings().setLoadsImagesAutomatically(!(match.blockImages || FilterStore.blockImages(this)));
+        t.webView.getSettings().setBlockNetworkImage(match.blockImages || noPicsFor(url));
+        t.webView.getSettings().setLoadsImagesAutomatically(!(match.blockImages || noPicsFor(url)));
         return true;
+    }
+
+    /** The site of the last page that was allowed because it is on the approved list (read on the network thread). */
+    private volatile String approvedPageHost;
+
+    /** The global "No pictures on web pages" switch, except on YouTube and YouTube Music: their own picture choices apply there. */
+    private boolean noPicsFor(String url) {
+        return FilterStore.blockImages(this) && SitePolicy.globalNoPicturesApplies(url);
     }
 
     private static boolean isYoutubeAddress(String url) {

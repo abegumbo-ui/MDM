@@ -183,6 +183,32 @@ public final class SitePolicy {
         return host != null && YOUTUBE_HOSTS.contains(host.toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * Does the global "No pictures on web pages" switch apply to this page? Not on YouTube and YouTube Music: they have their own picture
+     * choices on the dashboard (covers on search results, show or hide for songs and channels), and with the global switch on their
+     * thumbnails and channel pictures never appeared at all. This is only about pictures: every YouTube access rule (off, only what is allowed,
+     * Restricted Mode) is decided elsewhere and is not touched, and a site on the "No pictures on these sites" list still has no pictures.
+     */
+    public static boolean globalNoPicturesApplies(String url) {
+        String host = hostOf(url);
+        if (host == null) return true;
+        return !(isYoutubeHost(host) || host.endsWith(".youtube.com") || "youtu.be".equals(host));
+    }
+
+    /**
+     * Is requestHost the same site as the page the person is allowed to be on (approvedHost), with or without "www." or under one of its
+     * sub-domains (static.foxnews.com for www.foxnews.com)? A page that was approved by itself on a site that is otherwise closed needs its own
+     * site's scripts and styles to show; other pages of that site stay closed because a new page is checked on its own.
+     */
+    public static boolean sameSiteAs(String approvedHost, String requestHost) {
+        if (approvedHost == null || requestHost == null) return false;
+        String base = approvedHost.toLowerCase(Locale.ROOT);
+        if (base.startsWith("www.")) base = base.substring(4);
+        String r = requestHost.toLowerCase(Locale.ROOT);
+        if (base.isEmpty() || base.indexOf('.') < 0) return false; // never a bare name like "com"
+        return r.equals(base) || r.endsWith("." + base);
+    }
+
     private static String queryParam(URI uri, String name) {
         String q = uri.getRawQuery();
         if (q == null) return null;

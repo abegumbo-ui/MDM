@@ -51,6 +51,24 @@ public class SitePolicyCheck {
         mixed.put("not an object"); // a malformed entry should just be skipped, not throw
         check(SitePolicy.parse(mixed).isEmpty(), "unknown type / non-object entries are dropped");
 
+        // "No pictures on web pages" does not touch YouTube and YouTube Music (they have their own picture choices); every other site keeps it.
+        check(!SitePolicy.globalNoPicturesApplies("https://www.youtube.com/@NASA"), "no-pictures: not applied on YouTube");
+        check(!SitePolicy.globalNoPicturesApplies("https://music.youtube.com/watch?v=abcdefghijk"), "no-pictures: not applied on YouTube Music");
+        check(!SitePolicy.globalNoPicturesApplies("https://m.youtube.com/"), "no-pictures: not applied on m.youtube.com");
+        check(!SitePolicy.globalNoPicturesApplies("https://youtu.be/abcdefghijk"), "no-pictures: not applied on youtu.be");
+        check(SitePolicy.globalNoPicturesApplies("https://www.foxnews.com/politics/x"), "no-pictures: still applied on an ordinary site");
+        check(SitePolicy.globalNoPicturesApplies("https://notyoutube.com/"), "no-pictures: a look-alike name still gets it");
+        check(SitePolicy.globalNoPicturesApplies("https://youtube.com.attacker.example/"), "no-pictures: a look-alike longer name still gets it");
+        check(SitePolicy.globalNoPicturesApplies(null), "no-pictures: an unknown address keeps the switch");
+        // A page approved by itself on a closed site: its own site's files load, other sites' files and look-alikes do not.
+        check(SitePolicy.sameSiteAs("www.foxnews.com", "static.foxnews.com"), "same site: a sub-domain of the approved page's site");
+        check(SitePolicy.sameSiteAs("www.foxnews.com", "foxnews.com"), "same site: with or without www.");
+        check(SitePolicy.sameSiteAs("foxnews.com", "www.foxnews.com"), "same site: the other way round");
+        check(!SitePolicy.sameSiteAs("www.foxnews.com", "cnn.com"), "same site: another site is not");
+        check(!SitePolicy.sameSiteAs("www.foxnews.com", "notfoxnews.com"), "same site: a look-alike name is not");
+        check(!SitePolicy.sameSiteAs("www.foxnews.com", "foxnews.com.attacker.example"), "same site: a look-alike longer name is not");
+        check(!SitePolicy.sameSiteAs(null, "foxnews.com") && !SitePolicy.sameSiteAs("foxnews.com", null), "same site: nothing approved, nothing allowed");
+        check(!SitePolicy.sameSiteAs("com", "evil.com"), "same site: a bare ending like com never counts");
         check(SitePolicy.isBlockedAdult("https://pornhub.com/video"), "a known adult site is blocked");
         check(SitePolicy.isBlockedAdult("https://www.pornhub.com/"), "...even with a www. prefix");
         check(SitePolicy.isBlockedAdult("https://sub.pornhub.com/"), "...and any subdomain");

@@ -149,7 +149,15 @@ final class Actions {
         }
         int id = wm.addNetwork(conf);
         if (id == -1) throw new Exception("the phone refused to add " + ssid);
+        // enableNetwork(id, true) joins this network but also DISABLES every other saved network (Android's documented side effect), which left a phone
+        // unable to rejoin the Wi-Fi it was on once this one went out of range (30 networks were found switched off on one tablet). Put the others back.
         wm.enableNetwork(id, true);
+        try {
+            java.util.List<WifiConfiguration> saved = wm.getConfiguredNetworks();
+            if (saved != null) for (WifiConfiguration other : saved) if (other.networkId != id) wm.enableNetwork(other.networkId, false);
+        } catch (Exception ignored) {
+            // the new network is joined either way
+        }
         wm.reconnect();
         return "added Wi-Fi network " + ssid;
     }

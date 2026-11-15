@@ -1258,7 +1258,7 @@ function renderRequestsCard(m,reqs,dv,title,help){
      await addSite(dv,type==='exact'?{type:'exact',url:r.url,label:host}:{type:'domain',url:host,label:host},pick);await dismiss()}};
     rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,
      h('div',{class:'mute small'},r.deviceName+' tried to open this · '+ago(r.at)),
-     choice('Allow just this page','Only this one link opens. Every other page on '+host+' stays blocked.',settle('exact')),
+     choice('Allow just this page','Only this one link opens. Every other page on '+host+' stays blocked. (This works in our Browser. Chrome and other browsers only see the site name, so for them choose Allow all of '+host+'.)',settle('exact')),
      choice('Allow all of '+host,'Every page on '+host+' opens, and its sub-sites too (like news.'+host+').',settle('domain')),
      choice('No, keep it blocked','Takes this request away. They can ask again.',dismiss,'outline'),
      h('div',{class:'mute small',style:'margin-top:12px'},'On the site you allow:'),

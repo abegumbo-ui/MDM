@@ -65,9 +65,17 @@ public class GuardTest {
         assertTrue(Guard.check(c, "https://www.khanacademy.org/math", null).allow);
         Guard.Decision d = Guard.check(c, "https://example.com/", null);
         assertFalse(d.allow);
-        assertTrue(d.html.contains("Ask for access"));
+        assertTrue(d.html.contains("Ask for this site"));
         assertTrue(d.html.contains("mdmguard://ask?u="));
+        assertTrue("an unknown site says Miscellaneous", d.html.contains(">Miscellaneous<"));
+        Guard.Decision news = Guard.check(c, "https://www.foxnews.com/politics/some-story", null);
+        assertFalse(news.allow);
+        assertTrue("a known news site says News", news.html.contains(">News<"));
         assertTrue("the ask page has a message box and sends to the dashboard", Guard.askPage("https://example.com/").contains("mdmguard://request?u=") && Guard.askPage(null).contains("Message to your parent"));
+        String ask = Guard.askPage("https://www.foxnews.com/politics/some-story");
+        assertTrue("the ask page offers just this page or the whole site", ask.contains("Just this page") && ask.contains("The whole site (foxnews.com)") && ask.contains("name=h value='foxnews.com'"));
+        assertFalse("typing a link or a name (no page known) has no such choice", Guard.askPage(null).contains("Just this page"));
+        assertFalse("YouTube is asked for one channel or video at a time, never as a whole site", Guard.askPage("https://www.youtube.com/watch?v=abcdefghijk").contains("The whole site"));
         assertNull("no searching on approved-only", Guard.searchUrl(c, "cats"));
     }
 
@@ -167,6 +175,22 @@ public class GuardTest {
         connected("off");
         Guard.Decision d = Guard.check(c, "https://example.com/<script>alert(1)</script>", null);
         assertFalse(d.html.contains("<script>alert"));
+    }
+
+    @Test
+    public void noPicturesEverywhere_doesNotCoverYouTube_butEveryOtherSiteAndTheSiteList_stillDo() throws Exception {
+        connected("open");
+        FilterStore.setBlockImages(c, true);
+        assertTrue("an ordinary site has no pictures", Guard.check(c, "https://example.com/", null).blockImages);
+        assertFalse("YouTube has its own picture choices, so its thumbnails and channel pictures show", Guard.check(c, "https://www.youtube.com/", null).blockImages);
+        assertFalse("YouTube Music too", Guard.check(c, "https://music.youtube.com/", null).blockImages);
+        // The YouTube exception is only about pictures: a site named on the no-pictures list still has none, and a blocked YouTube stays blocked.
+        FilterStore.setNoPictureSites(c, new String[]{"youtube.com"});
+        assertTrue("named on the list: pictures off even on YouTube", Guard.check(c, "https://www.youtube.com/", null).blockImages);
+        FilterStore.setNoPictureSites(c, new String[0]);
+        FilterStore.setYoutubeMode(c, "blocked");
+        assertFalse("YouTube off stays off, whatever the pictures say", Guard.check(c, "https://www.youtube.com/", null).allow);
+        FilterStore.setBlockImages(c, false);
     }
 
     @Test
