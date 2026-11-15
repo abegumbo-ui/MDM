@@ -195,8 +195,10 @@ test("a phone's routine check-in does not make the Pi save to Cloudflare; real c
   assert.ok(u.requests >= 5 && u.reads >= 5, JSON.stringify(u));
   assert.deepEqual(u.limits, { requests: 100000, reads: 100000, writes: 1000, deletes: 1000, lists: 1000 });
   assert.equal(u.day, "2026-11-15");
+  assert.equal(u.since, Date.parse("2026-11-15T12:00:00Z"), "it says when this count began");
   clock = Date.parse("2026-11-16T00:00:30Z");
   assert.equal(pi.repl.status().usage.writes, 0, "a new day starts again from nothing");
+  assert.equal(pi.repl.status().usage.since, Date.parse("2026-11-16T00:00:00Z"), "and its count begins at the start of the day");
   assert.equal(pi.repl.status().usage.day, "2026-11-16");
   await pi.stop();
   await backup.stop();

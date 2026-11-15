@@ -73,7 +73,7 @@ export function startReplication({ kv, vars, log = () => {}, intervalMs = 30 * 6
   let busy = false;
 
   // ---- how much of Cloudflare's daily allowance this Pi has used ----
-  const usage = { day: utcDay(now()), requests: 0, reads: 0, writes: 0, deletes: 0, lists: 0 };
+  const usage = { day: utcDay(now()), since: now(), requests: 0, reads: 0, writes: 0, deletes: 0, lists: 0 }; // since: when this count began (the start of the day, unless the Pi started counting later)
   try {
     const saved = kv.map && kv.map.get('repl:usage');
     const u = saved && saved.t === 's' ? JSON.parse(saved.v) : null;
@@ -82,7 +82,7 @@ export function startReplication({ kv, vars, log = () => {}, intervalMs = 30 * 6
   let usageTimer = null;
   const rollDay = () => {
     const d = utcDay(now());
-    if (d !== usage.day) Object.assign(usage, { day: d, requests: 0, reads: 0, writes: 0, deletes: 0, lists: 0 });
+    if (d !== usage.day) Object.assign(usage, { day: d, since: Date.parse(d + 'T00:00:00Z'), requests: 0, reads: 0, writes: 0, deletes: 0, lists: 0 });
   };
   const saveUsageSoon = () => {
     if (usageTimer) return;
