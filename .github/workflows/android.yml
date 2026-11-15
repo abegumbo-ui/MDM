@@ -56,6 +56,8 @@ jobs:
           java -cp out com.familymdm.agent.sitepolicy.ProtectionRulesCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/DashboardMatch.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/DashboardMatchCheck.java
           java -cp out com.familymdm.agent.sitepolicy.DashboardMatchCheck
+          javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/ConnectivityProbe.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/ConnectivityProbeCheck.java
+          java -cp out com.familymdm.agent.sitepolicy.ConnectivityProbeCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/CallRules.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/CallRulesCheck.java
           java -cp out com.familymdm.agent.sitepolicy.CallRulesCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/InAppRules.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/InAppRulesCheck.java

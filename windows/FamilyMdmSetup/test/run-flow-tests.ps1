@@ -21,8 +21,8 @@ $failures = 0
 function Check($ok, $what) { if ($ok) { "PASS  $what" } else { "FAIL  $what"; $script:failures++ } }
 
 function RunExe([string[]]$exeArgs, [hashtable]$envv) {
-    Remove-Item (Join-Path $work 'fake-state.txt'), (Join-Path $work 'fake-adb.log'), (Join-Path $work 'fake-testonly.txt'), (Join-Path $work 'fake-dropped.txt') -ErrorAction SilentlyContinue
-    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE', 'FAKE_TESTONLY', 'FAKE_STALE', 'FAKE_USERS_OK') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
+    Remove-Item (Join-Path $work 'fake-state.txt'), (Join-Path $work 'fake-adb.log'), (Join-Path $work 'fake-testonly.txt'), (Join-Path $work 'fake-dropped.txt'), (Join-Path $work 'fake-acc-calls.txt') -ErrorAction SilentlyContinue
+    foreach ($k in 'FAKE_SDK', 'FAKE_OWNER', 'FAKE_FAIL', 'FAKE_USERS', 'FAKE_REFUSE', 'FAKE_TESTONLY', 'FAKE_STALE', 'FAKE_USERS_OK', 'FAKE_SAMSUNG_GONE_AFTER', 'FAKE_DEVICES') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue }
     foreach ($k in $envv.Keys) { Set-Item "Env:$k" $envv[$k] }
     Remove-Item (Join-Path $logDir 'setup.log') -ErrorAction SilentlyContinue
     $p = Start-Process -FilePath (Join-Path $work 'FamilyMdmSetup.exe') -ArgumentList $exeArgs -Wait -PassThru -WorkingDirectory $work
@@ -36,7 +36,10 @@ function IdxLast($calls, $pattern) { for ($i = $calls.Count - 1; $i -ge 0; $i--)
 function Count($calls, $pattern) { return @($calls | Where-Object { $_ -match $pattern }).Count }
 
 Remove-Item $stateFile -ErrorAction SilentlyContinue
-$common = @('--cli', '--apk', (Join-Path $work 'fake.apk'), '--serial', 'FAKE', '--code', 'ABC123')
+$env:FMS_POLL_MS = '30'; $env:FMS_WAIT_MS = '1500' # the wait for a Samsung account to be removed: fast in tests
+# The older cases are about the account-services way, so they do not wait for the Samsung account to be removed.
+$common = @('--cli', '--apk', (Join-Path $work 'fake.apk'), '--serial', 'FAKE', '--code', 'ABC123', '--skip-samsung-wait')
+$samsung = @('--cli', '--apk', (Join-Path $work 'fake.apk'), '--serial', 'FAKE', '--code', 'ABC123')
 
 # 1. A phone that refuses a test build too (an older Android): the older way. The direct try fails, then the account services go off, then owner, then back on, then the app starts with the code.
 $r = RunExe $common @{ FAKE_SDK = '30' }
@@ -90,6 +93,25 @@ $drop = Idx $r.Calls 'am start .*dropAdmin'; $own1 = Idx $r.Calls 'set-device-ow
 Check ($r.Exit -eq 0) 'leftover admin: exits 0'
 Check ($own1 -ge 0 -and $drop -gt $own1 -and $own2 -gt $drop -and (Count $r.Calls 'set-device-owner') -eq 2) 'leftover admin: owner is tried, the app is asked to drop its admin record, owner is tried again'
 Check ((Idx $r.Calls 'disable-user') -lt 0) 'leftover admin: still no account service is touched'
+
+# 5d. A Samsung account is on the phone: the accounts screen is opened, the program waits while the person removes it, goes on, and opens the sign-in screen again at the end.
+$r = RunExe $samsung @{ FAKE_SDK = '36'; FAKE_TESTONLY = '1'; FAKE_SAMSUNG_GONE_AFTER = '4' }
+$open = Idx $r.Calls 'SYNC_SETTINGS'; $inst = Idx $r.Calls '^(-s FAKE )?install'; $own = IdxLast $r.Calls 'set-device-owner'; $signin = Idx $r.Calls 'ADD_ACCOUNT_SETTINGS'
+Check ($r.Exit -eq 0) 'Samsung account: removed by the person, the hand-over goes through (exit 0)'
+Check ($open -ge 0 -and $inst -gt $open -and $own -gt $inst -and $signin -gt $own) 'Samsung account: accounts screen first, nothing installed until it is gone, owner after that, sign-in screen at the end'
+Check ($r.Log -match 'Waiting here until the Samsung account is gone' -and $r.Log -match 'Sign in to your Samsung account again') 'Samsung account: the log says what to tap and when to sign in again'
+# 5e. It is never removed: stops before anything is installed or changed.
+$r = RunExe $samsung @{ FAKE_SDK = '36'; FAKE_TESTONLY = '1' }
+Check ($r.Exit -eq 1 -and (Idx $r.Calls '^(-s FAKE )?install') -lt 0 -and (Idx $r.Calls 'set-device-owner') -lt 0) 'Samsung account never removed: exits 1 and nothing is installed or changed'
+Check ($r.Log -match 'still on the phone') 'Samsung account never removed: the log says so'
+
+# 5f. Two phones plugged in: without a choice nothing is changed and both are named; with --serial the chosen one is set up.
+$noSerial = @('--cli', '--apk', (Join-Path $work 'fake.apk'), '--code', 'ABC123', '--skip-samsung-wait')
+$r = RunExe $noSerial @{ FAKE_SDK = '36'; FAKE_TESTONLY = '1'; FAKE_DEVICES = '2' }
+Check ($r.Exit -eq 1 -and (Idx $r.Calls '^(-s FAKE )?install') -lt 0 -and (Idx $r.Calls 'set-device-owner') -lt 0) 'two phones, no choice: exits 1 and changes nothing'
+Check ($r.Log -match 'more than one phone' -and $r.Log -match 'FAKE2' -and $r.Log -match 'Phone. box') 'two phones, no choice: the log names both and says where to choose'
+$r = RunExe ($noSerial + @('--serial', 'FAKE2')) @{ FAKE_SDK = '36'; FAKE_TESTONLY = '1'; FAKE_DEVICES = '2' }
+Check ($r.Exit -eq 0 -and (Idx $r.Calls '-s FAKE2 install') -ge 0) 'two phones, one chosen: that phone is set up'
 
 # 5. More than one user on the phone: refused before anything is changed.
 # Several users (a Samsung S25 lists Secure Folder, Dual Messenger, Private Space): no longer a stop. It tries; if Android refuses, the log names the spaces and where to remove them.

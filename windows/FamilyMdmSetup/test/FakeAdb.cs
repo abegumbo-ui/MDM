@@ -4,6 +4,8 @@
 //   FAKE_SDK (default 35), FAKE_OWNER (a package that is already the device owner), FAKE_FAIL=1 (set-device-owner always fails),
 //   FAKE_USERS (number of users, default 1), FAKE_STATE (the file that remembers which packages are switched off),
 //   FAKE_USERS_OK=1 (Android accepts the hand-over even though there are several users),
+//   FAKE_SAMSUNG_GONE_AFTER=n (the Samsung account is gone once "dumpsys account" has been asked n times: the person removed it),
+//   FAKE_DEVICES=2 (a second phone is plugged in too),
 //   FAKE_STALE=1 (an earlier failed hand-over left a non-test admin: set-device-owner is refused until "am start ... dropAdmin" is sent),
 //   FAKE_TESTONLY=1 (like Android 16: an app installed with "install -t" may become the device owner even with accounts present).
 using System;
@@ -29,7 +31,7 @@ public static class FakeAdb
         int users; if (!int.TryParse(Environment.GetEnvironmentVariable("FAKE_USERS"), out users)) users = 1;
 
         if (cmd == "start-server" || cmd == "wait-for-device" || cmd == "reboot") return 0;
-        if (cmd == "devices") { Console.WriteLine("List of devices attached\nFAKE\tdevice\n"); return 0; }
+        if (cmd == "devices") { Console.WriteLine("List of devices attached\nFAKE\tdevice\n" + (Environment.GetEnvironmentVariable("FAKE_DEVICES") == "2" ? "FAKE2\tdevice\n" : "")); return 0; }
         if (cmd == "install")
         {
             if (list.Contains("-t")) File.WriteAllText(Path.Combine(dir, "fake-testonly.txt"), "t");
@@ -55,7 +57,12 @@ public static class FakeAdb
         }
         else if (rest == "dumpsys account")
         {
-            Console.WriteLine("Accounts: 2\n  Account {name=someone@example.com, type=com.google}\n  Account {name=x, type=com.osp.app.signin}\n");
+            int calls = 0, goneAfter;
+            string callsFile = Path.Combine(dir, "fake-acc-calls.txt");
+            if (File.Exists(callsFile)) int.TryParse(File.ReadAllText(callsFile), out calls);
+            File.WriteAllText(callsFile, (calls + 1).ToString());
+            bool gone = int.TryParse(Environment.GetEnvironmentVariable("FAKE_SAMSUNG_GONE_AFTER"), out goneAfter) && calls >= goneAfter;
+            Console.WriteLine("Accounts: " + (gone ? 1 : 2) + "\n  Account {name=someone@example.com, type=com.google}" + (gone ? "" : "\n  Account {name=x, type=com.osp.app.signin}") + "\n");
             Console.WriteLine("RegisteredServicesCache: 3 services");
             Console.WriteLine("  ServiceInfo: AuthenticatorDescription {type=com.google}, ComponentInfo{com.google.android.gms/com.google.android.gms.auth.GoogleAccountAuthenticatorService}, uid 10228");
             Console.WriteLine("  ServiceInfo: AuthenticatorDescription {type=com.osp.app.signin}, ComponentInfo{com.osp.app.signin/com.samsung.android.OspAuthenticationService}, uid 10101");

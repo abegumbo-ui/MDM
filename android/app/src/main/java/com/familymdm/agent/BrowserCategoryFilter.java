@@ -68,6 +68,8 @@ final class BrowserCategoryFilter {
     static String refusalViaProxy(Context c, String host) {
         if (host == null || Protection.paused(c)) return null;
         String h = host.toLowerCase(java.util.Locale.ROOT);
+        // Android's own internet check must always get through, or every Wi-Fi says "Sign in to the network" (see ConnectivityProbe).
+        if (com.familymdm.agent.sitepolicy.ConnectivityProbe.isProbeHost(h)) return null;
         if (approvedOnly(c)) {
             for (String p : PAGE_PARTS) if (h.equals(p) || h.endsWith("." + p)) return null;
             return !approvedSite(c, h) && !DnsAllowlist.allows(c, h) ? "Only the sites that were approved open on this phone." : null;

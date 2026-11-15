@@ -68,6 +68,8 @@ final class TlsInspection {
             return c != null && BrowserCategoryFilter.blocksViaProxy(c, host);
         }
         public InspectProxy.Response onRequest(InspectProxy.Request r) {
+            // Android's internet check (a 204 from www.google.com and friends) goes straight through: no category, word or YouTube rule applies to it.
+            if (com.familymdm.agent.sitepolicy.ConnectivityProbe.isProbe(r.host, r.path)) return null;
             Context c = appContext;
             String why = c == null ? null : BrowserCategoryFilter.refusalViaProxy(c, r.host);
             if (why != null) {
