@@ -3135,6 +3135,30 @@ function renderSettings(m){
 function renderClients(m){
  m.append(h('div',{class:'card'},h('h2',null,'Clients'),
   h('div',{class:'mute'},'Each client logs in on their own, sees only their own phones and browsers, and generates their own codes to enroll them. You (the administrator) still see everything, from every client, right here.')));
+ // Sign-ups: people ask for their own portal on a page you can switch on; nothing exists until you approve it here.
+ if(state&&state.session&&state.session.role==='admin'&&!state.session.helper){
+  const su=h('div',{class:'card'},h('h2',null,'Sign-ups'));
+  const suBody=h('div',{class:'mute'},'Loading…');su.append(suBody);m.append(su);
+  const fill=function(r){
+   suBody.textContent='';suBody.className='';
+   suBody.append(simpleSwitch('Open the sign-up page','Anyone who has the link can ask for their own portal. Nothing is created until you approve it below. Switch it off when you are not expecting anyone.',r.open,async function(on){
+    try{await call('PUT','/api/signups/settings',{open:on});snack(on?'The sign-up page is open.':'The sign-up page is closed.');render()}catch(e){snack(e.message,1)}}));
+   if(r.open){
+    const link=((state&&state.origin)||location.origin)+'/signup';
+    const box=h('input',{type:'text',readonly:'readonly',value:link,class:'grow',style:'width:100%'});
+    suBody.append(h('div',{class:'mute small',style:'margin-top:10px'},'Give people this address:'),h('div',{class:'row',style:'margin-top:6px'},box,btn('Copy','tonal',function(){try{navigator.clipboard.writeText(link);snack('Copied.')}catch(e){box.select&&box.select()}})))}
+   suBody.append(h('div',{style:'font-weight:500;margin-top:14px'},'Waiting for you ('+r.pending.length+')'));
+   if(!r.pending.length)suBody.append(h('div',{class:'mute small',style:'margin-top:4px'},'Nobody is waiting.'));
+   for(const p of r.pending){
+    suBody.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},p.name),
+     h('div',{class:'mute small'},'Login name: '+p.id+(p.email?' · '+p.email:'')+' · '+ago(p.createdAt))),
+     btn('Approve','',async function(){
+      if(!confirm('Approve '+p.name+'? They get their own portal and can sign in with the password they chose. They only ever see their own phones.'))return;
+      try{await call('POST','/api/signups/'+p.id+'/approve',{});snack(p.name+' can sign in now.');clients=await call('GET','/api/clients');render()}catch(e){snack(e.message,1)}}),
+     btn('Deny','outline',async function(){
+      if(!confirm('Deny the request from '+p.name+'?'))return;
+      try{await call('DELETE','/api/signups/'+p.id);snack('Denied.');render()}catch(e){snack(e.message,1)}})))}};
+  call('GET','/api/signups').then(fill).catch(function(e){suBody.textContent=e.message})}
  const addCard=h('div',{class:'card'},h('h2',null,'Add a client'));
  const loginName=h('input',{type:'text',placeholder:'Login name (3-32 letters/numbers/-/_, what they log in with)',style:'width:100%;margin-top:8px'});
  const name=h('input',{type:'text',placeholder:'Display name (optional, defaults to the login name)',style:'width:100%;margin-top:8px'});

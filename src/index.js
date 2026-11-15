@@ -4,6 +4,7 @@ import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
 import { maybeSendDaily, maybeSendWeekly, auditAdd, auditList, checkDevices, describeChange, getAlerts, mergeAlerts, publicAlerts, sendAlert, ALERTS_KEY, alertsOn, validPushEndpoint, vapidKeys, latestForPush, SERVICE_WORKER } from "./alerts.js";
 import { ICON_192, ICON_512 } from "./icons.js";
+import { handleSignupPublic, handleSignupAdmin } from "./signup.js";
 import { youtubeSearch, youtubeChannelVideos, youtubePlaylistVideos } from "./youtube.js";
 
 const SESSION_SECONDS = 60 * 60 * 12;
@@ -892,6 +893,8 @@ async function adminApiInner(request, env, url, session) {
   }
 
   if (path === "/api/apk" && method === "PUT") {
+    // The shared app store is the administrator's: a client must not be able to fill it (it counts against the plan's storage) or put files in it.
+    if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
     // Raw APK bytes from the dashboard's file picker. Stored for a week, fetched once by the phone.
     const buf = await request.arrayBuffer();
     const head = new Uint8Array(buf.slice(0, 2));
@@ -909,6 +912,8 @@ async function adminApiInner(request, env, url, session) {
   // Custom app icons (shown on the dashboard) and the logo (shown on the phones).
   const iconPut = /^\/api\/icon\/([A-Za-z0-9_.]{1,200})$/.exec(path);
   if (iconPut && (method === "PUT" || method === "DELETE")) {
+    // App icons are shared by every device and every person (the dashboard and the phones' home screens): only the administrator may change them.
+    if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
     if (method === "DELETE") {
       await env.STATE.delete(`iconc:${iconPut[1]}`);
       await setIconRev(env, iconPut[1], null);
@@ -947,6 +952,8 @@ async function adminApiInner(request, env, url, session) {
   }
   const body = method === "GET" || method === "DELETE" ? null : await request.json().catch(() => ({}));
 
+  const signupAdmin = await handleSignupAdmin(path, method, body, env, session, { json, getJSON, putJSON, auditAdd, invalidateClients: invalidateListCache, isMainAdmin: (x) => isAdmin(x) && !x.helper });
+  if (signupAdmin) return signupAdmin;
   if (path === "/api/clients" && method === "GET") {
     if (!isAdmin(session)) return json({ error: "Admin only" }, 403);
     return json((await listClients(env)).map(publicClient));
@@ -2181,6 +2188,18 @@ export default {
         const sites = String(url.searchParams.get("sites") || "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z0-9.-]{3,100}$/.test(x)).slice(0, 24);
         return html(startPageHtml(sites));
       }
+      // Self sign-up for people who want their own portal: off until the main administrator opens it (see signup.js).
+      const signupRes = await handleSignupPublic(request, env, url, {
+        html, getJSON, putJSON, hashClientPassword, LOGIN_NAME_RE, lockStatus, recordFailure, auditAdd,
+        notify: async (title, message) => {
+          const a = await getAlerts(env);
+          if (!alertsOn(a)) return;
+          const p = sendAlert(env, title, message, a);
+          if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
+          else await p;
+        },
+      });
+      if (signupRes) return signupRes;
       if (url.pathname === "/login" && request.method === "POST") {
         const form = await request.formData();
         const password = String(form.get("password") || "");
