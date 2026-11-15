@@ -7,7 +7,7 @@ import { createSystem } from './system.mjs';
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
-export function createAdmin({ env, vars, kv, getRepl, publicUrl = '', started = Date.now(), sys = createSystem(), versionFile = '/opt/mdm-pi/VERSION', adminOf = adminSessionOf }) {
+export function createAdmin({ env, vars, kv, getRepl, publicUrl = '', started = Date.now(), sys = createSystem(), versionFile = '/opt/mdm-pi/VERSION', adminOf = adminSessionOf, outages = null }) {
   function version() {
     try { return fs.readFileSync(versionFile, 'utf8').trim(); } catch { return ''; }
   }
@@ -72,6 +72,7 @@ export function createAdmin({ env, vars, kv, getRepl, publicUrl = '', started = 
       return json(r, r.ok ? 200 : 400);
     }
     if (p === '/api/pi/log' && method === 'GET') return json({ text: await sys.logLines(Number(url.searchParams.get('lines')) || 100) });
+    if (p === '/api/pi/outages' && method === 'GET') return json({ outages: outages ? outages.list() : [], now: Date.now(), serverUptimeSeconds: Math.round((Date.now() - started) / 1000) });
     if (p === '/api/pi/copy-now' && method === 'POST') {
       const repl = getRepl && getRepl();
       if (!repl || !repl.status().configured) return json({ ok: false, error: 'The copy to Cloudflare is not set up (see the four settings on Cloudflare).' }, 400);
@@ -79,10 +80,12 @@ export function createAdmin({ env, vars, kv, getRepl, publicUrl = '', started = 
       return json({ ok: !r.error && !r.offline, result: r });
     }
     if (p === '/api/pi/restart' && method === 'POST') {
+      if (outages) outages.markPlanned('restart');
       setTimeout(() => { sys.restartService().catch(() => {}); }, 800);
       return json({ ok: true, message: 'Restarting the server. The dashboard comes back in a few seconds.' });
     }
     if (p === '/api/pi/reboot' && method === 'POST') {
+      if (outages) outages.markPlanned('reboot');
       setTimeout(() => { sys.rebootPi().catch(() => {}); }, 800);
       return json({ ok: true, message: 'Restarting the Pi. It is back in about a minute.' });
     }

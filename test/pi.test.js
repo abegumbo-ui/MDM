@@ -141,6 +141,121 @@ test("the Pi copies changes to the backup, and takes them back after an outage",
   await backup.stop();
 });
 
+const waitMs = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = async (fn, ms = 8000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await waitMs(25); } return false; };
+
+test("a phone's routine check-in does not make the Pi save to Cloudflare; real changes are copied; the day's use is counted", async () => {
+  const secret = "s3cret-for-the-test";
+  const backup = await createApp({ dataDir: tmp(), vars: { ADMIN_PASSWORD: "x", ROLE: "backup", REPLICA_SECRET: secret }, replication: false, scheduleMs: 0 });
+  const backupPort = await listen(backup);
+  let clock = Date.parse("2026-11-15T12:00:00Z");
+  const vars = { ADMIN_PASSWORD: "y", ROLE: "main", REPLICA_SECRET: secret, BACKUP_URL: `http://127.0.0.1:${backupPort}`, PRIMARY_URL: "https://pi.example" };
+  const sent = []; // every request the Pi makes to Cloudflare
+  const fetchFn = (u, init) => { sent.push(new URL(u).pathname); return fetch(u, init); };
+  const pi = await createApp({ dataDir: tmp(), vars, scheduleMs: 0, fetchFn, replicationOptions: { soonMs: 40, now: () => clock } });
+  await pi.repl.first;
+  const rec = (extra = {}) => JSON.stringify({ id: "p1", name: "Phone", tokenHash: "h", config: { browserFilter: "strict" }, lastSeen: clock, info: { battery: 80 }, ...extra });
+
+  // A new phone is a real change: copied soon.
+  await pi.kv.put("device:p1", rec());
+  assert.ok(await until(async () => pi.repl.status().usage.writes === 1), "copied soon");
+  assert.ok(await backup.kv.get("device:p1"));
+
+  // A phone that checks in every few seconds changes only what it reports (when it was seen, its battery): nothing is copied for that.
+  for (let i = 0; i < 6; i++) { clock += 4000; await pi.kv.put("device:p1", rec({ lastSeen: clock, info: { battery: 79 - i } })); }
+  const requestsBefore = sent.length;
+  await waitMs(400); // far longer than the quick-copy delay (40 ms here)
+  assert.equal(sent.length, requestsBefore, "nothing was sent to Cloudflare for routine check-ins");
+  assert.equal(pi.repl.status().usage.writes, 1, "no extra save counted");
+  assert.equal(pi.repl.status().pending, 0, "nothing is waiting as a real change");
+  assert.equal(pi.repl.status().routineWaiting, 1, "the routine state waits for its next turn");
+  const quiet = await pi.repl.flush();
+  assert.equal(quiet.sent, 0, "the regular copy skips it as well");
+
+  // A real change (a setting) is copied soon.
+  await pi.kv.put("device:p1", rec({ config: { browserFilter: "moderate" } }));
+  assert.ok(await until(async () => pi.repl.status().usage.writes === 2), "a real change is copied soon");
+  assert.equal((await backup.kv.get("device:p1", "json")).config.browserFilter, "moderate");
+
+  // Something that is not a phone record is always a real change.
+  await pi.kv.put("codes", JSON.stringify([{ c: "ABC" }]));
+  assert.ok(await until(async () => (await backup.kv.get("codes")) !== null), "copied soon");
+  assert.equal(await backup.kv.get("codes"), JSON.stringify([{ c: "ABC" }]));
+
+  // Hours later the phone's routine state is brought up to date too.
+  clock += 4 * 3600 * 1000;
+  await pi.kv.put("device:p1", rec({ config: { browserFilter: "moderate" }, lastSeen: clock, info: { battery: 50 } }));
+  const late = await pi.repl.flush();
+  assert.equal(late.sent, 1);
+  assert.equal((await backup.kv.get("device:p1", "json")).info.battery, 50);
+
+  // Every request and storage operation it causes on Cloudflare is counted against the free allowance, per UTC day.
+  const u = pi.repl.status().usage;
+  assert.equal(u.writes, 4, JSON.stringify(u));
+  assert.ok(u.requests >= 5 && u.reads >= 5, JSON.stringify(u));
+  assert.deepEqual(u.limits, { requests: 100000, reads: 100000, writes: 1000, deletes: 1000, lists: 1000 });
+  assert.equal(u.day, "2026-11-15");
+  clock = Date.parse("2026-11-16T00:00:30Z");
+  assert.equal(pi.repl.status().usage.writes, 0, "a new day starts again from nothing");
+  assert.equal(pi.repl.status().usage.day, "2026-11-16");
+  await pi.stop();
+  await backup.stop();
+});
+
+test("the Pi keeps an outage history: whole-Pi restarts, long stops, and phones that had to use Cloudflare", async () => {
+  const dir = tmp();
+  let t = Date.parse("2026-11-15T10:00:00Z");
+  let boot = "boot-A";
+  const sys = { health: async () => ({ power: { ok: false }, cpuTempC: 50 }), wifiNow: async () => ({ state: "connected", ssid: "Home", signal: 60 }), tailscale: async () => ({ state: "Running" }) };
+  const mk = () => createApp({ dataDir: dir, vars: readEnv({ ADMIN_PASSWORD: "pw pw pw" }), replication: false, scheduleMs: 0, piAdminOptions: { sys }, outageOptions: { now: () => t, bootId: () => boot } });
+  let app = await mk();
+  assert.deepEqual(app.outages.list(), [], "nothing at the very first start");
+  await waitMs(30);
+
+  t += 10 * 1000; await app.stop(); app = await mk(); // an ordinary restart (an update): a few seconds, not an outage
+  assert.equal(app.outages.list().length, 0, "a quick restart is not an outage");
+
+  t += 20 * 60 * 1000; await app.stop(); app = await mk(); // the server program was away for 20 minutes, the Pi stayed on
+  let l = app.outages.list();
+  assert.equal(l.length, 1);
+  assert.equal(l[0].kind, "server");
+  assert.equal(l[0].to - l[0].from, 20 * 60 * 1000);
+
+  t += 5 * 60 * 1000; boot = "boot-B"; await app.stop(); app = await mk(); // a different boot id: the whole Pi restarted
+  l = app.outages.list();
+  assert.equal(l.length, 2);
+  assert.equal(l[0].kind, "restart", "newest first");
+  assert.match(l[0].detail, /Everything looked normal|low power/, "says what it looked like just before");
+
+  app.outages.markPlanned("reboot"); t += 3 * 60 * 1000; boot = "boot-C"; await app.stop(); app = await mk(); // restarted from the dashboard
+  l = app.outages.list();
+  assert.equal(l[0].planned, true);
+  assert.match(l[0].title, /restarted from the dashboard/);
+
+  // Phones used Cloudflare while the Pi stayed on: its own entry, with the reason on the phone's side.
+  const from = t + 30 * 60 * 1000, to = t + 38 * 60 * 1000; // well after the restart above, so it is its own story
+  app.outages.phonesUsedCloudflare({ from, to });
+  l = app.outages.list();
+  assert.equal(l.length, 4);
+  assert.equal(l[0].kind, "network");
+  assert.match(l[0].detail, /between that phone and the Pi/);
+  // If the Pi itself was away at the same time, that is the same story: one entry, not two.
+  const before = l.length;
+  app.outages.phonesUsedCloudflare({ from: l[1].from + 30 * 1000, to: l[1].to - 30 * 1000 });
+  assert.equal(app.outages.list().length, before, "an overlapping window does not add a second entry");
+  assert.ok(app.outages.list().some((e) => e.phonesUsedCloudflare && e.kind !== "network"), "it is noted on the entry it belongs to");
+
+  // The dashboard's Server page reads it (administrator only).
+  const port = await listen(app);
+  const base = `http://127.0.0.1:${port}`;
+  assert.equal((await fetch(base + "/api/pi/outages")).status, 403);
+  const login = await fetch(base + "/login", { method: "POST", body: new URLSearchParams({ password: "pw pw pw" }), redirect: "manual" });
+  const cookie = login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+  const got = await (await fetch(base + "/api/pi/outages", { headers: { cookie } })).json();
+  assert.equal(got.outages.length, 4);
+  assert.equal(typeof got.now, "number");
+  await app.stop();
+});
 test("the backup answers /internal only with the shared secret, and tells phones which servers to use", async () => {
   const app = await createApp({ dataDir: tmp(), vars: { ADMIN_PASSWORD: "x", ROLE: "backup", REPLICA_SECRET: "abc", PRIMARY_URL: "https://pi.example/", BACKUP_URL: "https://mdm.example" }, replication: false, scheduleMs: 0 });
   const port = await listen(app);
