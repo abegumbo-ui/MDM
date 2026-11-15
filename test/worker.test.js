@@ -127,13 +127,16 @@ test("dashboard log: a config save that actually changes something is recorded, 
   const { id } = await enrolledDevice(cookie);
   const putConfig = (body) => req(`/api/devices/${id}/config`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
 
-  await putConfig({ autoUpdate: true, restrictions: { cameraDisabled: true } }); // (a phone enrolled now has automatic updates on, and the dashboard always sends the whole config)
+  // The dashboard always sends the WHOLE config; a phone enrolled now starts with nothing on, so only the camera changes.
+  const current = (await (await req("/api/devices", { headers: { cookie } })).json()).find((x) => x.id === id).config;
+  const withCamera = { ...current, restrictions: { ...current.restrictions, cameraDisabled: true } };
+  await putConfig(withCamera);
   let devices = await (await req("/api/devices", { headers: { cookie } })).json();
   let device = devices.find((x) => x.id === id);
   assert.equal(device.pushLog.length, 1);
   assert.deepEqual(device.pushLog[0].changes, ["Disable the camera entirely: on"]);
 
-  await putConfig({ autoUpdate: true, restrictions: { cameraDisabled: true } }); // identical save
+  await putConfig(withCamera); // identical save
   devices = await (await req("/api/devices", { headers: { cookie } })).json();
   device = devices.find((x) => x.id === id);
   assert.equal(device.pushLog.length, 1, "a no-op save adds nothing to the log");

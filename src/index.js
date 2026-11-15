@@ -1,4 +1,4 @@
-import { endSitesEarly, MESSAGE_WORD_GROUPS, effectiveFilter, placesAt, messageWordList, matchMessageWord, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
+import { cleanStartConfig, endSitesEarly, MESSAGE_WORD_GROUPS, effectiveFilter, placesAt, messageWordList, matchMessageWord, buildAgentPolicy, isProtected, normalizeConfig, normalizeDnsAllowlist, normalizeDnsBlocklist, normalizeOverrides, normalizePerAppDnsAllowlist, normalizeSites, normalizeWholeAppBlocklist, effectiveYoutubeMode, youtubeChannelHandle, youtubeVideoId, APP_GROUPS, USER_MENU, RESTRICTIONS, RESTRICTION_BY_KEY, summarizeConfigChange } from "./policy.js";
 import { handleInternal, serversFor, noteBackupUse, serverInfo, viaOf } from "./replicate.js";
 import { loginPage, dashboardPage } from "./ui.js";
 import { clearFailures, clientIp, lockStatus, newTotpSecret, recordFailure, totpUri, totpVerify } from "./security.js";
@@ -273,7 +273,8 @@ const putJSON = (env, key, val, opts) => {
 // there, like a sideloaded tool) must never show up as a starting default on an unrelated phone.
 async function configOf(env, d) {
   if (d.config) return { cfg: normalizeConfig(d.config), seeded: false };
-  const cfg = normalizeConfig(d.seedAutoUpdate ? { autoUpdate: true } : {});
+  // A phone enrolled since 2026-11-15 (seedAutoUpdate is only ever set on those) starts with nothing on; older records keep the old defaults.
+  const cfg = normalizeConfig(d.seedAutoUpdate ? cleanStartConfig() : {});
   d.config = cfg;
   return { cfg, seeded: true };
 }
