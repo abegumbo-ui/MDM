@@ -261,6 +261,12 @@ final class TlsInspection {
         rules.setPictureFilter("nudity".equals(guard) || "skin".equals(guard) ? new ProxyPictureFilter(c.getApplicationContext(), guard, policy.optString("skinWho", "all")) : null);
         // "Cover skin" also covers skin in videos, in Chrome and the other browsers that go through Inspection.
         rules.setPageScript("skin".equals(guard) ? com.familymdm.agent.inspect.YoutubeInspector.videoSkinScript() : null);
+        // Filter chosen on one site (pictures and videos each on their own): checked there even when no filter is on everywhere.
+        Set<String> filterPics = hostSet(policy.optJSONArray("pictureFilterSites")), filterVids = hostSet(policy.optJSONArray("videoFilterSites"));
+        String siteMode = "nudity".equals(guard) || "skin".equals(guard) ? guard : "skin";
+        rules.setSiteFilters(filterPics, filterVids,
+                filterPics.isEmpty() ? null : new ProxyPictureFilter(c.getApplicationContext(), siteMode, policy.optString("skinWho", "all")),
+                filterVids.isEmpty() ? null : com.familymdm.agent.inspect.YoutubeInspector.videoSkinScript());
     }
 
     private static void enable(Context c, DevicePolicyManager dpm, ComponentName admin, boolean applied) throws Exception {

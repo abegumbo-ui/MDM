@@ -440,3 +440,32 @@ test("the strictest option (read every text and call) is off by default, forces 
   const lines = summarizeConfigChange(plain, cfg);
   assert.ok(lines.some((l) => /Read every text and call: on/.test(l)), "the audit log says it: " + JSON.stringify(lines));
 });
+
+test("per site, pictures and videos each have their own choice (normal, allow/show, filter, block), independently", () => {
+  const site = (extra) => normalizeSite({ type: "domain", url: "https://example.com", ...extra });
+  assert.equal(site({}).pictures, undefined, "nothing chosen: follows the phone's general settings");
+  assert.equal(site({}).videos, undefined);
+  for (const v of ["allow", "filter", "block"]) {
+    assert.equal(site({ pictures: v }).pictures, v);
+    assert.equal(site({ videos: v }).videos, v);
+  }
+  assert.equal(site({ pictures: "nonsense", videos: "other" }).pictures, undefined, "an unknown choice is ignored");
+  assert.equal(site({ pictures: "block" }).blockImages, true, "hiding pictures keeps the older switch in step");
+  assert.equal(site({ pictures: "filter" }).blockImages, false, "filtering pictures does not hide them");
+
+  // Filtered pictures but no videos on one site, the reverse on another, each in its own list for the phone.
+  const cfg = normalizeConfig({ sites: {
+    a: { type: "domain", url: "https://filterpics.example", pictures: "filter", videos: "block" },
+    b: { type: "domain", url: "https://filtervids.example", pictures: "block", videos: "filter" },
+    c: { type: "domain", url: "https://plain.example" },
+    d: { type: "domain", url: "https://showall.example", pictures: "allow", videos: "allow" },
+  } });
+  const p = buildAgentPolicy(cfg, [], {});
+  assert.deepEqual(p.pictureFilterSites, ["filterpics.example"], "pictures to filter");
+  assert.deepEqual(p.videoFilterSites, ["filtervids.example"], "videos to filter");
+  assert.deepEqual(p.noVideoSites, ["filterpics.example"], "videos blocked where only the pictures are filtered");
+  assert.ok(p.noPictureSites.includes("filtervids.example") && !p.noPictureSites.includes("filterpics.example"), "pictures hidden only where chosen");
+  assert.deepEqual(p.imagesAllow, ["showall.example"]);
+  assert.deepEqual(p.videoAllow, ["showall.example"]);
+  assert.deepEqual(buildAgentPolicy(normalizeConfig({}), [], {}).pictureFilterSites, [], "no sites, no lists");
+});

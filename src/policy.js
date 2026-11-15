@@ -265,9 +265,10 @@ export function normalizeSite(raw) {
     host,
     label: String(raw.label || host).slice(0, 80),
     blockImages: raw.blockImages === true || raw.pictures === "block",
-    // Per site: pictures / videos "allow" (shown even when they are blocked everywhere) or "block" (hidden on this site).
-    ...(raw.pictures === "allow" || raw.pictures === "block" ? { pictures: raw.pictures } : {}),
-    ...(raw.videos === "allow" || raw.videos === "block" ? { videos: raw.videos } : {}),
+    // Per site, pictures and videos each have their own choice: "allow" (shown even when they are blocked everywhere), "filter" (checked on the
+    // phone first, skin covered) or "block" (nothing shown on this site). Nothing = follow the phone's general settings.
+    ...(raw.pictures === "allow" || raw.pictures === "filter" || raw.pictures === "block" ? { pictures: raw.pictures } : {}),
+    ...(raw.videos === "allow" || raw.videos === "filter" || raw.videos === "block" ? { videos: raw.videos } : {}),
     installable: raw.installable !== false,
     ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
     // Songs allowed together (an artist or an album) are filed under its name on the dashboard.
@@ -1013,6 +1014,9 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.blockVideos = cfg.blockVideos;
   out.videoAllow = siteHosts((s) => s.videos === "allow");
   out.noVideoSites = siteHosts((s) => s.videos === "block");
+  // "Filter" on a site: its pictures / videos are checked on the phone (skin covered) even when no filter is on everywhere.
+  out.pictureFilterSites = siteHosts((s) => s.pictures === "filter");
+  out.videoFilterSites = siteHosts((s) => s.videos === "filter");
   return out;
 }
 

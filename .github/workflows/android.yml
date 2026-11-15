@@ -48,6 +48,7 @@ jobs:
           java -cp json.jar:out2 com.familymdm.agent.inspect.CertCheck
           java -cp json.jar:out2 com.familymdm.agent.inspect.ProxyCheck
           java -cp json.jar:out2 com.familymdm.agent.inspect.YoutubeChannelsCheck
+          java -cp json.jar:out2 com.familymdm.agent.inspect.SiteFilterCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/CategoryFilterRules.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/CategoryFilterRulesCheck.java
           java -cp out com.familymdm.agent.sitepolicy.CategoryFilterRulesCheck
           javac -d out android/sitepolicy/src/main/java/com/familymdm/agent/sitepolicy/SafeSearchDns.java android/sitepolicy/src/test/java/com/familymdm/agent/sitepolicy/SafeSearchDnsCheck.java

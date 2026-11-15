@@ -210,7 +210,16 @@ test("every dashboard page, group and tab opens without an error", async () => {
     assert.ok(list.includes("Every page of this site opens") && list.includes("Only this one page opens"), "the list says what each entry opens");
     assert.ok(list.includes("Pictures on this site") && list.includes("Videos on this site"), "each site has a pictures control and a videos control");
     assert.ok(!list.includes("Allow pictures") && !list.includes("Block pictures"), "the four confusing tick boxes are gone");
-    await vm.runInContext("(function(){devices[0].config.sites=JSON.parse(__sites0);return saveConfigFor(devices[0],'x')})()", ctx);
+    // Pictures and videos each have a dropdown with Filter among the choices, so one can be filtered while the other is blocked.
+    for (const w of ["Show as they are", "Filter (skin covered)", "Hide", "Allow as they are", "Block", "Normal (the phone's general setting)", "Filter checks each picture (or video) on the phone first"])
+      assert.ok(list.includes(w), "the site list offers: " + w);
+    const card = tryRender("approval card with dropdowns", "devices[0].config.sites={};subs.browser='sites';render()");
+    assert.ok(card.includes("Filter (skin covered)") && card.includes("you can filter the pictures and block the videos on the same site"), "the approval card offers Filter too, and says they are separate");
+    await vm.runInContext("addSite(devices[0],{type:'domain',url:'filterpics.example',label:'filterpics.example'},{pictures:'filter',videos:'block'})", ctx);
+    const mixed = JSON.parse(vm.runInContext("JSON.stringify(Object.values(devices[0].config.sites).filter(function(x){return x.url==='filterpics.example'})[0])", ctx));
+    assert.equal(mixed.pictures, "filter", "pictures filtered...");
+    assert.equal(mixed.videos, "block", "...while the videos are blocked");
+    assert.equal(mixed.blockImages, false, "filtering is not hiding");    await vm.runInContext("(function(){devices[0].config.sites=JSON.parse(__sites0);return saveConfigFor(devices[0],'x')})()", ctx);
   }
   // The strictest option sits on the calls and texts pages and forces the two logs on.
   {
