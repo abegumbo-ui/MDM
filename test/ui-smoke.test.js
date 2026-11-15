@@ -126,6 +126,9 @@ test("every dashboard page, group and tab opens without an error", async () => {
   // The Server page says how much of Cloudflare's free allowance is used, what makes it stop, and lists the outages.
   for (const w of ["Cloudflare free plan: today", "560 of 1,000 (56%)", "310 of 100,000 (0%)", "This is the one that runs out first.", "What makes Cloudflare stop?", "midnight UTC", "Outage history", "The whole Pi restarted", "A phone could not reach the Pi and used Cloudflare", "Everything looked normal at the last check.", "1 waiting"])
     assert.ok(seen.serverPi.includes(w), "the Server page shows: " + w);
+  vm.runInContext("piInfo.replication.usage.since=Date.parse('2026-11-15T16:04:00Z');tab='server';render()", ctx);
+  assert.ok(reg.get("main").textContent.includes("This Pi started counting at"), "a count that began part-way through the day says so");
+  vm.runInContext("delete piInfo.replication.usage.since", ctx);
   vm.runInContext("piInfo.replication.usage.writes=950;tab='server';render()", ctx);
   assert.ok(reg.get("main").textContent.includes("950 of 1,000 (95%)"), "near the limit it says so in numbers");
   vm.runInContext("piOutages={outages:[]};render()", ctx);

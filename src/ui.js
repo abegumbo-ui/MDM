@@ -4270,6 +4270,7 @@ function renderServer(m){
   const dayEnd=Date.parse(u.day+'T00:00:00Z')+86400000;
   const uc=h('div',{class:'card'},h('h2',null,'Cloudflare free plan: today'),
    h('div',{class:'mute'},'What this Raspberry Pi has used on Cloudflare since its day began. Cloudflare\'s day ends at '+hhmm(dayEnd)+leftTxt(dayEnd)+' (midnight UTC); everything starts again from zero then.'));
+  if(u.since&&u.since>Date.parse(u.day+'T00:00:00Z')+120000)uc.append(h('div',{class:'mute small',style:'color:var(--warn);margin-top:4px'},'This Pi started counting at '+hhmm(u.since)+', so what it used on Cloudflare earlier today is not in these numbers. Cloudflare\'s own count is higher.'));
   const use=function(label,used,limit,help){
    const pct=Math.min(100,Math.round(used*100/limit));
    uc.append(h('div',{class:'kv'},h('span',null,label),h('b',null,used.toLocaleString()+' of '+limit.toLocaleString()+' ('+pct+'%)')),
