@@ -99,7 +99,7 @@ public class DnsFilterVpnService extends VpnService {
 
     private void establish() throws IOException {
         Builder builder = new Builder()
-                .setSession("Family MDM DNS Filter")
+                .setSession("LockGuard DNS Filter")
                 .setMtu(MTU)
                 .addAddress(TUN_ADDRESS, 30)
                 .addDnsServer(FAKE_DNS)

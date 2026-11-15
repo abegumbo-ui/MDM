@@ -347,7 +347,7 @@ public class MainActivity extends Activity {
         int pad = Ui.dp(this, 24);
         box.setPadding(pad, pad, pad, pad);
         box.addView(Ui.headline(this, "Locked"));
-        Ui.add(box, Ui.body(this, "Enter the app PIN to open MDM Agent.", true), 8);
+        Ui.add(box, Ui.body(this, "Enter the app PIN to open LockGuard.", true), 8);
         Ui.add(box, Ui.button(this, "Unlock", Ui.FILLED, v -> promptAppPin()), 20);
         Ui.add(box, Ui.button(this, "Forgot it? Use the Administrator code", Ui.OUTLINED, v -> promptMasterBypass()), 8);
         setContentView(box);
@@ -356,7 +356,7 @@ public class MainActivity extends Activity {
 
     private void promptAppPin() {
         startActivityForResult(new Intent(this, CodeEntryActivity.class)
-                .putExtra(CodeEntryActivity.EXTRA_TITLE, "Unlock MDM Agent")
+                .putExtra(CodeEntryActivity.EXTRA_TITLE, "Unlock LockGuard")
                 .putExtra(CodeEntryActivity.EXTRA_SUBTITLE, "Enter the app PIN to continue.")
                 .putExtra(CodeEntryActivity.EXTRA_BUTTON, "Unlock"), REQUEST_APP_PIN);
     }
@@ -599,7 +599,7 @@ public class MainActivity extends Activity {
         try {
             startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + getPackageName())));
         } catch (Exception e) {
-            toast("You can now uninstall MDM Agent from Settings.");
+            toast("You can now uninstall LockGuard from Settings.");
         }
     }
 }

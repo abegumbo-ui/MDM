@@ -43,7 +43,7 @@ import java.util.Set;
 
 /**
  * The YouTube add-on: its own "YouTube" icon (the YoutubeAddon alias, turned on from the dashboard's
- * YouTube section), built into the MDM app so it works even when browsers are blocked. Only YouTube
+ * YouTube section), built into the LockGuard app so it works even when browsers are blocked. Only YouTube
  * opens here, with the same rules as the family Browser: the YouTube choice (Open / Restricted /
  * Only what I allow / Off), the allowed channels and videos (listed on YouTube's home page, and shown
  * unfiltered), "Ask for a channel or video", ad blocking, picture and video covering. When YouTube is
@@ -84,7 +84,8 @@ public class YoutubeAddonActivity extends Activity {
     }
 
     private String mode() {
-        String m = policy().optString("youtubeMode", "channels");
+        // Our YouTube Music has its own choice (musicMode, which the dashboard sets to the YouTube choice when left on "same as YouTube"); an older dashboard only sends youtubeMode.
+        String m = policy().optString(music() ? "musicMode" : "youtubeMode", policy().optString("youtubeMode", "channels"));
         return "open".equals(m) || "restricted".equals(m) || "blocked".equals(m) ? m : "channels";
     }
 

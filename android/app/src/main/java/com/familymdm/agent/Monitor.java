@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *    switched on, the phone shows a notice saying so.
  * 2. Screenshot on request: the parent taps "Take a screenshot" on the dashboard; the phone takes
  *    one picture of the screen, sends it, and shows "A screenshot was sent to your parent".
- * Both use the Agent's accessibility service (Settings → Accessibility → MDM Agent, switched on once).
+ * Both use the Agent's accessibility service (Settings → Accessibility → LockGuard, switched on once).
  */
 final class Monitor {
     private Monitor() {}
@@ -378,7 +378,7 @@ final class Monitor {
     static String screenshot(Context c) throws Exception {
         if (Build.VERSION.SDK_INT < 30) return "This phone's Android is too old for screenshots (needs Android 11 or later).";
         BlockAccessibilityService svc = BlockAccessibilityService.instance;
-        if (svc == null) return "Turn on MDM Agent in the phone's Settings → Accessibility first (needed once).";
+        if (svc == null) return "Turn on LockGuard in the phone's Settings → Accessibility first (needed once).";
         final CountDownLatch done = new CountDownLatch(1);
         final AtomicReference<Bitmap> shot = new AtomicReference<>();
         final AtomicReference<String> err = new AtomicReference<>();

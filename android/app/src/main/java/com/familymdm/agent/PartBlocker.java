@@ -196,7 +196,7 @@ final class PartBlocker {
     /** Starts picking. Returns a message if it cannot. */
     static String startPicking(Context c) {
         BlockAccessibilityService s = BlockAccessibilityService.instance;
-        if (s == null) return "Switch on MDM Agent in Settings → Accessibility first (Rules → Safety → Health check has a button).";
+        if (s == null) return "Switch on LockGuard in Settings → Accessibility first (Rules → Safety → Health check has a button).";
         s.getMainExecutor().execute(() -> showPickButton(s));
         return null;
     }
@@ -408,7 +408,7 @@ final class PartBlocker {
     private static long lastSigScan;
     private static long lastSigBack;
 
-    // ---------- built-in protection: the MDM app's own Settings pages and the certificate pages ----------
+    // ---------- built-in protection: the LockGuard app's own Settings pages and the certificate pages ----------
 
     /** The Settings pages where the certificate is listed or removed (their titles, as shown at the top of the page). */
     private static final String[] CERTIFICATE_PAGES = {"user credentials", "trusted credentials", "view security certificates",
@@ -427,7 +427,7 @@ final class PartBlocker {
     }
 
     /**
-     * "Protect the MDM app": in Settings, the page of this app (its accessibility switch, App info, notifications...)
+     * "Protect the LockGuard app": in Settings, the page of this app (its accessibility switch, App info, notifications...)
      * and the pages that list or remove the phone's certificate close the moment they open. Off from the dashboard,
      * and not applied during an emergency unlock.
      */

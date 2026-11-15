@@ -832,7 +832,7 @@ public class AdminActivity extends Activity {
         boolean appLockOn = Agent.prefs(this).getBoolean("appLock", false);
         LinearLayout statusBox = Ui.card(this, root);
         statusBox.addView(Ui.body(this, appLockOn
-                ? "On: opening MDM Agent needs its own PIN, separate from the phone's screen lock."
+                ? "On: opening LockGuard needs its own PIN, separate from the phone's screen lock."
                 : "Off: anyone who opens this app can see it with no extra check.", true));
         if (appLockOn) {
             Ui.add(root, Ui.rowTile(this, "Change App PIN", R.drawable.ic_lock_tile,
@@ -2073,7 +2073,7 @@ public class AdminActivity extends Activity {
         two.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         Ui.alertDialog(this)
                 .setTitle(turningOn ? "Choose an app PIN" : "Change the app PIN")
-                .setMessage("This only locks MDM Agent's own screen. It has nothing to do with the phone's own screen lock, and works even if the phone has none set.")
+                .setMessage("This only locks LockGuard's own screen. It has nothing to do with the phone's own screen lock, and works even if the phone has none set.")
                 .setView(form(one, two))
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Save", (d, w) -> {
@@ -2086,7 +2086,7 @@ public class AdminActivity extends Activity {
                         AppPin.set(this, a);
                         Agent.prefs(this).edit().putBoolean("appLock", true).apply();
                         Agent.addEvent(this, "local", "Master code on phone: " + (turningOn ? "turned on app lock" : "changed the app PIN"));
-                        toast(turningOn ? "App lock on. It applies the next time MDM Agent is opened." : "App PIN changed.");
+                        toast(turningOn ? "App lock on. It applies the next time LockGuard is opened." : "App PIN changed.");
                         build();
                     } catch (Exception e) {
                         toast("Could not save the PIN: " + e.getMessage());
@@ -2168,7 +2168,7 @@ public class AdminActivity extends Activity {
             try {
                 startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + getPackageName())));
             } catch (Exception e) {
-                toast("You can now uninstall MDM Agent from Settings.");
+                toast("You can now uninstall LockGuard from Settings.");
             }
         }
         finish();

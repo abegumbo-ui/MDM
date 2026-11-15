@@ -169,34 +169,51 @@ public class UserActivity extends Activity {
                 .show();
     }
 
-    /** The apps on this phone that are blocked right now, with their names. */
+    /** The apps on this phone that are blocked right now, as a grid of their icons and names. */
     private void promptAppRequest() {
         final java.util.List<String> pkgs = new java.util.ArrayList<>();
         final java.util.List<String> labels = new java.util.ArrayList<>();
+        final java.util.List<android.graphics.drawable.Drawable> icons = new java.util.ArrayList<>();
         android.content.pm.PackageManager pm = getPackageManager();
         for (String pkg : new java.util.TreeSet<>(Agent.getSet(this, "hidden"))) {
             String label = pkg;
+            android.graphics.drawable.Drawable icon = null;
             try {
-                label = pm.getApplicationInfo(pkg, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES).loadLabel(pm).toString();
+                android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(pkg, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES);
+                label = ai.loadLabel(pm).toString();
+                icon = ai.loadIcon(pm);
             } catch (Exception ignored) {
             }
             if (label.equals(pkg) && !pkg.equals(StoreAccess.PKG)) continue; // a nameless system part: not something to ask for
             pkgs.add(pkg);
             labels.add(label);
+            icons.add(icon);
         }
         if (pkgs.isEmpty()) {
             toast("No apps are blocked on this phone.");
             return;
         }
-        Ui.alertDialog(this)
+        final android.app.AlertDialog[] dialog = new android.app.AlertDialog[1];
+        android.widget.GridLayout grid = Ui.tileGrid(this);
+        grid.setColumnCount(3);
+        for (int i = 0; i < pkgs.size(); i++) {
+            final int which = i;
+            Ui.addTile(grid, Ui.appTile(this, labels.get(i), icons.get(i), 64, v -> {
+                dialog[0].dismiss();
+                Agent.addAppRequest(this, "app", pkgs.get(which), labels.get(which));
+                AgentService.requestSync();
+                toast("Sent. " + labels.get(which) + " will appear once it is approved.");
+            }));
+        }
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), Ui.dp(this, 8));
+        scroll.addView(grid);
+        dialog[0] = Ui.alertDialog(this)
                 .setTitle("Which app would you like?")
-                .setItems(labels.toArray(new String[0]), (d, which) -> {
-                    Agent.addAppRequest(this, "app", pkgs.get(which), labels.get(which));
-                    AgentService.requestSync();
-                    toast("Sent. " + labels.get(which) + " will appear once it is approved.");
-                })
+                .setView(scroll)
                 .setNegativeButton("Cancel", null)
-                .show();
+                .create();
+        dialog[0].show();
     }
 
     private void openStore(boolean online) {

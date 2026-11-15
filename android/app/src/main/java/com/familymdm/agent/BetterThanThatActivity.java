@@ -8,7 +8,7 @@ import android.webkit.WebViewClient;
 
 import com.familymdm.agent.sitepolicy.BadSearch;
 
-/** "Oh come on, you're better than that." Shown by the MDM app over any browser after a bad search. */
+/** "Oh come on, you're better than that." Shown by the LockGuard app over any browser after a bad search. */
 public class BetterThanThatActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {

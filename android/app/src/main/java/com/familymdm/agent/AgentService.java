@@ -159,9 +159,9 @@ public class AgentService extends Service {
      * the standard way around that -- the old "agent" channel is simply left unused. */
     private Notification notification() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        NoBadge.install(nm, "agent3", "MDM agent", NotificationManager.IMPORTANCE_MIN, "agent2");
+        NoBadge.install(nm, "agent3", "LockGuard", NotificationManager.IMPORTANCE_MIN, "agent2");
         return new Notification.Builder(this, "agent3")
-                .setContentTitle("MDM agent")
+                .setContentTitle("LockGuard")
                 .setContentText("Connected to your dashboard")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .build();
@@ -694,7 +694,7 @@ public class AgentService extends Service {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent pi = PendingIntent.getActivity(this, 2, del, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification n = new Notification.Builder(this, "agent")
-                .setContentTitle("Finish removing MDM Agent")
+                .setContentTitle("Finish removing LockGuard")
                 .setContentText("Tap to uninstall it")
                 .setSmallIcon(android.R.drawable.stat_notify_error)
                 .setContentIntent(pi)
