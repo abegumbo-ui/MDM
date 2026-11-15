@@ -346,8 +346,8 @@ final class PolicyApplier {
             try {
                 if (dpm.isApplicationHidden(admin, pkg)) {
                     Agent.TOUCHED.put(pkg, System.currentTimeMillis());
-                    dpm.setApplicationHidden(admin, pkg, false);
-                    Agent.addEvent(c, "show", "Shown again: " + nameOf(pkg));
+                    // Android also says "hidden" for an app that is not installed at all; then nothing changes and nothing is logged (it was logged every cycle).
+                    if (dpm.setApplicationHidden(admin, pkg, false)) Agent.addEvent(c, "show", "Shown again: " + nameOf(pkg));
                 }
                 hiddenByUs.remove(pkg);
             } catch (Exception e) {
@@ -362,8 +362,7 @@ final class PolicyApplier {
             try {
                 if (dpm.isApplicationHidden(admin, pkg)) {
                     Agent.TOUCHED.put(pkg, System.currentTimeMillis());
-                    dpm.setApplicationHidden(admin, pkg, false);
-                    Agent.addEvent(c, "show", "Shown again: " + nameOf(pkg));
+                    if (dpm.setApplicationHidden(admin, pkg, false)) Agent.addEvent(c, "show", "Shown again: " + nameOf(pkg));
                 }
                 hiddenByUs.remove(pkg);
             } catch (Exception e) {

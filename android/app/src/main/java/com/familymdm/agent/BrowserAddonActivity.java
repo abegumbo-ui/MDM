@@ -458,11 +458,19 @@ public class BrowserAddonActivity extends Activity {
         ensureOverlay();
         overlay.removeAllViews();
         overlay.addView(Ui.titleText(this, "This page isn't allowed"));
+        overlay.addView(Ui.body(this, "Kind of site: " + com.familymdm.agent.sitepolicy.SiteCategory.labelFor(url), true));
         overlay.addView(Ui.body(this, url, true));
-        overlay.addView(Ui.button(this, "Request access to this page", Ui.TONAL, v -> {
+        overlay.addView(Ui.button(this, "Ask for just this page", Ui.TONAL, v -> {
             Agent.addSiteRequest(this, url);
             toast("Sent. Ask the administrator to approve it.");
         }));
+        final String siteHost = SitePolicy.hostOf(url);
+        if (siteHost != null && !SitePolicy.isYoutubeHost(siteHost)) {
+            overlay.addView(Ui.button(this, "Ask for the whole site (" + siteHost + ")", Ui.TONAL, v -> {
+                Agent.addSiteRequest(this, "https://" + siteHost + "/", "Wants the whole site.");
+                toast("Sent. Ask the administrator to approve it.");
+            }));
+        }
         overlay.addView(Ui.button(this, "Allow this page (master code)", Ui.OUTLINED, v -> promptApprove(url, "exact")));
         overlay.addView(Ui.button(this, "Allow the whole site (master code)", Ui.OUTLINED, v -> promptApprove(url, "domain")));
         overlay.addView(Ui.button(this, "Go to the start page", Ui.OUTLINED, v -> load(HOME_URL)));
