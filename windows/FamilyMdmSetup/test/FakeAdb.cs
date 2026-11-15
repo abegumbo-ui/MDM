@@ -53,6 +53,10 @@ public static class FakeAdb
             Console.WriteLine("  ServiceInfo: AuthenticatorDescription {type=com.microsoft.skydrive}, ComponentInfo{com.microsoft.skydrive/com.microsoft.authorization.AuthenticationService}, uid 10097");
         }
         else if (rest.StartsWith("pm list packages -d")) foreach (string p in off) Console.WriteLine("package:" + p);
+        else if (rest.StartsWith("pm disable-user") && list[list.Count - 1] == Environment.GetEnvironmentVariable("FAKE_REFUSE"))
+        {
+            Console.WriteLine("Failed to change state of package: " + list[list.Count - 1]); // like the Samsung account service on a real Samsung phone
+        }
         else if (rest.StartsWith("pm disable-user"))
         {
             string pkg = list[list.Count - 1];

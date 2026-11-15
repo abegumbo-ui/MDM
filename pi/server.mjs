@@ -26,6 +26,16 @@ export function readEnv(src = process.env) {
   return vars;
 }
 
+/** Settings that are missing and make the Pi misbehave. Without PRIMARY_URL the Pi does not tell the phones that it is the main server, so they take turns
+ *  between the Pi and Cloudflare: a command is handed out by one server and its result goes to the other (found 2026-11-14). */
+export function configProblems(vars) {
+  const out = [];
+  if ((vars.ROLE || 'main') === 'main' && vars.BACKUP_URL && !vars.PRIMARY_URL) {
+    out.push("PRIMARY_URL is empty: the Pi does not announce itself to the phones, so they alternate between the Pi and Cloudflare and commands and their results get lost. Run pi/deploy.ps1 again (it fills it in) or set PRIMARY_URL to the Pi's public address.");
+  }
+  return out;
+}
+
 export async function createApp({ dataDir, vars, publicUrl = '', log = () => {}, replication = true, fetchFn, scheduleMs = 15 * 60 * 1000, piAdminOptions }) {
   const kv = new KvStore(dataDir);
   await kv.init();
@@ -131,6 +141,7 @@ async function main() {
     console.error('ADMIN_PASSWORD is not set (see pi/README.md).');
     process.exit(1);
   }
+  for (const p of configProblems(vars)) console.warn('WARNING: ' + p);
   const port = Number(process.env.PORT || 8787);
   const host = process.env.HOST || '127.0.0.1';
   const app = await createApp({

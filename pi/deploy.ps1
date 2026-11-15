@@ -31,6 +31,16 @@ if (-not $vars.ADMIN_PASSWORD) { $vars.ADMIN_PASSWORD = Random-Text 20 }
 if (-not $vars.REPLICA_SECRET) { $vars.REPLICA_SECRET = Random-Text 40 }
 if ($BackupUrl) { $vars.BACKUP_URL = $BackupUrl.TrimEnd('/') }
 if (-not $vars.ROLE) { $vars.ROLE = 'main' }
+# The Pi must announce itself (PRIMARY_URL), or the phones alternate between it and Cloudflare. A settings file made before Tailscale was set up has it empty
+# (that is how it went wrong on 2026-11-14): ask the Pi for its public name and fill it in.
+if (-not $vars.PUBLIC_URL) {
+  try {
+    $ts = (Run-Ssh 'tailscale status --json') -join "`n" | ConvertFrom-Json
+    $name = ([string]$ts.Self.DNSName).TrimEnd('.')
+    if ($name) { $vars.PUBLIC_URL = "https://$name"; if (-not $vars.PRIMARY_URL) { $vars.PRIMARY_URL = $vars.PUBLIC_URL }; Write-Host "public address taken from Tailscale: $($vars.PUBLIC_URL)" }
+  } catch { Write-Warning 'Could not find the Pi''s public address: PRIMARY_URL stays empty and the phones will alternate between the Pi and Cloudflare. Set PUBLIC_URL and PRIMARY_URL in the settings file.' }
+}
+if ($vars.PUBLIC_URL -and -not $vars.PRIMARY_URL) { $vars.PRIMARY_URL = $vars.PUBLIC_URL }
 if (-not $vars.GITHUB_REPO) { $vars.GITHUB_REPO = 'abegumbo-ui/MDM' }
 if (-not $vars.BACKUP_URL) { $vars.BACKUP_URL = 'https://mdm.example.workers.dev' }
 
