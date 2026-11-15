@@ -94,7 +94,7 @@ test("a client can only change what the administrator gave them (settings, comma
   const firstRestriction = Object.keys(base.restrictions)[0];
   assert.equal((await put(pat, one.id, { restrictions: { ...base.restrictions, [firstRestriction]: !base.restrictions[firstRestriction] } })).status, 403, "Lock and security: refused");
   assert.equal((await put(pat, one.id, { screenTime: { ...base.screenTime, dailyLimit: 60 } })).status, 403, "Screen time: refused");
-  assert.equal((await put(pat, one.id, { youtubeMode: "open" })).status, 403, "YouTube: refused");
+  assert.equal((await put(pat, one.id, { youtubeMode: "channels" })).status, 403, "YouTube: refused");
   assert.deepEqual((await cfgOf(pat, one.id)).blockedWords, [], "nothing of the refused changes was saved");
   assert.equal((await put(oldie, oldDev.id, { blockedWords: ["casino"] })).status, 200, "the old-style account can still change everything");
 

@@ -565,6 +565,27 @@ export function effectiveYoutubeMode(cfg) {
   return cfg && cfg.browserFilter === "moderate" ? "restricted" : "channels";
 }
 
+/**
+ * What a phone enrolled from now on starts with: NOTHING on. No restriction (USB debugging and Developer options stay usable), the whole web open
+ * with no kind of site closed, no certificate for inspecting secure pages, YouTube as it is, no Browser extras (adult-site list, forced SafeSearch),
+ * and the phone not closing its own Settings pages. The administrator switches on what they want (or applies a ready-made setup). Phones enrolled
+ * before keep exactly what they have: this is only used for a record that has never had a saved config (see configOf in index.js).
+ */
+export function cleanStartConfig() {
+  return {
+    restrictions: Object.fromEntries(Object.keys(RESTRICTIONS).map((k) => [k, false])),
+    browserFilter: "custom", // "Open web": nothing is closed unless a kind of site is chosen...
+    filterKinds: [], // ...and none is chosen
+    openWeb: true,
+    adultListOff: true,
+    safeSearchOff: true,
+    youtubeMode: "open",
+    tlsInspectionOff: true,
+    protectScreens: false,
+    autoUpdate: true,
+  };
+}
+
 export function normalizeConfig(input) {
   const c = input || {};
   const frpAccounts = normalizeFrpAccounts(c.frpAccounts);
