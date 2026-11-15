@@ -115,8 +115,7 @@ final class BrowserCategoryFilter {
         return !approvedSite(c, h) && !DnsAllowlist.allows(c, h);
     }
 
-    /** A site on this phone's approved list always wins over a category. */
-    private static synchronized boolean approvedSite(Context c, String host) {
+    private static void loadSites(Context c) {
         String policy = Agent.prefs(c).getString("policy", null);
         if (policy != sitesPolicyRef) { // same String object until the policy changes, so this is cheap
             sitesPolicyRef = policy;
@@ -126,7 +125,32 @@ final class BrowserCategoryFilter {
                 sites = new ArrayList<>();
             }
         }
+    }
+
+    /** A site on this phone's approved list always wins over a category. */
+    private static synchronized boolean approvedSite(Context c, String host) {
+        loadSites(c);
         return !sites.isEmpty() && SitePolicy.allowed("https://" + host + "/", sites);
+    }
+
+    /** Is any page or site approved on this phone? Then a closed host is inspected (each request decided on its own) instead of refused before anything is seen. */
+    static synchronized boolean anyApprovedSite(Context c) {
+        loadSites(c);
+        for (SitePolicy.Site s : sites) if (!"youtube".equals(s.type) && s.live()) return true;
+        return false;
+    }
+
+    /** Is this exact address approved (the page itself, or its whole site)? The proxy sees the whole address, which the DNS filter never does. */
+    static synchronized boolean approvedUrl(Context c, String url) {
+        loadSites(c);
+        return !sites.isEmpty() && SitePolicy.allowed(url, sites);
+    }
+
+    /** Was a file asked for by an approved page's site? (The browser says who asked in the Referer header, often only the site's name.) */
+    static synchronized boolean approvedReferer(Context c, String referer) {
+        if (referer == null || referer.isEmpty()) return false;
+        loadSites(c);
+        return SitePolicy.approvedSiteFor(sites, referer);
     }
 
     /** Browsers are the apps that handle ordinary web links for every address. Re-checked every few minutes. */

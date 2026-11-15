@@ -65,7 +65,9 @@ final class TlsInspection {
         public boolean bypass(String host, int port) { return rules.bypass(host, port); }
         public boolean refuses(String host) {
             Context c = appContext;
-            return c != null && BrowserCategoryFilter.blocksViaProxy(c, host);
+            // With an approved page or site on this phone a closed host is not refused here, before anything is seen: it is inspected and every
+            // request to it is decided in onRequest (an approved page opens, its own files load, everything else is still refused).
+            return c != null && BrowserCategoryFilter.blocksViaProxy(c, host) && !BrowserCategoryFilter.anyApprovedSite(c);
         }
         public InspectProxy.Response onRequest(InspectProxy.Request r) {
             // Android's internet check (a 204 from www.google.com and friends) goes straight through: no category, word or YouTube rule applies to it.
@@ -73,10 +75,15 @@ final class TlsInspection {
             if (ASK_HOST.equals(r.host)) return askAnswer(r);
             Context c = appContext;
             String why = c == null ? null : BrowserCategoryFilter.refusalViaProxy(c, r.host);
+            String dest = r.headers.get("Sec-Fetch-Dest");
+            String accept = r.headers.get("Accept");
+            boolean page = dest != null ? dest.equals("document") : accept != null && accept.startsWith("text/html");
+            if (why != null && c != null) {
+                // The page that was approved opens, and so do the files it loads (its own style and script hosts); a different page does not.
+                if (BrowserCategoryFilter.approvedUrl(c, r.url())) why = null;
+                else if (!page && BrowserCategoryFilter.approvedReferer(c, r.headers.get("Referer"))) why = null;
+            }
             if (why != null) {
-                String dest = r.headers.get("Sec-Fetch-Dest");
-                String accept = r.headers.get("Accept");
-                boolean page = dest != null ? dest.equals("document") : accept != null && accept.startsWith("text/html");
                 if (page) return InspectProxy.Response.html(403, com.familymdm.agent.sitepolicy.BlockedPage.notAllowed(r.url(), why, askLinks(r.url())));
                 return new InspectProxy.Response(403, "text/plain", "Closed on this phone.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
