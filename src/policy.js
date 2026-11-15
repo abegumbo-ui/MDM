@@ -699,6 +699,8 @@ export function normalizeConfig(input) {
     callsOut: CALL_MODES.includes(c.callsOut) ? c.callsOut : "all",
     callNumbers: normalizeCallNumbers(c.callNumbers),
     // Send the phone's call log / texts log to the dashboard; texts with their words only if textContent.
+    // The strictest option: read every text and call, sent and received, with the words. Forces the call log and the texts log (with the words) on.
+    strictComms: c.strictComms === true,
     callLog: c.callLog === true,
     // Apps the site filter leaves alone ("Not filtered"); an app it breaks can be put here.
     filterSkipApps: [...new Set((Array.isArray(c.filterSkipApps) ? c.filterSkipApps : []).filter((p) => typeof p === "string" && /^[A-Za-z0-9_.]{1,200}$/.test(p)))].slice(0, 300),
@@ -1000,9 +1002,10 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.callsIn = cfg.callsIn;
   out.callsOut = cfg.callsOut;
   out.callNumbers = cfg.callNumbers.map((n) => n.number);
-  out.callLog = cfg.callLog;
-  out.textLog = cfg.textLog;
-  out.textContent = cfg.textContent;
+  out.strictComms = cfg.strictComms;
+  out.callLog = cfg.callLog || cfg.strictComms;
+  out.textLog = cfg.textLog || cfg.strictComms;
+  out.textContent = cfg.textContent || cfg.strictComms;
   // Pictures and videos per site: the boxes next to each site on the allowlist, on top of the older lists.
   const siteHosts = (pick) => [...new Set(normalizeSites(cfg.sites).filter((s) => s.type !== "youtube" && !expired(s) && pick(s)).map((s) => String(s.host || "").replace(/^www\./, "")).filter(Boolean))];
   out.imagesAllow = [...new Set([...cfg.imagesAllow, ...siteHosts((s) => s.pictures === "allow")])];
@@ -1098,6 +1101,7 @@ export function summarizeConfigChange(before, after) {
   if ((before.callsIn || "all") !== (after.callsIn || "all")) lines.push("Who can call: " + CALL_MODE_WORDS[after.callsIn || "all"]);
   if ((before.callsOut || "all") !== (after.callsOut || "all")) lines.push("Who the phone can call: " + CALL_MODE_WORDS[after.callsOut || "all"]);
   if (JSON.stringify(normalizeCallNumbers(before.callNumbers)) !== JSON.stringify(normalizeCallNumbers(after.callNumbers))) lines.push("Allowed numbers: " + normalizeCallNumbers(after.callNumbers).length);
+  if (!!before.strictComms !== !!after.strictComms) lines.push("Read every text and call: " + (after.strictComms ? "on (the strictest option)" : "off"));
   if (!!before.callLog !== !!after.callLog) lines.push("Call log: " + (after.callLog ? "on" : "off"));
   if (!!before.textLog !== !!after.textLog || !!before.textContent !== !!after.textContent) lines.push("Texts log: " + (after.textLog ? (after.textContent ? "on, with the words" : "on, who and when only") : "off"));
   if (JSON.stringify(normalizePlaces(before.places)) !== JSON.stringify(normalizePlaces(after.places))) lines.push("Places: " + normalizePlaces(after.places).length);

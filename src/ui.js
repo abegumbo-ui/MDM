@@ -1547,13 +1547,24 @@ function renderContacts(m,dv){
  for(const x of list){const k=x.number.replace(/\D/g,'').slice(-9),ok=k&&allowed.includes(k);
   card.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},(x.name||'(no name)')+' · '+x.number),ok?h('span',{class:'chip'},'allowed to call'):btn('Allow calls','tonal',function(){c.callNumbers=(c.callNumbers||[]).concat([{name:x.name,number:x.number}]);save('Added to the allowed numbers.')})))}
  m.append(card)}
+/** The strictest option: read every text and call. It forces the two logs below it on, so they say so and cannot be switched off from under it. */
+function strictCommsCard(m,dv){
+ const c=dv.config,viaCf=dv.via==='cloudflare';
+ m.append(h('div',{class:'card',style:c.strictComms?'border-color:var(--primary)':''},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Read every text and call (the strictest option)'),
+  h('div',{class:'mute small'},'Reads every text and every call on the phone, sent and received, with the words of each text. It switches on the call log and the texts log below. On the Raspberry Pi the phone sends what it reads at every check-in, and within seconds of a new text or call. If the phone is using Cloudflare it sends them only every 5 minutes, to stay inside Cloudflare\'s free plan. The person using the phone is shown on the phone that their texts and calls are read.'),
+  c.strictComms&&viaCf?h('div',{class:'mute small',style:'margin-top:4px;color:var(--warn)'},'This phone is using Cloudflare right now, so its texts and calls arrive every 5 minutes.'):null),
+  sw(c.strictComms,async function(on){
+   if(on&&!confirm('Read every text and call on '+dv.name+'? The call log and the texts log (with the words) switch on, and the person using the phone is told on the phone.')){render();return}
+   c.strictComms=on;
+   try{await saveConfigFor(dv,on?'Reading every text and call. The past week arrives first, then everything new.':'Switched off. The call log and the texts log go back to their own switches.')}catch(e){snack(e.message,1)}render()}))))}
 function logToggle(m,dv,title,desc,key,extra){
- const c=dv.config;
- m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc)),
-  sw(c[key],async function(on){c[key]=on;try{await saveConfigFor(dv,on?'Switched on. Entries arrive with the phone\'s next check-ins (the past week first).':'Switched off.')}catch(e){snack(e.message,1)}render()})),extra||null))}
+ const c=dv.config,forced=!!c.strictComms&&(key==='callLog'||key==='textLog');
+ m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),h('div',{class:'mute small'},desc),forced?h('div',{class:'mute small',style:'margin-top:4px'},'On because "Read every text and call" is on. Switch that off first to change this.'):null),
+  sw(forced||c[key],async function(on){if(forced){snack('It is on because "Read every text and call" is on.',1);render();return}c[key]=on;try{await saveConfigFor(dv,on?'Switched on. Entries arrive with the phone\'s next check-ins (the past week first).':'Switched off.')}catch(e){snack(e.message,1)}render()})),extra||null))}
 const CALL_TYPE_WORDS={in:'Incoming',out:'Outgoing',missed:'Missed',voicemail:'Voicemail',rejected:'Rejected',blocked:'Blocked',other:'Call'};
 function dur(s){if(!s)return '';const m=Math.floor(s/60);return m?m+' min '+(s%60)+' s':s+' s'}
 function renderCallLog(m,dv){
+ strictCommsCard(m,dv);
  logToggle(m,dv,'Send the call log to the dashboard','Who the phone called, who called it, missed and blocked calls, and how long each call took.','callLog');
  const list=(dv.calls||[]).slice().reverse(),card=h('div',{class:'card'},h('h2',null,'Calls'));
  if(!list.length)card.append(h('div',{class:'mute'},dv.config.callLog?'Nothing yet. Calls show up after the phone\'s next check-in.':'Switch on the call log above.'));
@@ -1561,6 +1572,7 @@ function renderCallLog(m,dv){
  m.append(card)}
 function renderTexts(m,dv){
  const c=dv.config;
+ strictCommsCard(m,dv);
  logToggle(m,dv,'Send the texts (SMS) log to the dashboard','Who texted the phone and whom it texted, and when. Only ordinary text messages: not WhatsApp or other chat apps.','textLog',
   c.textLog?h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Include what the messages say'),h('div',{class:'mute small'},'Off: only who and when. On: the first 300 letters of each message are stored on the dashboard.')),sw(c.textContent,async function(on){c.textContent=on;try{await saveConfigFor(dv,on?'Message words included from now on.':'Only who and when from now on.')}catch(e){snack(e.message,1)}render()})):null);
  const list=(dv.texts||[]).slice().reverse(),card=h('div',{class:'card'},h('h2',null,'Texts'));
