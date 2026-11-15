@@ -3394,12 +3394,15 @@ function homeSummary(d){
  out.security=i.screenLock===undefined?'Lock, app lock, restrictions':'Screen lock '+(i.screenLock?'on':'off');
  out.device=[i.android?'Android '+i.android:'',i.versionCode?'build '+i.versionCode:'',needsUpdate(d)?'update available':''].filter(Boolean).join(' · ')||'Updates, menus, controls';
  out.status='Messages, activity and the phone\'s details';
+ const cl=controlsList(d),onCount=cl.parental.concat(cl.filtering).filter(function(x){return x.on}).length;
+ out.controls=onCount+' of '+(cl.parental.length+cl.filtering.length)+' switched on';
  return out}
 
 /** What this account may use. The administrator may use everything; a client only the controls they were given (the server enforces it: this only hides what would be refused). */
 function can(group){const s=state&&state.session;if(!s||s.role!=='client')return true;return (s.perms||[]).indexOf(group)>=0}
 const ROW_PERM={time:'time',apps:'apps',browser:'browser',youtube:'youtube',music:'youtube',calls:'calls',location:'device',internet:'internet',safety:'safety',security:'security',device:'device'};
 const HOME_ROWS=[
+ ['controls','shield','Parental controls and filtering','controls',null],
  ['time','clock','Screen time','time',null],
  ['apps','apps','Apps','apps',null],
  ['browser','globe','Browser and web','browser',null],
@@ -3417,6 +3420,69 @@ const NEW_TITLES={overview:'Status and activity',safety:'Safety and alerts',apps
 /** Opens a group on one of its "more settings" tabs (the old tabs live inside "More settings" in the new look). */
 function goMore(sec,sub){open['more-'+sec]=true;goTo(sec,sub)}
 function backHome(){setDeviceSection(null);window.scrollTo(0,0);render()}
+/** Every parental control and every filter of one phone, with what is switched on now. Each item: {title, on, text, group (who may change it), go}. */
+function controlsList(d){
+ const c=d.config||{},st=c.screenTime||{},now=Date.now();
+ const nApps=function(mode){return Object.values(c.apps||{}).filter(function(a){return a.mode===mode}).length};
+ const nLimits=Object.keys(st.appLimits||{}).length,nSites=Object.keys(st.siteLimits||{}).length,nGroups=(c.blockAppGroups||[]).length;
+ const nBlocked=nApps('block')+nGroups;
+ const sites=Object.values(c.sites||{}),nSitesOk=sites.filter(function(x){return x.type!=='youtube'&&!isMusicUrl(x.url||'')}).length;
+ const lvl={off:'Approved sites only',moderate:'Medium',strict:'Strict',custom:'Open, only chosen kinds closed'}[c.browserFilter||'off']||'Approved sites only';
+ const ytWords={free:'Regular, no filter',filtered:'Regular, filtered',ours:'Our own',off:'Off'};
+ const word=function(n,one,many){return n+' '+(n===1?one:many)};
+ const g=function(sec,sub){return function(){goTo(sec,sub);window.scrollTo(0,0)}};
+ const more=function(sec,sub){return function(){goMore(sec,sub);window.scrollTo(0,0)}};
+ const parental=[
+  {title:'Screen time per day',on:!!st.dailyLimit,text:st.dailyLimit?fmtMin(st.dailyLimit)+' a day':'No daily limit',group:'time',go:g('time')},
+  {title:'Bedtime',on:!!st.bedtime,text:st.bedtime?'Locked '+st.bedtime.from+' to '+st.bedtime.to:'Not set',group:'time',go:g('time')},
+  {title:'School time',on:!!st.schoolTime,text:st.schoolTime?'Only the basics '+st.schoolTime.from+' to '+st.schoolTime.to:'Not set',group:'time',go:g('time','limits')},
+  {title:'Time limits for single apps',on:nLimits>0,text:nLimits?word(nLimits,'app has','apps have')+' a limit':'None set',group:'apps',go:g('apps')},
+  {title:'Time on a site, every day',on:nSites>0,text:nSites?word(nSites,'site','sites'):'None set',group:'time',go:g('time')},
+  {title:'Apps blocked',on:nBlocked>0,text:nBlocked?[nApps('block')?word(nApps('block'),'app','apps'):'',nGroups?word(nGroups,'group','groups'):''].filter(Boolean).join(' and ')+' blocked':'Nothing blocked',group:'apps',go:g('apps')},
+  {title:'New apps wait for my approval',on:!!c.approveNew,text:c.approveNew?'A new app stays hidden until you allow it':'New apps appear by themselves',group:'apps',go:g('apps')},
+  {title:'Home screen mode',on:!!c.homeScreen,text:c.homeScreen?'Only allowed apps open':'Off',group:'apps',go:more('apps','kiosk')},
+  {title:'YouTube',on:ytWhich(c,'yt')!=='free',text:ytWords[ytWhich(c,'yt')],group:'youtube',go:g('youtube')},
+  {title:'YouTube Music',on:ytWhich(c,'music')!=='free',text:ytWords[ytWhich(c,'music')],group:'youtube',go:g('music')},
+  {title:'Who can call and be called',on:(c.callsIn||'all')!=='all'||(c.callsOut||'all')!=='all',text:(c.callsIn||'all')==='all'&&(c.callsOut||'all')==='all'?'Anyone':'Only allowed numbers or contacts',group:'calls',go:g('calls')},
+  {title:'Call and text logs',on:!!(c.callLog||c.textLog),text:[c.callLog?'calls':'',c.textLog?'texts':''].filter(Boolean).join(' and ')||'Not kept',group:'calls',go:g('calls')},
+  {title:'Location',on:!!c.locationEvery,text:c.locationEvery?'Noted every '+c.locationEvery+' minutes':'Find it any time',group:'device',go:g('device','location')},
+  {title:'Message alerts',on:!!c.messageAlerts,text:c.messageAlerts?'Worrying words in chats are reported':'Off',group:'safety',go:g('safety')},
+  {title:'Picture alerts',on:!!c.nudityAlerts,text:c.nudityAlerts?'Photos are checked on the phone':'Off',group:'safety',go:g('safety')},
+  {title:'History of sites, searches and videos',on:!!(c.recordSites||c.recordSearches||c.recordVideos),text:[c.recordSites?'sites':'',c.recordSearches?'searches':'',c.recordVideos?'videos':''].filter(Boolean).join(', ')||'Not kept',group:'browser',go:g('browser','history')}];
+ const filtering=[
+  {title:'Website filter level',on:true,text:lvl,group:'browser',go:g('browser')},
+  {title:'SafeSearch',on:!!c.safeSearch&&!c.safeSearchOff,text:c.safeSearch&&!c.safeSearchOff?'Forced on Google, Bing and DuckDuckGo':'Off',group:'browser',go:g('browser')},
+  {title:'Ads blocked',on:!!c.blockAds,text:c.blockAds?'On':'Off',group:'browser',go:g('browser')},
+  {title:'Pictures on web pages',on:!!(c.blockImages||(c.pictureGuard&&c.pictureGuard!=='off')),text:c.blockImages?'No pictures':(c.pictureGuard&&c.pictureGuard!=='off'?'Checked before they show':'All shown'),group:'browser',go:g('browser')},
+  {title:'Blocked words',on:(c.blockedWords||[]).length>0,text:(c.blockedWords||[]).length?word((c.blockedWords||[]).length,'word','words'):'None',group:'browser',go:g('browser','access')},
+  {title:'Allowed sites',on:nSitesOk>0,text:nSitesOk?word(nSitesOk,'site','sites'):'None',group:'browser',go:g('browser','sites')},
+  {title:'YouTube Restricted Mode',on:(c.youtubeDns||'off')!=='off',text:(c.youtubeDns||'off')==='off'?'Off':(c.youtubeDns==='strict'?'Strict':'Moderate'),group:'youtube',go:g('youtube')},
+  {title:'Blocked and allowed addresses',on:(c.dnsBlocklist||[]).length+(c.dnsAllowlist||[]).length>0,text:word((c.dnsBlocklist||[]).length,'blocked','blocked')+', '+word((c.dnsAllowlist||[]).length,'allowed','allowed'),group:'internet',go:g('internet','dns')},
+  {title:'Internet only for chosen apps',on:!!c.internetOnlyApps,text:c.internetOnlyApps?word((c.internetApps||[]).length,'app','apps'):'Off',group:'internet',go:g('internet','appnet')},
+  {title:'Web pages inside apps',on:!!(c.inAppBrowsers&&c.inAppBrowsers!=='off'),text:c.inAppBrowsers&&c.inAppBrowsers!=='off'?'Closed':'Open',group:'browser',go:g('browser','advanced')}];
+ const rightNow=[];
+ if((c.pauseUntil||0)>now)rightNow.push('Web filtering is paused until '+hhmm(c.pauseUntil));
+ if((c.internetOffUntil||0)>now)rightNow.push('The internet is off until '+hhmm(c.internetOffUntil));
+ if((c.restrictionsOffUntil||0)>now)rightNow.push('ALL restrictions are off until '+hhmm(c.restrictionsOffUntil));
+ return {parental:parental,filtering:filtering,rightNow:rightNow}}
+function renderControlsNew(m,d){
+ const cl=controlsList(d);
+ const back=h('button',{type:'button',class:'btn tonal'},'‹ Home');back.onclick=backHome;
+ m.append(h('div',{class:'row',style:'margin-bottom:14px'},back,h('h1',{class:'ptitle'},'Parental controls and filtering')));
+ m.append(h('div',{class:'mute',style:'margin-bottom:12px;max-width:720px'},'Everything this phone can do, and what is switched on now. Parental controls decide when and how much the phone and its apps are used. Filtering decides what content can be reached. Tap a line to change it.'));
+ if(cl.rightNow.length){
+  const rn=h('div',{class:'card',style:'border-color:var(--warn);max-width:720px'},h('h2',null,'Paused right now'));
+  for(const t of cl.rightNow)rn.append(h('div',{style:'margin:4px 0;font-weight:500'},t));
+  m.append(rn)}
+ const block=function(title,list){
+  const box=h('div',{class:'ctls',style:'margin-bottom:16px'});
+  const visible=list.filter(function(x){return can(x.group)});
+  for(const x of visible){
+   const b=h('button',{type:'button',class:'ctl'},h('span',{class:'grow'},h('span',{class:'ct'},x.title),h('span',{class:'mute'},x.text)),h('span',{class:'chip '+(x.on?'ok':'')},x.on?'On':'Off'),h('span',{class:'mute'},'›'));
+   b.onclick=x.go;box.append(b)}
+  m.append(h('h2',{style:'margin:18px 0 8px;font-size:17px'},title+' ('+visible.filter(function(x){return x.on}).length+' of '+visible.length+' on)'),box)};
+ block('Parental controls',cl.parental);
+ block('Filtering',cl.filtering)}
 function simpleSwitch(title,text,on,onchange){return h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},title),text?h('div',{class:'mute'},text):null),sw(on,onchange))}
 /** A column of big choices (like a radio list). choices = [[value,title,text],...] */
 function choiceList(choices,cur,onpick){
@@ -3429,8 +3495,9 @@ function siteRequestsCard(m,dv){
  renderRequestsCard(m,(dv.siteRequests||[]).map(function(r){return{path:'/api/devices/'+dv.id+'/site-requests',deviceName:dv.name,url:r.url,at:r.at,note:r.note}}),dv)}
 
 function renderDeviceNew(m,d,body){
- const sec=(GROUPS.some(function(g){return g.key===deviceSection})||deviceSection==='music')?deviceSection:null;
+ const sec=(GROUPS.some(function(g){return g.key===deviceSection})||deviceSection==='music'||deviceSection==='controls')?deviceSection:null;
  if(!sec){renderHomeNew(m,d);return}
+ if(sec==='controls'){renderControlsNew(m,d);return}
  renderGroupNew(m,d,sec,body)}
 
 /** "Right now": the four things a parent reaches for in the moment, each asking for a time. In the New look they live only here. */

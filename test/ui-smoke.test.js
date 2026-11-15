@@ -322,6 +322,14 @@ test("every dashboard page, group and tab opens without an error", async () => {
   assert.match(people, /Browser and web/, "the editor lists every control");
   assert.match(people, /Erase or release a phone/);
   assert.deepEqual(errors, [], "no error in the controls screens");
+  // The overview of every parental control and filter, with what is on now.
+  const overview = tryRender("parental controls and filtering page", "tab='devices';openId=devices[0].id;deviceSection='controls';render()");
+  tryRender("back to the home page", "deviceSection=null;render()");
+  assert.match(seen.home, /Parental controls and filtering/, "the home page has the overview as a row");
+  assert.match(seen.home, /\d+ of \d+ switched on/);
+  for (const t of [/Parental controls \(\d+ of \d+ on\)/, /Filtering \(\d+ of \d+ on\)/, /Screen time per day/, /Bedtime/, /Time limits for single apps/, /Apps blocked/, /Message alerts/, /Website filter level/, /SafeSearch/, /Blocked words/, /YouTube Restricted Mode/]) assert.match(overview, t, "the overview lists: " + t);
+  assert.match(overview, /Medium/, "it says what the web filter level is");
+  assert.deepEqual(errors, [], "no error in the overview");
   assert.match(seen["apps/regular"], /New apps wait for my approval/);
   assert.match(seen["apps/regular"], /Apps on this phone/);
   assert.match(seen["apps/regular"], /Puzzle Fun/);
