@@ -171,10 +171,25 @@ final class Actions {
      */
     static void prepareTokenQuietly(Context c) {
         try {
-            if (Agent.prefs(c).getBoolean("rpTokenSet", false)) return;
-            if (Agent.dpm(c).setResetPasswordToken(Agent.admin(c), token(c))) {
-                Agent.prefs(c).edit().putBoolean("rpTokenSet", true).apply();
+            android.content.SharedPreferences p = Agent.prefs(c);
+            DevicePolicyManager dpm = Agent.dpm(c);
+            boolean active = false;
+            try {
+                active = dpm.isResetPasswordTokenActive(Agent.admin(c));
+            } catch (Exception ignored) {
+                // no token yet
             }
+            if (active) {
+                p.edit().putBoolean("rpTokenSet", true).apply();
+                return;
+            }
+            if (p.getBoolean("rpTokenSet", false)) return;
+            // Adding a token REPLACES the one before it and makes the new one inactive again, so this must never run in a loop (it did: every
+            // check-in, after a failure that was not ours, which undid the person's "Activate PIN control" within seconds). At most once in 30 minutes.
+            long now = System.currentTimeMillis();
+            if (now - p.getLong("rpTokenTry", 0) < 30L * 60 * 1000) return;
+            p.edit().putLong("rpTokenTry", now).apply();
+            if (dpm.setResetPasswordToken(Agent.admin(c), token(c))) p.edit().putBoolean("rpTokenSet", true).apply();
         } catch (Exception ignored) {
         }
     }
@@ -228,14 +243,17 @@ final class Actions {
     private static void ensureToken(Context c) throws Exception {
         DevicePolicyManager dpm = Agent.dpm(c);
         ComponentName admin = Agent.admin(c);
-        byte[] token = token(c);
+        prepareTokenQuietly(c); // adds the token once if it never was (never again while one exists)
+        boolean active = false;
+        try {
+            active = dpm.isResetPasswordTokenActive(admin);
+        } catch (Exception ignored) {
+        }
+        if (active) return;
         if (!Agent.prefs(c).getBoolean("rpTokenSet", false)) {
-            if (!dpm.setResetPasswordToken(admin, token)) throw new Exception("this phone does not allow PIN control");
-            Agent.prefs(c).edit().putBoolean("rpTokenSet", true).apply();
+            throw new Exception("this phone has not accepted PIN control yet (it tries again by itself every half hour); the dashboard's Lock page shows when it is ON");
         }
-        if (!dpm.isResetPasswordTokenActive(admin)) {
-            throw new Exception("this phone already has a screen lock; open the agent, choose Administrator, and tap Activate PIN control once");
-        }
+        throw new Exception("PIN control needs the phone's current lock entered once: press Turn on PIN control on the dashboard's Lock page, or on the phone go to LockGuard, Administrator, Security, Lock, Activate PIN Control");
     }
 
     static String setPin(Context c, String pin) throws Exception {
@@ -243,6 +261,8 @@ final class Actions {
         if (!Agent.dpm(c).resetPasswordWithToken(Agent.admin(c), pin, token(c), 0)) {
             throw new Exception("Android rejected that PIN (too short or too simple)");
         }
+        // So the dashboard can say "a PIN you set from here" (Android itself cannot tell a pattern from a PIN or a password).
+        Agent.prefs(c).edit().putBoolean("lockByAgent", true).putString("lockByAgentStrength", lockStrength(c)).apply();
         return "screen lock PIN set";
     }
 
@@ -251,6 +271,7 @@ final class Actions {
         if (!Agent.dpm(c).resetPasswordWithToken(Agent.admin(c), "", token(c), 0)) {
             throw new Exception("could not remove the screen lock");
         }
+        Agent.prefs(c).edit().putBoolean("lockByAgent", false).apply();
         return "screen lock removed";
     }
 

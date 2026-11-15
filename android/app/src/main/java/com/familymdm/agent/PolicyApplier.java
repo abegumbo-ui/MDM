@@ -960,7 +960,7 @@ final class PolicyApplier {
             JSONObject siteLimitsNow = stForBrowser == null ? null : stForBrowser.optJSONObject("siteLimits");
             String siteLimitsStr = siteLimitsNow == null ? "" : siteLimitsNow.toString();
             long siteFreeUntil = Math.max(Agent.prefs(c).getLong("timeFreeUntil", 0), Agent.prefs(c).getLong("restrictionsOffUntil", 0));
-            String cacheKey = siteLimitsStr + "|" + siteFreeUntil + "|" + json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide") + "|" + policy.optBoolean("youtubeSignIn", false) + "|" + policy.optBoolean("downloads", true);
+            String cacheKey = "bundle2|" + siteLimitsStr + "|" + siteFreeUntil + "|" + json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide") + "|" + policy.optBoolean("youtubeSignIn", false) + "|" + policy.optBoolean("downloads", true);
             // Only skip when the Browser really holds these rules now: it loses them when it is removed and
             // installed again, and then it would look "not connected" (the connect screen) until a rule changed.
             Bundle held = null;
@@ -972,9 +972,11 @@ final class PolicyApplier {
             if (holdsRules && cacheKey.equals(Agent.prefs(c).getString("browserConfigApplied", null))) return;
             Bundle b = new Bundle();
             b.putString("sites", json);
-            b.putLong("browseUntil", browseUntil);
+            // Numbers go in as text: Android's policy file cannot hold a long in an application-restrictions bundle (Samsung's One UI on Android 16 throws
+            // "ClassCastException: Long cannot be cast to String[]" while saving it, and from then on EVERY policy change fails, PIN control included).
+            b.putString("browseUntil", Long.toString(browseUntil));
             b.putString("siteLimits", siteLimitsStr);
-            b.putLong("siteFreeUntil", siteFreeUntil);
+            b.putString("siteFreeUntil", Long.toString(siteFreeUntil));
             b.putString("filterTier", filterTier);
             b.putString("filterBase", filterBase);
             b.putString("youtubeMode", youtubeMode);

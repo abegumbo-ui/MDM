@@ -91,6 +91,8 @@ public class SitePolicyCheck {
         check(SitePolicy.allowed("https://music.youtube.com/watch?v=" + v + "&list=RDAMVM" + v, song), "an allowed song opens on YouTube Music, whatever else the link carries");
         check(!SitePolicy.allowed("https://www.youtube.com/watch?v=" + v, song) && !SitePolicy.allowed("https://youtu.be/" + v, song), "an allowed song does NOT open on YouTube");
         check(!"youtube.com/watch?v=x".equals(SitePolicy.pathKeyOf("https://music.youtube.com/watch?v=" + v)) && "music.youtube.com/watch?v=".concat(v).equals(SitePolicy.pathKeyOf("https://music.youtube.com/watch?v=" + v)), "a song's key names YouTube Music");
+        check(SitePolicy.asLong(Long.valueOf(5L)) == 5L && SitePolicy.asLong("1794700000000") == 1794700000000L && SitePolicy.asLong(Integer.valueOf(7)) == 7L, "managed-settings numbers: a long (older agent), text (this agent) and an int all read the same");
+        check(SitePolicy.asLong("abc") == 0 && SitePolicy.asLong(null) == 0 && SitePolicy.asLong(Boolean.TRUE) == 0, "managed-settings numbers: anything else is 0, never a crash");
         check(SitePolicy.isMusicHost("music.youtube.com") && !SitePolicy.isMusicHost("youtube.com") && !SitePolicy.isMusicHost("m.youtube.com") && !SitePolicy.isMusicHost(null), "which address is YouTube Music's");
         check(SitePolicy.youtubeChannelAllowed("@AishDotCom", yt) && !SitePolicy.youtubeChannelAllowed("@someoneelse", yt), "only the listed channel is allowed");
         check(!SitePolicy.youtubeChannelAllowed(null, yt), "no channel is never allowed");

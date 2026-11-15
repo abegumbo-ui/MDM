@@ -812,7 +812,7 @@ function renderDeviceDetail(m,d){
  const lockSub=getSub('security');
  const lk=h('section');
  if(lockSub==='screen'){
-  const lockBox=h('div',{class:'card'},h('h2',null,'Lock'));const lr=h('div',{class:'row',style:'margin-top:8px'});
+  const lockBox=h('div',{class:'card'},h('h2',null,'Lock'),lockStatusRow(d));const lr=h('div',{class:'row',style:'margin-top:8px'});
   lr.append(btn('Lock…','',async function(){
     const v=await ask('Lock this phone',[
      {key:'minutes',label:'How long',options:[['0','Just lock the screen'],['5','5 minutes'],['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours']]},
@@ -820,7 +820,7 @@ function renderDeviceDetail(m,d){
      'For a timed lock the phone shows your message and a countdown, and nothing else can be opened until time is up (or you unlock it). Emergency calls stay available.');
     if(!v)return;await queue('Lock','lock',{minutes:parseInt(v.minutes,10),message:v.message})}));
   cmd(lr,'Unlock now','unlock',{},null,lockedNow(d)?'':'outline');
-  cmd(lr,'Set PIN','setPin',function(){const pin=prompt('New screen lock PIN (4 to 16 digits). Lock only really locks once a PIN is set.');return pin?{pin:pin}:null});
+  cmd(lr,'Set PIN or password','setPin',function(){const pin=prompt('New screen lock. Digits only (4 to 16) make a PIN; letters or symbols (4 to 64 characters) make a password. A pattern cannot be set from here.');return pin?{pin:pin}:null});
   cmd(lr,'Remove screen lock','clearPin',{},'Take the screen lock (PIN, pattern or password) off this phone?','outline');
   if(d.info.pinControl===false&&d.info.screenLock!==false)cmd(lr,'Turn on PIN control (shows a prompt on the phone)','askPinControl',{},'This makes a screen appear on the phone asking for its CURRENT lock. Whoever is holding the phone enters it once, and PIN control is on from then. Continue?','tonal');
   lockBox.append(lr);
@@ -1386,6 +1386,16 @@ function pauseButton(d){
    await saveConfigFor(d,'Paused until '+hhmm(c.restrictionsOffUntil)+'. The phone applies it '+pickup()+'.');render()
   }catch(e){snack(e.message,1)}};
  return b}
+/** PIN control ON or OFF, and what the lock on the phone is, in words. Android only tells how strong the lock is (not pattern vs PIN vs password); a lock set from here is always a PIN or a password. */
+function lockStatusRow(d){
+ const i=d.info||{},row=h('div',{class:'row',style:'margin:2px 0 10px;flex-wrap:wrap'});
+ row.append(h('span',{class:'chip '+(i.pinControl?'ok':'warn')},'PIN control: '+(i.pinControl?'ON':'OFF')));
+ let now;
+ if(i.screenLock===false)now='No screen lock';
+ else if(i.lockByAgent)now='Lock now: a PIN or password you set from here'+(d.adminPin&&d.adminPin.ok?' ('+d.adminPin.pin+')':'');
+ else now='Lock now: set on the phone, '+(i.lockStrength||'a lock')+' (Android does not say if it is a pattern, a PIN or a password)';
+ row.append(h('span',{class:'chip'},now));
+ return row}
 function renderInternetOff(box,d){
  if(d.isBrowser)return;
  const c=d.config,on=(c.internetOffUntil||0)>Date.now();

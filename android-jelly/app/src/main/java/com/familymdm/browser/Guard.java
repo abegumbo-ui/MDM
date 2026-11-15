@@ -164,7 +164,7 @@ public final class Guard {
     /** Until when the limits are lifted (extra time from the administrator, or every restriction off). */
     private static long siteFreeUntil(Context c) {
         Bundle b = agentBundle(c);
-        return b == null ? 0 : b.getLong("siteFreeUntil", 0);
+        return b == null ? 0 : SitePolicy.asLong(b.get("siteFreeUntil"));
     }
 
     /**
@@ -335,7 +335,7 @@ public final class Guard {
 
     private static boolean browseWindow(Context c) {
         Bundle b = agentBundle(c);
-        return b != null && b.getLong("browseUntil", 0) > System.currentTimeMillis();
+        return b != null && SitePolicy.asLong(b.get("browseUntil")) > System.currentTimeMillis();
     }
 
     // ---------- addresses ----------

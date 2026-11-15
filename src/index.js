@@ -1354,7 +1354,9 @@ async function adminApiInner(request, env, url, session) {
         d.wifiNetworks = [...(d.wifiNetworks || []).filter((n) => n.ssid !== ssid), { ssid, password: pass, at: Date.now() }].slice(-20);
       }
       if (body.type === "setPin") {
-        if (!/^\d{4,16}$/.test(given.pin || "")) return json({ error: "PIN must be 4 to 16 digits" }, 400);
+        const lockText = String(given.pin || "");
+        // Digits only make a PIN, letters or symbols make a password; Android decides which. A pattern cannot be set by anyone but the phone itself.
+        if (!/^[ -~]{4,64}$/.test(lockText) || lockText !== lockText.trim()) return json({ error: "The lock must be 4 to 64 characters, with no space at either end: digits only make a PIN, letters or symbols make a password" }, 400);
         args.pin = given.pin; // delivered once, then dropped from the queue; never written to the activity log
         // Kept (admin-only) so the dashboard can show a PIN the administrator set. Confirmed when the phone reports success.
         d.adminPin = { pin: given.pin, ok: false, at: Date.now() };
