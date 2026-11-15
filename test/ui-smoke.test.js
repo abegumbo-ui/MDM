@@ -119,9 +119,20 @@ test("every dashboard page, group and tab opens without an error", async () => {
   seen.serverPi = tryRender("server page on the Pi", "var __s0=state.server;state.server={runtime:'pi',role:'main',primary:'https://pi.example',backup:'https://cf.example',outage:false};" +
     "piInfo={role:'main',version:'abc1234',serverUptimeSeconds:99,entries:5,publicUrl:'https://pi.example',backupUrl:'https://cf.example',polling:{idleSeconds:300,dashboardOpenSeconds:3,afterChangeSeconds:3}," +
     "health:{model:'Raspberry Pi Zero 2 W',uptimeSeconds:3600,cpuTempC:41,memoryTotalMB:416,memoryFreeMB:200,diskTotalGB:30,diskFreeGB:25,power:{ok:true}},wifi:{state:'connected',ssid:'Home',signal:70,ip:'192.168.0.5/24'}," +
-    "tailscale:{installed:true,state:'Running',name:'x.ts.net'},replication:{configured:true,pending:2,lastCopyAt:Date.now(),lastCopyCount:3,backupReachable:true,outagesRecovered:0}};" +
+    "tailscale:{installed:true,state:'Running',name:'x.ts.net'},replication:{configured:true,pending:2,lastCopyAt:Date.now(),lastCopyCount:3,backupReachable:true,outagesRecovered:0,routineWaiting:1,usage:{day:'2026-11-15',requests:310,reads:7800,writes:560,deletes:12,lists:80,limits:{requests:100000,reads:100000,writes:1000,deletes:1000,lists:1000}}}};" +
+    "piOutages={outages:[{id:'a',from:Date.now()-7200000,to:Date.now()-7000000,kind:'restart',title:'The whole Pi restarted',detail:'Everything looked normal at the last check.'},{id:'b',from:Date.now()-90000000,to:Date.now()-89000000,kind:'network',title:'A phone could not reach the Pi and used Cloudflare',detail:'The Pi was running the whole time.',phonesUsedCloudflare:{from:1,to:2}}]};" +
     "piWifi={saved:[{name:'Home',priority:10,autoconnect:true,active:true},{name:'Guest',priority:5,autoconnect:true,active:false}],visible:[{ssid:'Cafe',signal:50,security:'WPA2',active:false}]};tab='server';render()");
   seen.badgePi = reg.get("srv").textContent;
+  // The Server page says how much of Cloudflare's free allowance is used, what makes it stop, and lists the outages.
+  for (const w of ["Cloudflare free plan: today", "560 of 1,000 (56%)", "310 of 100,000 (0%)", "This is the one that runs out first.", "What makes Cloudflare stop?", "midnight UTC", "Outage history", "The whole Pi restarted", "A phone could not reach the Pi and used Cloudflare", "Everything looked normal at the last check.", "1 waiting"])
+    assert.ok(seen.serverPi.includes(w), "the Server page shows: " + w);
+  vm.runInContext("piInfo.replication.usage.writes=950;tab='server';render()", ctx);
+  assert.ok(reg.get("main").textContent.includes("950 of 1,000 (95%)"), "near the limit it says so in numbers");
+  vm.runInContext("piOutages={outages:[]};render()", ctx);
+  assert.ok(reg.get("main").textContent.includes("Nothing yet. Every restart"), "an empty history says what it will show");
+  vm.runInContext("piOutages={error:'boom'};render()", ctx);
+  assert.ok(reg.get("main").textContent.includes("Could not read it: boom"), "a failed read says so");
+  vm.runInContext("piInfo.replication.usage.writes=560;piOutages={outages:[]};tab='server';render()", ctx);
   seen.homeOnPi = tryRender("phone home with the Pi badge", "tab='devices';openId=devices[0].id;render()");
   // The Cloudflare page says what is RUNNING: the Raspberry Pi when it answers, even though this page is the backup copy.
   tryRender("badge: Cloudflare page, Pi running", "state.server={runtime:'cloudflare',role:'backup',primary:'https://pi.example',backup:'https://cf.example',primaryUp:true,outage:false};tab='devices';openId=null;render()");

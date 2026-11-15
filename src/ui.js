@@ -70,6 +70,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 .chip svg{width:13px;height:13px;flex:none}
 .chip.ok{background:var(--ok-container);color:var(--ok)}.chip.bad{background:var(--error-container);color:var(--error)}.chip.warn{background:var(--warn-container);color:var(--warn)}
 .dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+.use{height:8px;border-radius:4px;background:var(--surface-3);overflow:hidden;margin:4px 0 10px}.use>i{display:block;height:100%;background:var(--primary)}.use.warn>i{background:var(--warn)}.use.bad>i{background:var(--error)}
 .seg{display:inline-flex;border:1px solid var(--outline);border-radius:8px;overflow:hidden}
 .seg button{background:var(--surface-1);border:0;border-right:1px solid var(--outline);padding:6px 12px;color:var(--on-surface);font:500 13px Inter,system-ui,sans-serif;cursor:pointer}
 .seg button:last-child{border-right:0}
@@ -4163,13 +4164,14 @@ function renderDevicesNew(m){
  m.append(links)}
 
 /* ---------- Server: the computer that runs this dashboard (the Raspberry Pi), and the Cloudflare backup ---------- */
-let piInfo=null,piWifi=null,piLog='',piLoading=false;
+let piInfo=null,piWifi=null,piLog='',piLoading=false,piOutages=null;
 function fmtUp(sec){sec=Math.round(sec||0);const dd=Math.floor(sec/86400),hh=Math.floor(sec%86400/3600),mm=Math.floor(sec%3600/60);return dd?dd+' d '+hh+' h':hh?hh+' h '+mm+' min':mm+' min'}
 async function loadServerPage(){
  if(piLoading)return;piLoading=true;
- piInfo=null;piWifi=null;
+ piInfo=null;piWifi=null;piOutages=null;
  try{piInfo=await call('GET','/api/pi/status')}catch(e){piInfo={error:e.message}}
- if(piInfo&&!piInfo.error){try{piWifi=await call('GET','/api/pi/wifi')}catch(e){piWifi={error:e.message}}}
+ if(piInfo&&!piInfo.error){try{piWifi=await call('GET','/api/pi/wifi')}catch(e){piWifi={error:e.message}}
+  try{piOutages=await call('GET','/api/pi/outages')}catch(e){piOutages={error:e.message}}}
  piLoading=false;
  if(tab==='server')render()}
 function renderServer(m){
@@ -4244,11 +4246,46 @@ function renderServer(m){
  else{
   bk.append(h('div',{class:'kv'},h('span',{class:'mute'},'Last copy'),h('b',null,r.lastCopyAt?ago(r.lastCopyAt)+(r.lastCopyCount?' ('+r.lastCopyCount+' changes)':''):'not yet')),
    h('div',{class:'kv'},h('span',{class:'mute'},'Waiting to be copied'),h('b',null,String(r.pending||0)+' changes')),
+   h('div',{class:'mute small',style:'margin:-2px 0 6px'},'Real changes (settings, codes, new phones) are copied within about 2 minutes. A phone\'s routine check-in ('+(r.routineWaiting||0)+' waiting) is copied only every few hours, because Cloudflare allows just 1,000 saves a day.'),
    h('div',{class:'kv'},h('span',{class:'mute'},'Cloudflare reachable'),h('b',null,r.backupReachable==null?'not checked yet':r.backupReachable?'yes':'no')),
    h('div',{class:'kv'},h('span',{class:'mute'},'Times Cloudflare was needed'),h('b',null,String(r.outagesRecovered||0))));
   if(r.lastError)bk.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--error)'},r.lastError));
   bk.append(h('div',{class:'row',style:'margin-top:10px'},btn('Copy now','tonal',async function(){const x=await call('POST','/api/pi/copy-now',{});snack(x.ok?'Copied.':'It did not work: '+JSON.stringify(x.result||x),!x.ok);loadServerPage()})))}
  m.append(bk);
+ // How much of Cloudflare's free allowance is used, and what happens when it runs out.
+ const u=r.usage;
+ if(r.configured&&u&&u.limits){
+  const dayEnd=Date.parse(u.day+'T00:00:00Z')+86400000;
+  const uc=h('div',{class:'card'},h('h2',null,'Cloudflare free plan: today'),
+   h('div',{class:'mute'},'What this Raspberry Pi has used on Cloudflare since its day began. Cloudflare\'s day ends at '+hhmm(dayEnd)+leftTxt(dayEnd)+' (midnight UTC); everything starts again from zero then.'));
+  const use=function(label,used,limit,help){
+   const pct=Math.min(100,Math.round(used*100/limit));
+   uc.append(h('div',{class:'kv'},h('span',null,label),h('b',null,used.toLocaleString()+' of '+limit.toLocaleString()+' ('+pct+'%)')),
+    h('div',{class:'use'+(pct>=90?' bad':pct>=50?' warn':'')},h('i',{style:'width:'+pct+'%'})));
+   if(help)uc.append(h('div',{class:'mute small',style:'margin:-6px 0 10px'},help))};
+  use('Saves (writes)',u.writes,u.limits.writes,'This is the one that runs out first.');
+  use('Requests',u.requests,u.limits.requests);
+  use('Reads',u.reads,u.limits.reads);
+  use('Deletes',u.deletes,u.limits.deletes);
+  use('Lists',u.lists,u.limits.lists);
+  uc.append(h('div',{style:'font-weight:500;margin-top:8px'},'What makes Cloudflare stop?'),
+   h('div',{class:'mute small'},'When one of these reaches its limit, Cloudflare refuses that kind of action until its day ends. The first to go is saves, at 1,000 a day. Then the backup copy stops being updated, and a phone that had to use Cloudflare (because the Pi did not answer it) cannot get the changes you make on the dashboard. While the Raspberry Pi is working, phones using it are not affected.'),
+   h('div',{class:'mute small',style:'margin-top:6px'},'Cloudflare\'s own warning email can show a higher number than this page: phones that fell back to Cloudflare use it too, and only Cloudflare counts those.'));
+  m.append(uc)}
+ // When the Raspberry Pi was off or restarted, and when phones could not reach it.
+ const oc=h('div',{class:'card'},h('h2',null,'Outage history'),
+  h('div',{class:'mute'},'When the Raspberry Pi was off or restarted, and when a phone could not reach it and used Cloudflare, with the likeliest reason. The last 100 are kept on the Pi.'));
+ if(!piOutages)oc.append(h('div',{class:'mute small',style:'margin-top:8px'},'Loading…'));
+ else if(piOutages.error)oc.append(h('div',{class:'mute small',style:'margin-top:8px;color:var(--error)'},'Could not read it: '+piOutages.error));
+ else if(!(piOutages.outages||[]).length)oc.append(h('div',{class:'mute small',style:'margin-top:8px'},'Nothing yet. Every restart and every time a phone had to use Cloudflare shows up here from now on.'));
+ else for(const e of piOutages.outages){
+  const span=Math.max(0,Math.round(((e.to||e.from)-e.from)/1000));
+  oc.append(h('div',{class:'app'},h('div',{class:'grow'},
+   h('div',{style:'font-weight:500'},e.title,e.planned?h('span',{class:'chip',style:'margin-left:8px'},'planned'):null),
+   h('div',{class:'mute small'},new Date(e.from).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' · '+(span<90?'a moment':fmtUp(span))),
+   h('div',{class:'small',style:'margin-top:4px'},e.detail||''),
+   e.phonesUsedCloudflare&&e.kind!=='network'?h('div',{class:'mute small',style:'margin-top:2px'},'Phones used Cloudflare during this.'):null)))}
+ m.append(oc);
  // Public address.
  const ts=p.tailscale||{};
  m.append(h('div',{class:'card'},h('h2',null,'Address'),

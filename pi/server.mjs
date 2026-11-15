@@ -6,6 +6,8 @@ import { pathToFileURL } from 'node:url';
 import worker, { waitingPhones } from '../src/index.js';
 import { KvStore } from './kv.mjs';
 import { startReplication } from './sync.mjs';
+import { createOutageLog } from './outages.mjs';
+import { createSystem } from './system.mjs';
 import { createAdmin } from './admin.mjs';
 
 const MAX_BODY = 40 * 1024 * 1024;
@@ -36,7 +38,7 @@ export function configProblems(vars) {
   return out;
 }
 
-export async function createApp({ dataDir, vars, publicUrl = '', log = () => {}, replication = true, fetchFn, scheduleMs = 15 * 60 * 1000, piAdminOptions }) {
+export async function createApp({ dataDir, vars, publicUrl = '', log = () => {}, replication = true, fetchFn, scheduleMs = 15 * 60 * 1000, piAdminOptions, replicationOptions = {}, outageOptions = {} }) {
   const kv = new KvStore(dataDir);
   await kv.init();
   const env = { ...vars, STATE: kv, RUNTIME: 'pi' };
@@ -48,9 +50,13 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
     },
     passThroughOnException() {},
   };
-  const repl = replication ? startReplication({ kv, vars, log, fetchFn }) : null;
+  // The outage history: when the Pi was off or restarted, and when phones had to use Cloudflare (see outages.mjs).
+  const sys = (piAdminOptions && piAdminOptions.sys) || createSystem();
+  const outages = createOutageLog({ kv, sys, log, ...outageOptions });
+  const repl = replication ? startReplication({ kv, vars, log, fetchFn, onOutage: (o) => outages.phonesUsedCloudflare(o), ...replicationOptions }) : null;
   const started = Date.now();
-  const piAdmin = createAdmin({ env, vars, kv, getRepl: () => repl, publicUrl, started, ...(piAdminOptions || {}) });
+  const piAdmin = createAdmin({ env, vars, kv, getRepl: () => repl, publicUrl, started, outages, ...(piAdminOptions || {}) });
+  outages.start();
 
   async function handle(req, res) {
     if (req.url === '/healthz') {
@@ -119,8 +125,10 @@ export async function createApp({ dataDir, vars, publicUrl = '', log = () => {},
     kv,
     env,
     repl,
+    outages,
     async stop() {
       if (sched) clearInterval(sched);
+      outages.stop();
       if (repl) repl.stop();
       const closing = new Promise((r) => server.close(r));
       if (server.closeIdleConnections) server.closeIdleConnections(); // do not wait for browsers that keep a connection open
