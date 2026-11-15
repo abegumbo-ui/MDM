@@ -11,6 +11,8 @@ WorkingDirectory=/opt/mdm-pi
 ExecStart=/usr/bin/node /opt/mdm-pi/pi/server.mjs
 Restart=always
 RestartSec=3
+# A stop (deploy, the watcher, a reboot) must never take the 90 s default: the server closes within a few seconds, then it is killed.
+TimeoutStopSec=15
 # A Raspberry Pi Zero 2 W has 512 MB: keep the server from taking all of it (big things live on the SD card).
 Environment=NODE_OPTIONS=--max-old-space-size=200
 # (No NoNewPrivileges: the Server page runs a few allowed commands through sudo, see /etc/sudoers.d/mdm-pi.)
