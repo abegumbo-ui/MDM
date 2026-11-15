@@ -173,6 +173,51 @@ test("every dashboard page, group and tab opens without an error", async () => {
     assert.equal(vm.runInContext("appSel", ctx), "com.q.blocked", "and opens its settings to change the hours");
     vm.runInContext("(function(){var s=JSON.parse(__snap2),d=devices[0];d.packages=s.p;d.config.apps=s.a;appSel=null})()", ctx);
   }
+  // The approval card says in plain words what each choice lets them open, and carries the picture / video choice.
+  {
+    vm.runInContext("var __sites0=JSON.stringify(devices[0].config.sites||{});tab='devices';openId=devices[0].id;setDeviceSection('browser');subs.browser='sites'", ctx);
+    const page = tryRender("approval card", "render()");
+    for (const w of ["Allow just this page", "Only this one link opens. Every other page on example.com stays blocked.", "Allow all of example.com", "Every page on example.com opens, and its sub-sites too", "No, keep it blocked", "On the site you allow:", "Pictures", "Videos"])
+      assert.ok(page.includes(w), "the approval card says: " + w);
+    assert.ok(!page.includes("Allow whole site (example.com)") && !page.includes("Allow this page only"), "the old wording is gone");
+    // Pictures hidden + videos allowed chosen on the card end up on the site that gets approved, and a whole-site approval saves a domain.
+    await vm.runInContext("addSite(devices[0],{type:'domain',url:'example.net',label:'example.net'},{pictures:'block',videos:'allow'})", ctx);
+    const saved = JSON.parse(vm.runInContext("JSON.stringify(Object.values(devices[0].config.sites).filter(function(x){return x.url==='example.net'})[0])", ctx));
+    assert.equal(saved.type, "domain");
+    assert.equal(saved.pictures, "block");
+    assert.equal(saved.blockImages, true, "hiding pictures also sets the older switch");
+    assert.equal(saved.videos, "allow");
+    await vm.runInContext("addSite(devices[0],{type:'exact',url:'https://example.net/a',label:'example.net'},{pictures:'',videos:''})", ctx);
+    const plain = JSON.parse(vm.runInContext("JSON.stringify(Object.values(devices[0].config.sites).filter(function(x){return x.url==='https://example.net/a'})[0])", ctx));
+    assert.equal(plain.type, "exact");
+    assert.ok(!plain.pictures && !plain.videos, "no choice on the card means the site follows the usual settings");
+    // The list of allowed sites shows the plain sentence and one control for pictures and one for videos (no more four tick boxes).
+    const list = tryRender("allowed sites list", "render()");
+    assert.ok(list.includes("Every page of this site opens") && list.includes("Only this one page opens"), "the list says what each entry opens");
+    assert.ok(list.includes("Pictures on this site") && list.includes("Videos on this site"), "each site has a pictures control and a videos control");
+    assert.ok(!list.includes("Allow pictures") && !list.includes("Block pictures"), "the four confusing tick boxes are gone");
+    await vm.runInContext("(function(){devices[0].config.sites=JSON.parse(__sites0);return saveConfigFor(devices[0],'x')})()", ctx);
+  }
+  // Every timer shows how long is left.
+  {
+    assert.equal(vm.runInContext("leftTxt(Date.now()-5000)", ctx), "", "nothing for a time that has passed");
+    assert.match(vm.runInContext("leftTxt(Date.now()+23*60000-1000)", ctx), /^ \(23 min left\)$/);
+    assert.match(vm.runInContext("leftTxt(Date.now()+90*60000-1000)", ctx), /^ \(1 h 30 min left\)$/);
+    assert.match(vm.runInContext("leftTxt(Date.now()+120*60000-1000)", ctx), /^ \(2 h left\)$/);
+    vm.runInContext("devices[0].config.internetOffUntil=Date.now()+40*60000-1000;tab='devices';openId=devices[0].id;setDeviceSection('overview');render()", ctx);
+    const page = tryRender("internet off timer", "render()");
+    assert.match(page, /Internet off until [^\n]*\(40 min left\)/, "the internet-off notice says how long is left");
+    vm.runInContext("devices[0].config.internetOffUntil=0", ctx);
+  }
+  // The browse-freely code made on the Codes box stays on the page after the page is painted again.
+  {
+    vm.runInContext("rememberCode(devices[0].id,{type:'freebrowse',code:'KEEP42',minutes:120,at:Date.now()-60000});tab='devices';openId=devices[0].id;setDeviceSection('apps');subs.apps='regular';render()", ctx);
+    const page = tryRender("codes box after a repaint", "render()");
+    assert.ok(page.includes("KEEP42") && page.includes("for 120 minutes"), "the code is still there after a repaint, with what it does");
+    vm.runInContext("rememberCode(devices[0].id,{type:'freebrowse',code:'OLD999',minutes:120,at:Date.now()-2*3600e3});render()", ctx);
+    assert.ok(!reg.get("main").textContent.includes("OLD999"), "a code that is over an hour old is not shown");
+    vm.runInContext("delete codeMemo[devices[0].id]", ctx);
+  }
   // Going into a setting and back lands where you were, not at the top.
   {
     const ys = [];

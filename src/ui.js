@@ -476,9 +476,9 @@ function chipsFor(d,full){
  if(wf)c.append(h('span',{class:'chip'},svgIcon(wf.transport==='wifi'?'wifi':'device','currentColor'),
   wf.transport==='wifi'?(wf.ssid||'Wi-Fi'):wf.transport==='mobile'?('SIM card'+(wf.carrier?' — '+wf.carrier:'')):'No connection'));
  if(d.inflight.some(function(x){return x.type==='lock'})||d.pending)c.append(h('span',{class:'chip warn'},'Command pending'));
- if(lockedNow(d))c.append(h('span',{class:'chip warn'},'Locked until '+new Date(d.info.lock.until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+ if(lockedNow(d))c.append(h('span',{class:'chip warn'},'Locked until '+hl(d.info.lock.until)));
  if(storeOpen(d))c.append(h('span',{class:'chip warn'},'Play Store open'+(d.info.storeUntil>0?' until '+new Date(d.info.storeUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'')));
- if(browsingFreely(d))c.append(h('span',{class:'chip warn'},'Free browsing until '+new Date(d.info.browseUntil).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));
+ if(browsingFreely(d))c.append(h('span',{class:'chip warn'},'Free browsing until '+hl(d.info.browseUntil)));
  if(d.info.kiosk)c.append(h('span',{class:'chip ok'},'Home screen mode'));
  if(d.info.deviceOwner===false)c.append(h('span',{class:'chip bad'},'Not device owner!'));
  if(needsUpdate(d))c.append(h('span',{class:'chip warn'},'Update available'));
@@ -643,10 +643,13 @@ function buildAppsHub(m,dv){
   const codeBox=h('div',{class:'card'},h('h2',null,'Codes for this phone'),
    h('div',{class:'mute'},'Locked to this phone — giving the code to a different phone does nothing. Valid 1 hour, one use.'));
   const out=h('div',{style:'margin-top:10px'});
+  const paintCode=function(c){out.textContent='';if(!c||c.at+3600e3<Date.now())return;
+   out.append(h('div',{class:'code'},c.code),
+    h('div',{class:'mute small'},(c.type==='freebrowse'?'Opens any site on this phone\'s Browser for '+c.minutes+' minutes once it is typed in.':'Type on this phone: '+(c.type==='install'?'Install an app.':'Remove agent.'))+' Made '+ago(c.at)+'. It works for one hour from then, one time.'))};
   const genCode=async function(type,minutes){
    const r=await call('POST','/api/codes',{type:type,deviceId:dv.id,minutes:minutes});
-   out.textContent='';out.append(h('div',{class:'code'},r.code),
-    h('div',{class:'mute small'},type==='freebrowse'?'Opens any site on this phone\'s Browser for '+r.minutes+' minutes.':'Type on this phone: '+(type==='install'?'Install an app.':'Remove agent.')))};
+   const c={type:type,code:r.code,minutes:r.minutes,at:Date.now()};rememberCode(dv.id,c);paintCode(c)};
+  paintCode(codeMemo[dv.id]);
   codeBox.append(h('div',{class:'row',style:'margin-top:8px'},
    btn('Install code','',function(){genCode('install')}),
    btn('Removal code','outline',function(){genCode('uninstall')}),
@@ -1235,16 +1238,32 @@ function renderRequestsCard(m,reqs,dv,title,help){
     buttons.append(btn('Allow this channel','',async function(){await addSite(dv,{type:'youtube',url:'https://www.youtube.com/'+ytCh,id:ytCh,label:ytCh});await dismiss()}),btn('Dismiss','outline',dismiss));
     rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
     continue}
-   buttons.append(btn(isVideo?'Allow this video':'Allow this page only','',async function(){
+   if(isVideo){
+    buttons.append(btn('Allow this video','',async function(){
      const label=info&&info.title?info.title+(info.author?' — '+info.author:''):hostOfUrl(r.url);
      await addSite(dv,{type:'exact',url:r.url,label:label});await dismiss()}));
-   if(!isVideo||!isYoutubeUrl(r.url)){
-    buttons.append(btn('Allow whole site ('+hostOfUrl(r.url)+')','',async function(){
-     await addSite(dv,{type:'domain',url:hostOfUrl(r.url),label:hostOfUrl(r.url)});await dismiss()}));
-   }
-   buttons.append(btn('Dismiss','outline',dismiss));
-   rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,detail,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,
-    h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)));
+    buttons.append(btn('Dismiss','outline',dismiss));
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,detail,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,
+     h('div',{class:'mute small'},r.deviceName+' · '+ago(r.at)),buttons)))}
+   else{
+    // A page or a site: three plain choices, each with one line saying what it lets them open, and the pictures / videos choice right here.
+    const host=hostOfUrl(r.url),pick={pictures:'',videos:''};
+    const choice=function(label,help,fn,cls){return h('div',{style:'margin-top:10px'},btn(label,cls||'',fn),h('div',{class:'mute small',style:'margin-top:3px'},help))};
+    const one=function(label,field,opts){
+     const sg=h('div',{class:'seg',style:'margin-top:0'});
+     opts.forEach(function(o){const b=h('button',{type:'button',class:pick[field]===o[0]?'on'+(o[2]?' block':''):''},o[1]);
+      b.onclick=function(){pick[field]=o[0];[].slice.call(sg.children).forEach(function(x,i){x.className=pick[field]===opts[i][0]?'on'+(opts[i][2]?' block':''):''})};sg.append(b)});
+     return h('div',{class:'row',style:'margin-top:8px;gap:10px;align-items:center'},h('span',{class:'small',style:'min-width:64px'},label),sg)};
+    const settle=function(type){return async function(){
+     await addSite(dv,type==='exact'?{type:'exact',url:r.url,label:host}:{type:'domain',url:host,label:host},pick);await dismiss()}};
+    rc.append(h('div',{class:'app'},h('div',{class:'grow'},titleEl,r.note?h('div',{style:'margin-top:4px'},'Their message: “'+r.note+'”'):null,
+     h('div',{class:'mute small'},r.deviceName+' tried to open this · '+ago(r.at)),
+     choice('Allow just this page','Only this one link opens. Every other page on '+host+' stays blocked.',settle('exact')),
+     choice('Allow all of '+host,'Every page on '+host+' opens, and its sub-sites too (like news.'+host+').',settle('domain')),
+     choice('No, keep it blocked','Takes this request away. They can ask again.',dismiss,'outline'),
+     h('div',{class:'mute small',style:'margin-top:12px'},'On the site you allow:'),
+     one('Pictures','pictures',[['','Normal'],['allow','Show'],['block','Hide','b']]),
+     one('Videos','videos',[['','Normal'],['allow','Allow'],['block','Block','b']]))))}
    if(isVideo){
     call('GET','/api/youtube-info?url='+encodeURIComponent(r.url)).then(function(i){
      info=i;
@@ -1329,14 +1348,21 @@ function renderSos(box,d){
   card.append(h('div',{class:'row',style:'margin:4px 0'},h('span',{class:'grow'},link?'Where the phone was':e.m),h('span',{class:'mute small'},ago(e.at)),link?h('a',{href:link,target:'_blank',rel:'noopener'},'Open map'):null))}
  box.append(card)}
 function hhmm(t){return new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+/** " (23 min left)" for a time still to come, "" for one that has passed. */
+function leftTxt(t){const m=Math.ceil((t-Date.now())/60000);if(!(m>0))return '';return ' ('+(m<60?m+' min':Math.floor(m/60)+' h'+(m%60?' '+(m%60)+' min':''))+' left)'}
+/** A time to come with how long is left: "03:40 PM (23 min left)". */
+function hl(t){return hhmm(t)+leftTxt(t)}
+/** The last code made on the Codes box for each phone, kept so a refresh of the page does not make it vanish (it is good for an hour). */
+var codeMemo=(function(){try{return JSON.parse(sessionStorage.getItem('codeMemo')||'{}')||{}}catch(e){return {}}})();
+function rememberCode(id,m){codeMemo[id]=m;try{sessionStorage.setItem('codeMemo',JSON.stringify(codeMemo))}catch(e){}}
 function renderPause(box,d){
  const c=d.config,on=(c.pauseUntil||0)>Date.now();
  const save=async function(msg){try{await saveConfigFor(d,msg)}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,on?'Web filtering is paused':'Pause web filtering'));
- if(on){card.append(h('div',{class:'mute'},'Until '+hhmm(c.pauseUntil)+'. It comes back by itself then, even if the phone is offline.'),h('div',{style:'margin-top:8px'},btn('Turn filtering back on now','',function(){c.pauseUntil=0;save('Filtering comes back on at the next check-in.')})))}
+ if(on){card.append(h('div',{class:'mute'},'Until '+hl(c.pauseUntil)+'. It comes back by itself then, even if the phone is offline.'),h('div',{style:'margin-top:8px'},btn('Turn filtering back on now','',function(){c.pauseUntil=0;save('Filtering comes back on at the next check-in.')})))}
  else{card.append(h('div',{class:'mute'},(d.isWindows?'Lets every site through for a while, for example while you use the computer yourself: blocked sites, categories, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked programs stay blocked. Starts within a minute.':'Lets every site through for a while, for example while you use the phone yourself: blocked sites, categories, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked apps stay blocked, and our own browsers keep their allowed-sites list. Starts at the phone\'s next check-in.')));
   const row=h('div',{class:'row',style:'margin-top:8px'});
-  for(const [mins,label] of [[15,'15 minutes'],[60,'1 hour'],[180,'3 hours']])row.append(btn(label,'tonal',function(){c.pauseUntil=Date.now()+mins*60000;save('Paused until '+hhmm(c.pauseUntil)+'.')}));
+  for(const [mins,label] of [[15,'15 minutes'],[60,'1 hour'],[180,'3 hours']])row.append(btn(label,'tonal',function(){c.pauseUntil=Date.now()+mins*60000;save('Paused until '+hl(c.pauseUntil)+'.')}));
   card.append(row)}
  box.append(card)}
 /** "Turn off all restrictions for a while": asks how long, shows what is going on, and turns everything back on from here. */
@@ -1353,7 +1379,7 @@ function renderAllOff(box,d){
    h('div',{class:'mute',style:'margin-top:4px'},heard?'The phone confirmed it at '+hhmm(heard.at)+'.':'Waiting for the phone to pick this up. A phone on the Raspberry Pi does it within seconds, one on Cloudflare at its next check-in.'));
   const row=h('div',{class:'row',style:'margin-top:10px'});
   row.append(btn('Turn everything back on now','',function(){c.restrictionsOffUntil=0;save('Restrictions come back on right away (at the phone\'s next check-in).')}));
-  row.append(btn('+ 30 minutes','tonal',function(){c.restrictionsOffUntil=Math.min(c.restrictionsOffUntil+30*60000,Date.now()+24*3600000);save('Extended until '+hhmm(c.restrictionsOffUntil)+'.')}));
+  row.append(btn('+ 30 minutes','tonal',function(){c.restrictionsOffUntil=Math.min(c.restrictionsOffUntil+30*60000,Date.now()+24*3600000);save('Extended until '+hl(c.restrictionsOffUntil)+'.')}));
   card.append(row)}
  else{
   card.append(h('div',{class:'mute'},'Everything on this phone stands down for the time you choose: the website filter, blocked apps, screen time and bedtime, blocked screens, YouTube limits and internet cut-offs. The phone stays managed, protects itself and keeps reporting. Everything comes back by itself when the time is up, even with no internet, or you turn it back on here yourself.'));
@@ -1365,7 +1391,7 @@ function renderAllOff(box,d){
    const mins=custom.value?Math.max(1,Math.min(1440,Math.round(Number(custom.value)))):Number(sel.value);
    if(!confirm('Turn off ALL restrictions on '+d.name+' for '+words(mins)+'? Nothing is filtered or blocked until then.'))return;
    c.restrictionsOffUntil=Date.now()+mins*60000;c.restrictionsOffSince=Date.now();
-   save('All restrictions off until '+hhmm(c.restrictionsOffUntil)+'.')});
+   save('All restrictions off until '+hl(c.restrictionsOffUntil)+'.')});
   card.append(h('div',{class:'row',style:'margin-top:10px'},h('span',{class:'mute'},'For how long?'),sel,custom,go))}
  box.append(card)}
 /** The pause/play button on the top bar, next to the search: pauses EVERYTHING on this phone (web filter, blocked apps, screen time, bedtime, internet cut-offs) for a time you pick, or turns it all back on. */
@@ -1384,7 +1410,7 @@ function pauseButton(d){
    if(!v)return;
    const mins=Math.max(1,Math.min(1440,parseInt(v.minutes,10)||60));
    c.restrictionsOffUntil=Date.now()+mins*60000;c.restrictionsOffSince=Date.now();c.pauseUntil=c.restrictionsOffUntil;
-   await saveConfigFor(d,'Paused until '+hhmm(c.restrictionsOffUntil)+'. The phone applies it '+pickup()+'.');render()
+   await saveConfigFor(d,'Paused until '+hl(c.restrictionsOffUntil)+'. The phone applies it '+pickup()+'.');render()
   }catch(e){snack(e.message,1)}};
  return b}
 /** PIN control ON or OFF, and what the lock on the phone is, in words. Android only tells how strong the lock is (not pattern vs PIN vs password); a lock set from here is always a PIN or a password. */
@@ -1402,11 +1428,11 @@ function renderInternetOff(box,d){
  const c=d.config,on=(c.internetOffUntil||0)>Date.now();
  const save=async function(msg){try{await saveConfigFor(d,msg)}catch(e){snack(e.message,1)}render()};
  const card=h('div',{class:'card'},h('h2',null,on?'The internet is off':'Turn the internet off'));
- if(on){card.append(h('div',{class:'mute'},'Until '+hhmm(c.internetOffUntil)+'. Calls and texts still work. It comes back by itself.'),h('div',{style:'margin-top:8px'},btn('Turn the internet back on','',function(){c.internetOffUntil=0;save('The internet comes back on at the next check-in.')})))}
+ if(on){card.append(h('div',{class:'mute'},'Until '+hl(c.internetOffUntil)+'. Calls and texts still work. It comes back by itself.'),h('div',{style:'margin-top:8px'},btn('Turn the internet back on','',function(){c.internetOffUntil=0;save('The internet comes back on at the next check-in.')})))}
  else{card.append(h('div',{class:'mute'},'No app can use the internet for a while (homework, dinner, a punishment). Calls and texts still work, and apps you put under "Internet only for chosen apps" keep theirs. The phone itself stays usable.'));
   const row=h('div',{class:'row',style:'margin-top:8px'});
   if(d.isWindows)card.querySelector('.mute').textContent='No website opens for a while (homework, dinner, a punishment), except the dashboard. Programs that do not look up websites by name are not affected.';
-  for(const [mins,label] of [[30,'30 minutes'],[60,'1 hour'],[120,'2 hours'],[1440,'Until tomorrow']])row.append(btn(label,'tonal',function(){c.internetOffUntil=Date.now()+mins*60000;save('Internet off until '+hhmm(c.internetOffUntil)+'.')}));
+  for(const [mins,label] of [[30,'30 minutes'],[60,'1 hour'],[120,'2 hours'],[1440,'Until tomorrow']])row.append(btn(label,'tonal',function(){c.internetOffUntil=Date.now()+mins*60000;save('Internet off until '+hl(c.internetOffUntil)+'.')}));
   card.append(row)}
  box.append(card)}
 const LEVELS={
@@ -2129,19 +2155,20 @@ function renderSitesEditor(m,dv){
   const row=h('div',{class:'app'});
   row.append(h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.label||s.url),
    h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='youtube'?'YouTube channel: ':s.type==='domain'?'Whole site: ':'Exact page: ')+s.url),
-   h('div',null,h('span',{class:'chip'},s.type==='youtube'?'this channel\'s videos only':s.type==='domain'?'subpages + subdomains':'this page only'),
+   h('div',null,h('span',{class:'chip'},s.type==='youtube'?'Only this channel\'s videos open':s.type==='domain'?'Every page of this site opens':'Only this one page opens'),
     s.until?h('span',{class:'chip warn'},untilText(s.until)):null,
-    (s.pictures==='allow')?h('span',{class:'chip'},'pictures always shown'):(s.pictures==='block'||s.blockImages)?h('span',{class:'chip warn'},'pictures blocked'):null,
-    s.videos==='allow'?h('span',{class:'chip'},'videos allowed'):s.videos==='block'?h('span',{class:'chip warn'},'videos blocked'):null,
     s.installable===false?h('span',{class:'chip'},'no home-screen shortcut'):null)));
   const col=h('div',{style:'display:flex;flex-direction:column;gap:6px;align-items:flex-end'});
   if(s.type!=='youtube'){
    // One box for each choice, right here on the site: choosing "Allow" clears "Block" and the other way round.
-   const media=function(field,val,label){return h('label',{class:'row small'},h('input',{type:'checkbox',checked:(s[field]||(field==='pictures'&&s.blockImages?'block':''))===val,onchange:async function(e){
-     s[field]=e.target.checked?val:'';
-     if(field==='pictures')s.blockImages=s.pictures==='block';
-     await saveConfigFor(dv,'Saved.')}}),label)};
-   col.append(media('pictures','allow','Allow pictures'),media('pictures','block','Block pictures'),media('videos','allow','Allow videos'),media('videos','block','Block videos'))}
+   const media=function(field,label,opts){
+    const cur=s[field]||(field==='pictures'&&s.blockImages?'block':'');
+    const sg=h('div',{class:'seg',style:'margin-top:0'});
+    opts.forEach(function(o){const b=h('button',{type:'button',class:cur===o[0]?'on'+(o[2]?' block':''):''},o[1]);
+     b.onclick=async function(){s[field]=o[0];if(field==='pictures')s.blockImages=o[0]==='block';
+      try{await saveConfigFor(dv,'Saved.')}catch(e){snack(e.message,1)}render()};sg.append(b)});
+    return h('div',{style:'display:flex;flex-direction:column;align-items:flex-end;gap:2px'},h('span',{class:'mute small'},label),sg)};
+   col.append(media('pictures','Pictures on this site',[['','Normal'],['allow','Show'],['block','Hide','b']]),media('videos','Videos on this site',[['','Normal'],['allow','Allow'],['block','Block','b']]))}
   if(s.type!=='youtube')col.append(h('label',{class:'row small'},h('input',{type:'checkbox',checked:s.installable===false?false:true,onchange:async function(e){s.installable=e.target.checked;await saveConfigFor(dv,'Saved.')}}),'Allow home-screen shortcut'));
   col.append(btn('Remove','danger',async function(){if(!confirm('Remove '+(s.label||s.url)+' from the allowlist?'))return;delete dv.config.sites[key];await saveConfigFor(dv,'Removed.')}));
   row.append(col);list.append(row)}
@@ -2475,13 +2502,16 @@ function allowForPicker(){const seg=h('div',{class:'seg'});
  const wrap=h('div',{class:'allow-for',style:'margin-top:10px'},h('div',{class:'mute small',style:'margin-bottom:6px'},'How long to allow it'),seg,custom,until);
  wrap.__paint=paint;paint();return wrap}
 function untilText(t){const d=new Date(t),now=new Date(),time=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
- return 'until '+(d.toDateString()===now.toDateString()?time:d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})+' '+time)}
-async function addSite(dv,entry){
+ return 'until '+(d.toDateString()===now.toDateString()?time:d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})+' '+time)+leftTxt(t)}
+async function addSite(dv,entry,extra){
  const until=allowUntil();if(until<0){snack('Choose how long to allow it (at least one minute).',1);return}allowFor='always';
  const key=entry.type==='youtube'?'youtube:'+entry.id:(entry.type)+':'+hostOfUrl(entry.url)+(entry.type==='exact'?':'+Date.now():'');
  dv.config.sites=dv.config.sites||{};
  dv.config.sites[key]=entry.type==='youtube'?{type:'youtube',kind:'channel',id:entry.id,url:entry.url,label:entry.label,blockImages:false,installable:false,thumb:entry.thumb}:{type:entry.type,url:entry.url,label:entry.label,blockImages:false,installable:true,thumb:entry.thumb};
  if(until)dv.config.sites[key].until=until;
+ if(extra&&entry.type!=='youtube'){
+  if(extra.pictures){dv.config.sites[key].pictures=extra.pictures;dv.config.sites[key].blockImages=extra.pictures==='block'}
+  if(extra.videos)dv.config.sites[key].videos=extra.videos}
  await saveConfigFor(dv,'Added '+(entry.label||entry.url)+(until?', '+untilText(until):'')+'. Phones pick it up '+pickup()+'.');
 }
 /** Copies another device's (or browser's) whole config -- or just its sites, into a browser -- over this one's. */
@@ -2619,8 +2649,8 @@ function renderWinWhatsOn(m,w){
  const c=w.config||{},win=w.win||{},now=Date.now(),rows=[];
  if(!w.filterOn)rows.push('🌐  Web filter: off');
  else rows.push('🌐  Web filter: '+({off:'approved sites only',moderate:'Moderate',strict:'Strict',custom:'open web, chosen kinds closed'}[c.browserFilter||'off'])+(c.safeSearch?', SafeSearch forced':'')+(c.youtubeDns&&c.youtubeDns!=='off'?', YouTube restricted':''));
- if((c.pauseUntil||0)>now)rows.push('⏸  Paused until '+hhmm(c.pauseUntil));
- if((c.internetOffUntil||0)>now)rows.push('📵  Internet off until '+hhmm(c.internetOffUntil));
+ if((c.pauseUntil||0)>now)rows.push('⏸  Paused until '+hl(c.pauseUntil));
+ if((c.internetOffUntil||0)>now)rows.push('📵  Internet off until '+hl(c.internetOffUntil));
  const fs2=c.filterSchedule;if(fs2&&fs2.on)rows.push('🕘  '+fs2.level+' from '+fs2.from+' to '+fs2.to);
  const rules=Object.values(win.programRules||{}),noNet=rules.filter(function(x){return x==='noInternet'}).length,blk=rules.filter(function(x){return x==='blocked'}).length+(win.blockedPrograms||[]).length;
  if(blk)rows.push('🚫  '+blk+' program'+(blk===1?'':'s')+' closed when started');
@@ -3059,8 +3089,8 @@ function whatsOnRows(d){
  const add=function(icon,text,g,s){rows.push([icon,text,g,s])};
  const lvl={off:'Approved sites only',moderate:'Moderate filter (adult, gambling, drugs, scams, piracy blocked)',strict:'Strict filter (Moderate plus social media)',custom:'Open web (only the chosen kinds of site are closed)'}[c.browserFilter||'off'];
  add('🌐','Websites: '+lvl+(c.safeSearch?', SafeSearch forced':'')+(c.youtubeDns&&c.youtubeDns!=='off'?', YouTube restricted':''),'browser','access');
- if((c.pauseUntil||0)>now)add('⏸','Web filtering paused until '+hhmm(c.pauseUntil),'overview','status');
- if((c.internetOffUntil||0)>now)add('📵','Internet off until '+hhmm(c.internetOffUntil),'overview','status');
+ if((c.pauseUntil||0)>now)add('⏸','Web filtering paused until '+hl(c.pauseUntil),'overview','status');
+ if((c.internetOffUntil||0)>now)add('📵','Internet off until '+hl(c.internetOffUntil),'overview','status');
  if(c.internetOnlyApps)add('🔌','Internet only for '+(c.internetApps||[]).length+' chosen apps','internet','appnet');
  if(st.dailyLimit)add('⏱','Daily screen time: '+fmtMin(st.dailyLimit)+(st.weekendLimit?' ('+fmtMin(st.weekendLimit)+' on chosen days)':''),'time','limits');
  if(st.bedtime)add('🌙','Bedtime '+st.bedtime.from+' to '+st.bedtime.to,'time','limits');
@@ -3444,7 +3474,7 @@ function renderBar(){
 function viaChip(d){
  const s=state&&state.server;if(!s||!s.primary||!d.via)return null;
  const pi=d.via==='pi';
- return h('span',{class:'chip '+(pi?'':'warn'),title:pi?'The phone talks to your Raspberry Pi.':'The phone could not reach the Raspberry Pi and used Cloudflare, the backup.'},pi?'via Raspberry Pi':'via Cloudflare')}
+ return h('span',{class:'chip '+(pi?'':'warn'),title:pi?'The phone talks to your Raspberry Pi.':'This phone\'s last check-in went through Cloudflare, the backup, because the Raspberry Pi did not answer it in time (it can be up for everyone else). The phone goes back to the Pi by itself.'},pi?'via Raspberry Pi':'via Cloudflare (backup, last check-in)')}
 
 /** One line for each part of a phone, shown on its home page. */
 function homeSummary(d){
@@ -3463,7 +3493,7 @@ function homeSummary(d){
  const cin=c.callsIn||'all',cout=c.callsOut||'all';
  out.calls=cin==='all'&&cout==='all'?'Anyone can call and be called':(cin==='list'||cout==='list'?'Only the allowed numbers':'Contacts and allowed numbers');
  out.location=c.locationEvery?'Noted every '+c.locationEvery+' minutes':'Find it any time';
- out.internet=(c.internetOffUntil||0)>now?'Off until '+hhmm(c.internetOffUntil):(c.pauseUntil||0)>now?'Web filter paused until '+hhmm(c.pauseUntil):(c.internetOnlyApps?'Only '+(c.internetApps||[]).length+' chosen apps':'On');
+ out.internet=(c.internetOffUntil||0)>now?'Off until '+hl(c.internetOffUntil):(c.pauseUntil||0)>now?'Web filter paused until '+hl(c.pauseUntil):(c.internetOnlyApps?'Only '+(c.internetApps||[]).length+' chosen apps':'On');
  const pb=healthProblems(d),bad=pb.filter(function(x){return x.level==='bad'}).length;
  out.safety=(bad?bad+(bad===1?' thing needs fixing':' things need fixing'):pb.length?'Something to look at':'Everything works')+(c.messageAlerts?' · message alerts on':'');
  out.security=i.screenLock===undefined?'Lock, app lock, restrictions':'Screen lock '+(i.screenLock?'on':'off');
@@ -3540,9 +3570,9 @@ function controlsList(d){
   {title:'Internet only for chosen apps',on:!!c.internetOnlyApps,text:c.internetOnlyApps?word((c.internetApps||[]).length,'app','apps'):'Off',group:'internet',go:g('internet','appnet')},
   {title:'Web pages inside apps',on:!!(c.inAppBrowsers&&c.inAppBrowsers!=='off'),text:c.inAppBrowsers&&c.inAppBrowsers!=='off'?'Closed':'Open',group:'browser',go:g('browser','advanced')}];
  const rightNow=[];
- if((c.pauseUntil||0)>now)rightNow.push('Web filtering is paused until '+hhmm(c.pauseUntil));
- if((c.internetOffUntil||0)>now)rightNow.push('The internet is off until '+hhmm(c.internetOffUntil));
- if((c.restrictionsOffUntil||0)>now)rightNow.push('ALL restrictions are off until '+hhmm(c.restrictionsOffUntil));
+ if((c.pauseUntil||0)>now)rightNow.push('Web filtering is paused until '+hl(c.pauseUntil));
+ if((c.internetOffUntil||0)>now)rightNow.push('The internet is off until '+hl(c.internetOffUntil));
+ if((c.restrictionsOffUntil||0)>now)rightNow.push('ALL restrictions are off until '+hl(c.restrictionsOffUntil));
  return {parental:parental,filtering:filtering,rightNow:rightNow}}
 function renderControlsNew(m,d){
  const cl=controlsList(d);
@@ -3589,29 +3619,29 @@ function renderRightNow(col,d){
  const say=[];
  // 1. Pause the web filter.
  const paused=(c.pauseUntil||0)>now;
- if(paused)say.push('Web filter paused until '+hhmm(c.pauseUntil)+'.');
+ if(paused)say.push('Web filter paused until '+hl(c.pauseUntil)+'.');
  if(can('internet'))row.append(btn(paused?'Web filter back on':'Pause web filter','tonal',async function(){
   if(paused){c.pauseUntil=0;await save('The web filter comes back on at the next check-in.');return}
   const v=await ask('Pause the web filter',[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['60','1 hour'],['180','3 hours']],value:'60'}],'Pause','Every site opens for a while: blocked sites, kinds of site, blocked words, SafeSearch and YouTube Restricted Mode stand down. Blocked apps stay blocked. It comes back by itself, even if the phone is offline.');
-  if(!v)return;c.pauseUntil=Date.now()+Number(v.minutes)*60000;await save('Paused until '+hhmm(c.pauseUntil)+'.')}));
+  if(!v)return;c.pauseUntil=Date.now()+Number(v.minutes)*60000;await save('Paused until '+hl(c.pauseUntil)+'.')}));
  // 2. All restrictions off.
  const alloff=(c.restrictionsOffUntil||0)>now;
- if(alloff)say.push('ALL restrictions are off until '+hhmm(c.restrictionsOffUntil)+'.');
+ if(alloff)say.push('ALL restrictions are off until '+hl(c.restrictionsOffUntil)+'.');
  if(can('time'))row.append(btn(alloff?'Turn everything back on':'All restrictions off',alloff?'':'tonal',async function(){
   if(alloff){c.restrictionsOffUntil=0;await save('Restrictions come back on at the phone\'s next check-in.');return}
   const v=await ask('Turn off ALL restrictions',[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['480','8 hours'],['1440','Until I turn it back on (up to 24 hours)']],value:'60',maxMinutes:1440}],'Turn off','The website filter, blocked apps, screen time and bedtime, blocked screens, YouTube limits and internet cut-offs all stand down. The phone stays managed and keeps reporting. Everything comes back by itself when the time is up, even with no internet.');
-  if(!v)return;c.restrictionsOffUntil=Date.now()+Number(v.minutes)*60000;c.restrictionsOffSince=Date.now();await save('All restrictions off until '+hhmm(c.restrictionsOffUntil)+'.')}));
+  if(!v)return;c.restrictionsOffUntil=Date.now()+Number(v.minutes)*60000;c.restrictionsOffSince=Date.now();await save('All restrictions off until '+hl(c.restrictionsOffUntil)+'.')}));
  // 3. More time.
  if(can('time'))row.append(btn('Give more time','tonal',async function(){
   const v=await ask('Give more screen time',[{key:'minutes',label:'How much',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours']],value:'15'}],'Give time','Added to today, on top of the daily limit and the limits on single apps and sites. It starts at the phone\'s next check-in.');
   if(!v)return;await queue('Extra screen time','addTime',{minutes:Number(v.minutes)})}));
  // 4. Internet off.
  const off=(c.internetOffUntil||0)>now;
- if(off)say.push('Internet off until '+hhmm(c.internetOffUntil)+'.');
+ if(off)say.push('Internet off until '+hl(c.internetOffUntil)+'.');
  if(can('internet'))row.append(btn(off?'Internet back on':'Internet off','tonal',async function(){
   if(off){c.internetOffUntil=0;await save('The internet comes back on at the next check-in.');return}
   const v=await ask('Turn the internet off',[{key:'minutes',label:'For how long',options:[['15','15 minutes'],['30','30 minutes'],['60','1 hour'],['120','2 hours'],['240','4 hours'],['1440','Until tomorrow']],value:'60'}],'Turn off','No app can use the internet for a while. Calls and texts still work, and apps under "Internet only for chosen apps" keep theirs. It comes back by itself.');
-  if(!v)return;c.internetOffUntil=Date.now()+Number(v.minutes)*60000;await save('Internet off until '+hhmm(c.internetOffUntil)+'.')}));
+  if(!v)return;c.internetOffUntil=Date.now()+Number(v.minutes)*60000;await save('Internet off until '+hl(c.internetOffUntil)+'.')}));
  card.append(row);
  for(const t of say)card.append(h('div',{class:'mute small',style:'margin-top:8px;font-weight:500'},t));
  col.append(card)}
@@ -3690,8 +3720,13 @@ function renderGroupNew(m,d,sec,body){
  if(ess){
   ess(content,d);
   const det=h('details',{class:'more',open:open['more-'+sec]?'':null});
-  det.ontoggle=function(){open['more-'+sec]=det.open};
-  det.append(h('summary',null,'More settings'),old);
+  det.style.scrollMarginTop='72px';
+  const sum=h('summary',null,'More settings');
+  sum.onclick=function(){det.__user=true}; // only a press by the person scrolls, never the page painting itself open again
+  det.ontoggle=function(){open['more-'+sec]=det.open;
+   if(det.open&&det.__user&&det.scrollIntoView)setTimeout(function(){try{det.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){}},60);
+   det.__user=false};
+  det.append(sum,old);
   content.append(det)}
  else content.append(old);
  m.append(content)}
