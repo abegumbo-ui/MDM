@@ -15,6 +15,7 @@ import android.view.View
 import android.webkit.WebView
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.familymdm.browser.Guard
+import com.familymdm.browser.PullToRefresh
 import org.lineageos.jelly.R
 import org.lineageos.jelly.js.JsManifest
 import org.lineageos.jelly.js.JsMediaSession
@@ -49,6 +50,36 @@ class WebViewExt @JvmOverloads constructor(
     override fun lastAllowedPage(): String? = lastAllowed
 
     override fun showingBlockedPage(): Boolean = shownFor != null
+
+    // ---- pull down at the top of a page to reload it (see PullToRefresh) ----
+    private var pullStartX = 0f
+    private var pullStartY = 0f
+    private var pullFromTop = false
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                pullStartX = event.x
+                pullStartY = event.y
+                pullFromTop = scrollY == 0
+            }
+            android.view.MotionEvent.ACTION_MOVE -> if (scrollY != 0) pullFromTop = false
+            android.view.MotionEvent.ACTION_CANCEL -> pullFromTop = false
+            android.view.MotionEvent.ACTION_UP -> {
+                if (url?.startsWith("http") == true && !showingBlockedPage() &&
+                    PullToRefresh.shouldRefresh(
+                        pullStartX, pullStartY, event.x, event.y, scrollY, pullFromTop, resources.displayMetrics.density
+                    )
+                ) {
+                    android.widget.Toast.makeText(context, "Refreshing…", android.widget.Toast.LENGTH_SHORT).show()
+                    reload()
+                }
+                pullFromTop = false
+            }
+        }
+        return super.onTouchEvent(event)
+    }
 
     private lateinit var activity: WebViewExtActivity
     val requestHeaders = mutableMapOf<String?, String?>()
