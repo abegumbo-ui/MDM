@@ -243,6 +243,24 @@ test("every dashboard page, group and tab opens without an error", async () => {
     }
     vm.runInContext("(function(){var k=JSON.parse(globalThis.__keep);devices[0].siteRequests=k[0];devices[0].appRequests=k[1];devices[0].messages=k[2];uiMode='new'})()", ctx);
   }
+  // The search inside a phone also finds the pages that are not part of one phone, for those who may open them.
+  {
+    const found = (q, session) => {
+      tryRender("search '" + q + "'", (session ? "var __s2=state.session;state.session=" + session + ";" : "") + "tab='devices';openId=devices[0].id;deviceSection='overview';deviceSearch='" + q + "';render()");
+      const text = reg.get("tools").textContent;
+      vm.runInContext("deviceSearch='';" + (session ? "state.session=__s2;" : "") + "render()", ctx);
+      return text;
+    };
+    const adminHits = found("client");
+    assert.ok(adminHits.includes("Clients: give someone (a customer) their own login and page"), "searching 'client' finds the Clients page: " + adminHits.slice(0, 120));
+    assert.ok(found("customer").includes("Clients: give someone"), "'customer' finds it too");
+    assert.ok(found("qr").includes("Add a device: step by step"), "'qr' finds Add a device");
+    assert.ok(found("raspberry").includes("Server: Raspberry Pi"), "'raspberry' finds the Server page");
+    const clientHits = found("client", "{role:'client',id:'pat',name:'Pat',perms:['apps']}");
+    assert.ok(!clientHits.includes("Clients: give someone"), "a client login is not offered the Clients page");
+    assert.ok(found("qr", "{role:'client',id:'pat',name:'Pat',perms:['apps']}").includes("Add a device"), "...but is offered Add a device");
+    assert.ok(!found("client", "{role:'admin',helper:'Sam',viewOnly:true}").includes("Clients: give someone"), "a helper login is offered no extra pages");
+  }
   // The strictest option sits on the calls and texts pages and forces the two logs on.
   {
     vm.runInContext("tab='devices';openId=devices[0].id;setDeviceSection('calls');subs.calls='texts'", ctx);
