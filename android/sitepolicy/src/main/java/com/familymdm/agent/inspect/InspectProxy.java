@@ -94,6 +94,13 @@ public final class InspectProxy implements Closeable {
             list.add(new String[] {name, value});
         }
 
+        /** "Name: value; Name: value" for a log line. */
+        public String describe() {
+            StringBuilder b = new StringBuilder();
+            for (String[] h : list) b.append(b.length() == 0 ? "" : "; ").append(h[0]).append(": ").append(h[1]);
+            return b.toString();
+        }
+
         List<String[]> all() {
             return list;
         }

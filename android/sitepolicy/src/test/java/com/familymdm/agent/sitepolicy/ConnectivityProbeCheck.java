@@ -33,7 +33,10 @@ public final class ConnectivityProbeCheck {
         check(ConnectivityProbe.isProbeTunnel("connectivitycheck.gstatic.com", null), "a probe-only host is always passed through");
         check(!ConnectivityProbe.isProbeTunnel("www.google.com", "Mozilla/5.0 (Linux; Android 15; SM-A166P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"), "Chrome on the phone is still inspected");
         check(!ConnectivityProbe.isProbeTunnel("www.google.com", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"), "desktop-site mode in Chrome (a newer Chrome) is still inspected");
-        check(!ConnectivityProbe.isProbeTunnel("www.google.com", null), "no User-Agent: still inspected");
+        check(ConnectivityProbe.isProbeTunnel("www.google.com", "okhttp/2.7.5") && ConnectivityProbe.isProbeTunnel("www.google.com", "Dalvik/2.1.0 (Linux; U; Android 15; SM-A166P Build/AP3A)"), "the identity Android's own HTTP stack puts on a tunnel request is passed through too");
+        check(ConnectivityProbe.isProbeTunnel("www.google.com", null) && ConnectivityProbe.isProbeTunnel("play.googleapis.com", ""), "a tunnel request with no User-Agent at all is passed through (only these two hosts)");
+        check(!ConnectivityProbe.isProbeTunnel("www.fox.com", null) && !ConnectivityProbe.isProbeTunnel("www.fox.com", "okhttp/4.12.0"), "...never any other host");
+        check(!ConnectivityProbe.isProbeTunnel("www.google.com", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/139.0 Mobile Safari/537.36") && !ConnectivityProbe.isProbeTunnel("www.google.com", "Mozilla/5.0 (Linux; Android 15; SAMSUNG SM-A166P) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/28.0 Chrome/130.0 Mobile Safari/537.36"), "no browser is passed through");
         check(!ConnectivityProbe.isProbeTunnel("www.fox.com", ua), "the same User-Agent to another site is still inspected");
         check(!ConnectivityProbe.isProbeTunnel(null, ua), "null host never throws");
         System.out.println("ConnectivityProbeCheck OK");

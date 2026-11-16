@@ -50,7 +50,14 @@ public final class ConnectivityProbe {
         if (isProbeHost(h)) return true; // these hosts exist only for the check: nothing there to inspect
         boolean known = false;
         for (String p : PROBE_PATH_HOSTS) if (h.equals(p)) known = true;
-        return known && userAgent != null && userAgent.contains("X11; Linux x86_64") && userAgent.contains("Chrome/60.0.3112.32");
+        if (!known) return false;
+        // The check's own User-Agent, if it is on the tunnel request...
+        if (userAgent != null && userAgent.contains("X11; Linux x86_64") && userAgent.contains("Chrome/60.0.3112.32")) return true;
+        // ...but Android's HTTP stack puts its own fixed identity on a tunnel request instead (or none): "okhttp/x", "Dalvik/x", "Java/x". A browser
+        // (Chrome, our Browser, Samsung Internet) always sends its own "Mozilla/5.0 ..." there, so a browser is never passed through untouched.
+        if (userAgent == null || userAgent.trim().isEmpty()) return true;
+        String ua = userAgent.trim();
+        return ua.startsWith("okhttp/") || ua.startsWith("Dalvik/") || ua.startsWith("Java/");
     }
 
     /** True for a request that is Android's internet check (path and query as sent, e.g. "/generate_204"). */
