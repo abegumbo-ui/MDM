@@ -37,6 +37,22 @@ public final class ConnectivityProbe {
         return false;
     }
 
+    /**
+     * True for the HTTPS tunnel of Android's own internet check. Its fetch (https://www.google.com/generate_204) cannot accept the certificate
+     * browser inspection hands out (Android's network checker trusts only the system's own certificates), so with inspection on every Wi-Fi was
+     * marked "partial connectivity" and showed "!" (seen on the A16, 2026-11-15). The check is recognised by the User-Agent it always sends:
+     * Android's fixed one (Chrome 60 on desktop Linux), which no browser on a phone sends. Such a tunnel is passed through untouched, and only
+     * for the hosts that answer the check.
+     */
+    public static boolean isProbeTunnel(String host, String userAgent) {
+        String h = clean(host);
+        if (h == null) return false;
+        if (isProbeHost(h)) return true; // these hosts exist only for the check: nothing there to inspect
+        boolean known = false;
+        for (String p : PROBE_PATH_HOSTS) if (h.equals(p)) known = true;
+        return known && userAgent != null && userAgent.contains("X11; Linux x86_64") && userAgent.contains("Chrome/60.0.3112.32");
+    }
+
     /** True for a request that is Android's internet check (path and query as sent, e.g. "/generate_204"). */
     public static boolean isProbe(String host, String path) {
         if (isProbeHost(host)) return true;

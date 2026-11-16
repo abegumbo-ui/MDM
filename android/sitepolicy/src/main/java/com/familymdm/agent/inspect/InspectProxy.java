@@ -43,6 +43,14 @@ public final class InspectProxy implements Closeable {
         /** True to tunnel this host untouched (banks, apps that insist on their own certificates). */
         boolean bypass(String host, int port);
 
+        /**
+         * True to tunnel this one connection untouched, judged by the tunnel request itself (its host and headers): Android's own
+         * internet check, whose HTTPS fetch refuses the certificate the inspection hands out and would leave every Wi-Fi marked "!".
+         */
+        default boolean bypassTunnel(String host, int port, Headers connectRequest) {
+            return false;
+        }
+
         /** True when this host may not be reached at all (a kind of site that is closed on the phone). Checked before anything is tunnelled. */
         default boolean refuses(String host) {
             return false;
@@ -266,8 +274,9 @@ public final class InspectProxy implements Closeable {
             int port = colon > 0 ? Integer.parseInt(target.substring(colon + 1)) : 443;
             if (host.startsWith("[") && host.endsWith("]")) host = host.substring(1, host.length() - 1);
             OutputStream out = client.getOutputStream();
-            if (!tlsPorts.contains(port) || inspector.bypass(host, port)) {
-                if (inspector.refuses(host)) {
+            boolean checkTunnel = inspector.bypassTunnel(host, port, headers);
+            if (!tlsPorts.contains(port) || inspector.bypass(host, port) || checkTunnel) {
+                if (!checkTunnel && inspector.refuses(host)) {
                     out.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
                     return;
                 }

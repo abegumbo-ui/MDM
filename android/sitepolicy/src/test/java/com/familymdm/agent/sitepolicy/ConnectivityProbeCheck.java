@@ -26,6 +26,16 @@ public final class ConnectivityProbeCheck {
         check(!ConnectivityProbe.isProbe("www.fox.com", "/generate_204"), "another site with the same path is not the check");
         check(!ConnectivityProbe.isProbe("www.google.com", null), "no path is not the check (never throws)");
         check(ConnectivityProbe.isProbe("connectivitycheck.gstatic.com", "/anything"), "the probe-only host passes whatever the path");
+        // The HTTPS fetch of the check is passed through untouched (it cannot accept the inspection certificate), recognised by Android's fixed User-Agent.
+        String ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.32 Safari/537.36";
+        check(ConnectivityProbe.isProbeTunnel("www.google.com", ua), "the check's HTTPS tunnel to www.google.com is passed through");
+        check(ConnectivityProbe.isProbeTunnel("play.googleapis.com", ua), "...also to play.googleapis.com");
+        check(ConnectivityProbe.isProbeTunnel("connectivitycheck.gstatic.com", null), "a probe-only host is always passed through");
+        check(!ConnectivityProbe.isProbeTunnel("www.google.com", "Mozilla/5.0 (Linux; Android 15; SM-A166P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"), "Chrome on the phone is still inspected");
+        check(!ConnectivityProbe.isProbeTunnel("www.google.com", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"), "desktop-site mode in Chrome (a newer Chrome) is still inspected");
+        check(!ConnectivityProbe.isProbeTunnel("www.google.com", null), "no User-Agent: still inspected");
+        check(!ConnectivityProbe.isProbeTunnel("www.fox.com", ua), "the same User-Agent to another site is still inspected");
+        check(!ConnectivityProbe.isProbeTunnel(null, ua), "null host never throws");
         System.out.println("ConnectivityProbeCheck OK");
     }
 }

@@ -179,7 +179,13 @@ public class ProxyCheck {
     static class TestInspector implements InspectProxy.Inspector {
         int bypassPort = -1;
 
+        String tunnelAgent;
+
         public boolean bypass(String host, int port) { return port == bypassPort; }
+
+        public boolean bypassTunnel(String host, int port, InspectProxy.Headers connect) {
+            return tunnelAgent != null && tunnelAgent.equals(connect.get("User-Agent"));
+        }
 
         public InspectProxy.Response onRequest(InspectProxy.Request r) {
             if (r.path.equals("/blocked")) return InspectProxy.Response.html(403, "blocked by rule");
@@ -221,6 +227,33 @@ public class ProxyCheck {
     }
 
     static Map<String, java.util.List<String>> lastHeaders;
+
+    /** A request through the proxy's tunnel with the User-Agent put on the CONNECT itself (what Android's own internet check sends). */
+    static String rawTunnel(int proxyPort, SSLContext trust, String host, int port, String path, String userAgent) throws Exception {
+        try (Socket s = new Socket("127.0.0.1", proxyPort)) {
+            s.setSoTimeout(15000);
+            OutputStream o = s.getOutputStream();
+            o.write(("CONNECT " + host + ":" + port + " HTTP/1.1\r\nHost: " + host + ":" + port + "\r\nUser-Agent: " + userAgent + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            o.flush();
+            InputStream in = s.getInputStream();
+            StringBuilder head = new StringBuilder();
+            while (!head.toString().endsWith("\r\n\r\n")) {
+                int b = in.read();
+                if (b < 0) throw new java.io.IOException("the proxy closed the tunnel request");
+                head.append((char) b);
+            }
+            if (!head.toString().startsWith("HTTP/1.1 200")) throw new java.io.IOException("tunnel refused: " + head);
+            SSLSocket tls = (SSLSocket) trust.getSocketFactory().createSocket(s, host, port, true);
+            tls.startHandshake();
+            tls.getOutputStream().write(("GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            tls.getOutputStream().flush();
+            ByteArrayOutputStream b = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = tls.getInputStream().read(buf)) >= 0) b.write(buf, 0, n);
+            return b.toString("UTF-8");
+        }
+    }
 
     public static void main(String[] args) throws Exception {
         CertAuthority originCa = newCa("Origin CA");
@@ -318,6 +351,20 @@ public class ProxyCheck {
             refused = true;
         }
         check(refused, "a browser that does not have the phone's CA installed rejects inspected connections (nothing is trusted silently)");
+
+        // Android's own internet check: its HTTPS tunnel is recognised by the request itself and passed through untouched (it cannot accept our certificate).
+        rules.bypassPort = -1;
+        rules.tunnelAgent = "network-check-agent";
+        String viaCheck = rawTunnel(pp2, trusting(originCa.caCertificate()), "origin.test", sp, "/hello", "network-check-agent");
+        check(viaCheck.contains("Hello, world"), "a tunnel recognised as the internet check is passed through (the check saw the website's real certificate)");
+        boolean otherRefused = false;
+        try {
+            rawTunnel(pp2, trusting(originCa.caCertificate()), "origin.test", sp, "/hello", "some-browser");
+        } catch (Exception e) {
+            otherRefused = true;
+        }
+        check(otherRefused, "any other tunnel to the same host is still looked inside");
+        rules.tunnelAgent = null;
 
         // ---- the YouTube rules, called directly ----
         YoutubeInspector yt = new YoutubeInspector(true, new HashSet<>(Collections.singleton("bank.test")));

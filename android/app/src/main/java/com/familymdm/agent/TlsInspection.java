@@ -63,6 +63,9 @@ final class TlsInspection {
     /** Forwards to whichever rules are current, so a policy change never needs a restart. */
     private static final InspectProxy.Inspector LIVE = new InspectProxy.Inspector() {
         public boolean bypass(String host, int port) { return rules.bypass(host, port); }
+        public boolean bypassTunnel(String host, int port, InspectProxy.Headers connect) {
+            return com.familymdm.agent.sitepolicy.ConnectivityProbe.isProbeTunnel(host, connect == null ? null : connect.get("User-Agent"));
+        }
         public boolean refuses(String host) {
             Context c = appContext;
             // With an approved page or site on this phone a closed host is not refused here, before anything is seen: it is inspected and every
