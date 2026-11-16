@@ -90,6 +90,7 @@ public final class Guard {
             FilterStore.setBlockedWords(c, b.getStringArray("blockedWords"));
             FilterStore.setBlockImageSearch(c, b.getBoolean("blockImageSearch", false));
             FilterStore.setPictureGuard(c, b.getString("pictureGuard", "off"));
+            FilterStore.setSiteMedia(c, b.getString("pictureSiteModes", ""), b.getString("videoSiteModes", ""));
             FilterStore.setSwitches(c, b.getBoolean("safeSearch", true), b.getBoolean("adultBlock", true), b.getBoolean("allowSearch", true));
             FilterStore.setNoPictureSites(c, b.getStringArray("noPictureSites"));
             FilterStore.setSkinWho(c, b.getString("skinWho", "all"));
@@ -587,6 +588,9 @@ public final class Guard {
             if (filterBlocks) return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
             if (!covered && FilterStore.blockAds(c) && com.familymdm.agent.sitepolicy.YoutubeScripts.isAdRequest(url)) return noContent();
             String guard = FilterStore.pictureGuard(c);
+            // What was chosen for this site (show as they are, nudity only, nudity and skin) wins over the general setting.
+            String siteGuard = FilterStore.siteMode(c, false, pageHost, host);
+            if (siteGuard != null) guard = siteGuard;
             // Search results shown with skin covered: YouTube's video pictures get the skin covering.
             if ("off".equals(guard) && "skin".equals(FilterStore.youtubeSearchPictures(c)) && "channels".equals(FilterStore.youtubeMode(c))
                     && url.matches("^https://i[0-9]?\\.ytimg\\.com/vi(_webp)?/.*")) guard = "skin";
@@ -764,8 +768,19 @@ public final class Guard {
 
     /** "Cover skin" also covers skin in videos (assets/video_skin.js), or null when that setting is off. */
     public static String videoScript(Context ctx) {
+        return videoScript(ctx, null);
+    }
+
+    /** The same for the page at this address. */
+    public static String videoScriptForUrl(Context ctx, String url) {
+        return videoScript(ctx, SitePolicy.hostOf(url));
+    }
+
+    /** The same for the page on pageHost: what was chosen for that site's videos wins over the general setting. */
+    public static String videoScript(Context ctx, String pageHost) {
         Context c = ctx.getApplicationContext();
-        if (!"skin".equals(FilterStore.pictureGuard(c))) return null;
+        String site = FilterStore.siteMode(c, true, pageHost, null);
+        if (!"skin".equals(site != null ? site : FilterStore.pictureGuard(c))) return null;
         if (videoSkinJs == null) {
             try (java.io.InputStream in = c.getAssets().open("video_skin.js")) {
                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();

@@ -1015,6 +1015,7 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   out.videoAllow = siteHosts((s) => s.videos === "allow");
   out.noVideoSites = siteHosts((s) => s.videos === "block");
   // "Filter" on a site: its pictures / videos are checked on the phone (skin covered) even when no filter is on everywhere.
+  out.pictureShowSites = siteHosts((s) => s.pictures === "allow"); // "Show as they are": the general picture filter skips these
   out.pictureFilterSites = siteHosts((s) => s.pictures === "filter");
   out.videoFilterSites = siteHosts((s) => s.videos === "filter");
   // "Filter nudity only" (pictures and videos each on their own): the same check as Filter, without covering skin that is not nudity.

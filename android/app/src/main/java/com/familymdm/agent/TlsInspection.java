@@ -299,6 +299,7 @@ final class TlsInspection {
                 filterPics.isEmpty() ? null : new ProxyPictureFilter(c.getApplicationContext(), "skin", policy.optString("skinWho", "all")),
                 filterVids.isEmpty() ? null : com.familymdm.agent.inspect.YoutubeInspector.videoSkinScript());
         // "Filter nudity only": only what may show nudity is covered (pictures by the on-phone checker, videos frame by frame through the same checker).
+        rules.setShowPictureSites(hostSet(policy.optJSONArray("pictureShowSites")));
         Set<String> nudePics = hostSet(policy.optJSONArray("pictureNudityFilterSites")), nudeVids = hostSet(policy.optJSONArray("videoNudityFilterSites"));
         rules.setSiteNudityFilters(nudePics, nudeVids,
                 nudePics.isEmpty() ? null : new ProxyPictureFilter(c.getApplicationContext(), "nudity", policy.optString("skinWho", "all")),

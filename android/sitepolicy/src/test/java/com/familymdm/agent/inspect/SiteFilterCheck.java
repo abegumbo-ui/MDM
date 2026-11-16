@@ -93,6 +93,19 @@ public final class SiteFilterCheck {
         check(!vidOnly.rewrites(req("v.example", "/a.jpg", null, "image"), "image/jpeg") && vidOnly.rewrites(req("v.example", "/", null, "document"), "text/html"), "nudity only on videos does not touch that site's pictures");
         check(YoutubeInspector.videoNudityScript() != null && YoutubeInspector.videoNudityScript().contains("ask.mdm.invalid/nudity"), "the nudity video script is packed with the proxy");
 
+        // "Show as they are": the general filter skips that site (pictures and videos), on and from it; every other site is still filtered.
+        YoutubeInspector show = new YoutubeInspector(false, new HashSet<String>());
+        show.setPictureFilter(p -> generalChecked);
+        show.setPageScript("/*GENERAL-SKIN*/");
+        show.setShowPictureSites(set("asis.example"));
+        show.setVideoRules(false, set("asis.example"), set());
+        check(!show.rewrites(req("asis.example", "/a.jpg", null, "image"), "image/jpeg"), "a picture on a site with Show as they are is not checked");
+        check(!show.rewrites(req("cdn.example.net", "/a.jpg", "https://www.asis.example/page", "image"), "image/jpeg"), "...nor one its page loads from elsewhere");
+        check(Arrays.equals(show.rewrite(req("asis.example", "/a.jpg", null, "image"), jpeg), jpeg), "...it arrives as it is");
+        check(show.rewrites(req("other.example", "/a.jpg", null, "image"), "image/jpeg") && Arrays.equals(show.rewrite(req("other.example", "/a.jpg", null, "image"), jpeg), generalChecked), "any other site is still checked by the general filter");
+        check(show.pageScriptFor(req("asis.example", "/", null, "document")) == null, "the general video cover is not added to a site with Allow as they are");
+        check("/*GENERAL-SKIN*/".equals(show.pageScriptFor(req("other.example", "/", null, "document"))), "...but other sites keep it");
+
         // Nothing chosen: nothing changes.
         YoutubeInspector none = new YoutubeInspector(false, new HashSet<String>());
         none.setSiteFilters(set(), set(), null, null);

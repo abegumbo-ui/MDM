@@ -111,7 +111,7 @@ internal class WebClient(
         Guard.afterLoadScript(context, url)?.let { view.evaluateJavascript(it, null) }
         val trusted = (view as? WebViewExt)?.trustedPage == true
         view.evaluateJavascript("window.__mdmTrusted=$trusted;", null)
-        Guard.videoScript(context)?.let { view.evaluateJavascript(it, null) }
+        Guard.videoScriptForUrl(context, url)?.let { view.evaluateJavascript(it, null) }
         if (Uri.parse(url).host?.endsWith("youtube.com") == true) Guard.downloadScript(context)?.let { view.evaluateJavascript(it, null) }
         Guard.adsPageScript(context, (view as? WebViewExt)?.pageHost)?.let { view.evaluateJavascript(it, null) }
         urlBarLayout.onPageLoadFinished(view.certificate)

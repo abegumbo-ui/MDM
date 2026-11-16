@@ -232,6 +232,29 @@ public class GuardTest {
     }
 
     @Test
+    public void perSiteChoices_winOverTheGeneralSetting() throws Exception {
+        connected("open");
+        FilterStore.setPictureGuard(c, "nudity");
+        FilterStore.setSiteMedia(c, "{\"asis.example\":\"off\",\"strict.example\":\"skin\",\"nude.example\":\"nudity\"}", "{\"vidskin.example\":\"skin\",\"vidoff.example\":\"off\"}");
+        assertEquals("off", FilterStore.siteMode(c, false, "asis.example", "cdn.other.net"));
+        assertEquals("the page's site decides, whatever site the file comes from", "off", FilterStore.siteMode(c, false, "www.asis.example", "images.cdn.net"));
+        assertEquals("off", FilterStore.siteMode(c, false, null, "img.asis.example"));
+        assertEquals("skin", FilterStore.siteMode(c, false, "strict.example", null));
+        assertEquals("nudity", FilterStore.siteMode(c, false, "m.nude.example", null));
+        assertNull("no choice for this site: the general setting applies", FilterStore.siteMode(c, false, "plain.example", "cdn.plain.net"));
+        assertNull("look-alike names are not caught", FilterStore.siteMode(c, false, "notasis.example", null));
+        assertNull("videos have their own map", FilterStore.siteMode(c, true, "asis.example", null));
+        FilterStore.setPictureGuard(c, "skin");
+        assertNotNull("general cover skin, and nothing chosen for this site: videos covered", Guard.videoScript(c, "plain.example"));
+        assertNull("Allow as they are on a site: its videos are not covered", Guard.videoScript(c, "vidoff.example"));
+        FilterStore.setPictureGuard(c, "off");
+        assertNotNull("Filter chosen for one site's videos: covered there only", Guard.videoScript(c, "www.vidskin.example"));
+        assertNull(Guard.videoScript(c, "plain.example"));
+        FilterStore.setSiteMedia(c, "", "");
+        assertNull("nothing chosen: nothing changes", FilterStore.siteMode(c, false, "asis.example", null));
+    }
+
+    @Test
     public void youtube_onlyWhatIAllow_holdsEvenOnTheOpenLevel_andOffBlocksIt() throws Exception {
         connected("open");
         FilterStore.setYoutubeMode(c, "open");

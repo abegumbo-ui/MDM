@@ -297,15 +297,30 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         }
         if (!filterPictureSites.isEmpty() && sitePictureFilter != null) {
             if (!refererRead) referer = SitePolicy.hostOf(r.headers.get("Referer"));
+            refererRead = true;
             if (inList(filterPictureSites, referer) || inList(filterPictureSites, r.host)) return sitePictureFilter;
         }
+        // "Show as they are" chosen for a site: its pictures are left alone, even when a general filter is on for the phone.
+        if (!showPictureSites.isEmpty() && pictureFilter != null) {
+            if (!refererRead) referer = SitePolicy.hostOf(r.headers.get("Referer"));
+            if (inList(showPictureSites, referer) || inList(showPictureSites, r.host)) return null;
+        }
         return pictureFilter;
+    }
+
+    private volatile Set<String> showPictureSites = java.util.Collections.emptySet();
+
+    /** The sites with "Show as they are" chosen for their pictures: the general picture filter skips them. */
+    public void setShowPictureSites(Set<String> sites) {
+        showPictureSites = sites == null ? java.util.Collections.<String>emptySet() : sites;
     }
 
     /** The page script for a page: the one chosen for the site's videos (nudity only, or nudity and skin), else the general one (skin covered in videos everywhere). */
     String pageScriptFor(InspectProxy.Request r) {
         if (nudityVideoScript != null && !nudityVideoSites.isEmpty() && inList(nudityVideoSites, r.host)) return nudityVideoScript;
         if (siteVideoScript != null && !filterVideoSites.isEmpty() && inList(filterVideoSites, r.host)) return siteVideoScript;
+        // "Allow as they are" chosen for a site's videos: the general video cover skips it.
+        if (pageScript != null && inList(videoAllow, r.host)) return null;
         return pageScript;
     }
 
