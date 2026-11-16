@@ -64,7 +64,11 @@ final class TlsInspection {
     private static final InspectProxy.Inspector LIVE = new InspectProxy.Inspector() {
         public boolean bypass(String host, int port) { return rules.bypass(host, port); }
         public boolean bypassTunnel(String host, int port, InspectProxy.Headers connect) {
-            return com.familymdm.agent.sitepolicy.ConnectivityProbe.isProbeTunnel(host, connect == null ? null : connect.get("User-Agent"));
+            boolean pass = com.familymdm.agent.sitepolicy.ConnectivityProbe.isProbeTunnel(host, connect == null ? null : connect.get("User-Agent"));
+            // What the tunnel request looked like, for the two hosts the internet check uses (so a Wi-Fi "!" can be explained from the log).
+            if ("www.google.com".equalsIgnoreCase(host) || "play.googleapis.com".equalsIgnoreCase(host))
+                android.util.Log.i("MdmInspect", "tunnel to " + host + ":" + port + (pass ? " passed through" : " inspected") + " [" + (connect == null ? "" : connect.describe()) + "]");
+            return pass;
         }
         public boolean refuses(String host) {
             Context c = appContext;
