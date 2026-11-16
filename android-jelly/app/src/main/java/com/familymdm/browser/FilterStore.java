@@ -206,6 +206,32 @@ final class FilterStore {
         return prefs(c).getString("pictureGuard", "off");
     }
 
+    /** What was chosen for single sites: {"host":"off"|"nudity"|"skin"} for pictures and for videos ("off" = show as they are). */
+    static void setSiteMedia(Context c, String pictures, String videos) {
+        prefs(c).edit().putString("pictureSiteModes", pictures == null ? "" : pictures).putString("videoSiteModes", videos == null ? "" : videos).apply();
+    }
+
+    /** The mode chosen for the site a page is on (or the site a file comes from), or null when no site choice covers it: the general setting applies then. */
+    static String siteMode(Context c, boolean videos, String pageHost, String host) {
+        String json = prefs(c).getString(videos ? "videoSiteModes" : "pictureSiteModes", "");
+        if (json == null || json.length() < 3) return null;
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(json);
+            for (String h : new String[] {pageHost, host}) {
+                if (h == null) continue;
+                String x = h.toLowerCase(java.util.Locale.ROOT);
+                if (x.startsWith("www.")) x = x.substring(4);
+                java.util.Iterator<String> it = o.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    if (x.equals(k) || x.endsWith("." + k)) return o.optString(k, null);
+                }
+            }
+        } catch (org.json.JSONException ignored) {
+        }
+        return null;
+    }
+
     static void setBlockImageSearch(Context c, boolean on) {
         prefs(c).edit().putBoolean("blockImageSearch", on).apply();
     }

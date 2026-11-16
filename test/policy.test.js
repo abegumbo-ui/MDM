@@ -481,4 +481,7 @@ test("per site, pictures and videos each have their own choice (normal, allow/sh
   assert.deepEqual(nude.videoFilterSites, ["nudepics.example"], "nudity and skin for videos is a separate list");
   assert.equal(normalizeConfig({ sites: { a: { type: "domain", url: "https://x.example", pictures: "nudity" } } }).sites.a.blockImages, false, "checking for nudity does not hide pictures");
   assert.deepEqual(buildAgentPolicy(normalizeConfig({}), [], {}).videoNudityFilterSites, [], "no sites, no lists");
+  // "Show as they are" for pictures is its own list too (the general picture filter skips those sites).
+  assert.deepEqual(p.pictureShowSites, ["showall.example"], "pictures shown as they are");
+  assert.deepEqual(buildAgentPolicy(normalizeConfig({}), [], {}).pictureShowSites, [], "no sites, no list");
 });

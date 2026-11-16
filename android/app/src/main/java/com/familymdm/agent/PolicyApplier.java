@@ -125,6 +125,23 @@ final class PolicyApplier {
         return out;
     }
 
+    /** {"host":"off"|"nudity"|"skin"}: the per-site choices for pictures (or videos), as text for the Browser. */
+    static String siteModes(JSONObject policy, String showKey, String nudityKey, String skinKey) {
+        JSONObject o = new JSONObject();
+        String[][] keys = {{showKey, "off"}, {nudityKey, "nudity"}, {skinKey, "skin"}};
+        try {
+            for (String[] k : keys) {
+                JSONArray a = policy.optJSONArray(k[0]);
+                for (int i = 0; a != null && i < a.length(); i++) {
+                    String h = a.optString(i, "").trim().toLowerCase(java.util.Locale.ROOT);
+                    if (!h.isEmpty()) o.put(h, k[1]);
+                }
+            }
+        } catch (JSONException ignored) {
+        }
+        return o.toString();
+    }
+
     /** Launchable apps (what shows in the app drawer) plus apps this agent has hidden. */
     static JSONArray collectPackages(Context c) throws JSONException {
         PackageManager pm = c.getPackageManager();
@@ -994,6 +1011,9 @@ final class PolicyApplier {
             String pictureGuard = policy.optString("pictureGuard", "off");
             String browserLook = policy.optString("browserLook", "classic");
             String skinWho = policy.optString("skinWho", "all");
+            // What was chosen for single sites (host -> "off" = show as they are, "nudity", "skin"): the Browser's own checks look here before the general setting.
+            String pictureSiteModes = siteModes(policy, "pictureShowSites", "pictureNudityFilterSites", "pictureFilterSites");
+            String videoSiteModes = siteModes(policy, "videoAllow", "videoNudityFilterSites", "videoFilterSites");
             JSONArray acArr = policy.optJSONArray("adsCoveredSites");
             String[] adsCovered = new String[acArr == null ? 0 : acArr.length()];
             for (int i = 0; i < adsCovered.length; i++) adsCovered[i] = acArr.optString(i);
@@ -1010,7 +1030,7 @@ final class PolicyApplier {
             JSONObject siteLimitsNow = stForBrowser == null ? null : stForBrowser.optJSONObject("siteLimits");
             String siteLimitsStr = siteLimitsNow == null ? "" : siteLimitsNow.toString();
             long siteFreeUntil = Math.max(Agent.prefs(c).getLong("timeFreeUntil", 0), Agent.prefs(c).getLong("restrictionsOffUntil", 0));
-            String cacheKey = "bundle2|" + siteLimitsStr + "|" + siteFreeUntil + "|" + json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide") + "|" + policy.optBoolean("youtubeSignIn", false) + "|" + policy.optBoolean("downloads", true);
+            String cacheKey = "bundle2|" + siteLimitsStr + "|" + siteFreeUntil + "|" + json + "|" + browseUntil + "|" + filterTier + "|" + filterBase + "|" + youtubeMode + "|" + blockImages + "|" + Arrays.toString(words) + "|" + blockImageSearch + "|" + pictureGuard + "|" + browserLook + "|" + Arrays.toString(noPictureSites) + "|" + skinWho + "|" + pictureSiteModes + "|" + videoSiteModes + "|" + Arrays.toString(adsCovered) + "|" + adsAutoCover + "|" + blockAdsB + "|" + policy.optBoolean("youtubeSearch", true) + "|" + policy.optString("youtubeSearchPictures", "hide") + "|" + policy.optBoolean("youtubeSignIn", false) + "|" + policy.optBoolean("downloads", true);
             // Only skip when the Browser really holds these rules now: it loses them when it is removed and
             // installed again, and then it would look "not connected" (the connect screen) until a rule changed.
             Bundle held = null;
@@ -1037,6 +1057,8 @@ final class PolicyApplier {
             b.putString("browserLook", browserLook);
             b.putStringArray("noPictureSites", noPictureSites);
             b.putString("skinWho", skinWho);
+            b.putString("pictureSiteModes", pictureSiteModes);
+            b.putString("videoSiteModes", videoSiteModes);
             b.putStringArray("adsCoveredSites", adsCovered);
             b.putBoolean("adsAutoCover", adsAutoCover);
             b.putBoolean("blockAds", blockAdsB);
