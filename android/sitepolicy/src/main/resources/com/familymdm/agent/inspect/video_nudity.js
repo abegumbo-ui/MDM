@@ -51,11 +51,14 @@
     frame();
 
     function verdict(nude, checked) {
-      if (!checked) { st.covered = false; st.checked = true; return; } // this phone has no checker: nothing to go by
-      if (nude) { st.covered = true; st.clean = 0; st.checked = true; return; }
-      st.clean++;
-      if (!st.checked || st.clean >= CLEAN) st.covered = false;
-      st.checked = true;
+      if (!checked) { st.covered = false; st.checked = true; } // this phone has no checker: nothing to go by
+      else if (nude) { st.covered = true; st.clean = 0; st.checked = true; }
+      else {
+        st.clean++;
+        if (!st.checked || st.clean >= CLEAN) st.covered = false;
+        st.checked = true;
+      }
+      place(); // the layer follows at once, not only on the next animation frame
     }
 
     function check() {
