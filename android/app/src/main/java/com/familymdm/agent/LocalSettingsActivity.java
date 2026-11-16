@@ -148,7 +148,7 @@ public class LocalSettingsActivity extends Activity {
                     put("blockUnlisted", on);
                     commit();
                 });
-        toggle(sw, "Make Browser the only browser", "Replaces Chrome (and any other browser) as the handler for web links, so links open the separate Browser app, which only opens pages on the allowlist (tap a blocked page's \"Allow\" with the master code). Install the Browser app first, and block Chrome itself on the Apps list so it can't be opened directly.",
+        toggle(sw, "Make Browser the only browser", "Chrome, Samsung Internet and every other browser are taken off the phone (hidden), so web links open the Browser, which only opens pages on the allowlist (tap a blocked page's \"Allow\" with the master code). Turn this off and they come back.",
                 cfg.optBoolean("restrictBrowsing"), on -> {
                     put("restrictBrowsing", on);
                     commit();

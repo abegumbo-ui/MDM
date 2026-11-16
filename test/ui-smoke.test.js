@@ -207,19 +207,41 @@ test("every dashboard page, group and tab opens without an error", async () => {
     assert.ok(!plain.pictures && !plain.videos, "no choice on the card means the site follows the usual settings");
     // The list of allowed sites shows the plain sentence and one control for pictures and one for videos (no more four tick boxes).
     const list = tryRender("allowed sites list", "render()");
-    assert.ok(list.includes("Every page of this site opens") && list.includes("Only this one page opens"), "the list says what each entry opens");
+    assert.ok(list.includes("This whole site and all its sub-sites") && list.includes("Only this one page"), "the list says what each entry opens (the whole site and its sub-sites, or one page)");
+    assert.ok(list.includes("Allowed until you remove it"), "...and for how long (until removed, when no time was chosen)");
     assert.ok(list.includes("Pictures on this site") && list.includes("Videos on this site"), "each site has a pictures control and a videos control");
     assert.ok(!list.includes("Allow pictures") && !list.includes("Block pictures"), "the four confusing tick boxes are gone");
     // Pictures and videos each have a dropdown with Filter among the choices, so one can be filtered while the other is blocked.
-    for (const w of ["Show as they are", "Filter (skin covered)", "Hide", "Allow as they are", "Block", "Normal (the phone's general setting)", "Filter checks each picture (or video) on the phone first"])
+    for (const w of ["Show as they are", "Filter nudity only", "Filter nudity and skin", "Hide", "Allow as they are", "Block", "Normal (the phone's general setting)", "each picture or video is checked on the phone and only what may show nudity is covered"])
       assert.ok(list.includes(w), "the site list offers: " + w);
     const card = tryRender("approval card with dropdowns", "devices[0].config.sites={};subs.browser='sites';render()");
-    assert.ok(card.includes("Filter (skin covered)") && card.includes("you can filter the pictures and block the videos on the same site"), "the approval card offers Filter too, and says they are separate");
+    assert.ok(card.includes("Filter nudity only") && card.includes("Filter nudity and skin") && card.includes("you can filter the pictures and block the videos on the same site"), "the approval card offers both filters too, and says they are separate");
     await vm.runInContext("addSite(devices[0],{type:'domain',url:'filterpics.example',label:'filterpics.example'},{pictures:'filter',videos:'block'})", ctx);
     const mixed = JSON.parse(vm.runInContext("JSON.stringify(Object.values(devices[0].config.sites).filter(function(x){return x.url==='filterpics.example'})[0])", ctx));
     assert.equal(mixed.pictures, "filter", "pictures filtered...");
     assert.equal(mixed.videos, "block", "...while the videos are blocked");
-    assert.equal(mixed.blockImages, false, "filtering is not hiding");    await vm.runInContext("(function(){devices[0].config.sites=JSON.parse(__sites0);return saveConfigFor(devices[0],'x')})()", ctx);
+    assert.equal(mixed.blockImages, false, "filtering is not hiding");
+    await vm.runInContext("addSite(devices[0],{type:'domain',url:'nudeonly.example',label:'nudeonly.example'},{pictures:'nudity',videos:'nudity'})", ctx);
+    const nudeOnly = JSON.parse(vm.runInContext("JSON.stringify(Object.values(devices[0].config.sites).filter(function(x){return x.url==='nudeonly.example'})[0])", ctx));
+    assert.equal(nudeOnly.pictures, "nudity", "pictures: nudity only...");
+    assert.equal(nudeOnly.videos, "nudity", "...and videos: nudity only, each chosen on its own");
+    // The New look lists the approved sites too: the same pictures and videos choices, what each opens, and for how long.
+    const ess = tryRender("approved sites, new look", "uiMode='new';tab='devices';openId=devices[0].id;deviceSection='browser';render()");
+    const essPage = tryRender("approved sites, new look (section)", "(function(){var box=document.createElement('div');essBrowser(box,devices[0]);document.getElementById('main').append(box)})()");
+    assert.ok(essPage.includes("This whole site and all its sub-sites") && essPage.includes("Allowed until you remove it"), "the New look list says what each site opens and for how long: " + essPage.slice(0, 200));
+    for (const w of ["Filter nudity only", "Filter nudity and skin"]) assert.ok(essPage.includes(w), "the New look dropdowns offer: " + w);    await vm.runInContext("(function(){devices[0].config.sites=JSON.parse(__sites0);return saveConfigFor(devices[0],'x')})()", ctx);
+  }
+  // Top of the Devices page: everything waiting for you in one place, in both looks (and one calm line when there is nothing).
+  {
+    vm.runInContext("globalThis.__keep=JSON.stringify([devices[0].siteRequests||[],devices[0].appRequests||[],devices[0].messages||[]])", ctx);
+    for (const look of ["new", "legacy"]) {
+      const calm = tryRender("devices page, nothing waiting, " + look, "uiMode='" + look + "';tab='devices';openId=null;openBrowserId=null;openWinId=null;devices[0].siteRequests=[];devices[0].appRequests=[];devices[0].messages=[];render()");
+      assert.ok(calm.includes("Requests and notifications"), look + ": the Devices page starts with Requests and notifications");
+      const busy = tryRender("devices page, something waiting, " + look, "devices[0].siteRequests=[{url:'https://asked.example/page',at:Date.now(),note:'for school'}];devices[0].messages=[{id:'m1',msg:'Hello from the phone',at:Date.now()}];render()");
+      assert.ok(busy.includes("Requests and notifications (") && busy.includes("asked.example") && busy.includes("Hello from the phone"), look + ": a site request and a message show at the top, with their buttons");
+      assert.ok(busy.indexOf("Requests and notifications") < busy.indexOf("Add device") + 4000, look + ": and they come before the list of devices");
+    }
+    vm.runInContext("(function(){var k=JSON.parse(globalThis.__keep);devices[0].siteRequests=k[0];devices[0].appRequests=k[1];devices[0].messages=k[2];uiMode='new'})()", ctx);
   }
   // The strictest option sits on the calls and texts pages and forces the two logs on.
   {

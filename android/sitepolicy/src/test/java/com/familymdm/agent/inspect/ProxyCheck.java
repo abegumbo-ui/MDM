@@ -183,6 +183,7 @@ public class ProxyCheck {
 
         public InspectProxy.Response onRequest(InspectProxy.Request r) {
             if (r.path.equals("/blocked")) return InspectProxy.Response.html(403, "blocked by rule");
+            if (r.path.equals("/frame")) return InspectProxy.Response.json(200, "{\"got\":\"" + new String(r.body, StandardCharsets.UTF_8) + "\"}");
             r.headers.set("X-Added", "yes");
             return null;
         }
@@ -260,6 +261,10 @@ public class ProxyCheck {
         String blocked = get(pp, browser, "origin.test", op, "/blocked", "GET", null, st);
         check(st[0] == 403 && blocked.contains("blocked by rule"), "a rule can answer a request itself");
         check(hits.getOrDefault("/blocked", new AtomicInteger()).get() == before, "...without the website ever being contacted");
+        // A page's own request to the filter (a video frame to be checked): the filter sees what was posted, and the page may read the answer.
+        String framed = get(pp, browser, "origin.test", op, "/frame", "POST", "data:image/jpeg;base64,AAAA", st);
+        check(st[0] == 200 && framed.contains("data:image/jpeg;base64,AAAA"), "a rule sees the body a page posted to it");
+        check(lastHeaders != null && lastHeaders.toString().contains("Access-Control-Allow-Origin") && lastHeaders.toString().contains("application/json"), "...and its answer can be read by the page that asked (JSON, with access allowed)");
 
         String html = get(pp, browser, "origin.test", op, "/html", "GET", null, null);
         check(html.contains("<!--rewritten-->") && html.contains("page"), "a page can be rewritten on its way through");

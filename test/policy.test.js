@@ -445,7 +445,7 @@ test("per site, pictures and videos each have their own choice (normal, allow/sh
   const site = (extra) => normalizeSite({ type: "domain", url: "https://example.com", ...extra });
   assert.equal(site({}).pictures, undefined, "nothing chosen: follows the phone's general settings");
   assert.equal(site({}).videos, undefined);
-  for (const v of ["allow", "filter", "block"]) {
+  for (const v of ["allow", "filter", "nudity", "block"]) {
     assert.equal(site({ pictures: v }).pictures, v);
     assert.equal(site({ videos: v }).videos, v);
   }
@@ -468,4 +468,17 @@ test("per site, pictures and videos each have their own choice (normal, allow/sh
   assert.deepEqual(p.imagesAllow, ["showall.example"]);
   assert.deepEqual(p.videoAllow, ["showall.example"]);
   assert.deepEqual(buildAgentPolicy(normalizeConfig({}), [], {}).pictureFilterSites, [], "no sites, no lists");
+
+  // "Filter nudity only" has its own lists, apart from "Filter nudity and skin", pictures and videos each on their own.
+  const nude = buildAgentPolicy(normalizeConfig({ sites: {
+    a: { type: "domain", url: "https://nudepics.example", pictures: "nudity", videos: "filter" },
+    b: { type: "domain", url: "https://nudevids.example", pictures: "filter", videos: "nudity" },
+    c: { type: "domain", url: "https://plain.example" },
+  } }), [], {});
+  assert.deepEqual(nude.pictureNudityFilterSites, ["nudepics.example"], "pictures to check for nudity only");
+  assert.deepEqual(nude.videoNudityFilterSites, ["nudevids.example"], "videos to check for nudity only");
+  assert.deepEqual(nude.pictureFilterSites, ["nudevids.example"], "nudity and skin for pictures is a separate list");
+  assert.deepEqual(nude.videoFilterSites, ["nudepics.example"], "nudity and skin for videos is a separate list");
+  assert.equal(normalizeConfig({ sites: { a: { type: "domain", url: "https://x.example", pictures: "nudity" } } }).sites.a.blockImages, false, "checking for nudity does not hide pictures");
+  assert.deepEqual(buildAgentPolicy(normalizeConfig({}), [], {}).videoNudityFilterSites, [], "no sites, no lists");
 });
