@@ -39,6 +39,12 @@ final class NudityCheck {
             interp = new Interpreter(model, o);
         } catch (Throwable e) {
             missing = true;
+            // Never silent: for the whole life of these builds the checker could not start (the model needed a newer TensorFlow Lite) and nothing said so.
+            android.util.Log.w("NudityCheck", "the photo checker could not start: " + e);
+            try {
+                Agent.addEvent(c, "error", "The photo checker could not start: " + String.valueOf(e.getMessage()).split("\n")[0]);
+            } catch (Throwable ignored) {
+            }
         }
     }
 
