@@ -925,17 +925,23 @@ function renderDeviceDetail(m,d){
   ['Pictures: hide nudity, cover skin (men, women), no pictures on some sites','browser','access'],['Blocked words','browser','access'],['Block image search','browser','access'],['Filter schedule','browser','access'],['YouTube Restricted Mode everywhere','browser','access'],
   ['YouTube: Only what I allow, Restricted, Open, Off','browser','youtube'],['Find a YouTube channel or video and allow it','browser','youtube'],['Let them search YouTube and ask for videos','browser','youtube'],['Allow signing in to YouTube','browser','youtube'],['Let them download videos (yt-dlp)','browser','youtube'],['Blocked screens: remove a screen that was blocked on the phone','apps','blocking'],['Protect the LockGuard app: its accessibility switch and the certificate can not be turned off or removed in Settings','apps','blocking'],['YouTube app on the phone (YouTube icon), message when YouTube is off','browser','youtube'],['Allowed YouTube channels and videos','browser','youtube'],
   ['Allowed sites, site requests, allow for a while (1 hour, 2 hours, custom)','browser','sites'],['Add-ons: put in or take out YouTube, the Browser add-on, the Browser app','apps','addons'],['YouTube icon on the phone','apps','addons'],['Uninstall an app','apps','regular'],['Browser add-on, make this the only browser, Chrome settings (no incognito)','browser','apps'],['Sites visited, searches list','browser','history'],['Release device, remove management','device','device'],['Check in every 15 seconds while the dashboard is open','device','device']];
- const sWrap=h('div',{class:'search',style:'margin:0;flex:1 1 320px;min-width:220px;max-width:100%'});
+ // The pages that are not part of one phone (they open their own page). Only what this login may open is offered.
+  const pageIndex=function(){
+   const ss=state&&state.session;if(!ss||ss.helper)return [];
+   const p=[['Clients: give someone (a customer) their own login and page: add a client, sign-up link, what they may do','@page','clients'],['Server: Raspberry Pi, Cloudflare backup, outage history, usage','@page','server'],['Templates: save settings and apply them to other phones','@page','templates'],['Activity: who changed what and when','@page','audit']].filter(function(x){return ss.role==='admin'});
+   p.push(['Add a device: step by step, enrollment code, QR code to set up a phone','@page','codes'],['Settings: two-step sign-in, phone alerts, helper logins (view only)','@page','settings']);
+   return p};
+  const sWrap=h('div',{class:'search',style:'margin:0;flex:1 1 320px;min-width:220px;max-width:100%'});
  const sInput=h('input',{type:'text',placeholder:'Search every setting…',value:deviceSearch});
  const sResults=h('div',{class:'search-results'});
  const renderSResults=function(){
   sResults.textContent='';
   if(!deviceSearch){sResults.style.display='none';return}
   const q=deviceSearch.toLowerCase();
-  const hits=searchIndex.filter(function(e){return e[0].toLowerCase().includes(q)});
+  const hits=pageIndex().concat(searchIndex).filter(function(e){return e[0].toLowerCase().includes(q)});
   sResults.style.display='block';
   if(!hits.length){sResults.append(h('div',{class:'mute'},'No settings match.'));return}
-  for(const e of hits){const row=h('div',null,e[0]);row.onclick=function(){deviceSearch='';if(uiMode==='new'&&/^(Pause web filtering|Turn the internet off|Turn off all restrictions)/.test(e[0])){backHome();return}goTo(e[1],e[2])};sResults.append(row)}};
+  for(const e of hits){const row=h('div',null,e[0]);row.onclick=function(){deviceSearch='';if(e[1]==='@page'){location.hash=e[2];return}if(uiMode==='new'&&/^(Pause web filtering|Turn the internet off|Turn off all restrictions)/.test(e[0])){backHome();return}goTo(e[1],e[2])};sResults.append(row)}};
  sInput.oninput=function(){deviceSearch=sInput.value;renderSResults()};
  renderSResults();
  sWrap.append(h('div',{class:'ico'},svgIcon('search','currentColor')),sInput,sResults);
