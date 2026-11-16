@@ -267,8 +267,8 @@ export function normalizeSite(raw) {
     blockImages: raw.blockImages === true || raw.pictures === "block",
     // Per site, pictures and videos each have their own choice: "allow" (shown even when they are blocked everywhere), "filter" (checked on the
     // phone first, skin covered) or "block" (nothing shown on this site). Nothing = follow the phone's general settings.
-    ...(raw.pictures === "allow" || raw.pictures === "filter" || raw.pictures === "block" ? { pictures: raw.pictures } : {}),
-    ...(raw.videos === "allow" || raw.videos === "filter" || raw.videos === "block" ? { videos: raw.videos } : {}),
+    ...(["allow", "filter", "nudity", "block"].includes(raw.pictures) ? { pictures: raw.pictures } : {}),
+    ...(["allow", "filter", "nudity", "block"].includes(raw.videos) ? { videos: raw.videos } : {}),
     installable: raw.installable !== false,
     ...(ytThumb(raw.thumb) ? { thumb: ytThumb(raw.thumb) } : {}),
     // Songs allowed together (an artist or an album) are filed under its name on the dashboard.
@@ -1017,6 +1017,9 @@ export function buildAgentPolicy(config, reportedPackages = [], opts = {}) {
   // "Filter" on a site: its pictures / videos are checked on the phone (skin covered) even when no filter is on everywhere.
   out.pictureFilterSites = siteHosts((s) => s.pictures === "filter");
   out.videoFilterSites = siteHosts((s) => s.videos === "filter");
+  // "Filter nudity only" (pictures and videos each on their own): the same check as Filter, without covering skin that is not nudity.
+  out.pictureNudityFilterSites = siteHosts((s) => s.pictures === "nudity");
+  out.videoNudityFilterSites = siteHosts((s) => s.videos === "nudity");
   return out;
 }
 

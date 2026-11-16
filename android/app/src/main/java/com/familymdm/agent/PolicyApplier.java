@@ -84,6 +84,47 @@ final class PolicyApplier {
         return s;
     }
 
+    /**
+     * The browsers other than this app that the "only browser" setting hides. A browser is an app with a launcher icon that
+     * opens plain web addresses (a host-less http/https filter, the standard way to list browsers). A hidden app no longer
+     * answers that query, so the ones hidden earlier are remembered ("hiddenBrowsers") and stay hidden until the setting is
+     * switched off, which empties the list so the generic "no longer hidden" step brings them back.
+     */
+    static Set<String> otherBrowsers(Context c, boolean restrict, Set<String> never) {
+        Set<String> remembered = Agent.getSet(c, "hiddenBrowsers");
+        if (!restrict) {
+            if (!remembered.isEmpty()) Agent.putSet(c, "hiddenBrowsers", new HashSet<>());
+            return new HashSet<>();
+        }
+        Set<String> out = new LinkedHashSet<>(remembered);
+        try {
+            PackageManager pm = c.getPackageManager();
+            String webview = null;
+            try {
+                android.content.pm.PackageInfo wv = android.webkit.WebView.getCurrentWebViewPackage();
+                if (wv != null) webview = wv.packageName;
+            } catch (Exception ignored) {
+            }
+            for (String scheme : new String[] {"http://", "https://"}) {
+                for (ResolveInfo ri : pm.queryIntentActivities(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(scheme)), PackageManager.MATCH_ALL)) {
+                    if (ri.activityInfo == null) continue;
+                    String pkg = ri.activityInfo.packageName;
+                    if (pkg == null || pkg.equals(c.getPackageName()) || pkg.equals(webview) || never.contains(pkg)) continue;
+                    if (pm.getLaunchIntentForPackage(pkg) == null) continue; // not something with an icon: not a browser anyone opens
+                    out.add(pkg);
+                }
+            }
+        } catch (Exception e) {
+            Log.w("PolicyApplier", "could not list the browsers: " + e);
+        }
+        if (!out.equals(remembered)) {
+            Agent.putSet(c, "hiddenBrowsers", out);
+            for (String pkg : out) if (!remembered.contains(pkg)) Agent.addEvent(c, "restriction", "Other browser hidden (Browser is the only one): " + nameOf(pkg));
+        }
+        out.removeAll(never);
+        return out;
+    }
+
     /** Launchable apps (what shows in the app drawer) plus apps this agent has hidden. */
     static JSONArray collectPackages(Context c) throws JSONException {
         PackageManager pm = c.getPackageManager();
@@ -273,6 +314,16 @@ final class PolicyApplier {
         // Home-screen mode: only these apps may be opened. Harsh-blocked apps are still disabled
         // outright (below); "soft" apps are left running, just excluded from this launcher's list.
         Set<String> allowedSet = new LinkedHashSet<>(strings(policy.optJSONArray("allowed")));
+
+        // "Make it the only browser": every other browser goes away (hidden), on top of the link default. Android 12+ hands web links
+        // only to the phone's default-browser holder (Chrome), so a preferred-activity entry for our Browser alone never took effect;
+        // with the others hidden, ours is the only one left and every link opens in it. Done before the master-code overrides so a
+        // parent can still allow one on the phone.
+        for (String pkg : otherBrowsers(c, policy.optBoolean("restrictBrowsing", false), never)) {
+            hideSet.add(pkg);
+            showSet.remove(pkg);
+            allowedSet.remove(pkg);
+        }
 
         // Changes made on the phone with the master code win over the dashboard.
         JSONObject overrides = Agent.getOverrides(c);

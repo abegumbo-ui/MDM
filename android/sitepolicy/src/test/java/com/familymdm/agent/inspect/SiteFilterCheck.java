@@ -70,6 +70,29 @@ public final class SiteFilterCheck {
         check(Arrays.equals(general.rewrite(onSite, jpeg), siteChecked), "a site with its own Filter choice gets the site's checker");
         check(general.pageScriptFor(plainDoc) == null, "no video script anywhere when none was chosen");
 
+        // "Filter nudity only": its own checker and its own video script, and it wins over the general filter on its site.
+        byte[] nudityChecked = "NUDITY-CHECKED".getBytes(StandardCharsets.UTF_8);
+        String nudityScript = "/*VIDEO-NUDITY*/";
+        YoutubeInspector nude = new YoutubeInspector(false, new HashSet<String>());
+        nude.setPictureFilter(p -> generalChecked);
+        nude.setPageScript("/*GENERAL-SKIN*/");
+        nude.setSiteFilters(set("skin.example"), set("skin.example"), p -> siteChecked, script);
+        nude.setSiteNudityFilters(set("nude.example"), set("nude.example"), p -> nudityChecked, nudityScript);
+        check(Arrays.equals(nude.rewrite(req("nude.example", "/a.jpg", null, "image"), jpeg), nudityChecked), "a site with Filter nudity only gets the nudity checker for its pictures");
+        check(Arrays.equals(nude.rewrite(req("cdn.example.net", "/a.jpg", "https://nude.example/p", "image"), jpeg), nudityChecked), "...also for pictures its page loads from elsewhere");
+        check(Arrays.equals(nude.rewrite(req("skin.example", "/a.jpg", null, "image"), jpeg), siteChecked), "a site with Filter nudity and skin keeps its own checker");
+        check(Arrays.equals(nude.rewrite(req("plain.example", "/a.jpg", null, "image"), jpeg), generalChecked), "any other site gets the general checker");
+        check(nude.pageScriptFor(req("nude.example", "/", null, "document")).equals(nudityScript), "the nudity video script goes into that site's pages, instead of the general skin script");
+        check(nude.pageScriptFor(req("skin.example", "/", null, "document")).equals(script), "a nudity and skin site gets the skin script");
+        check(nude.pageScriptFor(req("plain.example", "/", null, "document")).equals("/*GENERAL-SKIN*/"), "other sites keep the general script");
+        String nudePage = new String(nude.rewrite(req("nude.example", "/", null, "document"), "<html><head></head><body>x</body></html>".getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
+        check(nudePage.contains(nudityScript) && !nudePage.contains("GENERAL-SKIN"), "the page of a nudity-only site carries only the nudity script");
+        // The pictures and videos are chosen separately: nudity only for the videos leaves the site's pictures to the general filter.
+        YoutubeInspector vidOnly = new YoutubeInspector(false, new HashSet<String>());
+        vidOnly.setSiteNudityFilters(set(), set("v.example"), null, nudityScript);
+        check(!vidOnly.rewrites(req("v.example", "/a.jpg", null, "image"), "image/jpeg") && vidOnly.rewrites(req("v.example", "/", null, "document"), "text/html"), "nudity only on videos does not touch that site's pictures");
+        check(YoutubeInspector.videoNudityScript() != null && YoutubeInspector.videoNudityScript().contains("ask.mdm.invalid/nudity"), "the nudity video script is packed with the proxy");
+
         // Nothing chosen: nothing changes.
         YoutubeInspector none = new YoutubeInspector(false, new HashSet<String>());
         none.setSiteFilters(set(), set(), null, null);

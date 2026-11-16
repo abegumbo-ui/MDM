@@ -115,6 +115,7 @@ final class TlsInspection {
     /** The page after a button on a blocked page was pressed: the request goes to the dashboard like any other. */
     private static InspectProxy.Response askAnswer(InspectProxy.Request r) {
         Context c = appContext;
+        if (r.path.startsWith("/nudity")) return nudityAnswer(c, r);
         try {
             android.net.Uri u = android.net.Uri.parse("http://" + ASK_HOST + r.path);
             String target = u.getQueryParameter("u");
@@ -130,6 +131,29 @@ final class TlsInspection {
             return InspectProxy.Response.html(200, com.familymdm.agent.sitepolicy.BlockedPage.html("Sent to your parent", new String[]{"They will see " + target + " on the dashboard."}, null));
         } catch (RuntimeException e) {
             return InspectProxy.Response.html(400, com.familymdm.agent.sitepolicy.BlockedPage.html("Not sent", new String[]{"That did not work. Go back and try again."}, null));
+        }
+    }
+
+    /**
+     * A video frame a page sent to be checked ("Filter nudity only" on a site's videos, video_nudity.js): a small picture as plain text (base64), checked
+     * here with the same on-phone checker as pictures, and answered {"nude":true|false}. The frame goes nowhere else.
+     */
+    private static InspectProxy.Response nudityAnswer(Context c, InspectProxy.Request r) {
+        if ("OPTIONS".equals(r.method)) return InspectProxy.Response.json(200, "{}");
+        try {
+            if (c == null || r.body.length == 0) return InspectProxy.Response.json(400, "{\"error\":\"no frame\"}");
+            String text = new String(r.body, java.nio.charset.StandardCharsets.UTF_8).trim();
+            int comma = text.indexOf(',');
+            if (text.startsWith("data:") && comma > 0) text = text.substring(comma + 1);
+            byte[] jpg = android.util.Base64.decode(text, android.util.Base64.DEFAULT);
+            android.graphics.Bitmap b = android.graphics.BitmapFactory.decodeByteArray(jpg, 0, jpg.length);
+            if (b == null) return InspectProxy.Response.json(400, "{\"error\":\"not a picture\"}");
+            float score = NudityCheck.score(c, b);
+            b.recycle();
+            if (score < 0) return InspectProxy.Response.json(200, "{\"nude\":false,\"checked\":false}"); // no checker in this build
+            return InspectProxy.Response.json(200, "{\"nude\":" + (score >= com.familymdm.agent.sitepolicy.NudityPrep.THRESHOLD) + ",\"checked\":true}");
+        } catch (RuntimeException e) {
+            return InspectProxy.Response.json(500, "{\"error\":\"could not check\"}");
         }
     }
 
@@ -263,10 +287,15 @@ final class TlsInspection {
         rules.setPageScript("skin".equals(guard) ? com.familymdm.agent.inspect.YoutubeInspector.videoSkinScript() : null);
         // Filter chosen on one site (pictures and videos each on their own): checked there even when no filter is on everywhere.
         Set<String> filterPics = hostSet(policy.optJSONArray("pictureFilterSites")), filterVids = hostSet(policy.optJSONArray("videoFilterSites"));
-        String siteMode = "nudity".equals(guard) || "skin".equals(guard) ? guard : "skin";
+        // "Filter nudity and skin" on a site always covers skin too, whatever the general setting is (nudity only has its own choice below).
         rules.setSiteFilters(filterPics, filterVids,
-                filterPics.isEmpty() ? null : new ProxyPictureFilter(c.getApplicationContext(), siteMode, policy.optString("skinWho", "all")),
+                filterPics.isEmpty() ? null : new ProxyPictureFilter(c.getApplicationContext(), "skin", policy.optString("skinWho", "all")),
                 filterVids.isEmpty() ? null : com.familymdm.agent.inspect.YoutubeInspector.videoSkinScript());
+        // "Filter nudity only": only what may show nudity is covered (pictures by the on-phone checker, videos frame by frame through the same checker).
+        Set<String> nudePics = hostSet(policy.optJSONArray("pictureNudityFilterSites")), nudeVids = hostSet(policy.optJSONArray("videoNudityFilterSites"));
+        rules.setSiteNudityFilters(nudePics, nudeVids,
+                nudePics.isEmpty() ? null : new ProxyPictureFilter(c.getApplicationContext(), "nudity", policy.optString("skinWho", "all")),
+                nudeVids.isEmpty() ? null : com.familymdm.agent.inspect.YoutubeInspector.videoNudityScript());
     }
 
     private static void enable(Context c, DevicePolicyManager dpm, ComponentName admin, boolean applied) throws Exception {

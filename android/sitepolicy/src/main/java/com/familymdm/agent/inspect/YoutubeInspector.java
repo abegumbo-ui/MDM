@@ -181,7 +181,16 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
 
     /** The video skin covering, packed with this code (video_skin.js, same as the Browser's). */
     public static String videoSkinScript() {
-        try (java.io.InputStream in = YoutubeInspector.class.getResourceAsStream("video_skin.js")) {
+        return resource("video_skin.js");
+    }
+
+    /** Videos checked for nudity only: frames are sent to the phone's own filter (https://ask.mdm.invalid/nudity) and a video that may show nudity is covered (video_nudity.js). */
+    public static String videoNudityScript() {
+        return resource("video_nudity.js");
+    }
+
+    private static String resource(String name) {
+        try (java.io.InputStream in = YoutubeInspector.class.getResourceAsStream(name)) {
             if (in == null) return null;
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
             byte[] b = new byte[8192];
@@ -263,21 +272,41 @@ public final class YoutubeInspector implements InspectProxy.Inspector {
         siteVideoScript = videoScript;
     }
 
-    /** The filter for a picture on (or from) a site with Filter chosen, else the general one (null: the picture is left as it is). */
+    // ---- "Filter nudity only" chosen for one site: the same, but only what may show nudity is covered (no skin covering) ----
+    private volatile Set<String> nudityPictureSites = java.util.Collections.emptySet();
+    private volatile Set<String> nudityVideoSites = java.util.Collections.emptySet();
+    private volatile PictureFilter nudityPictureFilter;
+    private volatile String nudityVideoScript;
+
+    /** Like {@link #setSiteFilters}, for the sites where only nudity is to be covered (pictures and videos each on their own). */
+    public void setSiteNudityFilters(Set<String> pictureSites, Set<String> videoSites, PictureFilter picturesFilter, String videoScript) {
+        nudityPictureSites = pictureSites == null ? java.util.Collections.<String>emptySet() : pictureSites;
+        nudityVideoSites = videoSites == null ? java.util.Collections.<String>emptySet() : videoSites;
+        nudityPictureFilter = picturesFilter;
+        nudityVideoScript = videoScript;
+    }
+
+    /** The filter for a picture on (or from) a site with a Filter chosen (the site's choice wins over the general filter), else the general one (null: the picture is left as it is). */
     PictureFilter pictureFilterFor(InspectProxy.Request r) {
+        String referer = null;
+        boolean refererRead = false;
+        if (!nudityPictureSites.isEmpty() && nudityPictureFilter != null) {
+            referer = SitePolicy.hostOf(r.headers.get("Referer"));
+            refererRead = true;
+            if (inList(nudityPictureSites, referer) || inList(nudityPictureSites, r.host)) return nudityPictureFilter;
+        }
         if (!filterPictureSites.isEmpty() && sitePictureFilter != null) {
-            String referer = SitePolicy.hostOf(r.headers.get("Referer"));
+            if (!refererRead) referer = SitePolicy.hostOf(r.headers.get("Referer"));
             if (inList(filterPictureSites, referer) || inList(filterPictureSites, r.host)) return sitePictureFilter;
         }
         return pictureFilter;
     }
 
-    /** The page script for a page: the general one (skin covered in videos everywhere), or the video skin script on a site with Filter chosen for its videos. */
+    /** The page script for a page: the one chosen for the site's videos (nudity only, or nudity and skin), else the general one (skin covered in videos everywhere). */
     String pageScriptFor(InspectProxy.Request r) {
-        String general = pageScript;
-        if (general != null) return general;
+        if (nudityVideoScript != null && !nudityVideoSites.isEmpty() && inList(nudityVideoSites, r.host)) return nudityVideoScript;
         if (siteVideoScript != null && !filterVideoSites.isEmpty() && inList(filterVideoSites, r.host)) return siteVideoScript;
-        return null;
+        return pageScript;
     }
 
     private boolean filtersPicture(InspectProxy.Request r, String contentType) {

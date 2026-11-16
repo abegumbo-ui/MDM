@@ -98,14 +98,20 @@ public final class InspectProxy implements Closeable {
         public final boolean tls;
         public final String path; // path and query, e.g. /watch?v=abc
         public final Headers headers;
+        public final byte[] body; // what a POST carries (empty for a GET)
 
         Request(String method, String host, int port, boolean tls, String path, Headers headers) {
+            this(method, host, port, tls, path, headers, new byte[0]);
+        }
+
+        Request(String method, String host, int port, boolean tls, String path, Headers headers, byte[] body) {
             this.method = method;
             this.host = host;
             this.port = port;
             this.tls = tls;
             this.path = path;
             this.headers = headers;
+            this.body = body == null ? new byte[0] : body;
         }
 
         public String url() {
@@ -117,11 +123,20 @@ public final class InspectProxy implements Closeable {
         public final int status;
         public final String contentType;
         public final byte[] body;
+        /** Extra header lines, each ending in CRLF (the phone's own answers to its pages: access for the page that asked). */
+        public String extraHeaders = "";
 
         public Response(int status, String contentType, byte[] body) {
             this.status = status;
             this.contentType = contentType;
             this.body = body;
+        }
+
+        /** The answer to a page's own request to the filter: readable by whatever page asked, never stored. */
+        public static Response json(int status, String json) {
+            Response r = new Response(status, "application/json; charset=utf-8", json.getBytes(StandardCharsets.UTF_8));
+            r.extraHeaders = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\n";
+            return r;
         }
 
         public static Response html(int status, String html) {
@@ -317,7 +332,7 @@ public final class InspectProxy implements Closeable {
             }
             boolean clientClose = "close".equalsIgnoreCase(headers.get("Connection")) || "HTTP/1.0".equals(parts[2]);
             boolean upgrade = headers.get("Upgrade") != null;
-            Request req = new Request(method, host, p, tls, path, headers);
+            Request req = new Request(method, host, p, tls, path, headers, body);
 
             Response answer = inspector.onRequest(req);
             if (answer != null) {
@@ -456,7 +471,7 @@ public final class InspectProxy implements Closeable {
 
     private static void writeResponse(OutputStream out, Response r, boolean keepAlive) throws IOException {
         String head = "HTTP/1.1 " + r.status + " " + reason(r.status) + "\r\nContent-Type: " + r.contentType + "\r\nContent-Length: " + r.body.length
-                + "\r\nCache-Control: no-store\r\nConnection: " + (keepAlive ? "keep-alive" : "close") + "\r\n\r\n";
+                + "\r\nCache-Control: no-store\r\n" + r.extraHeaders + "Connection: " + (keepAlive ? "keep-alive" : "close") + "\r\n\r\n";
         out.write(head.getBytes(StandardCharsets.ISO_8859_1));
         out.write(r.body);
         out.flush();

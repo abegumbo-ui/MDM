@@ -518,6 +518,7 @@ function renderDevices(m){
   m.append(h('div',{class:'card empty'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Press "Add device" to get a code for a phone or a Browser.')));
   return}
 
+ renderInbox(m);
  // search + filter (filters rows in place, so typing never loses its place)
  const q=h('input',{type:'text',placeholder:'Search devices…',value:devSearch});
  const f=h('select');
@@ -2147,14 +2148,16 @@ function renderInspection(m,dv){
  card.append(h('div',{class:'mute small',style:'margin-top:10px'},'Needs the phone to be managed by the Agent (device owner). Check Activity → Phone log for "Browser inspection turned on". If browsing ever fails on the phone, turn this off.'));
  m.append(card)}
 /** What can be chosen for the pictures and, separately, the videos of one allowed site. Filter = checked on the phone before it shows, skin covered. */
-const SITE_PICTURE_CHOICES=[['','Normal (the phone\'s general setting)'],['allow','Show as they are'],['filter','Filter (skin covered)'],['block','Hide']];
-const SITE_VIDEO_CHOICES=[['','Normal (the phone\'s general setting)'],['allow','Allow as they are'],['filter','Filter (skin covered)'],['block','Block']];
-const SITE_FILTER_HELP='Filter checks each picture (or video) on the phone first and covers skin before it shows. Hide and Block show nothing.';
+/** In plain words, how much of the web an allowed site opens. */
+function siteScopeText(s){return s.type==='youtube'?'Only this channel\'s videos':s.type==='domain'?'This whole site and all its sub-sites':'Only this one page (nothing else on the site)'}
+const SITE_PICTURE_CHOICES=[['','Normal (the phone\'s general setting)'],['allow','Show as they are'],['nudity','Filter nudity only'],['filter','Filter nudity and skin'],['block','Hide']];
+const SITE_VIDEO_CHOICES=[['','Normal (the phone\'s general setting)'],['allow','Allow as they are'],['nudity','Filter nudity only'],['filter','Filter nudity and skin'],['block','Block']];
+const SITE_FILTER_HELP='Filter nudity only: each picture or video is checked on the phone and only what may show nudity is covered. Filter nudity and skin: that, and every patch of skin is covered too. A video that cannot be checked is covered. Hide and Block show nothing. Pictures and videos are chosen separately.';
 function renderSitesEditor(m,dv){
  const top=h('div',{class:'card'},h('h2',null,'Allowed sites'),
   h('div',{class:'mute'},'This device\'s own list — other phones and browsers are unaffected. Anything not here shows a "Request access" prompt instead. A domain covers its subpages and subdomains; an exact page covers only that one link.'));
  const url=h('input',{type:'text',placeholder:'Site or link, e.g. khanacademy.org or https://example.com/page',class:'grow'});
- const type=h('select',null,new Option('Whole site','domain'),new Option('Exact page only','exact'));
+ const type=h('select',null,new Option('Whole site and all its sub-sites','domain'),new Option('Only this one page','exact'));
  top.append(h('div',{class:'row',style:'margin-top:8px'},url,type,btn('Add','tonal',async function(){
   const link=url.value.trim();if(!link)return;
   const channel=ytChannelOf(link);
@@ -2172,9 +2175,9 @@ function renderSitesEditor(m,dv){
   const s=sites[key];
   const row=h('div',{class:'app'});
   row.append(h('div',{class:'grow'},h('div',{style:'font-weight:500'},s.label||s.url),
-   h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='youtube'?'YouTube channel: ':s.type==='domain'?'Whole site: ':'Exact page: ')+s.url),
-   h('div',null,h('span',{class:'chip'},s.type==='youtube'?'Only this channel\'s videos open':s.type==='domain'?'Every page of this site opens':'Only this one page opens'),
-    s.until?h('span',{class:'chip warn'},untilText(s.until)):null,
+   h('div',{class:'mute small',style:'word-break:break-all'},s.url),
+   h('div',null,h('span',{class:'chip ok'},siteScopeText(s)),
+    s.until?h('span',{class:'chip warn'},'Allowed '+untilText(s.until)):h('span',{class:'chip'},'Allowed until you remove it'),
     s.installable===false?h('span',{class:'chip'},'no home-screen shortcut'):null)));
   const col=h('div',{style:'display:flex;flex-direction:column;gap:6px;align-items:flex-end'});
   if(s.type!=='youtube'){
@@ -2200,7 +2203,7 @@ function renderSites(m,dv,part){
   h('div',{class:'mute'},'A lighter Browser built right into the agent app, its own icon, nothing extra installed. Opens only the sites on this same allowlist. The separate standalone Browser app below is untouched either way.')),
   sw(dv.config.browserAddonEnabled,async function(on){dv.config.browserAddonEnabled=on;try{await saveConfigFor(dv,on?'Browser add-on on. Its icon is on the phone now.':'Browser add-on off.')}catch(e){snack(e.message,1)}}))));
  m.append(h('div',{class:'card'},h('div',{class:'setting'},h('div',{class:'grow'},h('div',{style:'font-weight:500'},'Make this the only browser'),
-  h('div',{class:'mute'},'Replaces Chrome (and any other browser) as the phone\'s handler for links, so every web link opens the agent\'s own browser instead — the one that only opens sites from the list below. You still need to Block Chrome itself on the App rules box so it can\'t be opened directly.')),
+  h('div',{class:'mute'},'Chrome, Samsung Internet and any other browser are taken off the phone (hidden, nothing to open), so every web link opens our Browser instead — the one that only opens sites from the list below. Switch this off and they come back. Nothing else to do.')),
   sw(dv.config.restrictBrowsing,async function(on){dv.config.restrictBrowsing=on;try{await saveConfigFor(dv,on?'This is now the only browser. Phones apply it '+pickup()+'.':'Chrome and other browsers can be used again.')}catch(e){snack(e.message,1)}}))));
  if(part==='apps'){renderChromeLock(m,dv);return}
  renderSitesPart(m,dv);
@@ -3814,7 +3817,7 @@ function essBrowser(box,dv){
  siteRequestsCard(box,dv);
  // 4. Approved sites.
  const sites=c.sites||{},keys=Object.keys(sites).filter(function(k){return sites[k].type!=='youtube'});
- const ap=h('div',{class:'card'},h('h2',null,'Approved sites ('+keys.length+')'),h('div',{class:'mute'},'Type a site like khanacademy.org. It opens, with all its pages, on this phone.'));
+ const ap=h('div',{class:'card'},h('h2',null,'Approved sites ('+keys.length+')'),h('div',{class:'mute'},'Type a site like khanacademy.org: the whole site opens, with all its pages and sub-sites. Paste the link of one page instead and only that page opens. Each line below says which, and for how long.'));
  const url=h('input',{type:'text',placeholder:'khanacademy.org',class:'grow'});
  const add=async function(){
   const link=url.value.trim();if(!link)return;
@@ -3828,21 +3831,23 @@ function essBrowser(box,dv){
  if(!keys.length)ap.append(h('div',{class:'mute',style:'margin-top:10px'},'No sites yet. Add one above, or approve a request.'));
  for(const k of keys){
   const s=sites[k];
-  const pics=h('select');for(const o of [['','Pictures: as set above'],['allow','Pictures: always show'],['block','Pictures: always hide']])pics.append(new Option(o[1],o[0]));
+  const pics=h('select');for(const o of SITE_PICTURE_CHOICES)pics.append(new Option('Pictures: '+(o[0]?o[1]:'as set above'),o[0]));
   pics.value=s.pictures||(s.blockImages?'block':'');
   pics.onchange=async function(){s.pictures=pics.value;s.blockImages=pics.value==='block';await save('Saved.')};
-  const vids=h('select');for(const o of [['','Videos: as set above'],['allow','Videos: allowed'],['block','Videos: blocked']])vids.append(new Option(o[1],o[0]));
+  const vids=h('select');for(const o of SITE_VIDEO_CHOICES)vids.append(new Option('Videos: '+(o[0]?o[1]:'as set above'),o[0]));
   vids.value=s.videos||'';
   vids.onchange=async function(){s.videos=vids.value;await save('Saved.')};
   ap.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',{style:'font-weight:500;word-break:break-all'},s.label||s.url),
-   h('div',{class:'mute small',style:'word-break:break-all'},(s.type==='exact'?'This page only: ':'Whole site: ')+s.url+(s.until?' · '+untilText(s.until):'')),
-   h('div',{class:'row',style:'margin-top:8px'},pics,vids)),
+   h('div',{class:'mute small',style:'word-break:break-all'},s.url),
+   h('div',{style:'margin-top:6px'},h('span',{class:'chip ok'},siteScopeText(s)),s.until?h('span',{class:'chip warn'},'Allowed '+untilText(s.until)):h('span',{class:'chip'},'Allowed until you remove it')),
+   h('div',{class:'row',style:'margin-top:8px'},pics,vids),
+   h('div',{class:'mute small',style:'margin-top:6px'},SITE_FILTER_HELP)),
    btn('Remove','outline',async function(){if(!confirm('Remove '+(s.label||s.url)+'?'))return;delete c.sites[k];await save('Removed.')})))}
  box.append(ap);
  // 5. Our own browser, and the other parts.
  const ob=h('div',{class:'card'},h('h2',null,'Our browser on the phone'));
  ob.append(simpleSwitch('Browser icon in the LockGuard app','A light browser that opens only the sites on your list.',!!c.browserAddonEnabled,function(on){c.browserAddonEnabled=on;save(on?'The Browser icon is on the phone now.':'The Browser icon is off.')}));
- ob.append(simpleSwitch('Make it the only browser','Every link on the phone opens in it. Block Chrome under Apps so it cannot be opened directly.',!!c.restrictBrowsing,function(on){c.restrictBrowsing=on;save(on?'This is now the only browser.':'Chrome and other browsers can be used again.')}));
+ ob.append(simpleSwitch('Make it the only browser','Chrome, Samsung Internet and every other browser disappear from the phone, so every link opens in this one. Off brings them back.',!!c.restrictBrowsing,function(on){c.restrictBrowsing=on;save(on?'This is now the only browser.':'Chrome and other browsers can be used again.')}));
  box.append(ob);
  const more=h('div',{class:'card'});
  for(const r of [['YouTube settings','Channels, videos, YouTube Music, downloads',function(){goTo('youtube')}],['Sites visited','What they opened and searched',function(){goMore('browser','history')}],['Filter schedule and blocked words','A different level at set times; words that are refused',function(){goMore('browser','access')}]]){
@@ -4143,6 +4148,46 @@ function deviceCardNew(icon,name,sub,hash,chips,lines){
  const ch=h('div',{style:'margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 0'});for(const x of chips)if(x)ch.append(x);c.append(ch);
  for(const l of lines)if(l)c.append(h('div',{class:'mute small',style:'margin-top:8px'},l));
  c.onclick=function(){location.hash=hash};return c}
+/**
+ * Top of the Devices page: everything waiting for you, from every phone, in one place. Requests (sites, apps, YouTube, more time,
+ * Play Store, messages, calls for help) have their own Approve / Dismiss buttons right here; below them, what needs your attention
+ * (the last two days of tamper alerts and the phone problems that are still open). Nothing waiting shows one calm line.
+ */
+function renderInbox(m){
+ const when=Date.now(),many=devices.length+browsers.length>1,groups=[];
+ let nReq=0;
+ for(const d of devices){
+  const col=h('div'),nMsg=(d.messages||[]).length;
+  nReq+=(d.appRequests||[]).length+(d.siteRequests||[]).length+nMsg;
+  renderSos(col,d);renderAppRequests(col,d);siteRequestsCard(col,d);
+  if(nMsg){
+   const mc=h('div',{class:'card',style:'border-color:var(--primary)'},h('h2',null,'Messages from the phone ('+nMsg+')'));
+   for(const msg of d.messages.slice().reverse())mc.append(h('div',{class:'app'},h('div',{class:'grow'},h('div',null,msg.msg),h('div',{class:'mute small'},ago(msg.at))),
+    btn('Dismiss','outline',async function(){await call('DELETE','/api/devices/'+d.id+'/messages?id='+encodeURIComponent(msg.id));load()})));
+   col.append(mc)}
+  if(col.children.length)groups.push([d.name,col])}
+ for(const b of browsers){
+  const col=h('div');nReq+=(b.siteRequests||[]).length;
+  renderRequestsCard(col,(b.siteRequests||[]).map(function(r){return{path:'/api/browsers/'+b.id+'/site-requests',deviceName:b.name,url:r.url,at:r.at,note:r.note}}),b);
+  if(col.children.length)groups.push([b.name,col])}
+ const notes=[];
+ for(const d of devices){
+  for(const e of (d.events||[]))if((e.k==='security'||e.k==='watchdog')&&when-e.at<48*3600000)notes.push({d:d,at:e.at,text:String(e.m||'')});
+  for(const p of healthProblems(d))if(p.level==='bad')notes.push({d:d,at:when,text:p.what})}
+ notes.sort(function(a,b){return b.at-a.at});
+ const n=nReq+notes.length;
+ const head=h('div',{class:'card',style:n?'border-color:var(--primary)':''},h('h2',null,'Requests and notifications'+(n?' ('+n+')':'')));
+ if(!n)head.append(h('div',{class:'mute'},'Nothing is waiting for you. When a phone asks for a website, an app, YouTube or more time, or something needs your attention, it shows up here.'));
+ const wrap=h('div',{class:'inbox',style:'margin-bottom:14px'},head);
+ for(const g of groups){if(many)wrap.append(h('div',{style:'font-weight:600;margin:12px 0 4px'},g[0]));wrap.append(g[1])}
+ if(notes.length){
+  const nc=h('div',{class:'card'},h('h2',null,'Needs your attention ('+notes.length+')'));
+  for(const x of notes.slice(0,8)){
+   const row=h('div',{class:'setting'},h('div',{class:'grow'},h('div',null,x.text),h('div',{class:'mute small'},(many?x.d.name+' · ':'')+(x.at===when?'right now':ago(x.at)))),btn('Open','tonal',function(){location.hash='device/'+x.d.id}));
+   nc.append(row)}
+  if(notes.length>8)nc.append(h('div',{class:'mute small',style:'margin-top:6px'},'and '+(notes.length-8)+' more, on each phone\'s page.'));
+  wrap.append(nc)}
+ m.append(wrap)}
 function renderDevicesNew(m){
  const total=devices.length+browsers.length+windevices.length;
  const head=h('div',{class:'pagehead'},h('div',{class:'grow'},h('h1',null,'Devices'),h('div',{class:'sub'},total+(total===1?' device':' devices'))));
@@ -4150,6 +4195,7 @@ function renderDevicesNew(m){
  const add=h('button',{class:'btn'},'Add device');add.onclick=function(){location.hash='codes'};
  bar.append(add,btn('Refresh','tonal',load));head.append(bar);m.append(head);
  if(!total){m.append(h('div',{class:'card empty'},h('h2',null,'No devices yet'),h('p',{class:'mute'},'Press "Add device" to get a code for a phone or a Browser.')));return}
+ renderInbox(m);
  const grid=h('div',{class:'dcards'});
  for(const d of devices){
   const reqs=(d.appRequests||[]).length+(d.siteRequests||[]).length;
