@@ -591,9 +591,14 @@ public final class Guard {
             // What was chosen for this site (show as they are, nudity only, nudity and skin) wins over the general setting.
             String siteGuard = FilterStore.siteMode(c, false, pageHost, host);
             if (siteGuard != null) guard = siteGuard;
-            // Search results shown with skin covered: YouTube's video pictures get the skin covering.
-            if ("off".equals(guard) && "skin".equals(FilterStore.youtubeSearchPictures(c)) && "channels".equals(FilterStore.youtubeMode(c))
-                    && url.matches("^https://i[0-9]?\\.ytimg\\.com/vi(_webp)?/.*")) guard = "skin";
+            // YouTube search result thumbnails follow the YouTube picture choice ("show" / "skin" / "hide").
+            // "show" forces thumbnails through even if the global filter would cover them;
+            // "skin" covers them even if the global filter is off (original behavior).
+            if ("channels".equals(FilterStore.youtubeMode(c)) && url.matches("^https://i[0-9]?\\.ytimg\\.com/vi(_webp)?/.*")) {
+                String ytPics = FilterStore.youtubeSearchPictures(c);
+                if ("show".equals(ytPics)) guard = "off";
+                else if ("skin".equals(ytPics)) guard = "skin";
+            }
             if (!"off".equals(guard) && !FilterStore.blockImages(c) && PictureGuard.isPicture(request) && !isAllowedVideoThumb(c, url))
                 return PictureGuard.handle(c, request, guard);
         } catch (Exception ignored) {
