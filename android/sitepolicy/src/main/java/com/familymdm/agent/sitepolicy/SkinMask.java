@@ -28,6 +28,38 @@ public final class SkinMask {
         return cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173;
     }
 
+    /** Boxes below this detector score are ignored by coverDetected. */
+    public static final float DETECT_MIN = 0.3f;
+    /** The detector's body parts that are bare and private: one of these at this score greys the whole picture. */
+    public static final float PRIVATE_MIN = 0.5f;
+
+    public static boolean isPrivateExposed(NudeDetect.Det d) {
+        if (d.score < PRIVATE_MIN) return false;
+        return d.label.equals("FEMALE_GENITALIA_EXPOSED") || d.label.equals("MALE_GENITALIA_EXPOSED")
+                || d.label.equals("FEMALE_BREAST_EXPOSED") || d.label.equals("BUTTOCKS_EXPOSED") || d.label.equals("ANUS_EXPOSED");
+    }
+
+    /**
+     * Paints a grey box (a little larger than the detector's) over every bare body part it found.
+     * This works on what the picture shows, not on colour, so dark, dim and black-and-white skin is
+     * covered too. who/people as in cover(). Returns how much of the picture was covered (0..1).
+     */
+    public static float coverDetected(int[] px, int w, int h, java.util.List<NudeDetect.Det> dets, NudeDetect.People people, String who) {
+        if (dets == null || w <= 0 || h <= 0) return 0;
+        boolean everyone = people == null || !("women".equals(who) || "men".equals(who));
+        long covered = 0;
+        for (NudeDetect.Det d : dets) {
+            if (!d.label.endsWith("_EXPOSED") || d.score < DETECT_MIN) continue;
+            if (!everyone && !people.cover(d.x + d.w / 2f, d.y + d.h / 2f, who)) continue;
+            int padX = Math.round(d.w * 0.15f) + CELL / 2, padY = Math.round(d.h * 0.15f) + CELL / 2;
+            int x1 = Math.max(0, Math.round(d.x) - padX), y1 = Math.max(0, Math.round(d.y) - padY);
+            int x2 = Math.min(w, Math.round(d.x + d.w) + padX), y2 = Math.min(h, Math.round(d.y + d.h) + padY);
+            for (int y = y1; y < y2; y++) for (int x = x1; x < x2; x++) px[y * w + x] = GREY;
+            if (x2 > x1 && y2 > y1) covered += (long) (x2 - x1) * (y2 - y1);
+        }
+        return Math.min(1f, covered / (float) ((long) w * h));
+    }
+
     /** Covers skin blocks in place; returns how much of the picture was covered (0..1). */
     public static float cover(int[] px, int w, int h) {
         return cover(px, w, h, null, "all");

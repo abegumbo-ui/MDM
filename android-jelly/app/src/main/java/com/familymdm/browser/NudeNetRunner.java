@@ -43,8 +43,8 @@ final class NudeNetRunner {
         return model;
     }
 
-    /** Who is in the picture (in the picture's own pixels), or null if it cannot be told. */
-    static NudeDetect.People people(Context c, Bitmap picture) {
+    /** Faces and body parts found in the picture (in its own pixels), or null if this build has no detector or it failed. */
+    static List<NudeDetect.Det> detect(Context c, Bitmap picture) {
         try {
             Interpreter it = interp.get();
             if (it == null) {
@@ -76,8 +76,7 @@ final class NudeNetRunner {
                 for (int i = 0; i < rows.length; i++) for (int j = 0; j < rows[0].length; j++) t[j][i] = rows[i][j];
                 rows = t;
             }
-            List<NudeDetect.Det> dets = NudeDetect.decode(rows, w, h);
-            return new NudeDetect.People(dets);
+            return NudeDetect.decode(rows, w, h);
         } catch (Throwable e) {
             return null;
         }
