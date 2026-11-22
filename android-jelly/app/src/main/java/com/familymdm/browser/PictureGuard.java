@@ -60,14 +60,22 @@ final class PictureGuard {
     private static final ThreadLocal<Interpreter> interp = new ThreadLocal<>();
 
     static boolean isPicture(WebResourceRequest r) {
-        if (!"GET".equalsIgnoreCase(r.getMethod()) || r.isForMainFrame()) return false;
+        if (!"GET".equalsIgnoreCase(r.getMethod())) return false;
         String scheme = r.getUrl().getScheme();
         if (!"http".equals(scheme) && !"https".equals(scheme)) return false;
+        String p = r.getUrl().getPath() == null ? "" : r.getUrl().getPath().toLowerCase(java.util.Locale.ROOT);
+        boolean imageName = p.endsWith(".jpg") || p.endsWith(".jpeg") || p.endsWith(".png") || p.endsWith(".webp") || p.endsWith(".gif") || p.endsWith(".avif") || p.endsWith(".heic");
+        // A picture opened as the page itself (its address, or a long-press "open image") is checked too.
+        if (r.isForMainFrame()) return imageName;
         String accept = null;
         for (Map.Entry<String, String> e : r.getRequestHeaders().entrySet()) if ("accept".equalsIgnoreCase(e.getKey())) accept = e.getValue();
         if (accept != null && accept.startsWith("image/")) return true;
-        String p = r.getUrl().getPath() == null ? "" : r.getUrl().getPath().toLowerCase(java.util.Locale.ROOT);
-        return p.endsWith(".jpg") || p.endsWith(".jpeg") || p.endsWith(".png") || p.endsWith(".webp") || p.endsWith(".gif") || p.endsWith(".avif") || p.endsWith(".heic");
+        return imageName;
+    }
+
+    private static boolean keepHeader(String name) {
+        // A "not changed" answer would let the WebView show its own saved copy, which was never checked.
+        return !("if-none-match".equalsIgnoreCase(name) || "if-modified-since".equalsIgnoreCase(name) || "if-range".equalsIgnoreCase(name) || "range".equalsIgnoreCase(name));
     }
 
     /** The checked picture, or null to let the WebView load it itself (could not be fetched here). */
@@ -85,11 +93,11 @@ final class PictureGuard {
             con.setConnectTimeout(10000);
             con.setReadTimeout(15000);
             con.setInstanceFollowRedirects(true);
-            for (Map.Entry<String, String> e : r.getRequestHeaders().entrySet()) con.setRequestProperty(e.getKey(), e.getValue());
+            for (Map.Entry<String, String> e : r.getRequestHeaders().entrySet()) if (keepHeader(e.getKey())) con.setRequestProperty(e.getKey(), e.getValue());
             String cookie = CookieManager.getInstance().getCookie(url);
             if (cookie != null) con.setRequestProperty("Cookie", cookie);
             int code = con.getResponseCode();
-            if (code < 200 || code >= 300) return null;
+            if (code < 200 || code >= 300) return blank(1, 1); // never let the page fetch it unchecked
             type = con.getContentType() == null ? "" : con.getContentType().toLowerCase(java.util.Locale.ROOT);
             try (InputStream in = con.getInputStream()) {
                 ByteArrayOutputStream all = new ByteArrayOutputStream();
@@ -101,7 +109,7 @@ final class PictureGuard {
                 raw = all.toByteArray();
             }
         } catch (Exception e) {
-            return null;
+            return blank(1, 1); // could not be fetched here, so it could not be checked: not shown
         }
         if (type.contains("svg")) return passThrough(raw, type);
         BitmapFactory.Options bounds = new BitmapFactory.Options();
@@ -126,9 +134,22 @@ final class PictureGuard {
         if ("skin".equals(mode)) {
             int[] px = new int[w * h];
             b.getPixels(px, 0, w, 0, 0, w, h);
-            // Women only / men only: the man/woman detector says whose skin is where (in doubt: covered).
-            com.familymdm.agent.sitepolicy.NudeDetect.People people = "all".equals(who) ? null : NudeNetRunner.people(c, b);
-            if (SkinMask.cover(px, w, h, people, who) > 0) {
+            // The body-part detector sees what is bare whatever its colour; it also says whose skin is where
+            // for "women only / men only" (in doubt: covered). Null when this build has no detector.
+            java.util.List<com.familymdm.agent.sitepolicy.NudeDetect.Det> dets = NudeNetRunner.detect(c, b);
+            if (dets != null) {
+                for (com.familymdm.agent.sitepolicy.NudeDetect.Det d : dets) {
+                    if (SkinMask.isPrivateExposed(d)) { // clearly bare private parts: the whole picture goes grey
+                        byte[] grey = encode(Bitmap.createBitmap(new int[]{SkinMask.GREY}, 1, 1, Bitmap.Config.ARGB_8888), w, h);
+                        cache.put(key, grey);
+                        return image(grey);
+                    }
+                }
+            }
+            com.familymdm.agent.sitepolicy.NudeDetect.People people = "all".equals(who) || dets == null ? null : new com.familymdm.agent.sitepolicy.NudeDetect.People(dets);
+            float colour = SkinMask.cover(px, w, h, people, who);
+            float parts = SkinMask.coverDetected(px, w, h, dets, people, who);
+            if (colour > 0 || parts > 0) {
                 b.setPixels(px, 0, w, 0, 0, w, h);
                 byte[] out = encode(b, w, h);
                 cache.put(key, out);

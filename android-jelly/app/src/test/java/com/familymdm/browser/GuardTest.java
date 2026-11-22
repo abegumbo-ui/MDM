@@ -438,6 +438,38 @@ public class GuardTest {
         FilterStore.setYoutubeSearchPictures(c, "hide");
     }
 
+    private static android.webkit.WebResourceRequest picReq(String url, boolean mainFrame, java.util.Map<String, String> headers) {
+        final android.net.Uri u = android.net.Uri.parse(url);
+        return new android.webkit.WebResourceRequest() {
+            @Override public android.net.Uri getUrl() { return u; }
+            @Override public boolean isForMainFrame() { return mainFrame; }
+            @Override public boolean isRedirect() { return false; }
+            @Override public boolean hasGesture() { return false; }
+            @Override public String getMethod() { return "GET"; }
+            @Override public java.util.Map<String, String> getRequestHeaders() { return headers; }
+        };
+    }
+
+    @Test
+    public void pictureGuard_checksAPictureOpenedAsThePage_notAnOrdinaryPage() throws Exception {
+        assertTrue("a picture address opened as the page is checked", PictureGuard.isPicture(picReq("https://example.com/a/photo.JPG", true, new java.util.HashMap<>())));
+        assertFalse("an ordinary page is not a picture", PictureGuard.isPicture(picReq("https://example.com/index.html", true, new java.util.HashMap<>())));
+        java.util.Map<String, String> accept = new java.util.HashMap<>();
+        accept.put("Accept", "image/avif,image/webp,*/*");
+        assertTrue("a file on a page that asks for an image is checked", PictureGuard.isPicture(picReq("https://cdn.example/x?id=1", false, accept)));
+        assertFalse("a script on a page is not", PictureGuard.isPicture(picReq("https://cdn.example/app.js", false, new java.util.HashMap<>())));
+    }
+
+    @Test
+    public void pictureGuard_aPictureThatCannotBeFetchedIsNotShown() throws Exception {
+        connected("open");
+        FilterStore.setPictureGuard(c, "skin");
+        android.webkit.WebResourceResponse r = Guard.intercept(c, picReq("http://127.0.0.1:1/never.jpg", false, new java.util.HashMap<>()), "example.com");
+        assertNotNull("a failed fetch gives a plain grey picture, never the WebView's own unchecked load", r);
+        assertTrue(r.getMimeType().startsWith("image/"));
+        FilterStore.setPictureGuard(c, "off");
+    }
+
     @Test
     public void youtubeSearchPictures_doesNotApplyOutsideChannelsMode() throws Exception {
         connected("open");

@@ -44,5 +44,21 @@ public class SkinMaskCheck {
         java.util.Arrays.fill(img, 0xFFE0AC8C);
         SkinMask.cover(img, W, W, people, "all");
         check(img[150 * W + 50] == SkinMask.GREY && img[150 * W + 330] == SkinMask.GREY, "everyone: both covered");
+
+        // Detector boxes: a bare body part is covered even where the colour rule sees nothing (very dark or grey skin).
+        int breast = java.util.Arrays.asList(NudeDetect.LABELS).indexOf("FEMALE_BREAST_EXPOSED"), covered = java.util.Arrays.asList(NudeDetect.LABELS).indexOf("FEMALE_BREAST_COVERED");
+        float[][] o2 = new float[4 + NudeDetect.LABELS.length][2];
+        o2[0][0] = 160; o2[1][0] = 160; o2[2][0] = 40; o2[3][0] = 40; o2[4 + breast][0] = 0.8f;   // centre of a 320 picture
+        o2[0][1] = 40; o2[1][1] = 280; o2[2][1] = 40; o2[3][1] = 40; o2[4 + covered][1] = 0.9f;   // clothed: left alone
+        java.util.List<NudeDetect.Det> d2 = NudeDetect.decode(o2, 320, 320);
+        int[] grey = new int[320 * 320];
+        java.util.Arrays.fill(grey, 0xFF404040);
+        float share2 = SkinMask.coverDetected(grey, 320, 320, d2, null, "all");
+        check(grey[160 * 320 + 160] == SkinMask.GREY, "detected bare part is covered even though its colour is not skin");
+        check(grey[280 * 320 + 40] == 0xFF404040, "a covered (clothed) part is left alone");
+        check(share2 > 0.02f && share2 < 0.2f, "covered share is the box, not the picture (" + share2 + ")");
+        check(SkinMask.coverDetected(grey, 320, 320, null, null, "all") == 0, "no detections: nothing covered");
+        java.util.List<NudeDetect.Det> bare = NudeDetect.decode(o2, 320, 320);
+        check(SkinMask.isPrivateExposed(bare.get(0)) == "FEMALE_BREAST_EXPOSED".equals(bare.get(0).label), "private-part rule matches the label");
     }
 }
